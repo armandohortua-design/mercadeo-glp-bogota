@@ -1,0 +1,23 @@
+{
+  "name": "glp-crm-backend",
+  "version": "1.0.0",
+  "description": "Backend de notificaciones y bitácora para la plataforma de inversión GLP",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [],
+  "author": "GLP Agent Team",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "imap-simple": "^5.1.0",
+    "mailparser": "^3.9.11",
+    "nodemailer": "^6.9.13",
+    "openai": "^4.52.0",
+    "sqlite3": "^6.0.1"
+  }
+}

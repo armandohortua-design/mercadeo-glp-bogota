@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="es">
+  <head>
+
+<script>
+window.onerror = function(msg, url, line, col, error) {
+  document.body.innerHTML = '<div style="color:red;padding:20px;font-size:20px;z-index:99999;position:absolute;top:0;background:white;width:100%;"><h1 style="font-size: 24px;">Runtime Error</h1><p>' + msg + '</p><pre>' + (error ? error.stack : '') + '</pre></div>';
+};
+window.addEventListener('unhandledrejection', function(e) {
+  document.body.innerHTML = '<div style="color:red;padding:20px;font-size:20px;z-index:99999;position:absolute;top:0;background:white;width:100%;"><h1 style="font-size: 24px;">Unhandled Rejection</h1><p>' + (e.reason ? e.reason.stack || e.reason : e) + '</p></div>';
+});
+</script>
+
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GLP · Invierte en Panamá</title>
+    <meta name="description" content="Grupo Los Pueblos — 40+ años construyendo Panamá. Inversión inmobiliaria en USD desde $120,000. Rentabilidad 6-9% anual. Representación oficial en Colombia." />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      html { scroll-behavior: smooth; }
+      body {
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        background: #FAFAF8;
+        color: #2D3748;
+        min-height: 100vh;
+        -webkit-font-smoothing: antialiased;
+      }
+      #root { min-height: 100vh; }
+      ::selection { background: #0EA5AC33; color: #2D3748; }
+      ::-webkit-scrollbar { width: 6px; }
+      ::-webkit-scrollbar-track { background: #F5E6D3; }
+      ::-webkit-scrollbar-thumb { background: #0EA5AC88; border-radius: 3px; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

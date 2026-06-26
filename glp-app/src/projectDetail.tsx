@@ -1,0 +1,1106 @@
+import React, { useState } from 'react';
+import ReactDOM from 'react-dom/client';
+import { PROJECTS, PROJECT_IMG, C } from './projectsData';
+
+const fmt = (n: number) => {
+  const rounded = Math.round(n);
+  return (rounded < 0 ? '-' : '') + '$' + Math.abs(rounded).toLocaleString('en-US');
+};
+
+const formatComma = (num: number) => {
+  if (num === 0) return '0';
+  if (!num) return '';
+  return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+};
+
+const getZoneNotes = (zone: string) => {
+  const z = zone.toLowerCase();
+  if (z.includes('pacífica') || z.includes('pacifica') || z.includes('reef')) {
+    return 'Punta Pacífica/Islas: Cercanía al Hospital Pacífica Salud (afiliado a Johns Hopkins Medicióne), Multiplaza Mall, conexión directa al Corredor Sur y la exclusiva Marina Privada de Ocean Reef.';
+  } else if (z.includes('santa maría') || z.includes('santa maria') || z.includes('este') || z.includes('viejo')) {
+    return 'Santa María/Costa del Este: Entorno rodeado por el campo de golf Jack Nicklaus, Town Center Costa del Este, oficiónas corporativas de multinacionales y los colegios bilingües más prestigiosos de la ciudad.';
+  } else if (z.includes('caracol') || z.includes('chame')) {
+    return 'Playa Caracol: 1.2 km de playa privada de arena blanca, academia de surf y proximidad al centro de servicios de Coronado (a 20 minutos) con clínicas y supermercados.';
+  } else if (z.includes('dorada') || z.includes('arraiján') || z.includes('arraijan') || z.includes('pacífico') || z.includes('pacifico')) {
+    return 'Pacífico/Arraiján: Rápida conectividad al Canal de Panamá, el Puente de las Américas y la futura Línea 3 del Metro, rodeado de áreas verdes protegidas y parques industriales logísticos.';
+  }
+  return 'Zona estratégica con alta valorización y conectividad de Grupo Los Pueblos.';
+};
+
+export const ProjectDetailView: React.FC = () => {
+  React.useEffect(() => {
+    const paramás = new URLSearchParams(window.location.search);
+    const tab = paramás.get('tab');
+    if (tab === 'cuota') {
+      const el = document.getElementById('cuota-inicial-simulator');
+      if (el) {
+        setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300);
+      }
+    } else if (tab === 'credito') {
+      setShowCreditCalc(true);
+      const el = document.getElementById('credit-calculator');
+      if (el) {
+        setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300);
+      }
+    }
+  }, []);
+
+  const paramás = new URLSearchParams(window.location.search);
+  const projectName = paramás.get('name') || paramás.get('project') || '';
+  const project = PROJECTS.find(p => p.name.toLowerCase() === projectName.toLowerCase());
+  
+  if (!project) {
+    return (
+      <div style={{ padding: 48, textAlign: 'center', background: C.bg, minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: C.fontSans }}>
+        <h2 style={{ color: C.teal, fontFamily: C.fontSerif, fontWeight: 400 }}>Proyecto no encontrado</h2>
+        <p style={{ marginTop: 12, color: C.textSec }}>El proyecto seleccionado no existe o el enlace es incorrecto.</p>
+        <a href="/" style={{ marginTop: 24, display: 'inline-block', background: C.teal, color: C.white, padding: '12px 24px', borderRadius: 0, textDecoration: 'none', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Volver a la página principal</a>
+      </div>
+    );
+  }
+
+  const imgs = PROJECT_IMG[project.name];
+
+  const [precio, setPrecio] = useState(project.price);
+  const [montoCuotaInicial, setMontoCuotaInicial] = useState(() => Math.round(project.price * 0.5));
+  const [tasa, setTasa] = useState(8.5); 
+  const [plazo, setPlazo] = useState(20); 
+  const [showCreditCalc, setShowCreditCalc] = useState(false);
+  const [showContactModal, setShowContactModal] = useState(false);
+
+  const [contactName, setContactName] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [contactMásg, setContactMásg] = useState(`Me interesa obtener información especializada para el proyecto ${project.name}.`);
+  const [contactSubmitted, setContactSubmitted] = useState(false);
+
+  const saveProspectToLocal = (name: string, email: string, phone: string, project: string, message: string, price: number) => {
+    const saved = localStorage.getItem('glp_crm_prospects');
+    let currentProspects = [];
+    if (saved) {
+      try {
+        currentProspects = JSON.parse(saved);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    const nameParts = name.trim().split(' ');
+    const firstName = nameParts[0] || 'Cliente';
+    const lastName = nameParts.slice(1).join(' ') || 'S/A';
+
+    const newLead = {
+      id: Date.now(),
+      nombre: firstName,
+      apellido: lastName,
+      direccion: 'Colombia',
+      correo: email,
+      telefono: phone,
+      ocupacion: 'Inversionista',
+      proyectos_interes: [project],
+      forma_contacto: 'Web',
+      broker_assigned: 'Patricia Vargas',
+      estado: 'Contacto Inicial',
+      presupuesto_usd: price,
+      notas: message || 'Interesado en información del proyecto.',
+      historial: [
+        {
+          fecha: new Date().toLocaleDateString('es-CO'),
+          accion: 'Contacto inicial',
+          detalle: `Registrado en la ficha técnica para el proyecto ${project}.`
+        }
+      ],
+      fecha_entrada: new Date().toISOString().split('T')[0]
+    };
+
+    currentProspects.unshift(newLead);
+    localStorage.setItem('glp_crm_prospects', JSON.stringify(currentProspects));
+  };
+
+  const handleContactSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!contactName || !contactEmail) {
+      alert('Por favor, complete los campos obligatorios (Nombre y Correo).');
+      return;
+    }
+
+    saveProspectToLocal(contactName, contactEmail, contactPhone, project.name, contactMásg, project.price);
+
+    try {
+      await fetch('http://localhost:3001/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: contactName,
+          email: contactEmail,
+          phone: contactPhone,
+          project: project.name,
+          message: contactMásg,
+          channel: 'Web'
+        })
+      });
+    } catch (err) {
+      console.warn('Backend server is offline or unreachable. SMTP mail skipped, operating in standalone localStorage mode.', err);
+    }
+
+    setContactSubmitted(true);
+    setContactName('');
+    setContactEmail('');
+    setContactPhone('');
+
+    setTimeout(() => {
+      setContactSubmitted(false);
+      setShowContactModal(false);
+    }, 2000);
+  };
+
+  const valorFinanciado = Math.max(0, precio - montoCuotaInicial);
+  const r = (tasa / 12) / 100;
+  const n = plazo * 12;
+  const cuotaMensual = r > 0 ? (valorFinanciado * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1) : valorFinanciado / n;
+
+  const planAmortizacion = React.useMemo(() => {
+    const list = [];
+    let balance = valorFinanciado;
+    const rRate = (tasa / 12) / 100;
+    const totalPayments = plazo * 12;
+    const cuota = rRate > 0 ? (valorFinanciado * rRate * Math.pow(1 + rRate, totalPayments)) / (Math.pow(1 + rRate, totalPayments) - 1) : valorFinanciado / totalPayments;
+    
+    for (let yr = 1; yr <= plazo; yr++) {
+      let interesesAño = 0;
+      let principalAño = 0;
+      const balanceInicial = balance;
+      
+      for (let m = 0; m < 12; m++) {
+        const interesMes = balance * rRate;
+        const principalMes = Math.min(balance, cuota - interesMes);
+        interesesAño += interesMes;
+        principalAño += principalMes;
+        balance = Math.max(0, balance - principalMes);
+      }
+      
+      list.push({
+        año: yr,
+        balanceInicial,
+        pagosTotal: interesesAño + principalAño,
+        intereses: interesesAño,
+        principal: principalAño,
+        balanceFinal: balance
+      });
+    }
+    return list;
+  }, [valorFinanciado, tasa, plazo]);
+
+  return (
+    <div style={{ background: C.bg, minHeight: '100vh', color: C.text, paddingBottom: 80, fontFamily: C.fontSans }}>
+      {/* Top navbar */}
+      <nav style={{ background: C.teal, padding: '16px 24px', color: C.white, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${C.sand}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 0,
+            background: 'rgba(255,255,255,0.08)',
+            border: '1.5px solid rgba(255,255,255,0.18)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontWeight: 800, fontSize: '1rem', color: C.white,
+            fontFamily: C.fontSerif,
+          }}>GLP</div>
+          <span style={{ fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: C.fontSans }}>Ficha Técnica Detallada</span>
+        </div>
+        <button onClick={() => {
+          window.location.href = '/';
+        }} style={{
+          background: 'transparent', border: '1px solid rgba(255,255,255,0.3)', color: C.white,
+          padding: '8px 16px', borderRadius: 0, cursor: 'pointer', fontWeight: 600, fontSize: '0.75rem',
+          textTransform: 'uppercase', letterSpacing: '0.05em', transition: 'all 0.2s ease',
+          fontFamily: C.fontSans
+        }}
+          onMouseEnter={e => { e.currentTarget.style.background = C.white; e.currentTarget.style.color = C.teal; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = C.white; }}>
+          Cerrar ✕
+        </button>
+      </nav>
+
+      <div style={{ maxWidth: 1100, margin: '40px auto 0', padding: '0 24px' }}>
+        {/* Main Title Header */}
+        <div style={{ marginBottom: 32 }}>
+          <h1 style={{ fontSize: 'clamp(1.8rem, 4vw, 2.8rem)', fontWeight: 400, color: C.teal, marginTop: 8, marginBottom: 8, fontFamily: C.fontSerif }}>
+            {project.name}
+          </h1>
+          <p style={{ fontSize: '0.9rem', color: C.textSec, display: 'flex', alignItems: 'center', gap: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            {project.zone}
+          </p>
+        </div>
+
+        {/* Pictures & Details Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 32, marginBottom: 40 }}>
+          
+          {/* Left Column: Photos & Location */}
+          <div>
+            {/* Main Photo */}
+            <div style={{ height: 420, borderRadius: 0, overflow: 'hidden', border: `1px solid ${C.sand}`, marginBottom: 20 }}>
+              <img src={imgs?.main} alt={project.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            </div>
+
+            {/* Gallery Grid */}
+            {imgs && imgs.gallery && imgs.gallery.length > 0 && (
+              <div style={{ marginBottom: 28 }}>
+                <h3 style={{ fontSize: '0.75rem', fontWeight: 600, color: C.teal, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>Galería de Imágenes</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
+                  {imgs.gallery.map((g, idx) => (
+                    <div key={idx} style={{ height: 100, borderRadius: 0, overflow: 'hidden', border: `1px solid ${C.sand}`, cursor: 'zoom-in' }}
+                      onClick={() => window.open(g, '_blank')}>
+                      <img src={g} alt={`${project.name} ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.3s' }}
+                        onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.05)'}
+                        onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Location & Zonas Cercanías */}
+            <div style={{ background: C.white, borderRadius: 0, padding: 24, border: `1px solid ${C.sand}` }}>
+              <h3 style={{ fontSize: '0.75rem', fontWeight: 600, color: C.teal, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
+                Ubicación & Zonas de Interés Cercanías
+              </h3>
+              <p style={{ fontSize: '0.9rem', lineHeight: 1.6, color: C.textSec, fontStyle: 'italic' }}>
+                {getZoneNotes(project.zone)}
+              </p>
+            </div>
+          </div>
+
+          {/* Right Column: Spec sheet & Amenities */}
+          <div>
+            {/* Spec Sheet Table */}
+            <div style={{ background: C.white, borderRadius: 0, padding: 24, border: `1px solid ${C.sand}`, marginBottom: 20 }}>
+              <h3 style={{ fontSize: '0.75rem', fontWeight: 600, color: C.teal, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 16 }}>Ficha Técnica</h3>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                <tbody>
+                  <tr style={{ borderBottom: `1px solid ${C.sand}` }}>
+                    <td style={{ padding: '12px 0', color: C.textSec, fontWeight: 500 }}>Precio Mínimo:</td>
+                    <td style={{ padding: '12px 0', fontWeight: 700, color: C.teal, textAlign: 'right', fontFamily: C.fontSerif, fontSize: '1.05rem' }}>Desde {fmt(project.price)}</td>
+                  </tr>
+                  <tr style={{ borderBottom: `1px solid ${C.sand}` }}>
+                    <td style={{ padding: '12px 0', color: C.textSec, fontWeight: 500 }}>Rango de Metrajes:</td>
+                    <td style={{ padding: '12px 0', fontWeight: 600, textAlign: 'right' }}>{project.area}</td>
+                  </tr>
+                  <tr style={{ borderBottom: `1px solid ${C.sand}` }}>
+                    <td style={{ padding: '12px 0', color: C.textSec, fontWeight: 500 }}>Precio/m² estimado:</td>
+                    <td style={{ padding: '12px 0', fontWeight: 600, textAlign: 'right' }}>USD ${project.priceM2}</td>
+                  </tr>
+                  {/* Ocultado por solicitud: Renta/m² sugerido
+                  <tr style={{ borderBottom: `1px solid ${C.sand}` }}>
+                    <td style={{ padding: '12px 0', color: C.textSec, fontWeight: 500 }}>Renta/m² sugerido:</td>
+                    <td style={{ padding: '12px 0', fontWeight: 600, textAlign: 'right' }}>USD ${project.rentM2}</td>
+                  </tr>
+                  */}
+                  {/* Ocultado por solicitud: Valorización anual prom
+                  <tr style={{ borderBottom: `1px solid ${C.sand}` }}>
+                    <td style={{ padding: '12px 0', color: C.textSec, fontWeight: 500 }}>Valorización anual prom:</td>
+                    <td style={{ padding: '12px 0', fontWeight: 600, color: C.palm, textAlign: 'right' }}>+{project.appreciation} anual</td>
+                  </tr>
+                  */}
+                  <tr style={{ borderBottom: `1px solid ${C.sand}` }}>
+                    <td style={{ padding: '12px 0', color: C.textSec, fontWeight: 500 }}>Distribución:</td>
+                    <td style={{ padding: '12px 0', fontWeight: 600, textAlign: 'right' }}>{project.beds}</td>
+                  </tr>
+                  <tr style={{ borderBottom: `1px solid ${C.sand}` }}>
+                    <td style={{ padding: '12px 0', color: C.textSec, fontWeight: 500 }}>Fecha de Entrega:</td>
+                    <td style={{ padding: '12px 0', fontWeight: 700, color: C.coral, textAlign: 'right' }}>{project.delivery || 'Entrega Inmediata'}</td>
+                  </tr>
+                  {/* Ocultado por solicitud: Perfil del Inquilino
+                  <tr>
+                    <td style={{ padding: '12px 0', color: C.textSec, fontWeight: 500 }}>Perfil del Inquilino:</td>
+                    <td style={{ padding: '12px 0', fontWeight: 600, color: C.text, textAlign: 'right', fontSize: '0.8rem' }}>{project.tenant}</td>
+                  </tr>
+                  */}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Solicitar Información CTA Button */}
+            <div style={{ marginBottom: 20 }}>
+              <button
+                onClick={() => setShowContactModal(true)}
+                style={{
+                  width: '100%',
+                  background: C.coral,
+                  color: C.white,
+                  border: `1px solid ${C.coral}`,
+                  borderRadius: 0,
+                  padding: '14px 28px',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  transition: 'all 0.3s ease',
+                  fontFamily: C.fontSans
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = C.coral;
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = C.coral;
+                  e.currentTarget.style.color = C.white;
+                }}
+              >
+                📬 Solicitar Información
+              </button>
+            </div>
+
+            {/* Amenities Card */}
+            <div style={{ background: C.white, borderRadius: 0, padding: 24, border: `1px solid ${C.sand}` }}>
+              <h3 style={{ fontSize: '0.75rem', fontWeight: 600, color: C.teal, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
+                Amenities del Edificio
+              </h3>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {project.amenities.map(a => (
+                  <span key={a} style={{ background: C.bg, color: C.teal, border: `1px solid ${C.sand}`, padding: '6px 12px', borderRadius: 0, fontSize: '0.72rem', fontWeight: 600 }}>
+                    {a}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Cuota Inicial Simulator */}
+        <CuotaInicialSimulator
+          precio={precio}
+          montoCuotaInicial={montoCuotaInicial}
+          setPrecio={setPrecio}
+          setMontoCuotaInicial={setMontoCuotaInicial}
+        />
+
+        {/* Toggle Credit Calculator Button */}
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 36, marginBottom: 20 }}>
+          <button
+            onClick={() => setShowCreditCalc(v => !v)}
+            style={{
+              background: showCreditCalc ? 'transparent' : C.teal,
+              color: showCreditCalc ? C.teal : C.white,
+              border: `1px solid ${C.teal}`,
+              borderRadius: 0,
+              padding: '14px 28px',
+              fontWeight: 600,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              transition: 'all 0.3s ease',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontFamily: C.fontSans
+            }}
+            onMouseEnter={e => {
+              if (showCreditCalc) {
+                e.currentTarget.style.background = 'rgba(0,35,73,0.04)';
+              } else {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = C.teal;
+              }
+            }}
+            onMouseLeave={e => {
+              if (showCreditCalc) {
+                e.currentTarget.style.background = 'transparent';
+              } else {
+                e.currentTarget.style.background = C.teal;
+                e.currentTarget.style.color = C.white;
+              }
+            }}
+          >
+            {showCreditCalc ? 'Ocultar Simulador de Crédito Hipotecario' : 'Simular Crédito Hipotecario'}
+          </button>
+        </div>
+
+        {/* Special Credit Calculator */}
+        {showCreditCalc && (
+        <div id="credit-calculator" style={{ background: C.white, borderRadius: 0, padding: 32, border: `1px solid ${C.sand}`, marginTop: 20 }}>
+          <div style={{ borderBottom: `2px solid ${C.teal}`, paddingBottom: 12, marginBottom: 24 }}>
+            <h3 style={{ fontSize: '1.3rem', fontWeight: 400, color: C.teal, fontFamily: C.fontSerif }}>
+              Simulación de Crédito
+            </h3>
+            <p style={{ margin: '6px 0 0', fontSize: '0.85rem', color: C.textSec, fontFamily: C.fontSans }}>
+              Calcula las cuotas mensuales de tu financiamiento hipotecario y visualiza el plan de pagos.
+            </p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 36 }}>
+            {/* Parameters */}
+            <div>
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <label style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', color: C.textSec }}>Valor de la Propiedad (USD)</label>
+                  <input
+                    type="text"
+                    value={formatComma(precio)}
+                    onChange={e => {
+                      const val = Number(e.target.value.replace(/\D/g, ''));
+                      setPrecio(val);
+                      setMontoCuotaInicial(Math.round(val * 0.5));
+                    }}
+                    style={{
+                      width: 120, padding: '6px 10px', borderRadius: 0,
+                      border: `1px solid ${C.sand}`, fontSize: '0.85rem', color: C.teal,
+                      fontWeight: 700, textAlign: 'right', outline: 'none', fontFamily: C.fontSans
+                    }}
+                  />
+                </div>
+                <input type="range" min={project.price} max={project.price * 3} step={10000} value={precio}
+                  onChange={e => {
+                    const val = Number(e.target.value);
+                    setPrecio(val);
+                    setMontoCuotaInicial(Math.round(val * 0.5));
+                  }}
+                  style={{ width: '100%', accentColor: C.teal }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: C.textSec, marginTop: 4 }}>
+                  <span>Min: {fmt(project.price)}</span>
+                  <span>Max: {fmt(project.price * 3)}</span>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <label style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', color: C.textSec }}>Cuota Inicial (USD)</label>
+                  <input
+                    type="text"
+                    value={formatComma(montoCuotaInicial)}
+                    onChange={e => {
+                      const val = Number(e.target.value.replace(/\D/g, ''));
+                      setMontoCuotaInicial(Math.min(precio, val));
+                    }}
+                    style={{
+                      width: 120, padding: '6px 10px', borderRadius: 0,
+                      border: `1px solid ${C.sand}`, fontSize: '0.85rem', color: C.teal,
+                      fontWeight: 700, textAlign: 'right', outline: 'none', fontFamily: C.fontSans
+                    }}
+                  />
+                </div>
+                <input type="range" min={0} max={precio} step={1000} value={montoCuotaInicial} onChange={e => setMontoCuotaInicial(Number(e.target.value))}
+                  style={{ width: '100%', accentColor: C.teal }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: C.textSec, marginTop: 4 }}>
+                  <span>Min: $0</span>
+                  <span>Max: {fmt(precio)}</span>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <label style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', color: C.textSec }}>Tasa de Interés (%)</label>
+                  <input
+                    type="number"
+                    step={0.1}
+                    value={tasa}
+                    onChange={e => setTasa(Number(e.target.value))}
+                    style={{
+                      width: 70, padding: '6px 10px', borderRadius: 0,
+                      border: `1px solid ${C.sand}`, fontSize: '0.85rem', color: C.teal,
+                      fontWeight: 700, textAlign: 'right', outline: 'none', fontFamily: C.fontSans
+                    }}
+                  />
+                </div>
+                <input type="range" min={1} max={15} step={0.1} value={tasa} onChange={e => setTasa(Number(e.target.value))}
+                  style={{ width: '100%', accentColor: C.teal }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: C.textSec, marginTop: 4 }}>
+                  <span>Min: 1%</span>
+                  <span>Max: 15%</span>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <label style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', color: C.textSec }}>Plazo (Años)</label>
+                  <input
+                    type="number"
+                    value={plazo}
+                    onChange={e => setPlazo(Number(e.target.value))}
+                    style={{
+                      width: 70, padding: '6px 10px', borderRadius: 0,
+                      border: `1px solid ${C.sand}`, fontSize: '0.85rem', color: C.teal,
+                      fontWeight: 700, textAlign: 'right', outline: 'none', fontFamily: C.fontSans
+                    }}
+                  />
+                </div>
+                <input type="range" min={5} max={30} step={1} value={plazo} onChange={e => setPlazo(Number(e.target.value))}
+                  style={{ width: '100%', accentColor: C.teal }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: C.textSec, marginTop: 4 }}>
+                  <span>Min: 5 años</span>
+                  <span>Max: 30 años</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Results & Schedule */}
+            <div style={{ background: C.bg, borderRadius: 0, padding: 24, border: `1px solid ${C.sand}`, display: 'flex', flexDirection: 'column' }}>
+              <div>
+                <h4 style={{ fontSize: '0.75rem', fontWeight: 600, color: C.teal, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 16 }}>Análisis de Crédito</h4>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+                  <div style={{ background: C.white, padding: '10px 14px', borderRadius: 0, border: `1px solid ${C.sand}` }}>
+                    <div style={{ fontSize: '0.65rem', color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Valor Propiedad</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 400, color: C.text, fontFamily: C.fontSerif, marginTop: 2 }}>{fmt(precio)}</div>
+                  </div>
+                  <div style={{ background: C.white, padding: '10px 14px', borderRadius: 0, border: `1px solid ${C.sand}` }}>
+                    <div style={{ fontSize: '0.65rem', color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Cuota Inicial ({precio > 0 ? Math.round((montoCuotaInicial / precio) * 100) : 0}%)</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 400, color: C.teal, fontFamily: C.fontSerif, marginTop: 2 }}>{fmt(montoCuotaInicial)}</div>
+                  </div>
+                  <div style={{ background: C.white, padding: '10px 14px', borderRadius: 0, border: `1px solid ${C.sand}` }}>
+                    <div style={{ fontSize: '0.65rem', color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Valor Financiado</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 400, color: C.text, fontFamily: C.fontSerif, marginTop: 2 }}>{fmt(valorFinanciado)}</div>
+                  </div>
+                  <div style={{ background: C.coral, padding: '10px 14px', borderRadius: 0, border: `1px solid ${C.coral}` }}>
+                    <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.9)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>Cuota Mensual</div>
+                    <div style={{ fontSize: '1.15rem', fontWeight: 400, color: C.white, fontFamily: C.fontSerif, marginTop: 2 }}>{fmt(cuotaMensual)}</div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: '0.85rem', marginBottom: 20 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px solid ${C.sand}`, paddingBottom: 6 }}>
+                    <span style={{ color: C.textSec }}>Tasa Anual Aplicada:</span>
+                    <span style={{ fontWeight: 600 }}>{tasa}% E.A.</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: 6 }}>
+                    <span style={{ color: C.textSec }}>Plazo Total:</span>
+                    <span style={{ fontWeight: 600 }}>{plazo} años ({plazo * 12} meses)</span>
+                  </div>
+                  {/* Ocultado por solicitud: Total Intereses Estimados y Costo de Financiación
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px solid ${C.sand}`, paddingBottom: 6 }}>
+                    <span style={{ color: C.textSec }}>Total Intereses Estimados:</span>
+                    <span style={{ fontWeight: 600, color: '#EF4444' }}>
+                      {fmt(Math.round(planAmortizacion.reduce((sum, yr) => sum + yr.intereses, 0)))}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: 6 }}>
+                    <span style={{ color: C.textSec }}>Costo de Financiación:</span>
+                    <span style={{ fontWeight: 600, color: C.palm }}>
+                      {fmt(Math.round(planAmortizacion.reduce((sum, yr) => sum + yr.pagosTotal, 0)))}
+                    </span>
+                  </div>
+                  */}
+                </div>
+              </div>
+
+              <div style={{ background: C.white, color: C.textSec, padding: '12px 14px', borderRadius: 0, border: `1px solid ${C.sand}`, fontSize: '0.78rem', lineHeight: 1.4, marginBottom: 16 }}>
+                Simulación de amortización con cuota fija francesa. Los valores y tasas de interés reales pueden variar según la entidad financiera en Panamá.
+              </div>
+            </div>
+          </div>
+
+          {/* Amortization Schedule Table */}
+          <div style={{ marginTop: 32, borderTop: `1px solid ${C.sand}`, paddingTop: 24 }}>
+            <h4 style={{ fontSize: '0.75rem', fontWeight: 600, color: C.teal, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 16 }}>
+              Plan de Pagos Detallado (Amortización Año a Año)
+            </h4>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                <thead>
+                  <tr style={{ background: C.bg, borderBottom: `2px solid ${C.sand}` }}>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, color: C.textSec }}>Año</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: C.textSec }}>Balance Inicial</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: C.textSec }}>Abono Intereses</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: C.textSec }}>Abono Capital</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: C.textSec }}>Pago Anual</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: C.textSec }}>Saldo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {planAmortizacion.map(yr => (
+                    <tr key={yr.año} style={{ borderBottom: `1px solid ${C.sand}` }}>
+                      <td style={{ padding: '10px 12px', fontWeight: 600, color: C.teal }}>Año {yr.año}</td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right' }}>{fmt(Math.round(yr.balanceInicial))}</td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right' }}>{fmt(Math.round(yr.intereses))}</td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right', color: C.palm }}>{fmt(Math.round(yr.principal))}</td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>{fmt(Math.round(yr.pagosTotal))}</td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: C.teal }}>{fmt(Math.round(yr.balanceFinal))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        )}
+
+      </div>
+
+      {showContactModal && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 10000,
+          background: 'rgba(0,35,73,0.6)', backdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          animation: 'fadeIn 0.2s ease'
+        }}>
+          <form onSubmit={handleContactSubmit} style={{
+            background: C.white, border: `1.5px solid ${C.sand}`,
+            padding: 32, maxWidth: 500, width: '90%', borderRadius: 0,
+            boxShadow: '0 8px 32px rgba(0,35,73,0.15)', position: 'relative'
+          }}>
+            <button
+              type="button"
+              onClick={() => setShowContactModal(false)}
+              style={{
+                position: 'absolute', top: 16, right: 16,
+                background: 'none', border: 'none', color: C.textSec,
+                fontSize: '1.25rem', cursor: 'pointer'
+              }}
+            >
+              ✕
+            </button>
+            
+            <h3 style={{ fontSize: '1.3rem', fontWeight: 400, color: C.teal, fontFamily: C.fontSerif, marginBottom: 8, borderBottom: `2px solid ${C.teal}`, paddingBottom: 8 }}>
+              Solicitar Información
+            </h3>
+            <p style={{ fontSize: '0.85rem', color: C.textSec, marginBottom: 20 }}>
+              Completa tus datos para que un asesor especializado te envíe la documentación del proyecto **{project.name}**.
+            </p>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', color: C.textSec, marginBottom: 6 }}>
+                Nombre Completo <span style={{ color: C.coral }}>*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={contactName}
+                onChange={e => setContactName(e.target.value)}
+                placeholder="Ej. Juan Pérez"
+                style={{
+                  width: '100%', padding: '10px 12px', borderRadius: 0,
+                  border: `1px solid ${C.sand}`, fontSize: '0.85rem', color: C.text,
+                  background: C.white, outline: 'none', boxSizing: 'border-box',
+                  fontFamily: C.fontSans
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', color: C.textSec, marginBottom: 6 }}>
+                Correo Electrónico <span style={{ color: C.coral }}>*</span>
+              </label>
+              <input
+                type="email"
+                required
+                value={contactEmail}
+                onChange={e => setContactEmail(e.target.value)}
+                placeholder="juan.perez@correo.com"
+                style={{
+                  width: '100%', padding: '10px 12px', borderRadius: 0,
+                  border: `1px solid ${C.sand}`, fontSize: '0.85rem', color: C.text,
+                  background: C.white, outline: 'none', boxSizing: 'border-box',
+                  fontFamily: C.fontSans
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', color: C.textSec, marginBottom: 6 }}>
+                WhatsApp (Opcional)
+              </label>
+              <input
+                type="text"
+                value={contactPhone}
+                onChange={e => setContactPhone(e.target.value)}
+                placeholder="Ej. +57 300 123 4567"
+                style={{
+                  width: '100%', padding: '10px 12px', borderRadius: 0,
+                  border: `1px solid ${C.sand}`, fontSize: '0.85rem', color: C.text,
+                  background: C.white, outline: 'none', boxSizing: 'border-box',
+                  fontFamily: C.fontSans
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', color: C.textSec, marginBottom: 6 }}>
+                Mensaje
+              </label>
+              <textarea
+                rows={3}
+                value={contactMásg}
+                onChange={e => setContactMásg(e.target.value)}
+                style={{
+                  width: '100%', padding: '10px 12px', borderRadius: 0,
+                  border: `1px solid ${C.sand}`, fontSize: '0.85rem', color: C.text,
+                  background: C.white, outline: 'none', resize: 'vertical', boxSizing: 'border-box',
+                  fontFamily: 'inherit'
+                }}
+              />
+            </div>
+
+            {contactSubmitted && (
+              <div style={{
+                background: '#F9FAFB',
+                color: C.teal,
+                padding: '12px 14px',
+                borderRadius: 0,
+                border: `1px solid ${C.teal}`,
+                marginBottom: 16,
+                fontSize: '0.82rem',
+                fontWeight: 600
+              }}>
+                ✓ ¡Solicitud recibida! Se cerrará esta ventana en breve.
+              </div>
+            )}
+
+            <button
+              type="submit"
+              style={{
+                width: '100%', background: C.coral, color: C.white,
+                padding: '12px 24px', border: `1px solid ${C.coral}`, borderRadius: 0,
+                fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer',
+                textTransform: 'uppercase', letterSpacing: '0.08em',
+                transition: 'all 0.3s ease', fontFamily: C.fontSans
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = C.coral; }}
+              onMouseLeave={e => { e.currentTarget.style.background = C.coral; e.currentTarget.style.color = C.white; }}
+            >
+              Enviar Solicitud
+            </button>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Cuota Inicial Simulator Component ──────────────────────────
+const SEPARACION_FIJA = 2000;
+
+interface CuotaInicialProps {
+  precio: number;
+  montoCuotaInicial: number;
+  setPrecio: (v: number) => void;
+  setMontoCuotaInicial: (v: number) => void;
+}
+
+const CuotaInicialSimulator: React.FC<CuotaInicialProps> = ({
+  precio,
+  montoCuotaInicial,
+  setPrecio,
+  setMontoCuotaInicial
+}) => {
+  const [showTable, setShowTable] = React.useState(false);
+  const [mesesPlan, setMesesPlan] = React.useState(24);
+  const [separacion, setSeparacion] = React.useState(2000);
+  const [requierePlazo, setRequierePlazo] = React.useState(false);
+  const [pctCuotaInicial, setPctCuotaInicial] = React.useState(() => precio > 0 ? Math.round((montoCuotaInicial / precio) * 100) : 50);
+
+  React.useEffect(() => {
+    if (precio > 0) {
+      const computedPct = Math.round((montoCuotaInicial / precio) * 100);
+      setPctCuotaInicial(computedPct);
+    }
+  }, [precio, montoCuotaInicial]);
+
+  const restante = Math.max(0, montoCuotaInicial - separacion);
+  const cuotaMensualPlan = mesesPlan > 0 ? restante / mesesPlan : 0;
+  const totalPagado = separacion + restante;
+
+  const mesesTable = Array.from({ length: mesesPlan }, (_, i) => {
+    const mes = i + 1;
+    const pagado = separacion + cuotaMensualPlan * mes;
+    return { mes, cuota: cuotaMensualPlan, acumulado: pagado, restante: Math.max(0, montoCuotaInicial - pagado) };
+  });
+
+  return (
+    <div id="cuota-inicial-simulator" style={{
+      background: C.white, borderRadius: 0, padding: 32,
+      border: `1px solid ${C.sand}`,
+      marginTop: 28,
+      fontFamily: C.fontSans
+    }}>
+      {/* Header */}
+      <div style={{ borderBottom: `2px solid ${C.teal}`, paddingBottom: 12, marginBottom: 24 }}>
+        <h3 style={{ fontSize: '1.3rem', fontWeight: 400, color: C.teal, margin: 0, fontFamily: C.fontSerif }}>
+          Plan de Pago de Cuota Inicial (Sin Financiación)
+        </h3>
+        <p style={{ margin: '6px 0 0', fontSize: '0.85rem', color: C.textSec }}>
+          Estima la ruta de pagos de tu cuota inicial eligiendo el porcentaje sobre el valor de la propiedad.
+        </p>
+      </div>
+
+      {/* Inputs (3 columns) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 24, marginBottom: 24 }}>
+        <div>
+          <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', color: C.textSec, marginBottom: 6 }}>
+            Valor de la Propiedad (USD)
+          </label>
+          <input
+            type="text"
+            value={formatComma(precio)}
+            onChange={e => {
+              const v = Number(e.target.value.replace(/\D/g, ''));
+              setPrecio(v);
+              setMontoCuotaInicial(Math.round(v * (pctCuotaInicial / 100)));
+            }}
+            style={{
+              width: '100%', padding: '10px 12px', borderRadius: 0,
+              border: `1px solid ${C.sand}`, fontSize: '0.9rem', color: C.teal,
+              fontWeight: 600, outline: 'none', boxSizing: 'border-box',
+              fontFamily: C.fontSans
+            }}
+          />
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', color: C.textSec, marginBottom: 6 }}>
+            % de Cuota Inicial (%)
+          </label>
+          <input
+            type="number"
+            value={pctCuotaInicial}
+            min={5}
+            max={100}
+            onChange={e => {
+              const v = Math.min(100, Math.max(5, Number(e.target.value)));
+              setPctCuotaInicial(v);
+              setMontoCuotaInicial(Math.round(precio * (v / 100)));
+            }}
+            style={{
+              width: '100%', padding: '10px 12px', borderRadius: 0,
+              border: `1px solid ${C.sand}`, fontSize: '0.9rem', color: C.teal,
+              fontWeight: 600, outline: 'none', boxSizing: 'border-box',
+              fontFamily: C.fontSans
+            }}
+          />
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', color: C.textSec, marginBottom: 6 }}>
+            Valor de Separación (USD)
+          </label>
+          <input
+            type="text"
+            value={formatComma(separacion)}
+            onChange={e => {
+              const v = Number(e.target.value.replace(/\D/g, ''));
+              setSeparacion(Math.min(montoCuotaInicial, v));
+            }}
+            style={{
+              width: '100%', padding: '10px 12px', borderRadius: 0,
+              border: `1px solid ${C.sand}`, fontSize: '0.9rem', color: C.teal,
+              fontWeight: 600, outline: 'none', boxSizing: 'border-box',
+              fontFamily: C.fontSans
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Calculated Results cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 24, marginBottom: 24 }}>
+        <div style={{ background: C.bg, padding: '14px 18px', border: `1px solid ${C.sand}` }}>
+          <span style={{ display: 'block', fontSize: '0.65rem', color: C.textSec, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 4 }}>
+            Cuota Inicial a Pagar
+          </span>
+          <span style={{ fontSize: '1.25rem', fontWeight: 600, color: C.teal, fontFamily: C.fontSerif }}>
+            {fmt(montoCuotaInicial)}
+          </span>
+        </div>
+        <div style={{ background: C.bg, padding: '14px 18px', border: `1px solid ${C.sand}` }}>
+          <span style={{ display: 'block', fontSize: '0.65rem', color: C.textSec, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 4 }}>
+            Saldo de Cuota Inicial después de Separación
+          </span>
+          <span style={{ fontSize: '1.25rem', fontWeight: 600, color: C.teal, fontFamily: C.fontSerif }}>
+            {fmt(restante)}
+          </span>
+        </div>
+      </div>
+
+      {/* Plazo Toggle Option Button */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: C.bg, padding: '16px 20px', border: `1px solid ${C.sand}`, marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
+        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: C.text }}>¿Requiere plazo diferido para pagar el saldo de la cuota inicial?</span>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            type="button"
+            onClick={() => { setRequierePlazo(false); setShowTable(false); }}
+            style={{
+              padding: '8px 16px', borderRadius: 0,
+              border: `1px solid ${C.teal}`,
+              background: !requierePlazo ? C.teal : 'transparent',
+              color: !requierePlazo ? C.white : C.teal,
+              fontWeight: 600, cursor: 'pointer', fontSize: '0.75rem',
+              textTransform: 'uppercase', letterSpacing: '0.05em', outline: 'none',
+              transition: 'all 0.3s ease', fontFamily: C.fontSans
+            }}
+          >
+            No, Pago al Contado
+          </button>
+          <button
+            type="button"
+            onClick={() => setRequierePlazo(true)}
+            style={{
+              padding: '8px 16px', borderRadius: 0,
+              border: `1px solid ${C.teal}`,
+              background: requierePlazo ? C.teal : 'transparent',
+              color: requierePlazo ? C.white : C.teal,
+              fontWeight: 600, cursor: 'pointer', fontSize: '0.75rem',
+              textTransform: 'uppercase', letterSpacing: '0.05em', outline: 'none',
+              transition: 'all 0.3s ease', fontFamily: C.fontSans
+            }}
+          >
+            Sí, Solicitar Plazo
+          </button>
+        </div>
+      </div>
+
+      {/* Conditional Plazo Fields */}
+      {requierePlazo && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 24, alignItems: 'center', marginBottom: 24, padding: '20px 0', borderTop: `1px solid ${C.sand}` }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', color: C.textSec, marginBottom: 6 }}>
+              Plazo de Amortización (Cuotas)
+            </label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[24, 36].map(m => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMesesPlan(m)}
+                  style={{
+                    flex: 1, padding: '10px 12px', borderRadius: 0,
+                    border: mesesPlan === m ? `1px solid ${C.teal}` : `1px solid ${C.sand}`,
+                    background: mesesPlan === m ? C.teal : 'transparent',
+                    color: mesesPlan === m ? C.white : C.text, fontWeight: 600, cursor: 'pointer',
+                    fontSize: '0.8rem', transition: 'all 0.3s ease', outline: 'none',
+                    fontFamily: C.fontSans, textTransform: 'uppercase', letterSpacing: '0.05em'
+                  }}
+                >
+                  {m} Meses
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{ background: C.bg, padding: '14px 18px', border: `1px solid ${C.sand}` }}>
+            <span style={{ display: 'block', fontSize: '0.65rem', color: C.textSec, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 4 }}>
+              Cuota Mensual Correspondiente (Sin Intereses)
+            </span>
+            <span style={{ fontSize: '1.25rem', fontWeight: 600, color: C.white, background: C.coral, padding: '4px 12px', display: 'inline-block', fontFamily: C.fontSerif }}>
+              {fmt(Math.round(cuotaMensualPlan))}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Summary Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14, marginBottom: 24 }}>
+        {requierePlazo ? (
+          [
+            { label: 'Separación al contado', value: fmt(separacion), color: C.teal, bg: C.bg },
+            { label: `Saldo en ${mesesPlan} cuotas`, value: fmt(Math.round(restante)), color: C.text, bg: C.bg },
+            { label: 'Cuota mensual', value: fmt(Math.round(cuotaMensualPlan)), color: C.white, bg: C.coral, highlight: true },
+            { label: 'Total cuota inicial', value: fmt(Math.round(totalPagado)), color: C.teal, bg: C.bg },
+            { label: `% del precio`, value: `${pctCuotaInicial}%`, color: C.textSec, bg: C.bg },
+          ].map(c => (
+            <div key={c.label} style={{
+              background: c.bg, borderRadius: 0, padding: '14px 16px',
+              border: c.highlight ? `1px solid ${c.bg}` : `1px solid ${C.sand}`,
+              color: c.highlight ? C.white : C.text
+            }}>
+              <div style={{ fontSize: '0.65rem', color: c.highlight ? 'rgba(255,255,255,0.9)' : C.textSec, marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>{c.label}</div>
+              <div style={{ fontSize: '1.2rem', fontWeight: 400, color: c.highlight ? C.white : c.color, fontFamily: C.fontSerif }}>{c.value}</div>
+            </div>
+          ))
+        ) : (
+          [
+            { label: 'Separación al contado', value: fmt(separacion), color: C.teal, bg: C.bg },
+            { label: 'Saldo cuota inicial (contado)', value: fmt(Math.round(restante)), color: C.text, bg: C.bg },
+            { label: 'Total cuota inicial', value: fmt(Math.round(montoCuotaInicial)), color: C.white, bg: C.teal, highlight: true },
+            { label: `% del precio`, value: `${pctCuotaInicial}%`, color: C.textSec, bg: C.bg },
+          ].map(c => (
+            <div key={c.label} style={{
+              background: c.bg, borderRadius: 0, padding: '14px 16px',
+              border: c.highlight ? `1px solid ${c.bg}` : `1px solid ${C.sand}`,
+              color: c.highlight ? C.white : C.text
+            }}>
+              <div style={{ fontSize: '0.65rem', color: c.highlight ? 'rgba(255,255,255,0.9)' : C.textSec, marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>{c.label}</div>
+              <div style={{ fontSize: '1.2rem', fontWeight: 400, color: c.highlight ? C.white : c.color, fontFamily: C.fontSerif }}>{c.value}</div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Info banner */}
+      <div style={{
+        background: C.bg, border: `1px solid ${C.sand}`, borderRadius: 0,
+        padding: '12px 16px', fontSize: '0.82rem', color: C.textSec, marginBottom: 20, lineHeight: 1.5,
+      }}>
+        {requierePlazo ? (
+          <>
+            <strong>¿Cómo funciona?</strong> Hoy pagas la separación de <strong>{fmt(separacion)}</strong> para reservar el inmueble.
+            Los <strong>{fmt(Math.round(restante))}</strong> restantes se dividen en {mesesPlan} cuotas mensuales de <strong>{fmt(Math.round(cuotaMensualPlan))}</strong> sin intereses.
+            Al completar el plazo habrás cubierto la cuota inicial y procederás con la hipoteca por <strong>{fmt(Math.round(precio - montoCuotaInicial))}</strong>.
+          </>
+        ) : (
+          <>
+            <strong>¿Cómo funciona?</strong> Hoy pagas la separación de <strong>{fmt(separacion)}</strong> para reservar el inmueble.
+            El saldo de la cuota inicial (<strong>{fmt(Math.round(restante))}</strong>) se cancela al contado según los hitos establecidos.
+            Finalmente, procedes con la hipoteca por <strong>{fmt(Math.round(precio - montoCuotaInicial))}</strong>.
+          </>
+        )}
+      </div>
+
+      {/* Toggle Table (only visible if requires installments) */}
+      {requierePlazo && (
+        <button
+          onClick={() => setShowTable(v => !v)}
+          style={{
+            background: 'transparent', color: C.teal, border: `1px solid ${C.teal}`, borderRadius: 0,
+            padding: '10px 24px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer',
+            transition: 'all 0.3s ease', marginBottom: showTable ? 20 : 0,
+            textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: C.fontSans
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = C.teal; e.currentTarget.style.color = C.white; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = C.teal; }}
+        >
+          {showTable ? 'Ocultar tabla mes a mes' : 'Ver plan de pagos mes a mes'}
+        </button>
+      )}
+
+      {/* Monthly payment table (only visible if requires installments and table toggled) */}
+      {requierePlazo && showTable && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+            <thead>
+              <tr style={{ background: C.bg, borderBottom: `2px solid ${C.sand}` }}>
+                <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, color: C.textSec }}>Mes</th>
+                <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: C.textSec }}>Concepto</th>
+                <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: C.textSec }}>Pago</th>
+                <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: C.textSec }}>Acumulado</th>
+                <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: C.textSec }}>Saldo restante</th>
+              </tr>
+            </thead>
+            <tbody>
+              {/* Row 0: Separación */}
+              <tr style={{ background: C.bg, borderBottom: `1px solid ${C.sand}` }}>
+                <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600, color: C.teal }}>0</td>
+                <td style={{ padding: '8px 12px', textAlign: 'right', color: C.text, fontWeight: 600 }}>Separación (hoy)</td>
+                <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, color: C.palm }}>{fmt(separacion)}</td>
+                <td style={{ padding: '8px 12px', textAlign: 'right' }}>{fmt(separacion)}</td>
+                <td style={{ padding: '8px 12px', textAlign: 'right', color: C.text, fontWeight: 600 }}>{fmt(Math.round(montoCuotaInicial - separacion))}</td>
+              </tr>
+              {/* Months 1-X */}
+              {mesesTable.map(r => (
+                <tr key={r.mes} style={{ borderBottom: `1px solid ${C.sand}`, background: r.mes % 2 === 0 ? C.bg : C.white }}>
+                  <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600, color: C.teal }}>{r.mes}</td>
+                  <td style={{ padding: '8px 12px', textAlign: 'right', color: C.textSec, fontSize: '0.82rem' }}>Cuota mensual</td>
+                  <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, color: C.palm }}>{fmt(Math.round(r.cuota))}</td>
+                  <td style={{ padding: '8px 12px', textAlign: 'right' }}>{fmt(Math.round(r.acumulado))}</td>
+                  <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, color: r.restante <= 0 ? C.palm : C.text }}>
+                    {r.restante <= 0 ? 'Completada' : fmt(Math.round(r.restante))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <ProjectDetailView />
+  </React.StrictMode>
+);

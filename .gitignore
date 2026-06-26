@@ -1,0 +1,30 @@
+# Material de brokers (PDFs pesados - subir manualmente)
+Analisis de mercado/Portafolio GLP/
+
+# Backups y archivos grandes
+*.zip
+*.exe
+*.m4a
+
+# Carpetas internas de Claude
+.claude/
+
+# Node
+glp-app/node_modules/
+glp-app/dist/
+glp-app/dist-ssr/
+
+# Variables de entorno y archivos con claves privadas
+.env
+.env.local
+.env.*.local
+glp-app/server/tenants.json
+
+# Archivos temporales
+glp-app/temp.b64
+scratch/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

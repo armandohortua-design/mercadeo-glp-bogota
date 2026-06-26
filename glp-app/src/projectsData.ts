@@ -1,0 +1,386 @@
+export const C = {
+  teal: '#002349',      // Sotheby's Royal Navy (Primary)
+  sand: '#E5E7EB',      // Sutil gray border
+  coral: '#B89047',     // Gold/Bronze (Accent)
+  palm: '#166534',      // Deep forest green
+  sky: '#0E3A60',       // Darker slate blue
+  text: '#111827',      // Charcoal (dark)
+  textSec: '#4B5563',   // Slate gray (medium)
+  bg: '#F9FAFB',        // White alabaster/chalk background
+  white: '#FFFFFF',
+  fontSerif: '"Cormorant Garamond", serif',
+  fontSans: '"Inter", sans-serif',
+}
+
+// ─── Project Data ──────────────────────────────────────────────
+export type Project = {
+  name: string; 
+  category: 'Proyecto de Ciudad' | 'Ocean Reef Islands' | 'Playa Caracol';
+  zone: string; 
+  type: 'patrimonial' | 'disfrute' | 'renta';
+  price: number; 
+  priceM2: string; 
+  rentM2: string; 
+  capRate: string;
+  vacancy: string; 
+  area: string; 
+  beds: string;
+  amenities: string[]; 
+  tenant: string; 
+  velocity?: string;
+  appreciation: string; 
+  tag: string;
+  delivery: string;
+}
+
+export const PROJECTS: Project[] = [
+  // ── Proyecto de Ciudad ──
+  {
+    name: 'Armonia',
+    category: 'Proyecto de Ciudad',
+    zone: 'Bella Vista, Ciudad de Panamá',
+    type: 'renta',
+    price: 181000,
+    priceM2: '3,800-4,020',
+    rentM2: '14-18',
+    capRate: '6.5-7.8%',
+    vacancy: '4%',
+    area: '45-71 m²',
+    beds: '1-3 rec.',
+    amenities: ['Piscióna social', 'Gimnasio', 'Lobby premium', 'Coworking', 'Seguridad 24/7'],
+    tenant: 'Jóvenes profesionales, Estudiantes',
+    velocity: '1 mes',
+    appreciation: '4.0%',
+    tag: 'Fase Lanzamiento',
+    delivery: 'F1 Inmediata, F2 Q2 2026, F3 Q2 2028'
+  },
+  {
+    name: 'Ventu',
+    category: 'Proyecto de Ciudad',
+    zone: 'Bella Vista, Ciudad de Panamá',
+    type: 'renta',
+    price: 136000,
+    priceM2: '3,400',
+    rentM2: 'Airbnb $90-140/noche',
+    capRate: '8.5-11.0%',
+    vacancy: '15%',
+    area: '40-63 m²',
+    beds: '1-2 rec.',
+    amenities: ['Rooftop infinity pool', 'Co-working lounge', 'Smart home automation', 'Gym', 'Lobby bar'],
+    tenant: 'Turistas, Viajeros de negocio',
+    velocity: 'N/A',
+    appreciation: '4.5%',
+    tag: 'Airbnb Apto',
+    delivery: 'Q2 2028'
+  },
+  {
+    name: 'Oceana',
+    category: 'Proyecto de Ciudad',
+    zone: 'Santa María Golf & CC',
+    type: 'patrimonial',
+    price: 446000,
+    priceM2: '4,460',
+    rentM2: '20-25',
+    capRate: '5.2-6.5%',
+    vacancy: '3%',
+    area: '100-270 m²',
+    beds: '2-3 rec.',
+    amenities: ['Golf 18 hoyos Jack Nicklaus', 'Pisciónas resort', 'Padel courts', 'Wellness spa', 'Club house'],
+    tenant: 'Ejecutivos de multinacionales, C-Level',
+    velocity: '1 mes',
+    appreciation: '5.0%',
+    tag: 'Golf Premium',
+    delivery: 'Q4 2027'
+  },
+  {
+    name: 'Ipanema',
+    category: 'Proyecto de Ciudad',
+    zone: 'Costa Sur, Ciudad de Panamá',
+    type: 'disfrute',
+    price: 283000,
+    priceM2: '3,200',
+    rentM2: '13-18',
+    capRate: '6.0-7.2%',
+    vacancy: '5%',
+    area: '72-163 m²',
+    beds: '1-3 rec.',
+    amenities: ['Club deportivo', 'Gran piscióna social', 'Gimnasio techado', 'Salón de eventos', 'Coworking space'],
+    tenant: 'Familias medianas, Ejecutivos',
+    velocity: '1-2 meses',
+    appreciation: '4.0%',
+    tag: 'Lujo Urbano',
+    delivery: 'F1 Q1 2028, F2 Q4 2028'
+  },
+  {
+    name: 'Bosco',
+    category: 'Proyecto de Ciudad',
+    zone: 'Santa María Golf & CC',
+    type: 'patrimonial',
+    price: 474000,
+    priceM2: '3,800',
+    rentM2: '16-22',
+    capRate: '5.5-6.8%',
+    vacancy: '4%',
+    area: '100-296 m²',
+    beds: '2-4 rec.',
+    amenities: ['Jardín botánico privado', 'Pisciónas naturales', 'Senderos de meditación', 'Gimnasio', 'Lounge social'],
+    tenant: 'Familias ejecutivas de alto perfil',
+    velocity: '1-2 meses',
+    appreciation: '4.5%',
+    tag: 'Lujo Biofílico',
+    delivery: '2030'
+  },
+  {
+    name: 'Panama Viejo Residence',
+    category: 'Proyecto de Ciudad',
+    zone: 'Panamá Viejo, Ciudad de Panamá',
+    type: 'renta',
+    price: 160000,
+    priceM2: '2,750',
+    rentM2: '11-14',
+    capRate: '7.2-8.5%',
+    vacancy: '4%',
+    area: '58 m²',
+    beds: '2 rec.',
+    amenities: ['Piscióna', 'Gimnasio', 'Coworking', 'Parque infantil', 'Seguridad 24/7'],
+    tenant: 'Profesionales locales, Familias jóvenes',
+    velocity: '0.5-1 mes',
+    appreciation: '3.5%',
+    tag: 'Excelente Cap Rate',
+    delivery: 'ENTREGA INMEDIATA'
+  },
+
+  // ── Ocean Reef Islands ──
+  {
+    name: 'The Palms',
+    category: 'Ocean Reef Islands',
+    zone: 'Punta Pacifica, Islas Ocean Reef',
+    type: 'patrimonial',
+    price: 1200000,
+    priceM2: '6,200',
+    rentM2: '25-35',
+    capRate: '5.0-6.0%',
+    vacancy: '4%',
+    area: '169-239 m²',
+    beds: '2 rec.',
+    amenities: ['Acceso a marina privada', 'Pisciónas infinity vista al mar', 'Helipuerto', 'Yacht club concierge'],
+    tenant: 'HNWI, Diplomáticos, C-Level',
+    velocity: '1-2 meses',
+    appreciation: '5.5%',
+    tag: 'Isla Privada',
+    delivery: 'ENTREGA INMEDIATA'
+  },
+  {
+    name: 'Ocean Reef Park',
+    category: 'Ocean Reef Islands',
+    zone: 'Punta Pacifica, Islas Ocean Reef',
+    type: 'patrimonial',
+    price: 1700000,
+    priceM2: '6,800',
+    rentM2: '30-42',
+    capRate: '5.2-6.5%',
+    vacancy: '3%',
+    area: '491-569 m²',
+    beds: '3-4 rec.',
+    amenities: ['Marina privada 180+ muelles', 'Wellness center', 'Tennis & Padel', 'Helipuertos de isla', 'Beach club privado'],
+    tenant: 'Ultra HNWI, Inversionistas internacionales',
+    velocity: '0.5-1 mes',
+    appreciation: '5.5%',
+    tag: 'Ultra Lujo Marino',
+    delivery: 'Q2 2028'
+  },
+  {
+    name: 'O Club Residences',
+    category: 'Ocean Reef Islands',
+    zone: 'Punta Pacifica, Islas Ocean Reef',
+    type: 'patrimonial',
+    price: 1000000,
+    priceM2: '5,500',
+    rentM2: '24-32',
+    capRate: '5.0-6.2%',
+    vacancy: '4%',
+    area: '183-236 m²',
+    beds: '2 rec.',
+    amenities: ['Piscióna privada', 'Club náutico', 'Spa & Saunas', 'Concierge 24/7', 'Áreas deportivas'],
+    tenant: 'HNWI, Exec. expatriados',
+    velocity: '1-2 meses',
+    appreciation: '5.2%',
+    tag: 'Exclusividad Náutica',
+    delivery: 'Q4 2027'
+  },
+
+  // ── Playa Caracol ──
+  {
+    name: 'Aires del Mar',
+    category: 'Playa Caracol',
+    zone: 'Playa Caracol, Chame',
+    type: 'renta',
+    price: 143000,
+    priceM2: '2,900',
+    rentM2: 'Vacacional $100-150/noche',
+    capRate: '7.5-9.0%',
+    vacancy: '12%',
+    area: '42-71 m²',
+    beds: '2-3 rec.',
+    amenities: ['Frente al mar', 'Surf club', 'Pisciónas familiares', 'Beach bar', 'Seguridad 24/7'],
+    tenant: 'Turistas de playa, Familias fin de semana',
+    velocity: '2-3.5 meses',
+    appreciation: '4.0%',
+    tag: 'Playa Asequible',
+    delivery: 'INMEDIATA, Q4 2026'
+  },
+  {
+    name: 'The Tides',
+    category: 'Playa Caracol',
+    zone: 'Playa Caracol, Chame',
+    type: 'disfrute',
+    price: 278000,
+    priceM2: '3,000',
+    rentM2: '12-16',
+    capRate: '6.0-7.5%',
+    vacancy: '8%',
+    area: '99 m²',
+    beds: '2-3 rec.',
+    amenities: ['Acceso directo playa 1.2km', 'Surf camp y escuela', 'Gran piscióna resort', 'Club house social'],
+    tenant: 'Parejas retiradas, Familias vacacionales',
+    velocity: '2-3 meses',
+    appreciation: '4.5%',
+    tag: 'Frente al Océano',
+    delivery: 'ENTREGA INMEDIATA'
+  },
+  {
+    name: 'Brisas del Mar',
+    category: 'Playa Caracol',
+    zone: 'Playa Caracol, Chame',
+    type: 'disfrute',
+    price: 276000,
+    priceM2: '2,950',
+    rentM2: '12-15',
+    capRate: '5.8-7.2%',
+    vacancy: '8%',
+    area: '93-108 m²',
+    beds: '2-3 rec.',
+    amenities: ['Club de playa Brisas', 'Jacuzzis comunitarios', 'Beach volley court', 'Área de asados y hamacas'],
+    tenant: 'Familias de segunda residencia',
+    velocity: '2-3 meses',
+    appreciation: '4.0%',
+    tag: 'Segunda Residencia',
+    delivery: 'ENTREGA INMEDIATA'
+  },
+  {
+    name: 'Olas del Mar',
+    category: 'Playa Caracol',
+    zone: 'Playa Caracol, Chame',
+    type: 'disfrute',
+    price: 267000,
+    priceM2: '2,900',
+    rentM2: '11-15',
+    capRate: '5.8-7.5%',
+    vacancy: '8%',
+    area: '69-97 m²',
+    beds: '2-3 rec.',
+    amenities: ['Mirador a las olas', 'Pisciónas infinitas', 'Gimnasio equipado', 'Senderos para caminar'],
+    tenant: 'Surfistas, Familias',
+    velocity: '2.5-3.5 meses',
+    appreciation: '4.2%',
+    tag: 'Disfrute Costero',
+    delivery: 'ENTREGA INMEDIATA'
+  },
+  {
+    name: 'Surfside',
+    category: 'Playa Caracol',
+    zone: 'Playa Caracol, Chame',
+    type: 'disfrute',
+    price: 314000,
+    priceM2: '3,200',
+    rentM2: '14-18',
+    capRate: '6.0-7.8%',
+    vacancy: '9%',
+    area: '81-107 m²',
+    beds: '2-3 rec.',
+    amenities: ['Piscióna frente a playa', 'Aparthotel boutique', 'Surf lounge', 'Área BBQ al aire libre'],
+    tenant: 'Surfistas pro, Expatriados',
+    velocity: '2-3 meses',
+    appreciation: '4.5%',
+    tag: 'Estilo de Vida Playero',
+    delivery: 'ENTREGA INMEDIATA'
+  },
+  {
+    name: 'Beachwalk',
+    category: 'Playa Caracol',
+    zone: 'Playa Caracol, Chame',
+    type: 'disfrute',
+    price: 297000,
+    priceM2: '3,300',
+    rentM2: '13-17',
+    capRate: '6.2-7.8%',
+    vacancy: '8%',
+    area: '85-97 m²',
+    beds: '2-3 rec.',
+    amenities: ['Paseo marítimo peatonal', 'Spa & sauna wellness', 'Yoga deck al atardecer', 'Pisciónas de nado'],
+    tenant: 'Parejas, Amantes del bienestar',
+    velocity: '2-3 meses',
+    appreciation: '4.5%',
+    tag: 'Bienestar Marino',
+    delivery: 'Q1 2027'
+  },
+  {
+    name: 'Seashore',
+    category: 'Playa Caracol',
+    zone: 'Playa Caracol, Chame',
+    type: 'disfrute',
+    price: 290000,
+    priceM2: '3,100',
+    rentM2: '13-16',
+    capRate: '5.8-7.5%',
+    vacancy: '8%',
+    area: '84-150 m²',
+    beds: '2-3 rec.',
+    amenities: ['Solarium frente al mar', 'Pisciónas de recreo', 'Club infantil', 'Senderos ecológicos'],
+    tenant: 'Familias de descanso, Extranjeros',
+    velocity: '2-3 meses',
+    appreciation: '4.2%',
+    tag: 'Vistas al Océano',
+    delivery: 'Q4 2027'
+  },
+  {
+    name: 'Seashore Reserve',
+    category: 'Playa Caracol',
+    zone: 'Playa Caracol, Chame',
+    type: 'disfrute',
+    price: 290000,
+    priceM2: '3,100',
+    rentM2: '13-16',
+    capRate: '5.8-7.5%',
+    vacancy: '8%',
+    area: '84-150 m²',
+    beds: '2-3 rec.',
+    amenities: ['Reserva natural colindante', 'Pisciónas lagunas', 'Club house deportivo', 'Seguridad reforzada'],
+    tenant: 'Familias, Jubilados',
+    velocity: '2-3 meses',
+    appreciation: '4.5%',
+    tag: 'Reserva & Playa',
+    delivery: 'Q4 2028'
+  }
+]
+
+// ─── Project Photo Mapping ─────────────────────────────────────
+export const PROJECT_IMG: Record<string, { main: string; gallery: string[] }> = {
+  'Armonia': { main: 'https://glp.com.pa/wp-content/uploads/2026/05/armonia-1.webp', gallery: ['https://glp.com.pa/wp-content/uploads/2026/05/armonia-1.webp'] },
+  'Ventu': { main: 'https://glp.com.pa/wp-content/uploads/2026/05/armonia-1.webp', gallery: ['https://glp.com.pa/wp-content/uploads/2026/05/armonia-1.webp'] },
+  'Oceana': { main: '/img/projects/oceana.jpg', gallery: ['/img/projects/oceana-g_1.jpg', '/img/projects/oceana-g_2.jpg', '/img/projects/oceana-g_3.jpg'] },
+  'Ipanema': { main: '/img/projects/ipanema.jpg', gallery: ['/img/projects/ipanema-g_1.jpg', '/img/projects/ipanema-g_2.jpg', '/img/projects/ipanema-g_3.jpg'] },
+  'Bosco': { main: 'https://glp.com.pa/wp-content/uploads/2026/05/casabosco.webp', gallery: ['https://glp.com.pa/wp-content/uploads/2026/05/casabosco.webp', 'https://glp.com.pa/wp-content/uploads/2026/05/bosco-torres.webp', 'https://glp.com.pa/wp-content/uploads/2025/11/bosco.webp'] },
+  'Panama Viejo Residence': { main: '/img/projects/panama-viejo.jpg', gallery: ['/img/projects/panama-viejo-g_1.jpg', '/img/projects/panama-viejo-g_2.jpg', '/img/projects/panama-viejo-g_3.jpg'] },
+  'The Palms': { main: '/img/projects/the-palms.jpg', gallery: ['/img/projects/the-palms-g_1.jpg'] },
+  'Ocean Reef Park': { main: 'https://glp.com.pa/wp-content/uploads/2026/05/ocean_reef.webp', gallery: ['https://glp.com.pa/wp-content/uploads/2026/05/ocean_reef.webp', 'https://glp.com.pa/wp-content/uploads/2025/07/apartamentos-de-lujo-en-panama-1.webp'] },
+  'O Club Residences': { main: '/img/projects/the-palms.jpg', gallery: ['/img/projects/the-palms-g_1.jpg'] },
+  'Aires del Mar': { main: '/img/projects/aires-del-mar.jpg', gallery: ['/img/projects/aires-del-mar-g_1.jpg', '/img/projects/aires-del-mar-g_2.jpg', '/img/projects/aires-del-mar-g_3.jpg'] },
+  'The Tides': { main: '/img/projects/the-tides.jpg', gallery: ['/img/projects/the-tides-g_1.jpg', '/img/projects/the-tides-g_2.jpg', '/img/projects/the-tides-g_3.jpg'] },
+  'Brisas del Mar': { main: '/img/projects/surfside.jpg', gallery: ['/img/projects/surfside-g_1.jpg', '/img/projects/surfside-g_2.jpg', '/img/projects/surfside-g_3.jpg'] },
+  'Olas del Mar': { main: '/img/projects/olas-del-mar.jpg', gallery: ['/img/projects/olas-del-mar-g_1.jpg', '/img/projects/olas-del-mar-g_2.jpg', '/img/projects/olas-del-mar-g_3.jpg'] },
+  'Surfside': { main: '/img/projects/surfside.jpg', gallery: ['/img/projects/surfside-g_1.jpg', '/img/projects/surfside-g_2.jpg', '/img/projects/surfside-g_3.jpg'] },
+  'Beachwalk': { main: '/img/projects/beachwalk.jpg', gallery: ['/img/projects/beachwalk-g_1.jpg', '/img/projects/beachwalk-g_2.jpg', '/img/projects/beachwalk-g_3.jpg'] },
+  'Seashore': { main: '/img/projects/beachwalk.jpg', gallery: ['/img/projects/beachwalk-g_1.jpg'] },
+  'Seashore Reserve': { main: '/img/projects/beachwalk.jpg', gallery: ['/img/projects/beachwalk-g_1.jpg'] }
+}
