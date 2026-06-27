@@ -872,6 +872,39 @@ app.post('/api/crisis/detect', async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════
+// BACKUP — EXPORT BASE DE DATOS
+// ══════════════════════════════════════════════════════════════
+app.get('/api/backup/export-db', async (req, res) => {
+  const TENANT = 'tenant-glp-001';
+  try {
+    const tablas = ['prospectos', 'drafts', 'prospect_alerts', 'crisis_alerts', 'projects', 'brokers', 'tenants'];
+    const snapshot = { exportado_en: new Date().toISOString(), tenant_id: TENANT, tablas: {} };
+
+    for (const tabla of tablas) {
+      try {
+        const { rows } = await pool.query(`SELECT * FROM ${tabla} WHERE tenant_id = $1`, [TENANT]);
+        snapshot.tablas[tabla] = rows;
+      } catch {
+        // tabla sin columna tenant_id (ej: tenants)
+        try {
+          const { rows } = await pool.query(`SELECT * FROM ${tabla}`);
+          snapshot.tablas[tabla] = rows;
+        } catch {
+          snapshot.tablas[tabla] = [];
+        }
+      }
+    }
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="glp_db_backup_${new Date().toISOString().slice(0,10)}.json"`);
+    res.json(snapshot);
+  } catch (err) {
+    console.error('[Backup DB] Error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
 // BACKUP — GITHUB
 // ══════════════════════════════════════════════════════════════
 const { execSync } = require('child_process');

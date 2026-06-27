@@ -946,6 +946,11 @@ export default function CRMDashboard() {
 
   // ── AGENTS STATE ────────────────────────────────────────────
   const [agentCamiloActive, setAgentCamiloActive] = useState(false);
+  const [gitStatus, setGitStatus] = useState<'idle'|'loading'|'ok'|'sin_cambios'|'error'>('idle');
+  const [gitMsg, setGitMsg] = useState('');
+  const [gitCommitNote, setGitCommitNote] = useState('');
+  const [gitHistorial, setGitHistorial] = useState<{hash:string;subject:string;date:string}[]>([]);
+  const [historialLoaded, setHistorialLoaded] = useState(false);
   const [agentSaraActive, setAgentSaraActive] = useState(false);
   const [agentValeriaActive, setAgentValeriaActive] = useState(false);
   const [agentIsabellaActive, setAgentIsabellaActive] = useState(false);
@@ -8320,108 +8325,43 @@ Responde SOLO con JSON sin bloques de código:
   // ══════════════════════════════════════════════════════════════
   // RENDER BACKUPS
   // ══════════════════════════════════════════════════════════════
+  const loadGitHistorial = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/api/backup/historial');
+      const data = await res.json();
+      if (data.success) { setGitHistorial(data.commits); setHistorialLoaded(true); }
+    } catch {}
+  };
+
+  useEffect(() => { loadGitHistorial(); }, []);
+
+  const handleGitBackup = async () => {
+    setGitStatus('loading');
+    setGitMsg('');
+    try {
+      const res = await fetch('http://localhost:3001/api/backup/github', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mensaje: gitCommitNote }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error desconocido');
+      if (data.sin_cambios) {
+        setGitStatus('sin_cambios');
+        setGitMsg(`Sin cambios nuevos. Último commit: ${data.ultimo_commit?.hash} — ${data.ultimo_commit?.subject}`);
+      } else {
+        setGitStatus('ok');
+        setGitMsg(`✅ Guardado en GitHub: ${data.commit?.hash} — ${data.commit?.subject}`);
+        setGitCommitNote('');
+        loadGitHistorial();
+      }
+    } catch (err: any) {
+      setGitStatus('error');
+      setGitMsg(err.message || 'No se pudo conectar con el servidor.');
+    }
+  };
+
   const renderBackups = () => {
-    const [gitStatus, setGitStatus] = React.useState<'idle'|'loading'|'ok'|'sin_cambios'|'error'>('idle');
-    const [gitMsg, setGitMsg] = React.useState('');
-    const [gitCommitNote, setGitCommitNote] = React.useState('');
-    const [gitHistorial, setGitHistorial] = React.useState<{hash:string;subject:string;date:string}[]>([]);
-    const [historialLoaded, setHistorialLoaded] = React.useState(false);
-
-    const handleGitBackup = async () => {
-      setGitStatus('loading');
-      setGitMsg('');
-      try {
-        const res = await fetch('http://localhost:3001/api/backup/github', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mensaje: gitCommitNote }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Error desconocido');
-        if (data.sin_cambios) {
-          setGitStatus('sin_cambios');
-          setGitMsg(`Sin cambios nuevos. Último commit: ${data.ultimo_commit?.hash} — ${data.ultimo_commit?.subject}`);
-        } else {
-          setGitStatus('ok');
-          setGitMsg(`✅ Guardado en GitHub: ${data.commit?.hash} — ${data.commit?.subject}`);
-          setGitCommitNote('');
-          loadHistorial();
-        }
-      } catch (err: any) {
-        setGitStatus('error');
-        setGitMsg(err.message || 'No se pudo conectar con el servidor.');
-      }
-    };
-
-    const loadHistorial = async () => {
-      try {
-        const res = await fetch('http://localhost:3001/api/backup/historial');
-        const data = await res.json();
-        if (data.success) { setGitHistorial(data.commits); setHistorialLoaded(true); }
-      } catch {}
-    };
-
-    React.useEffect(() => { loadHistorial(); }, []);
-
-    const handleExport = () => {
-      const data: Record<string, any> = {};
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith('glp_')) {
-          data[key] = localStorage.getItem(key);
-        }
-      }
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `glp_crm_backup_${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    };
-
-    const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        try {
-          const content = event.target?.result as string;
-          const data = JSON.parse(content);
-          
-          if (!window.confirm("¿Estás seguro de restaurar este backup? Todos los datos actuales del navegador serán sobrescritos.")) {
-            e.target.value = '';
-            return;
-          }
-
-          const keysToRemove = [];
-          for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key && key.startsWith('glp_')) {
-              keysToRemove.push(key);
-            }
-          }
-          keysToRemove.forEach(k => localStorage.removeItem(k));
-
-          for (const key in data) {
-            if (key.startsWith('glp_')) {
-              localStorage.setItem(key, data[key]);
-            }
-          }
-
-          alert("Backup restaurado con éxito. La página se recargará para aplicar los cambios.");
-          window.location.reload();
-        } catch (err) {
-          alert("Error al leer el archivo de backup. Asegúrate de que es un archivo .json válido.");
-          console.error(err);
-        }
-      };
-      reader.readAsText(file);
-    };
-
     const gitStatusColor = { idle:'#6B7280', loading:'#F59E0B', ok:'#10B981', sin_cambios:'#6B7280', error:'#EF4444' }[gitStatus];
     const gitStatusLabel = { idle:'Listo', loading:'Guardando...', ok:'Guardado', sin_cambios:'Sin cambios', error:'Error' }[gitStatus];
 
@@ -8433,8 +8373,7 @@ Responde SOLO con JSON sin bloques de código:
           </h2>
         </div>
 
-        {/* ── GITHUB BACKUP ── */}
-        <div style={{ ...cardStyle({ padding: 32 }), marginBottom: 24 }}>
+        <div style={{ ...cardStyle({ padding: 32 }) }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
             <span style={{ fontSize: 22 }}>🐙</span>
             <h3 style={{ fontSize: 18, color: T.teal, margin: 0 }}>Guardar en GitHub</h3>
@@ -8466,7 +8405,6 @@ Responde SOLO con JSON sin bloques de código:
             </div>
           )}
 
-          {/* Historial de commits */}
           {historialLoaded && gitHistorial.length > 0 && (
             <div style={{ marginTop: 24 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: T.textSec, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 }}>Historial de backups</div>
@@ -8481,33 +8419,31 @@ Responde SOLO con JSON sin bloques de código:
           )}
         </div>
 
-        <div style={{ ...cardStyle({ padding: 32 }) }}>
-          <h3 style={{ fontSize: 18, color: T.teal, marginBottom: 16 }}>Exportar Datos</h3>
-          <p style={{ color: T.textSec, fontSize: 14, marginBottom: 24, lineHeight: 1.6 }}>
-            Descarga una copia completa de todos los prospectos, activos inmobiliarios, brokers, bitácoras y configuraciones guardadas en tu navegador. Mantén este archivo en un lugar seguro.
-          </p>
-          <button onClick={handleExport} style={{ ...btnPrimary({ padding: '12px 24px', fontSize: 14 }), marginBottom: 40 }}>
-            Descargar Backup Completo (.json)
-          </button>
-
-          <hr style={{ border: 0, borderTop: `1px solid ${T.borderLight}`, marginBottom: 32 }} />
-
-          <h3 style={{ fontSize: 18, color: T.coral, marginBottom: 16 }}>Restaurar Datos</h3>
-          <p style={{ color: T.textSec, fontSize: 14, marginBottom: 24, lineHeight: 1.6 }}>
-            <strong>Advertencia:</strong> Al restaurar un backup, toda la información actual de este navegador será reemplazada por la información del archivo. Esta acción no se puede deshacer.
-          </p>
-          
-          <div style={{ background: `${T.coral}10`, border: `1px solid ${T.coral}40`, padding: 20, borderRadius: 8 }}>
-            <label style={{ display: 'block', fontWeight: 600, color: T.coral, marginBottom: 12 }}>
-              Seleccionar archivo de Backup
-            </label>
-            <input 
-              type="file" 
-              accept=".json" 
-              onChange={handleImport}
-              style={{ display: 'block', width: '100%', fontFamily: 'inherit' }}
-            />
+        {/* ── EXPORT BASE DE DATOS ── */}
+        <div style={{ ...cardStyle({ padding: 32 }), marginTop: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+            <span style={{ fontSize: 22 }}>🗄️</span>
+            <h3 style={{ fontSize: 18, color: T.teal, margin: 0 }}>Exportar Base de Datos</h3>
           </div>
+          <p style={{ color: T.textSec, fontSize: 13, marginBottom: 20, lineHeight: 1.6 }}>
+            Descarga una copia completa de Supabase: prospectos, borradores, alertas, brokers y proyectos en un archivo <strong>.json</strong>. Guárdalo en un lugar seguro como Google Drive o tu equipo local.
+          </p>
+          <button
+            onClick={() => {
+              const a = document.createElement('a');
+              a.href = 'http://localhost:3001/api/backup/export-db';
+              a.download = `glp_db_backup_${new Date().toISOString().slice(0,10)}.json`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+            }}
+            style={{ ...btnPrimary({ padding: '12px 28px', fontSize: 14 }), background: '#166534' }}
+          >
+            ⬇️ Descargar backup de base de datos
+          </button>
+          <p style={{ color: T.textSec, fontSize: 11, marginTop: 12, margin: '12px 0 0' }}>
+            Para restaurar: comparte el archivo .json con el administrador técnico — los datos se reimportan directamente a Supabase.
+          </p>
         </div>
       </div>
     );
