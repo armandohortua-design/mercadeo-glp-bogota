@@ -871,6 +871,59 @@ app.post('/api/crisis/detect', async (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════════════════════════
+// BACKUP — GITHUB
+// ══════════════════════════════════════════════════════════════
+const { execSync } = require('child_process');
+const path = require('path');
+
+const REPO_ROOT = path.resolve(__dirname, '../..');
+
+app.post('/api/backup/github', (req, res) => {
+  const mensaje = (req.body?.mensaje || '').trim();
+  const timestamp = new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota' });
+  const commitMsg = mensaje
+    ? `Backup manual: ${mensaje} (${timestamp})`
+    : `Backup automático CRM GLP — ${timestamp}`;
+
+  try {
+    execSync('git add glp-app/package.json glp-app/package-lock.json glp-app/server/index.js glp-app/src/crm/CRMDashboard.tsx glp-app/src/main.tsx glp-app/server/crisisDetector.js glp-app/server/emailPoller.js glp-app/server/prospectMonitor.js glp-app/src/lib/supabase.ts glp-app/.gitignore', { cwd: REPO_ROOT });
+
+    // Verificar si hay cambios reales para commitear
+    const diff = execSync('git diff --cached --stat', { cwd: REPO_ROOT }).toString().trim();
+    if (!diff) {
+      // Sin cambios — igual retornamos el último commit como referencia
+      const lastCommit = execSync('git log -1 --pretty=format:"%h|%s|%ai"', { cwd: REPO_ROOT }).toString().trim();
+      const [hash, subject, date] = lastCommit.split('|');
+      return res.json({ success: true, sin_cambios: true, ultimo_commit: { hash, subject, date } });
+    }
+
+    execSync(`git commit -m "${commitMsg.replace(/"/g, "'")}"`, { cwd: REPO_ROOT });
+    execSync('git push origin main', { cwd: REPO_ROOT });
+
+    const lastCommit = execSync('git log -1 --pretty=format:"%h|%s|%ai"', { cwd: REPO_ROOT }).toString().trim();
+    const [hash, subject, date] = lastCommit.split('|');
+
+    res.json({ success: true, sin_cambios: false, commit: { hash, subject, date } });
+  } catch (err) {
+    console.error('[Backup] Error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/backup/historial', (req, res) => {
+  try {
+    const log = execSync('git log --pretty=format:"%h|%s|%ai" -10', { cwd: REPO_ROOT }).toString().trim();
+    const commits = log.split('\n').map(line => {
+      const [hash, subject, date] = line.split('|');
+      return { hash, subject, date };
+    });
+    res.json({ success: true, commits });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`=================================================`);
   console.log(`🚀 Servidor GLP CRM en http://localhost:${PORT}`);

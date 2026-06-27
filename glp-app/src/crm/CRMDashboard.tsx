@@ -8321,6 +8321,48 @@ Responde SOLO con JSON sin bloques de código:
   // RENDER BACKUPS
   // ══════════════════════════════════════════════════════════════
   const renderBackups = () => {
+    const [gitStatus, setGitStatus] = React.useState<'idle'|'loading'|'ok'|'sin_cambios'|'error'>('idle');
+    const [gitMsg, setGitMsg] = React.useState('');
+    const [gitCommitNote, setGitCommitNote] = React.useState('');
+    const [gitHistorial, setGitHistorial] = React.useState<{hash:string;subject:string;date:string}[]>([]);
+    const [historialLoaded, setHistorialLoaded] = React.useState(false);
+
+    const handleGitBackup = async () => {
+      setGitStatus('loading');
+      setGitMsg('');
+      try {
+        const res = await fetch('http://localhost:3001/api/backup/github', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mensaje: gitCommitNote }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Error desconocido');
+        if (data.sin_cambios) {
+          setGitStatus('sin_cambios');
+          setGitMsg(`Sin cambios nuevos. Último commit: ${data.ultimo_commit?.hash} — ${data.ultimo_commit?.subject}`);
+        } else {
+          setGitStatus('ok');
+          setGitMsg(`✅ Guardado en GitHub: ${data.commit?.hash} — ${data.commit?.subject}`);
+          setGitCommitNote('');
+          loadHistorial();
+        }
+      } catch (err: any) {
+        setGitStatus('error');
+        setGitMsg(err.message || 'No se pudo conectar con el servidor.');
+      }
+    };
+
+    const loadHistorial = async () => {
+      try {
+        const res = await fetch('http://localhost:3001/api/backup/historial');
+        const data = await res.json();
+        if (data.success) { setGitHistorial(data.commits); setHistorialLoaded(true); }
+      } catch {}
+    };
+
+    React.useEffect(() => { loadHistorial(); }, []);
+
     const handleExport = () => {
       const data: Record<string, any> = {};
       for (let i = 0; i < localStorage.length; i++) {
@@ -8380,6 +8422,9 @@ Responde SOLO con JSON sin bloques de código:
       reader.readAsText(file);
     };
 
+    const gitStatusColor = { idle:'#6B7280', loading:'#F59E0B', ok:'#10B981', sin_cambios:'#6B7280', error:'#EF4444' }[gitStatus];
+    const gitStatusLabel = { idle:'Listo', loading:'Guardando...', ok:'Guardado', sin_cambios:'Sin cambios', error:'Error' }[gitStatus];
+
     return (
       <div style={{ maxWidth: 800, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
@@ -8387,7 +8432,55 @@ Responde SOLO con JSON sin bloques de código:
             Backups y Restauración
           </h2>
         </div>
-        
+
+        {/* ── GITHUB BACKUP ── */}
+        <div style={{ ...cardStyle({ padding: 32 }), marginBottom: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+            <span style={{ fontSize: 22 }}>🐙</span>
+            <h3 style={{ fontSize: 18, color: T.teal, margin: 0 }}>Guardar en GitHub</h3>
+            <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: gitStatusColor, background: `${gitStatusColor}18`, padding: '3px 10px', borderRadius: 20, letterSpacing: 1 }}>
+              {gitStatusLabel}
+            </span>
+          </div>
+          <p style={{ color: T.textSec, fontSize: 13, marginBottom: 20, lineHeight: 1.6 }}>
+            Sube todos los archivos del CRM al repositorio GitHub <strong>armandohortua-design/mercadeo-glp-bogota</strong>. El servidor debe estar corriendo en el equipo.
+          </p>
+          <input
+            type="text"
+            value={gitCommitNote}
+            onChange={e => setGitCommitNote(e.target.value)}
+            placeholder="Nota del backup (opcional) — ej: 'Ajuste de roles y fotos de agentes'"
+            style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', fontSize: 13, border: `1px solid ${T.borderLight}`, borderRadius: 6, marginBottom: 16, fontFamily: 'inherit', background: '#FAFAFA' }}
+          />
+          <button
+            onClick={handleGitBackup}
+            disabled={gitStatus === 'loading'}
+            style={{ ...btnPrimary({ padding: '12px 28px', fontSize: 14 }), opacity: gitStatus === 'loading' ? 0.6 : 1, cursor: gitStatus === 'loading' ? 'wait' : 'pointer' }}
+          >
+            {gitStatus === 'loading' ? '⏳ Guardando en GitHub...' : '🚀 Guardar en GitHub ahora'}
+          </button>
+
+          {gitMsg && (
+            <div style={{ marginTop: 16, padding: '12px 16px', borderRadius: 6, fontSize: 13, background: gitStatus === 'error' ? '#FEF2F2' : '#F0FDF4', color: gitStatus === 'error' ? '#991B1B' : '#166534', border: `1px solid ${gitStatus === 'error' ? '#FECACA' : '#BBF7D0'}` }}>
+              {gitMsg}
+            </div>
+          )}
+
+          {/* Historial de commits */}
+          {historialLoaded && gitHistorial.length > 0 && (
+            <div style={{ marginTop: 24 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: T.textSec, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 }}>Historial de backups</div>
+              {gitHistorial.map((c, i) => (
+                <div key={c.hash} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '8px 0', borderBottom: i < gitHistorial.length - 1 ? `1px solid ${T.borderLight}` : 'none' }}>
+                  <span style={{ fontFamily: 'monospace', fontSize: 11, color: T.coral, fontWeight: 700, flexShrink: 0, marginTop: 2 }}>{c.hash}</span>
+                  <span style={{ fontSize: 12, color: T.text, flex: 1 }}>{c.subject}</span>
+                  <span style={{ fontSize: 11, color: T.textSec, flexShrink: 0, whiteSpace: 'nowrap' }}>{c.date?.slice(0,10)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div style={{ ...cardStyle({ padding: 32 }) }}>
           <h3 style={{ fontSize: 18, color: T.teal, marginBottom: 16 }}>Exportar Datos</h3>
           <p style={{ color: T.textSec, fontSize: 14, marginBottom: 24, lineHeight: 1.6 }}>
