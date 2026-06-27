@@ -3,6 +3,9 @@ const cors = require('cors');
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 const pool = require('./db');
+const { startEmailPoller, pollInbox } = require('./emailPoller');
+const { startProspectMonitor, monitorProspects } = require('./prospectMonitor');
+const { startCrisisDetector, detectCrisis } = require('./crisisDetector');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -277,31 +280,55 @@ app.post('/api/contact', async (req, res) => {
           from: `"Sara Valenzuela · ${tenant.name}" <${tenant.smtp?.user || process.env.SMTP_USER}>`,
           to: email,
           subject: `Hemos recibido tu solicitud para ${project} - GLP`,
-          html: `<div style="font-family:'Segoe UI',sans-serif;max-width:600px;margin:0 auto;border:1px solid #E5E7EB;border-top:4px solid #002349;border-radius:8px;padding:32px;">
-            <p style="font-weight:600;color:#002349;">Estimado/a ${firstName},</p>
-            <p>Confirmamos la recepción de su solicitud para el proyecto <strong>${project}</strong>. Nuestros especialistas lo contactarán a la brevedad.</p>
-            <div style="margin:24px 0;padding:16px;background:#F9FAFB;border-left:4px solid #B89047;">
-              <p style="margin:0;font-size:13px;font-weight:700;color:#002349;">Detalles de su solicitud:</p>
-              <ul style="font-size:14px;color:#4B5563;"><li><strong>Proyecto:</strong> ${project}</li><li><strong>Mensaje:</strong> ${message || 'Información general.'}</li></ul>
+          html: `<div style="font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;line-height:1.6;color:#111827;max-width:600px;margin:0 auto;border:1px solid #E5E7EB;border-top:4px solid #002349;border-radius:8px;padding:32px;background:#ffffff;box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
+            <p style="font-size:16px;font-weight:600;color:#002349;margin-top:0;margin-bottom:16px;">Estimado/a ${firstName},</p>
+            <p style="margin-bottom:16px;">Reciba un cordial saludo de parte de nuestro equipo. A través de este mensaje, le confirmamos la recepción de su solicitud de información referente al proyecto <strong>${project}</strong>, perteneciente a nuestro portafolio de inversión inmobiliaria dolarizada en Panamá.</p>
+            <p style="margin-bottom:24px;">Nuestros especialistas comerciales ya están revisando los detalles de su consulta. Nos pondremos en contacto con usted a la mayor brevedad posible para proporcionarle la ficha técnica ampliada, planos de distribución y las proyecciones de rentabilidad correspondientes.</p>
+            <div style="margin:28px 0;padding:20px;background:#F9FAFB;border-left:4px solid #B89047;border-radius:6px;">
+              <p style="margin:0;font-size:13px;font-weight:700;color:#002349;text-transform:uppercase;letter-spacing:0.05em;">Detalles de su solicitud:</p>
+              <ul style="margin:8px 0 0 0;padding-left:20px;font-size:14px;color:#4B5563;">
+                <li><strong>Proyecto de interés:</strong> ${project}</li>
+                <li><strong>Mensaje / Requerimiento:</strong> ${message || 'Solicitud de información general.'}</li>
+              </ul>
             </div>
-            <p style="color:#4B5563;">Atentamente,<br/><strong>Sara Valenzuela</strong><br/>${tenant.name}</p>
+            <p style="margin-bottom:24px;">Si desea agilizar su consulta o requiere asistencia inmediata, puede responder directamente a este correo o comunicarse con nosotros vía WhatsApp.</p>
+            <p style="margin-bottom:12px;color:#4B5563;">Atentamente,</p>
+            <table style="border-collapse:collapse;margin-top:16px;">
+              <tr><td style="border-left:3px solid #B89047;padding-left:16px;">
+                <div style="font-size:15px;font-weight:bold;color:#002349;">Sara Valenzuela</div>
+                <div style="font-size:11px;color:#B89047;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Directora de Customer Success & Back-Office Comercial</div>
+                <div style="font-size:13px;font-weight:bold;color:#111827;">${tenant.name}</div>
+                <div style="font-size:11px;color:#4B5563;">${tenant.contact?.address || ''}<br/>
+                  <a href="mailto:${tenant.contact?.email || ''}" style="color:#002349;text-decoration:none;font-weight:600;">${tenant.contact?.email || ''}</a> |
+                  <a href="https://${tenant.contact?.website || ''}" style="color:#002349;text-decoration:none;font-weight:600;">${tenant.contact?.website || ''}</a>
+                </div>
+              </td></tr>
+            </table>
+            <hr style="border:0;border-top:1px solid #E5E7EB;margin:28px 0;"/>
+            <p style="font-size:10px;color:#94a3b8;font-style:italic;line-height:1.4;"><strong>Nota de Confidencialidad:</strong> Esta comunicación contiene información exclusiva y confidencial de ${tenant.name}. Queda estrictamente prohibida su divulgación sin autorización previa y por escrito.</p>
           </div>`
         });
         emailClientSent = true;
 
         await transporter.sendMail({
           from: `"SARA Lead Alert" <${tenant.smtp?.user || process.env.SMTP_USER}>`,
-          to: tenant.contact?.email || process.env.SMTP_USER,
-          subject: `🚨 Nuevo Lead: ${name} - ${project}`,
-          html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;border:1px solid #cbd5e1;border-radius:8px;">
-            <h2 style="color:#0f172a;">Nuevo Lead desde la Web 🚀</h2>
-            <table style="width:100%;border-collapse:collapse;">
-              <tr><td style="padding:10px;border:1px solid #e2e8f0;font-weight:bold;">Nombre</td><td style="padding:10px;border:1px solid #e2e8f0;">${name}</td></tr>
-              <tr><td style="padding:10px;border:1px solid #e2e8f0;font-weight:bold;">Correo</td><td style="padding:10px;border:1px solid #e2e8f0;">${email}</td></tr>
-              <tr><td style="padding:10px;border:1px solid #e2e8f0;font-weight:bold;">Teléfono</td><td style="padding:10px;border:1px solid #e2e8f0;">${phone || 'No indicado'}</td></tr>
-              <tr><td style="padding:10px;border:1px solid #e2e8f0;font-weight:bold;">Proyecto</td><td style="padding:10px;border:1px solid #e2e8f0;">${project}</td></tr>
-              <tr><td style="padding:10px;border:1px solid #e2e8f0;font-weight:bold;">Mensaje</td><td style="padding:10px;border:1px solid #e2e8f0;">${message || 'Sin comentarios'}</td></tr>
+          to: process.env.SMTP_USER,
+          subject: `🚨 Nuevo Lead Registrado: ${name} - ${project}`,
+          html: `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;color:#334155;max-width:600px;margin:0 auto;border:1px solid #cbd5e1;border-radius:8px;padding:24px;background:#f8fafc;">
+            <h2 style="color:#0f172a;margin-top:0;border-bottom:2px solid #e2e8f0;padding-bottom:12px;">Nuevo Lead desde la Web 🚀</h2>
+            <p>Hola Armando,</p>
+            <p>Se ha registrado un cliente interesado en el portafolio inmobiliario:</p>
+            <table style="width:100%;border-collapse:collapse;margin:20px 0;background:#fff;border-radius:6px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+              <tr style="background:#f1f5f9;"><td style="padding:12px;border:1px solid #e2e8f0;font-weight:bold;width:35%;">Nombre:</td><td style="padding:12px;border:1px solid #e2e8f0;">${name}</td></tr>
+              <tr><td style="padding:12px;border:1px solid #e2e8f0;font-weight:bold;">Correo:</td><td style="padding:12px;border:1px solid #e2e8f0;"><a href="mailto:${email}" style="color:#0f766e;">${email}</a></td></tr>
+              <tr style="background:#f1f5f9;"><td style="padding:12px;border:1px solid #e2e8f0;font-weight:bold;">Teléfono:</td><td style="padding:12px;border:1px solid #e2e8f0;">${phone || 'No indicado'}</td></tr>
+              <tr><td style="padding:12px;border:1px solid #e2e8f0;font-weight:bold;">Proyecto:</td><td style="padding:12px;border:1px solid #e2e8f0;font-weight:bold;color:#0f766e;">${project}</td></tr>
+              <tr style="background:#f1f5f9;"><td style="padding:12px;border:1px solid #e2e8f0;font-weight:bold;">Canal:</td><td style="padding:12px;border:1px solid #e2e8f0;">${channel || 'Web Form'}</td></tr>
+              <tr><td style="padding:12px;border:1px solid #e2e8f0;font-weight:bold;">Mensaje:</td><td style="padding:12px;border:1px solid #e2e8f0;font-style:italic;">${message || 'Solicitud de información general.'}</td></tr>
             </table>
+            <div style="background:#fef9c3;padding:14px;border-left:4px solid #eab308;border-radius:4px;font-size:13px;color:#713f12;">
+              💡 <strong>Acción Automatizada:</strong> SARA envió el correo de bienvenida a <strong>${firstName}</strong>. Revisa el borrador de respuesta en el panel de <strong>Agentes IA</strong>.
+            </div>
           </div>`
         });
         emailAdminSent = true;
@@ -332,6 +359,15 @@ app.post('/api/contact', async (req, res) => {
         console.warn('⚠️ OpenAI falló, usando plantilla:', aiErr.message);
       }
     }
+
+    // Guardar prospecto en la base de datos
+    await pool.query(
+      `INSERT INTO prospectos (tenant_id, nombre, apellido, correo, telefono, proyectos_interes, forma_contacto, estado, canal, notas, fecha_registro, fecha_ultima_actividad)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW(),NOW())`,
+      [tenant.id, firstName, '', email, phone || '',
+       JSON.stringify([project]), channel || 'Web', 'Contacto Inicial', channel || 'Web',
+       message || '']
+    );
 
     const draftId = `draft-${Date.now()}`;
     await pool.query(
@@ -383,6 +419,32 @@ app.post('/api/send-draft', async (req, res) => {
     });
 
     await pool.query('UPDATE drafts SET status = $1 WHERE id = $2', ['sent', id]);
+
+    // Registrar en historial del prospecto si existe
+    const { rows: prospectoRows } = await pool.query(
+      `SELECT id, historial FROM prospectos WHERE tenant_id = $1 AND correo = $2`,
+      [tenant.id, toEmail]
+    );
+    if (prospectoRows.length > 0) {
+      const prospecto = prospectoRows[0];
+      let historial = [];
+      try { historial = JSON.parse(prospecto.historial || '[]'); } catch (_) {}
+      historial.push({
+        id: `resp-${Date.now()}`,
+        fecha: new Date().toISOString(),
+        tipo: 'respuesta_enviada',
+        asunto: draft.subject,
+        resumen: draft.body.slice(0, 200),
+        cuerpo: draft.body,
+        aprobado_por: 'Admin',
+        editable: true
+      });
+      await pool.query(
+        `UPDATE prospectos SET historial = $1, fecha_ultima_actividad = NOW() WHERE id = $2`,
+        [JSON.stringify(historial), prospecto.id]
+      );
+    }
+
     await pool.query(
       `INSERT INTO bitacora (id, tenant_id, timestamp, cliente, correo, proyecto, canal, correo_cliente, borrador_creado, mensaje)
        VALUES ($1,$2,NOW(),$3,$4,$5,$6,$7,$8,$9)`,
@@ -432,6 +494,30 @@ app.post('/api/chat', async (req, res) => {
   } catch (error) {
     console.error('❌ Error en /api/chat:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// ==========================================
+// AI PROXY – AGENTES CRM (Camilo, Valeria, Isabella)
+// ==========================================
+app.post('/api/ai', async (req, res) => {
+  try {
+    const { messages, max_tokens } = req.body;
+    if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'messages requeridos.' });
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) return res.status(503).json({ error: 'OpenAI no configurado en el servidor.' });
+    const OpenAI = require('openai');
+    const openai = new OpenAI({ apiKey });
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages,
+      temperature: 0.7,
+      max_tokens: max_tokens || 3000
+    });
+    res.json({ choices: [{ message: { content: response.choices[0].message.content } }] });
+  } catch (err) {
+    console.error('❌ Error en /api/ai:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -581,9 +667,216 @@ app.post('/api/sara/process-prospects', async (req, res) => {
   }
 });
 
+// ==========================================
+// ==========================================
+// ALERTAS DE PROSPECTOS
+// ==========================================
+app.get('/api/alerts', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { rows } = await pool.query(
+      `SELECT a.*, p.nombre, p.apellido, p.correo, p.estado as etapa, p.proyectos_interes, p.presupuesto_usd
+       FROM prospect_alerts a
+       JOIN prospectos p ON a.prospecto_id = p.id
+       WHERE a.tenant_id = $1 AND a.status = 'activa'
+       ORDER BY CASE a.nivel WHEN 'critico' THEN 1 WHEN 'frio' THEN 2 WHEN 'tibio' THEN 3 WHEN 'oportunidad' THEN 4 END, a.created_at DESC`,
+      [tenant.id]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/alerts/:id', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { status } = req.body;
+    await pool.query(
+      `UPDATE prospect_alerts SET status = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3`,
+      [status, req.params.id, tenant.id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/sara/monitor', async (req, res) => {
+  try {
+    const count = await monitorProspects();
+    res.json({ success: true, alertasCreadas: count });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// IMAP – REVISIÓN MANUAL DE BANDEJA
+// ==========================================
+app.post('/api/sara/check-inbox', async (req, res) => {
+  try {
+    await pollInbox();
+    res.json({ success: true, message: 'Bandeja revisada.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// BRAND PROFILE — Perfil de Marca GLP
+// ==========================================
+app.get('/api/brand-profile', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { rows } = await pool.query(
+      `SELECT data FROM settings WHERE tenant_id = $1 AND key = 'brand_profile' LIMIT 1`,
+      [tenant.id]
+    );
+    if (rows.length === 0) return res.json(null);
+    res.json(rows[0].data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/brand-profile', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const profile = req.body;
+    await pool.query(
+      `INSERT INTO settings (tenant_id, key, data, updated_at)
+       VALUES ($1, 'brand_profile', $2, NOW())
+       ON CONFLICT (tenant_id, key) DO UPDATE SET data = $2, updated_at = NOW()`,
+      [tenant.id, JSON.stringify(profile)]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// SETTINGS GENÉRICO (market-report, etc.)
+// ==========================================
+app.put('/api/settings/:key', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    await pool.query(
+      `INSERT INTO settings (tenant_id, key, data, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (tenant_id, key) DO UPDATE SET data = $3, updated_at = NOW()`,
+      [tenant.id, req.params.key, JSON.stringify(req.body)]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/settings/:key', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { rows } = await pool.query(
+      `SELECT data FROM settings WHERE tenant_id = $1 AND key = $2 LIMIT 1`,
+      [tenant.id, req.params.key]
+    );
+    res.json(rows.length > 0 ? rows[0].data : null);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ==========================================
+// BROKER OBJECTIONS — Reporte de objeciones
+// ==========================================
+app.get('/api/broker-objections', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const tipo = req.query.tipo || null;
+    const query = tipo
+      ? `SELECT * FROM broker_objections WHERE tenant_id = $1 AND tipo = $2 ORDER BY created_at DESC LIMIT 100`
+      : `SELECT * FROM broker_objections WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 100`;
+    const { rows } = await pool.query(query, tipo ? [tenant.id, tipo] : [tenant.id]);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/broker-objections', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { broker, prospecto, tipo, descripcion, canal, proyecto } = req.body;
+    if (!broker || !tipo || !descripcion) return res.status(400).json({ error: 'broker, tipo y descripcion son requeridos' });
+    const id = `obj-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
+    await pool.query(
+      `INSERT INTO broker_objections (id, tenant_id, broker, prospecto, tipo, descripcion, canal, proyecto, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())`,
+      [id, tenant.id, broker, prospecto||null, tipo, descripcion, canal||'formulario', proyecto||null]
+    );
+    res.json({ success: true, id });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Agregado de conteo por tipo (para el detector de patrones en Paso 3)
+app.get('/api/broker-objections/stats', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { rows } = await pool.query(
+      `SELECT tipo, COUNT(*) as total,
+       COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days') as ultimos_7d
+       FROM broker_objections WHERE tenant_id = $1
+       GROUP BY tipo ORDER BY total DESC`,
+      [tenant.id]
+    );
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ==========================================
+// CRISIS ALERTS — Motor de detección de crisis
+// ==========================================
+app.get('/api/crisis-alerts', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const status = req.query.status || null;
+    const query = status
+      ? `SELECT * FROM crisis_alerts WHERE tenant_id = $1 AND status = $2 ORDER BY created_at DESC LIMIT 50`
+      : `SELECT * FROM crisis_alerts WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 50`;
+    const params = status ? [tenant.id, status] : [tenant.id];
+    const { rows } = await pool.query(query, params);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/crisis-alerts/:id', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { status } = req.body;
+    if (!status) return res.status(400).json({ error: 'status requerido' });
+    await pool.query(
+      `UPDATE crisis_alerts SET status = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3`,
+      [status, req.params.id, tenant.id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Ejecutar detección manual desde frontend (para testing y admin)
+app.post('/api/crisis/detect', async (req, res) => {
+  try {
+    const count = await detectCrisis();
+    res.json({ success: true, alertas_creadas: count });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`=================================================`);
   console.log(`🚀 Servidor GLP CRM en http://localhost:${PORT}`);
   console.log(`🗄️  Base de datos: PostgreSQL (Supabase)`);
   console.log(`=================================================`);
+  startEmailPoller();
+  startProspectMonitor();
+  startCrisisDetector();
 });

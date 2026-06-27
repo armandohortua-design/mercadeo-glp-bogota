@@ -483,9 +483,12 @@ const ProjectCard: React.FC<{
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 16, fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.textSec, fontFamily: C.fontSans, marginBottom: 16 }}>
+          <div style={{ display: 'flex', gap: 16, fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.textSec, fontFamily: C.fontSans, marginBottom: 8 }}>
             <span>Hab: {project.beds.split('- ')[0]}</span>
             <span>Área: {project.area}</span>
+          </div>
+          <div style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', color: C.coral, fontFamily: C.fontSans, marginBottom: 16 }}>
+            Entrega: {project.delivery}
           </div>
 
           <div style={{

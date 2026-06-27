@@ -1,5 +1,6 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { MARKET_STUDY_DB } from '../marketStudyDb';
+import { uploadProjectImage, saveProjectImageUrl } from '../lib/supabase';
 
 // ═══════════════════════════════════════════════════════════════
 // GLP CRM DASHBOARD — Complete Production CRM
@@ -27,6 +28,48 @@ const T = {
   fontSans: '"Inter", sans-serif',
 };
 
+// ── ELEGANT SVG ICON LIBRARY ─────────────────────────────────
+const Icon = ({ name, size = 24, color = 'currentColor', style = {} }: { name: string; size?: number; color?: string; style?: React.CSSProperties }) => {
+  const s = { width: size, height: size, display: 'inline-block', flexShrink: 0, ...style };
+  const props = { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: color, strokeWidth: 1.4, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, style: s };
+  switch (name) {
+    case 'currency':   return <svg {...props}><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>;
+    case 'trend-up':   return <svg {...props}><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>;
+    case 'trend-down': return <svg {...props}><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>;
+    case 'users':      return <svg {...props}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
+    case 'user':       return <svg {...props}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
+    case 'handshake':  return <svg {...props}><path d="M20.42 4.58a5.4 5.4 0 0 0-7.65 0l-.77.78-.77-.78a5.4 5.4 0 0 0-7.65 7.65l.77.77L12 21.23l7.65-8.22.77-.77a5.4 5.4 0 0 0 0-7.66z"/></svg>;
+    case 'building':   return <svg {...props}><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M9 21V9"/></svg>;
+    case 'chart-bar':  return <svg {...props}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>;
+    case 'portfolio':  return <svg {...props}><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>;
+    case 'calendar':   return <svg {...props}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
+    case 'mail':       return <svg {...props}><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>;
+    case 'search':     return <svg {...props}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>;
+    case 'shield':     return <svg {...props}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>;
+    case 'star':       return <svg {...props}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>;
+    case 'key':        return <svg {...props}><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>;
+    case 'lock':       return <svg {...props}><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>;
+    case 'database':   return <svg {...props}><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>;
+    case 'ai':         return <svg {...props}><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>;
+    case 'faq':        return <svg {...props}><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>;
+    case 'calculator': return <svg {...props}><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="8" y2="10.01"/><line x1="12" y1="10" x2="12" y2="10.01"/><line x1="16" y1="10" x2="16" y2="10.01"/><line x1="8" y1="14" x2="8" y2="14.01"/><line x1="12" y1="14" x2="12" y2="14.01"/><line x1="16" y1="14" x2="16" y2="18"/></svg>;
+    case 'backup':     return <svg {...props}><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.95"/></svg>;
+    case 'plug':       return <svg {...props}><path d="M18 6L6 18"/><path d="M6 6l3.5 3.5"/><path d="M10.5 10.5L14 14"/><circle cx="18.5" cy="5.5" r="2.5"/><circle cx="5.5" cy="18.5" r="2.5"/></svg>;
+    case 'wave':       return <svg {...props}><path d="M2 12c0-4 2-6 5-6s5 3 5 3 2 3 5 3 5-2 5-6"/><path d="M2 19c0-1.5 1-2.5 2.5-2.5S7 17.5 7 19"/></svg>;
+    case 'diamond':    return <svg {...props}><polygon points="12 2 22 12 12 22 2 12"/></svg>;
+    case 'chart-line': return <svg {...props}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>;
+    case 'events':     return <svg {...props}><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>;
+    case 'warning':    return <svg {...props}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>;
+    case 'check':      return <svg {...props}><polyline points="20 6 9 17 4 12"/></svg>;
+    case 'list':       return <svg {...props}><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>;
+    case 'funnel':     return <svg {...props}><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>;
+    case 'send':       return <svg {...props}><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>;
+    case 'draft':      return <svg {...props}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
+    case 'globe':      return <svg {...props}><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>;
+    default:           return <svg {...props}><circle cx="12" cy="12" r="10"/></svg>;
+  }
+};
+
 const fmt = (n: number, d = 0) => Number(n).toLocaleString('en-US', { maximumFractionDigits: d });
 const usd = (n: number) => '$' + fmt(n);
 const pct = (n: number) => Number(n).toFixed(1) + '%';
@@ -34,30 +77,37 @@ const pct = (n: number) => Number(n).toFixed(1) + '%';
 // ── PROJECTS DATABASE ─────────────────────────────────────────
 type ProjectData = {
   name: string; zone: string; zoneShort: string; investorType: string;
-  minPrice: number; areaMin: number; areaMax: number; bedrooms: string;
+  category: string; tipo: string; entrega: string;
+  minPrice: number; maxPrice: number; areaMin: number; areaMax: number; bedrooms: string;
   capRateMin: number; capRateMax: number; vacancyDef: number;
   rentSuggest: number; rentM2Min: number; rentM2Max: number;
   condominioMes: number; appreciationDef: number; appreciationNote: string;
   amenities: string[]; construction: string;
   priceM2Min: number; priceM2Max: number;
+  imagen?: string;
 };
 
 const PROJECTS: ProjectData[] = [
-  { name: 'Panamáa Viejo Residences', zone: 'Ciudad de Panamáá — Panamáá Viejo / Costa del Este', zoneShort: 'Panamáá Viejo', investorType: 'renta', minPrice: 120000, areaMin: 58, areaMax: 90, bedrooms: '2 rec.', capRateMin: 6.5, capRateMax: 8.0, vacancyDef: 6, rentSuggest: 950, rentM2Min: 10, rentM2Max: 14, condominioMes: 200, appreciationDef: 3.2, appreciationNote: 'Valorización consistente 3–5% anual impulsada por proximidad a Costa del Este.', amenities: ['Piscina y área social', 'Gimnasio moderno', 'Coworking', 'Seguridad 24/7', 'Parque infantil', 'BBQ y terrazas'], construction: 'Nueva entrega (2022–2025)', priceM2Min: 1500, priceM2Max: 2200 },
-  { name: 'Bayside Resort Panamáá', zone: 'Panamáá Oeste — Arraiján / Pacífico', zoneShort: 'Bayside / Arraiján', investorType: 'renta', minPrice: 150000, areaMin: 80, areaMax: 400, bedrooms: '3 rec.', capRateMin: 6.0, capRateMax: 8.5, vacancyDef: 8, rentSuggest: 800, rentM2Min: 8, rentM2Max: 12, condominioMes: 250, appreciationDef: 3.0, appreciationNote: 'Zona en desarrollo con infraestructura creciente. Valorización 3–4% anual.', amenities: ['Acceso privado a playa', 'Club house', 'Piscinas', 'Canchas deportivas', 'Gimnasio y spa', 'Seguridad 24/7'], construction: 'Desarrollo activo (2020–2026)', priceM2Min: 1200, priceM2Max: 2000 },
-  { name: 'Playa Dorada', zone: 'Playa Dorada, Arraiján — Panamáá Oeste', zoneShort: 'Playa Dorada', investorType: 'renta', minPrice: 180000, areaMin: 80, areaMax: 160, bedrooms: '2–3 rec.', capRateMin: 6.5, capRateMax: 8.5, vacancyDef: 8, rentSuggest: 700, rentM2Min: 6, rentM2Max: 10, condominioMes: 180, appreciationDef: 3.0, appreciationNote: 'Playa accesible con demanda local. Valorización estable 3–4% anual.', amenities: ['Club de playa privado', 'Piscinas', 'Parque infantil', 'Zonas verdes', 'Seguridad 24/7'], construction: 'Multi-fase (2015–2023)', priceM2Min: 1100, priceM2Max: 1800 },
-  { name: 'Ocean Front', zone: 'Playa Dorada, Arraiján — Panamáá Oeste', zoneShort: 'Ocean Front / Playa Dorada', investorType: 'renta', minPrice: 180000, areaMin: 60, areaMax: 120, bedrooms: '1–2 rec.', capRateMin: 6.5, capRateMax: 8.5, vacancyDef: 8, rentSuggest: 750, rentM2Min: 6, rentM2Max: 10, condominioMes: 170, appreciationDef: 3.0, appreciationNote: 'Producto 1BR con mayor yield por m² del portafolio. 3–4% valorización.', amenities: ['Acceso directo a playa', 'Club privado', 'Gimnasio', 'Seguridad 24/7', 'Zonas verdes'], construction: 'Moderno (2018–2023)', priceM2Min: 1100, priceM2Max: 1800 },
-  { name: 'Olas del Mar', zone: 'Playa Caracol, Chame — Pacífico Panamáeño', zoneShort: 'Olas del Mar / Playa Caracol', investorType: 'renta', minPrice: 320000, areaMin: 95, areaMax: 160, bedrooms: '2–3 rec.', capRateMin: 6.0, capRateMax: 8.0, vacancyDef: 11, rentSuggest: 1050, rentM2Min: 8, rentM2Max: 11, condominioMes: 220, appreciationDef: 3.5, appreciationNote: 'Playa Caracol lidera valorización en el Pacífico. 4–6% anual en nuevos.', amenities: ['Piscina con vista al mar', 'Zona de BBQ', 'Área social', 'Seguridad 24/7', 'Parque infantil'], construction: 'Moderno (2018–2023)', priceM2Min: 1500, priceM2Max: 2200 },
-  { name: 'Aires del Mar – Playa Caracol', zone: 'Playa Caracol, Chame — Pacífico Panamáeño', zoneShort: 'Aires del Mar / Playa Caracol', investorType: 'renta', minPrice: 210000, areaMin: 70, areaMax: 150, bedrooms: '1–2 rec.', capRateMin: 5.8, capRateMax: 7.8, vacancyDef: 11, rentSuggest: 1000, rentM2Min: 8, rentM2Max: 12, condominioMes: 200, appreciationDef: 3.5, appreciationNote: 'Zona Playa Caracol con valorización de 3.5–5% anual.', amenities: ['Vista directa al océano', 'Piscinas', 'Parques infantiles', 'Jardines', 'Seguridad 24/7'], construction: 'Moderno (2018–2022)', priceM2Min: 1600, priceM2Max: 2400 },
-  { name: 'The Tides – Playa Caracol', zone: 'Playa Caracol, Chame — Resort Premium', zoneShort: 'The Tides / Playa Caracol', investorType: 'disfrute', minPrice: 320000, areaMin: 120, areaMax: 280, bedrooms: '2–3 rec.', capRateMin: 5.5, capRateMax: 7.5, vacancyDef: 10, rentSuggest: 1500, rentM2Min: 10, rentM2Max: 16, condominioMes: 350, appreciationDef: 4.5, appreciationNote: 'Proyecto más nuevo en Playa Caracol. Valorización 4–6% anual.', amenities: ['1.2 km playa privada', 'Surf club', '3 piscinas', 'Restaurante y beach bar', 'Senderos naturales', 'Gimnasio y yoga deck', 'Áreas BBQ', 'Seguridad 24/7'], construction: 'Nueva entrega (2022–2026)', priceM2Min: 2200, priceM2Max: 3500 },
-  { name: 'Surfside', zone: 'Playa Caracol, Chame — Resort + Aparthotel', zoneShort: 'Surfside / Playa Caracol', investorType: 'disfrute', minPrice: 190000, areaMin: 60, areaMax: 200, bedrooms: '1–2 rec.', capRateMin: 5.8, capRateMax: 7.5, vacancyDef: 10, rentSuggest: 1300, rentM2Min: 10, rentM2Max: 14, condominioMes: 300, appreciationDef: 4.0, appreciationNote: 'Componente aparthotel eleva valorización. 4–5% anual.', amenities: ['Playa privada', 'Aparthotel con conserjería', 'Piscinas y jacuzzi', 'Restaurante y bar', 'Surf lounge', 'Gimnasio', 'Seguridad 24/7'], construction: 'Moderno (2019–2024)', priceM2Min: 2000, priceM2Max: 3000 },
-  { name: 'BeachWalk Resort Playa Caracol', zone: 'Playa Caracol, Chame — Wellness Resort', zoneShort: 'BeachWalk / Playa Caracol', investorType: 'disfrute', minPrice: 230000, areaMin: 75, areaMax: 180, bedrooms: '2 rec.', capRateMin: 5.5, capRateMax: 7.5, vacancyDef: 10, rentSuggest: 1300, rentM2Min: 9, rentM2Max: 14, condominioMes: 280, appreciationDef: 4.0, appreciationNote: 'Enfoque wellness impulsa valorización diferencial 4–5% anual.', amenities: ['Frente al océano Pacífico', 'Wellness spa', 'Piscina paisajística', 'Gimnasio exterior', 'Yoga deck', 'BBQ', 'Seguridad 24/7'], construction: 'Nuevo (2022–2025)', priceM2Min: 1800, priceM2Max: 2800 },
-  { name: 'Ipanema Panamáá', zone: 'Costa del Mar / Costa del Este — Ciudad de Panamáá', zoneShort: 'Ipanema / Costa del Mar', investorType: 'disfrute', minPrice: 280000, areaMin: 85, areaMax: 250, bedrooms: '1–2 rec. + PH', capRateMin: 6.0, capRateMax: 7.5, vacancyDef: 6, rentSuggest: 1600, rentM2Min: 12, rentM2Max: 18, condominioMes: 280, appreciationDef: 4.0, appreciationNote: 'Costa del Este es hub corporativo. 4–6% anual.', amenities: ['Piscina con vista al mar', 'Gimnasio', 'Co-working', 'BBQ y lounge', 'Seguridad 24/7', 'Parque infantil'], construction: 'Moderno (2019–2024)', priceM2Min: 2000, priceM2Max: 3500 },
-  { name: 'Ocean Reef Park', zone: 'Islas Artificiales — Punta Pacífica, Ciudad de Panamáá', zoneShort: 'Ocean Reef / Islas Artificiales', investorType: 'patrimonial', minPrice: 1500000, areaMin: 200, areaMax: 600, bedrooms: '2–4 rec. + PH', capRateMin: 5.0, capRateMax: 6.5, vacancyDef: 4, rentSuggest: 7000, rentM2Min: 22, rentM2Max: 32, condominioMes: 700, appreciationDef: 5.5, appreciationNote: 'Activo más escaso y premium de Panamáá. Valorización 6–8% anual.', amenities: ['Marina privada 180+ muelles', 'Yacht club', 'Piscinas infinity', 'Canchas deportivas', 'Spa y wellness', 'Helipadres', 'Restaurantes', 'Beach club'], construction: 'En desarrollo (2015–en curso)', priceM2Min: 4500, priceM2Max: 7500 },
-  { name: 'Oceana Residences & Skyhomes', zone: 'Santa María Golf & Country Club — Ciudad de Panamáá', zoneShort: 'Oceana / Santa María Golf', investorType: 'patrimonial', minPrice: 850000, areaMin: 150, areaMax: 350, bedrooms: '1–3 rec. + Skyhomes', capRateMin: 4.7, capRateMax: 6.0, vacancyDef: 4, rentSuggest: 3500, rentM2Min: 20, rentM2Max: 25, condominioMes: 550, appreciationDef: 5.0, appreciationNote: 'Única comunidad con golf Jack Nicklaus. 5–7% anual.', amenities: ['Golf 18 hoyos Jack Nicklaus', 'Club House', 'Piscinas resort', 'Pickleball y tenis', 'Co-working', 'Wellness center', 'Concierge'], construction: 'Nuevo (2022–2026)', priceM2Min: 3500, priceM2Max: 5500 },
-  { name: 'Bosco di Santa María', zone: 'Santa María / Costa del Este — Ciudad de Panamáá', zoneShort: 'Bosco / Santa María', investorType: 'patrimonial', minPrice: 1200000, areaMin: 250, areaMax: 350, bedrooms: '3–4 rec.', capRateMin: 5.5, capRateMax: 7.2, vacancyDef: 5, rentSuggest: 2800, rentM2Min: 13, rentM2Max: 18, condominioMes: 420, appreciationDef: 4.5, appreciationNote: 'Santa María en consolidación. 4–6% anual.', amenities: ['Jardines botánicos', 'Piscina natural', 'Gimnasio', 'Senderos de meditación', 'Áreas sociales', 'Seguridad 24/7'], construction: 'Nuevo (2023–2026)', priceM2Min: 2200, priceM2Max: 3500 },
-  { name: 'The Palms', zone: 'Punta Pacífica — Ciudad de Panamáá', zoneShort: 'The Palms / Punta Pacífica', investorType: 'patrimonial', minPrice: 350000, areaMin: 100, areaMax: 220, bedrooms: '1–3 rec.', capRateMin: 5.5, capRateMax: 7.0, vacancyDef: 5, rentSuggest: 2200, rentM2Min: 16, rentM2Max: 22, condominioMes: 380, appreciationDef: 4.5, appreciationNote: 'Punta Pacífica premium. Concepto resort urbano. 4–6% anual.', amenities: ['Piscinas resort', 'Yoga deck', 'Coworking', 'Gimnasio', 'BBQ tropical', 'Rooftop', 'Concierge'], construction: 'Moderno (2018–2024)', priceM2Min: 2800, priceM2Max: 4200 },
-  { name: 'Ventu', zone: 'Ciudad de Panamáá — Rentas Cortas (Airbnb)', zoneShort: 'Ventu / Rentas Cortas', investorType: 'patrimonial', minPrice: 180000, areaMin: 65, areaMax: 90, bedrooms: '1–2 rec.', capRateMin: 8.0, capRateMax: 12.0, vacancyDef: 20, rentSuggest: 2400, rentM2Min: 0, rentM2Max: 0, condominioMes: 250, appreciationDef: 4.5, appreciationNote: 'Único proyecto optimizado para Airbnb. 4–5% anual.', amenities: ['Diseño Airbnb optimizado', 'Administración hotelera', 'Pool deck', 'Coworking', 'Check-in automático', 'Seguridad 24/7'], construction: 'Nuevo (2023–2026)', priceM2Min: 2500, priceM2Max: 3500 },
+  // ── PROYECTO DE CIUDAD ──────────────────────────────────────
+  { name: 'Armonía', category: 'Proyecto de Ciudad', tipo: 'Residencia', zone: 'Bella Vista — Ciudad de Panamá', zoneShort: 'Armonía / Bella Vista', investorType: 'renta', entrega: 'F1 Inmediata · F2 Q2 2026 · F3 Q2 2028', minPrice: 181000, maxPrice: 235000, areaMin: 45, areaMax: 71, bedrooms: '1, 2 y 3 rec.', capRateMin: 6.0, capRateMax: 7.5, vacancyDef: 6, rentSuggest: 1100, rentM2Min: 12, rentM2Max: 16, condominioMes: 220, appreciationDef: 4.0, appreciationNote: 'Bella Vista es uno de los corredores más demandados de Ciudad de Panamá. Valorización 4–6% anual. F1 con entrega inmediata ofrece plusvalía desde el primer día.', amenities: ['Piscina y área social', 'Gimnasio moderno', 'Lobby de diseño', 'Seguridad 24/7', 'Parqueo'], construction: 'Multi-fase · F1 entregada', priceM2Min: 2550, priceM2Max: 3300 },
+  { name: 'Ventu', category: 'Proyecto de Ciudad', tipo: 'Hotelero', zone: 'Bella Vista — Ciudad de Panamá', zoneShort: 'Ventu / Bella Vista', investorType: 'patrimonial', entrega: 'Q2 2028', minPrice: 136000, maxPrice: 259000, areaMin: 40, areaMax: 63, bedrooms: '1 y 2 rec.', capRateMin: 8.0, capRateMax: 12.0, vacancyDef: 20, rentSuggest: 2400, rentM2Min: 0, rentM2Max: 0, condominioMes: 250, appreciationDef: 4.5, appreciationNote: 'Único proyecto hotelero optimizado para renta corta (Airbnb/Booking) en Bella Vista. Administración profesional incluida. 4–5% valorización anual.', amenities: ['Diseño Airbnb optimizado', 'Administración hotelera', 'Pool deck', 'Coworking', 'Check-in automático', 'Seguridad 24/7'], construction: 'En construcción (entrega Q2 2028)', priceM2Min: 2100, priceM2Max: 3200 },
+  { name: 'Ocena', category: 'Proyecto de Ciudad', tipo: 'Residencia', zone: 'Santa María — Ciudad de Panamá', zoneShort: 'Ocena / Santa María', investorType: 'patrimonial', entrega: 'Q4 2027', minPrice: 446000, maxPrice: 1200000, areaMin: 100, areaMax: 270, bedrooms: '2 y 3 rec.', capRateMin: 4.7, capRateMax: 6.0, vacancyDef: 4, rentSuggest: 3500, rentM2Min: 20, rentM2Max: 25, condominioMes: 550, appreciationDef: 5.0, appreciationNote: 'Única comunidad con golf Jack Nicklaus en Santa María. Demanda de ejecutivos y familias expat. 5–7% valorización anual.', amenities: ['Golf 18 hoyos Jack Nicklaus', 'Club House', 'Piscinas resort', 'Pickleball y tenis', 'Co-working', 'Wellness center', 'Concierge'], construction: 'En construcción (entrega Q4 2027)', priceM2Min: 3200, priceM2Max: 5000 },
+  { name: 'Ipanema', category: 'Proyecto de Ciudad', tipo: 'Residencia', zone: 'Costa Sur — Ciudad de Panamá', zoneShort: 'Ipanema / Costa Sur', investorType: 'disfrute', entrega: 'F1 Q1 2028 · F2 Q4 2028', minPrice: 283000, maxPrice: 519000, areaMin: 72, areaMax: 163, bedrooms: '1, 2 y 3 rec.', capRateMin: 6.0, capRateMax: 7.5, vacancyDef: 6, rentSuggest: 1600, rentM2Min: 12, rentM2Max: 18, condominioMes: 280, appreciationDef: 4.0, appreciationNote: 'Costa del Este es hub corporativo multinacional. Alta demanda de ejecutivos expat. 4–6% valorización anual.', amenities: ['Piscina con vista al mar', 'Gimnasio', 'Co-working', 'BBQ y lounge', 'Seguridad 24/7', 'Parque infantil'], construction: 'En construcción · F1 Q1 2028', priceM2Min: 2500, priceM2Max: 3800 },
+  { name: 'Bosco', category: 'Proyecto de Ciudad', tipo: 'Residencia', zone: 'Santa María — Ciudad de Panamá', zoneShort: 'Bosco / Santa María', investorType: 'patrimonial', entrega: '2030', minPrice: 474000, maxPrice: 1100000, areaMin: 100, areaMax: 296, bedrooms: '2, 3 y 4 rec.', capRateMin: 5.5, capRateMax: 7.2, vacancyDef: 5, rentSuggest: 2800, rentM2Min: 13, rentM2Max: 18, condominioMes: 420, appreciationDef: 4.5, appreciationNote: 'Santa María en consolidación definitiva. Proyecto de lujo con jardines botánicos. 4–6% valorización anual.', amenities: ['Jardines botánicos', 'Piscina natural', 'Gimnasio', 'Senderos de meditación', 'Áreas sociales', 'Seguridad 24/7'], construction: 'En preventa (entrega 2030)', priceM2Min: 2800, priceM2Max: 4200 },
+  { name: 'Panama Viejo Residence', category: 'Proyecto de Ciudad', tipo: 'Residencia', zone: 'Panamá Viejo — Ciudad de Panamá', zoneShort: 'Panama Viejo Residence', investorType: 'renta', entrega: 'ENTREGA INMEDIATA', minPrice: 160000, maxPrice: 182000, areaMin: 58, areaMax: 58, bedrooms: '2 rec.', capRateMin: 6.5, capRateMax: 8.0, vacancyDef: 6, rentSuggest: 950, rentM2Min: 10, rentM2Max: 14, condominioMes: 200, appreciationDef: 3.2, appreciationNote: 'Entrega inmediata con valorización consistente 3–5% anual impulsada por proximidad a Costa del Este.', amenities: ['Piscina y área social', 'Gimnasio', 'Coworking', 'Seguridad 24/7', 'Parque infantil'], construction: 'Entrega inmediata', priceM2Min: 2750, priceM2Max: 3140 },
+  // ── OCEAN REEF ISLANDS ──────────────────────────────────────
+  { name: 'The Palms', category: 'Ocean Reef Islands', tipo: 'Residencia', zone: 'Punta Pacífica — Ciudad de Panamá', zoneShort: 'The Palms / Punta Pacífica', investorType: 'patrimonial', entrega: 'ENTREGA INMEDIATA', minPrice: 1200000, maxPrice: 1400000, areaMin: 169, areaMax: 239, bedrooms: '2 rec.', capRateMin: 5.5, capRateMax: 7.0, vacancyDef: 4, rentSuggest: 5500, rentM2Min: 22, rentM2Max: 30, condominioMes: 700, appreciationDef: 5.5, appreciationNote: 'Isla artificial exclusiva con acceso a marina privada. Activo de mayor plusvalía del portafolio. 6–8% valorización anual.', amenities: ['Marina privada 180+ muelles', 'Yacht club', 'Piscinas infinity', 'Spa y wellness', 'Restaurantes', 'Beach club', 'Seguridad 24/7'], construction: 'Entrega inmediata', priceM2Min: 5020, priceM2Max: 5860 },
+  { name: 'Ocean Reef Park', category: 'Ocean Reef Islands', tipo: 'Residencia', zone: 'Punta Pacífica — Ciudad de Panamá', zoneShort: 'Ocean Reef Park / Punta Pacífica', investorType: 'patrimonial', entrega: 'Q2 2028', minPrice: 1700000, maxPrice: 2100000, areaMin: 491, areaMax: 569, bedrooms: '3 y 4 rec.', capRateMin: 5.0, capRateMax: 6.5, vacancyDef: 4, rentSuggest: 9000, rentM2Min: 18, rentM2Max: 25, condominioMes: 900, appreciationDef: 6.0, appreciationNote: 'La unidad de mayor tamaño y valor del portafolio. Acceso directo al Johns Hopkins. 6–9% valorización anual.', amenities: ['Marina privada', 'Yacht club', 'Piscinas infinity', 'Helipuerto', 'Spa y wellness', 'Restaurantes', 'Club privado'], construction: 'En construcción (entrega Q2 2028)', priceM2Min: 3460, priceM2Max: 3690 },
+  { name: 'O Club Residences', category: 'Ocean Reef Islands', tipo: 'Residencia', zone: 'Punta Pacífica — Ciudad de Panamá', zoneShort: 'O Club / Punta Pacífica', investorType: 'patrimonial', entrega: 'Q4 2027', minPrice: 1000000, maxPrice: 1400000, areaMin: 183, areaMax: 236, bedrooms: '2 rec.', capRateMin: 5.0, capRateMax: 6.5, vacancyDef: 4, rentSuggest: 5000, rentM2Min: 20, rentM2Max: 28, condominioMes: 750, appreciationDef: 5.5, appreciationNote: 'Isla artificial de Punta Pacífica. Acceso exclusivo a club privado y marina. 5–7% valorización.', amenities: ['Club privado O Club', 'Marina', 'Piscinas', 'Restaurantes', 'Spa', 'Seguridad 24/7'], construction: 'En construcción (entrega Q4 2027)', priceM2Min: 4230, priceM2Max: 5930 },
+  // ── PLAYA CARACOL ───────────────────────────────────────────
+  { name: 'Aires del Mar', category: 'Playa Caracol', tipo: 'Residencia', zone: 'Playa Caracol, Chame — Pacífico', zoneShort: 'Aires del Mar / Playa Caracol', investorType: 'renta', entrega: 'INMEDIATA · Q4 2026', minPrice: 143000, maxPrice: 207000, areaMin: 42, areaMax: 71, bedrooms: '2 y 3 rec.', capRateMin: 5.8, capRateMax: 7.8, vacancyDef: 11, rentSuggest: 950, rentM2Min: 9, rentM2Max: 13, condominioMes: 180, appreciationDef: 3.5, appreciationNote: 'Producto de entrada a Playa Caracol. Alta demanda vacacional de colombianos y panameños. 3.5–5% valorización.', amenities: ['Vista al océano Pacífico', 'Piscinas', 'Parques infantiles', 'Jardines', 'Seguridad 24/7'], construction: 'Entrega inmediata / Q4 2026', priceM2Min: 2010, priceM2Max: 2915 },
+  { name: 'The Tides', category: 'Playa Caracol', tipo: 'Residencia', zone: 'Playa Caracol, Chame — Pacífico', zoneShort: 'The Tides / Playa Caracol', investorType: 'disfrute', entrega: 'ENTREGA INMEDIATA', minPrice: 278000, maxPrice: 308000, areaMin: 99, areaMax: 99, bedrooms: '2 y 3 rec.', capRateMin: 5.5, capRateMax: 7.5, vacancyDef: 10, rentSuggest: 1500, rentM2Min: 10, rentM2Max: 16, condominioMes: 320, appreciationDef: 4.5, appreciationNote: 'Frente a playa de 1.2 km. Uno de los proyectos más nuevos en Playa Caracol. Valorización 4–6% anual.', amenities: ['1.2 km playa privada', 'Surf club', '3 piscinas', 'Restaurante y beach bar', 'Senderos naturales', 'Gimnasio', 'Seguridad 24/7'], construction: 'Entrega inmediata', priceM2Min: 2810, priceM2Max: 3110 },
+  { name: 'Brisas del Mar', category: 'Playa Caracol', tipo: 'Residencia', zone: 'Playa Caracol, Chame — Pacífico', zoneShort: 'Brisas del Mar / Playa Caracol', investorType: 'renta', entrega: 'ENTREGA INMEDIATA', minPrice: 276000, maxPrice: 332000, areaMin: 93, areaMax: 108, bedrooms: '2 y 3 rec.', capRateMin: 5.8, capRateMax: 7.5, vacancyDef: 10, rentSuggest: 1300, rentM2Min: 9, rentM2Max: 13, condominioMes: 260, appreciationDef: 4.0, appreciationNote: 'Entrega inmediata con flujo de renta activo desde el primer mes. Playa Caracol lidera valorización en el Pacífico.', amenities: ['Frente al mar', 'Piscina', 'BBQ', 'Área social', 'Seguridad 24/7', 'Parque infantil'], construction: 'Entrega inmediata', priceM2Min: 2555, priceM2Max: 3080 },
+  { name: 'Olas del Mar', category: 'Playa Caracol', tipo: 'Residencia', zone: 'Playa Caracol, Chame — Pacífico', zoneShort: 'Olas del Mar / Playa Caracol', investorType: 'renta', entrega: 'ENTREGA INMEDIATA', minPrice: 267000, maxPrice: 398000, areaMin: 69, areaMax: 97, bedrooms: '2 y 3 rec.', capRateMin: 6.0, capRateMax: 8.0, vacancyDef: 11, rentSuggest: 1050, rentM2Min: 8, rentM2Max: 12, condominioMes: 220, appreciationDef: 3.5, appreciationNote: 'Playa Caracol lidera valorización en el Pacífico panameño. Entrega inmediata. 4–6% anual en proyectos nuevos.', amenities: ['Piscina con vista al mar', 'Zona de BBQ', 'Área social', 'Seguridad 24/7', 'Parque infantil'], construction: 'Entrega inmediata', priceM2Min: 2750, priceM2Max: 3875 },
+  { name: 'Surfside', category: 'Playa Caracol', tipo: 'Residencia', zone: 'Playa Caracol, Chame — Pacífico', zoneShort: 'Surfside / Playa Caracol', investorType: 'disfrute', entrega: 'ENTREGA INMEDIATA', minPrice: 314000, maxPrice: 413000, areaMin: 81, areaMax: 107, bedrooms: '2 y 3 rec.', capRateMin: 5.8, capRateMax: 7.5, vacancyDef: 10, rentSuggest: 1400, rentM2Min: 10, rentM2Max: 14, condominioMes: 300, appreciationDef: 4.0, appreciationNote: 'Frente al mar con componente aparthotel. Renta vacacional activa desde entrega inmediata. 4–5% anual.', amenities: ['Playa privada', 'Piscinas y jacuzzi', 'Restaurante y bar', 'Surf lounge', 'Gimnasio', 'Seguridad 24/7'], construction: 'Entrega inmediata', priceM2Min: 2930, priceM2Max: 3860 },
+  { name: 'Beachwalk', category: 'Playa Caracol', tipo: 'Residencia', zone: 'Playa Caracol, Chame — Pacífico', zoneShort: 'Beachwalk / Playa Caracol', investorType: 'disfrute', entrega: 'Q1 2027', minPrice: 297000, maxPrice: 386000, areaMin: 85, areaMax: 97, bedrooms: '2 y 3 rec.', capRateMin: 5.5, capRateMax: 7.5, vacancyDef: 10, rentSuggest: 1300, rentM2Min: 9, rentM2Max: 14, condominioMes: 280, appreciationDef: 4.0, appreciationNote: 'Enfoque wellness frente al Pacífico. Entrega Q1 2027 — ventana de preventa activa. 4–5% valorización anual.', amenities: ['Frente al océano Pacífico', 'Wellness spa', 'Piscina paisajística', 'Gimnasio exterior', 'Yoga deck', 'BBQ', 'Seguridad 24/7'], construction: 'En construcción (entrega Q1 2027)', priceM2Min: 3060, priceM2Max: 3980 },
+  { name: 'Seashore', category: 'Playa Caracol', tipo: 'Residencia', zone: 'Playa Caracol, Chame — Pacífico', zoneShort: 'Seashore / Playa Caracol', investorType: 'renta', entrega: 'Q4 2027', minPrice: 290000, maxPrice: 490000, areaMin: 84, areaMax: 150, bedrooms: '2 y 3 rec.', capRateMin: 5.8, capRateMax: 7.5, vacancyDef: 10, rentSuggest: 1350, rentM2Min: 9, rentM2Max: 13, condominioMes: 270, appreciationDef: 4.0, appreciationNote: 'Amplio rango de área permite diversificación. Entrega Q4 2027. Valorización esperada 4–5% anual.', amenities: ['Vista al Pacífico', 'Piscina', 'Área social y BBQ', 'Gimnasio', 'Seguridad 24/7'], construction: 'En construcción (entrega Q4 2027)', priceM2Min: 2440, priceM2Max: 3870 },
+  { name: 'Seashore Reserve', category: 'Playa Caracol', tipo: 'Residencia', zone: 'Playa Caracol, Chame — Pacífico', zoneShort: 'Seashore Reserve / Playa Caracol', investorType: 'renta', entrega: 'Q4 2028', minPrice: 290000, maxPrice: 490000, areaMin: 84, areaMax: 150, bedrooms: '2 y 3 rec.', capRateMin: 5.5, capRateMax: 7.5, vacancyDef: 10, rentSuggest: 1350, rentM2Min: 9, rentM2Max: 13, condominioMes: 270, appreciationDef: 4.5, appreciationNote: 'Versión Reserve con acabados superiores. Mayor plusvalía por preventa larga. 4.5–6% valorización anual.', amenities: ['Vista Pacífico reservada', 'Club de playa', 'Piscinas', 'Wellness area', 'Seguridad 24/7'], construction: 'En preventa (entrega Q4 2028)', priceM2Min: 2440, priceM2Max: 3870 },
 ];
 
 // ── ZONE FOOTNOTES HELPER ─────────────────────────────────────
@@ -77,9 +127,9 @@ const getZoneNotes = (zone: string) => {
 
 // ── INVESTOR PROFILES ─────────────────────────────────────────
 const INVESTOR_PROFILES = [
-  { id: 'renta', label: '💰 Renta', desc: 'Flujo de caja máximo en USD', color: T.palm, projects: ['Panamáa Viejo Residences', 'Bayside Resort Panamáá', 'Playa Dorada', 'Ocean Front', 'Olas del Mar', 'Aires del Mar – Playa Caracol'] },
-  { id: 'disfrute', label: '🏖️ Disfrute', desc: 'Segunda residencia con renta', color: T.sky, projects: ['The Tides – Playa Caracol', 'Surfside', 'BeachWalk Resort Playa Caracol', 'Ipanema Panamáá'] },
-  { id: 'patrimonial', label: '🛡️ Patrimonial', desc: 'Plusvalía y preservación de capital', color: T.coral, projects: ['Ocean Reef Park', 'Oceana Residences & Skyhomes', 'Bosco di Santa María', 'The Palms', 'Ventu'] },
+  { id: 'renta', label: 'Renta', desc: 'Flujo de caja máximo en USD', color: T.palm, projects: ['Panama Viejo Residence', 'Armonía', 'Aires del Mar', 'Brisas del Mar', 'Olas del Mar', 'Seashore', 'Seashore Reserve'] },
+  { id: 'disfrute', label: 'Disfrute', desc: 'Segunda residencia con renta', color: T.sky, projects: ['The Tides', 'Surfside', 'Beachwalk', 'Ipanema'] },
+  { id: 'patrimonial', label: 'Patrimonial', desc: 'Plusvalía y preservación de capital', color: T.coral, projects: ['Ocean Reef Park', 'O Club Residences', 'The Palms', 'Bosco', 'Ocena', 'Ventu'] },
 ];
 
 // ── PROJECT IMAGES MAP ────────────────────────────────────────
@@ -169,6 +219,83 @@ export type AgentDraft = {
   content: string;
   type: string;
   status: 'pending' | 'approved' | 'active';
+  canal?: string;
+  asunto?: string;
+  contexto?: string;
+  tags?: string[];
+  aprobado_por?: string;
+  fecha_aprobacion?: string;
+  notas_admin?: string;
+};
+
+type GlpBrandProfile = {
+  audiencias: string[];
+  tonos: string[];
+  objetivos: string[];
+  objeciones: string[];
+  activos_visuales: string[];
+  diferenciadores: string[];
+  hashtags_instagram: string[];
+  hashtags_linkedin: string[];
+  hashtags_whatsapp: string[];
+  cta_principal: string;
+  propuesta_valor: string;
+  notas_adicionales: string;
+};
+
+const DEFAULT_BRAND_PROFILE: GlpBrandProfile = {
+  audiencias: [
+    'Colombianos 35-55 años con capital disponible ($50K-$500K USD)',
+    'Empresarios e independientes que buscan dolarizar patrimonio',
+    'Inversionistas con experiencia en finca raíz local buscando diversificar',
+    'Profesionales jóvenes 28-38 aspiracionales (primera inversión internacional)',
+  ],
+  tonos: [
+    'Experto y sólido en lo financiero (datos duros, % reales, cifras)',
+    'Aspiracional y visual en el gancho (imágenes mentales de vida y libertad)',
+    'Directo y sin adornos — confianza sin arrogancia',
+    'Sofisticado pero accesible — no corporativo genérico',
+  ],
+  objetivos: [
+    'Construir autoridad y confianza antes de vender',
+    'Generar leads directos (DM / link en bio / formulario)',
+    'Nutrir prospectos ya en el CRM (top-of-mind)',
+    'Rebatir objeciones sin mencionarlas directamente',
+  ],
+  objeciones: [
+    '¿Es seguro llevar plata a otro país? → Panamá dolarizado, banca top-10 mundial, Ley de Exención Predial',
+    '¿Cómo lo manejo con la DIAN? → Activos en el exterior son legales y declarables; GLP asesora',
+    '¿Y si el proyecto no se entrega? → Solo constructores con historial verificado y fiducia de garantía',
+    '¿Puedo usarlo o es solo para arrendar? → Doble beneficio: uso propio + renta garantizada',
+  ],
+  activos_visuales: [
+    'Renders y fotos profesionales de proyectos (Ocean Reef Park, Ventu, Santa María, Playa Caracol)',
+    'Video drone de zonas: Punta Pacífica, Costa del Este, Playa Caracol',
+    'Fotos del equipo en eventos y reuniones con clientes',
+    'Infografías de rentabilidad y comparativas de mercado',
+  ],
+  diferenciadores: [
+    'Exención predial por 20 años en todos los proyectos nuevos',
+    'Rentabilidad neta superior al 8% anual en USD',
+    'Panamá dolarizado — sin riesgo cambiario',
+    'GLP solo trabaja proyectos con fiducia de garantía',
+    'Asesoría integral: desde selección hasta declaración en Colombia',
+  ],
+  hashtags_instagram: [
+    '#GLP', '#PanamaRealEstate', '#InversionInmobiliaria', '#DolarizaTuPatrimonio',
+    '#PanamáInversión', '#WealthManagement', '#InversionEnDolares', '#GlpWealthManagement',
+    '#OceanReefPark', '#VentuPanama', '#PuntaPacifica', '#CostaDelEste',
+    '#LibertadFinanciera', '#InvierteEnPanama', '#PatrimonioEnDolares',
+  ],
+  hashtags_linkedin: [
+    '#InversionInmobiliaria', '#WealthManagement', '#PanamaRealEstate', '#GLP',
+    '#PatrimonioDolarizado', '#RealEstatePanama', '#InversionInternacional',
+    '#FinanzasPersonales', '#Inmobiliaria', '#InversionInteligente',
+  ],
+  hashtags_whatsapp: [],
+  cta_principal: 'Escríbenos PANAMÁ al DM y te enviamos el análisis completo de rentabilidad',
+  propuesta_valor: 'GLP Wealth Management conecta a inversionistas colombianos con los mejores proyectos inmobiliarios de Panamá: rentabilidad en dólares, exención predial por 20 años y acompañamiento integral desde la compra hasta la declaración tributaria en Colombia.',
+  notas_adicionales: '',
 };
 
 type HistEntry = { fecha: string; accion: string; detalle: string };
@@ -400,15 +527,15 @@ const INITIAL_FAQS: FAQ[] = [
 // ── MODULE DEFINITIONS ────────────────────────────────────────
 const MODULES = [
   { id: 'portafolio', label: 'Portafolio GLP' },
+  { id: 'catalogo', label: 'Carga de Catálogo de Proyectos' },
   { id: 'kpis', label: 'Dashboard KPIs' },
   { id: 'brokers', label: 'Brokers' },
   { id: 'prospectos', label: 'Prospectos' },
   { id: 'eventos', label: 'Presupuesto Eventos' },
   { id: 'agentes', label: 'Agentes IA' },
   { id: 'faqs', label: 'FAQs' },
-  { id: 'calculadora', label: 'Calculadora ROI' },
-  { id: 'backups', label: 'Backups y Restauración' },
-  { id: 'acceso', label: 'Clave y Seguridad' },
+  { id: 'calculadora', label: 'Calculadora Inmobiliaria' },
+  { id: 'configuracion', label: 'Configuración' },
 ];
 
 const getAdminUsers = () => {
@@ -519,7 +646,22 @@ export default function CRMDashboard() {
   // Portafolio
   const [portFilter, setPortFilter] = useState('all');
   const [expandedProject, setExpandedProject] = useState<string | null>(null);
+  const [projectImageOverrides, setProjectImageOverrides] = useState<Record<string, string>>({});
+  const [uploadingProject, setUploadingProject] = useState<string | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
   const [crmLightboxImg, setCrmLightboxImg] = useState<string | null>(null);
+  const [editableProjects, setEditableProjects] = useState<ProjectData[]>(PROJECTS);
+  const [commissionEntities, setCommissionEntities] = useState<{name:string;pct:number}[]>([
+    { name: 'Colombia Tax Law Group', pct: 1 },
+    { name: 'Grupo Valverde', pct: 1 },
+    { name: 'Capital Brokers', pct: 1 },
+    { name: 'Red de Brokers (distribuible)', pct: 2 },
+  ]);
+  const [editingProject, setEditingProject] = useState<string | null>(null);
+
+  const updateProject = (name: string, field: keyof ProjectData, value: any) => {
+    setEditableProjects(prev => prev.map(p => p.name === name ? { ...p, [field]: value } : p));
+  };
 
   // KPIs
   const [kpiPresupuestoEjecutado, setKpiPresupuestoEjecutado] = useState(68000);
@@ -549,6 +691,7 @@ export default function CRMDashboard() {
   const [brokerDrilldown, setBrokerDrilldown] = useState<number | null>(null);
   const [brokerEntityFilter, setBrokerEntityFilter] = useState('all');
   const [brokerFilters, setBrokerFilters] = useState({ nombre: '', empresa: '', zona: '' });
+  const [brokerSort, setBrokerSort] = useState<{ field: string; dir: 'asc' | 'desc' }>({ field: 'nombre', dir: 'asc' });
   const [reportTarget, setReportTarget] = useState('all');
   const [newBroker, setNewBroker] = useState({ nombre: '', empresa: '', zona: '', telefono: '', email: '' });
 
@@ -673,24 +816,48 @@ export default function CRMDashboard() {
     fetch('http://localhost:3001/api/prospectos')
       .then(res => res.json())
       .then(data => {
-        if (Array.isArray(data)) setProspects(applyMigration(data));
+        if (Array.isArray(data)) {
+          setProspects(data.map((p: any) => ({
+            ...p,
+            emailHistory: p.emailHistory || [],
+            estado: FUNNEL_STAGES.includes(p.estado) ? p.estado : 'Contacto Inicial',
+            proyectos_interes: Array.isArray(p.proyectos_interes) ? p.proyectos_interes : (typeof p.proyectos_interes === 'string' ? JSON.parse(p.proyectos_interes || '[]') : []),
+            historial: Array.isArray(p.historial) ? p.historial : (typeof p.historial === 'string' ? JSON.parse(p.historial || '[]') : []),
+          })));
+        }
       })
       .catch(e => {
         console.error('Error fetching prospects:', e);
-        const saved = localStorage.getItem('glp_crm_prospects');
-        if (saved) {
-           try { setProspects(applyMigration(JSON.parse(saved))); } catch (err) { setProspects(applyMigration(INITIAL_PROSPECTS)); }
-        } else {
-           setProspects(applyMigration(INITIAL_PROSPECTS));
-        }
       });
   }, []);
 
   useEffect(() => {
-    if (prospects.length > 0) {
-      localStorage.setItem('glp_crm_prospects', JSON.stringify(prospects));
-    }
-  }, [prospects]);
+    fetch('http://localhost:3001/api/drafts')
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setApiDrafts(data); })
+      .catch(() => {});
+    fetch('http://localhost:3001/api/alerts')
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setProspectAlerts(data); })
+      .catch(() => {});
+    loadCrisisAlerts();
+  }, []);
+
+  const refreshAlerts = () => {
+    fetch('http://localhost:3001/api/alerts')
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setProspectAlerts(data); })
+      .catch(() => {});
+  };
+
+  const dismissAlert = (alertId: string) => {
+    fetch(`http://localhost:3001/api/alerts/${alertId}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'gestionada' })
+    }).then(() => setProspectAlerts(prev => prev.filter(a => a.id !== alertId)));
+  };
+
+  // localStorage desactivado — fuente de verdad es Supabase
 
   const postNewProspectBackend = (p: Prospect) => {
     fetch('http://localhost:3001/api/prospectos', {
@@ -728,6 +895,7 @@ export default function CRMDashboard() {
   const [prospectFilterBroker, setProspectFilterBroker] = useState('all');
   const [prospectFilterStage, setProspectFilterStage] = useState('all');
   const [prospectFilterProject, setProspectFilterProject] = useState('all');
+  const [prospectSort, setProspectSort] = useState<{ field: string; dir: 'asc' | 'desc' }>({ field: 'fecha_entrada', dir: 'desc' });
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [previousModule, setPreviousModule] = useState<string | null>(null);
   const [prospectViewMode, setProspectViewMode] = useState<'embudo' | 'lista'>('embudo');
@@ -763,16 +931,17 @@ export default function CRMDashboard() {
   const [calcTasaHip, setCalcTasaHip] = useState(8.5);
   const [calcPlazo, setCalcPlazo] = useState(20);
   const [calcRentaM2, setCalcRentaM2] = useState(12);
-  const [calcFeePM, setCalcFeePM] = useState(10);
+  const [calcFeePM, setCalcFeePM] = useState(10);          // % sobre renta efectiva
+  const [calcFeePMFixed, setCalcFeePMFixed] = useState(0);  // $ mensual fijo (sincronizado con %)
+  const [calcValorFiscal, setCalcValorFiscal] = useState(0); // valor fiscal; 0 = usar 70% del comercial
   const [calcAdmin, setCalcAdmin] = useState(0);
-  const [calcPredial, setCalcPredial] = useState(0);
+  const [calcPredial, setCalcPredial] = useState(1);         // % sobre valor fiscal
   const [calcCondominio, setCalcCondominio] = useState(0);
   const [calcVacancia, setCalcVacancia] = useState(8);
   const [calcValorizacion, setCalcValorizacion] = useState(1);
-  const [calcHorizonte, setCalcHorizonte] = useState(15);
   const [calcVender, setCalcVender] = useState(false);
   const [calcVenderAnio, setCalcVenderAnio] = useState(5);
-  const [calcSeguro, setCalcSeguro] = useState(0.1);
+  const [calcSeguro, setCalcSeguro] = useState(0.3);         // % sobre valor fiscal
   const [calcMantenimiento, setCalcMantenimiento] = useState(0);
 
   // ── AGENTS STATE ────────────────────────────────────────────
@@ -805,9 +974,259 @@ export default function CRMDashboard() {
     return 'sk-gpt-4o-mini-always-on';
   });
   const [showOpenaiConfig, setShowOpenaiConfig] = useState(false);
-  const [isabellaScripts, setIsabellaScripts] = useState<AgentDraft[]>([
-    { id: 'is_1', date: new Date().toISOString().split('T')[0], type: 'Video Script', status: 'pending', content: 'Hola inversores, soy Isabella. Hoy quiero explicarles cómo funciona el escudo fiscal en bienes raíces panameños. Básicamente, si compras un apartamento de nueva construcción...' }
-  ]);
+  const [apiDrafts, setApiDrafts] = useState<Array<{id:string;destinatario:string;project:string;subject:string;body:string;status:string;created_at:string;prioridad?:string}>>([]);
+  const [prospectAlerts, setProspectAlerts] = useState<Array<{
+    id:string; prospecto_id:number; nivel:string; motivo:string;
+    dias_sin_actividad:number; tareas:any[]; borrador_asunto:string;
+    borrador_cuerpo:string; status:string; created_at:string;
+    nombre:string; apellido:string; correo:string; etapa:string;
+    proyectos_interes:any; presupuesto_usd:number;
+  }>>([]);
+  const [isabellaScripts, setIsabellaScripts] = useState<AgentDraft[]>([]);
+
+  // ── CAMILO INSIGHTS ─────────────────────────────────────────
+  const [camiloInsights, setCamiloInsights] = useState<{
+    id: string; fecha: string; tipo: 'mercado' | 'crisis' | 'oportunidad' | 'audiencia';
+    titulo: string; resumen: string; datos: string; fuentes: string[];
+    impacto: 'alto' | 'medio' | 'bajo'; status: 'nuevo' | 'revisado' | 'aplicado';
+    aplicado_por?: string[];
+  }[]>([]);
+  const [camiloMode, setCamiloMode] = useState<'prospectos' | 'research'>('research');
+
+  // ── WORKFLOW CROSS-AGENT ─────────────────────────────────────
+  const [workflowTasks, setWorkflowTasks] = useState<{
+    id: string; fecha: string;
+    from: string; to: string;
+    tipo: string; titulo: string; contenido: string;
+    status: 'pendiente' | 'en_revision' | 'aprobado' | 'rechazado' | 'completado';
+    prioridad: 'alta' | 'media' | 'baja';
+    ref_id?: string;
+  }[]>([]);
+  const [workflowTab, setWorkflowTab] = useState<'pendiente' | 'completado'>('pendiente');
+
+  // ── CRISIS ALERTS ────────────────────────────────────────────
+  type CrisisAlert = {
+    id: string; tenant_id: string;
+    tipo: 'prospectos_nuevos' | 'estancamiento' | 'valor_pipeline';
+    nivel: 'leve' | 'moderada' | 'grave';
+    titulo: string; descripcion: string;
+    metrica_actual: number; metrica_baseline: number; variacion_pct: number;
+    status: 'nueva' | 'notificada' | 'en_contingencia' | 'resuelta' | 'descartada';
+    campana_generada: boolean;
+    created_at: string; updated_at: string;
+  };
+  const [crisisAlerts, setCrisisAlerts] = useState<CrisisAlert[]>([]);
+  const [crisisLoading, setCrisisLoading] = useState(false);
+  const [crisisDetecting, setCrisisDetecting] = useState(false);
+
+  // ── BROKER OBJECTIONS ────────────────────────────────────────
+  type BrokerObjection = {
+    id: string; broker: string; prospecto?: string;
+    tipo: 'peso_dolar'|'dian'|'competencia'|'entrega'|'precio'|'otro';
+    descripcion: string; canal: string; proyecto?: string; created_at: string;
+  };
+  const OBJECTION_TIPOS: {value: BrokerObjection['tipo']; label: string; icon: string}[] = [
+    { value: 'peso_dolar',   label: 'Peso/Dólar (tasa de cambio)',      icon: '💱' },
+    { value: 'dian',         label: 'DIAN / Impuestos Colombia',         icon: '🏛' },
+    { value: 'competencia',  label: 'Competencia (CR, Portugal, Miami)', icon: '🏆' },
+    { value: 'entrega',      label: 'Dudas de entrega / construcción',   icon: '🏗' },
+    { value: 'precio',       label: 'Precio / Presupuesto',              icon: '💰' },
+    { value: 'otro',         label: 'Otra objeción',                     icon: '💬' },
+  ];
+  const [objections, setObjections] = useState<BrokerObjection[]>([]);
+  const [objStats, setObjStats] = useState<{tipo:string;total:number;ultimos_7d:number}[]>([]);
+  const [objLoading, setObjLoading] = useState(false);
+  const [objForm, setObjForm] = useState({ broker:'', prospecto:'', tipo:'peso_dolar' as BrokerObjection['tipo'], descripcion:'', canal:'llamada', proyecto:'' });
+  const [objSaving, setObjSaving] = useState(false);
+  const [objSuccess, setObjSuccess] = useState(false);
+
+  const loadObjections = async () => {
+    setObjLoading(true);
+    try {
+      const [r1, r2] = await Promise.all([
+        fetch('http://localhost:3001/api/broker-objections').then(r=>r.json()),
+        fetch('http://localhost:3001/api/broker-objections/stats').then(r=>r.json()),
+      ]);
+      setObjections(Array.isArray(r1) ? r1 : []);
+      setObjStats(Array.isArray(r2) ? r2 : []);
+    } catch { } finally { setObjLoading(false); }
+  };
+
+  const submitObjection = async () => {
+    if (!objForm.broker || !objForm.descripcion) return;
+    setObjSaving(true);
+    try {
+      await fetch('http://localhost:3001/api/broker-objections', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(objForm),
+      });
+      setObjForm({ broker:'', prospecto:'', tipo:'peso_dolar', descripcion:'', canal:'llamada', proyecto:'' });
+      setObjSuccess(true);
+      setTimeout(() => setObjSuccess(false), 3000);
+      await loadObjections();
+    } catch { } finally { setObjSaving(false); }
+  };
+
+  const loadCrisisAlerts = async () => {
+    setCrisisLoading(true);
+    try {
+      const r = await fetch('http://localhost:3001/api/crisis-alerts');
+      const data = await r.json();
+      setCrisisAlerts(Array.isArray(data) ? data : []);
+    } catch { /* silencioso */ } finally { setCrisisLoading(false); }
+  };
+
+  const updateCrisisStatus = async (id: string, status: string) => {
+    await fetch(`http://localhost:3001/api/crisis-alerts/${id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    setCrisisAlerts(prev => prev.map(a => a.id === id ? { ...a, status: status as CrisisAlert['status'] } : a));
+  };
+
+  const triggerCrisisDetect = async () => {
+    setCrisisDetecting(true);
+    try {
+      const r = await fetch('http://localhost:3001/api/crisis/detect', { method: 'POST' });
+      const data = await r.json();
+      await loadCrisisAlerts();
+      if (data.alertas_creadas === 0) alert('✅ KPIs dentro de rangos normales. Sin alertas nuevas.');
+      else alert(`🚨 ${data.alertas_creadas} alerta(s) de crisis detectada(s).`);
+    } catch { alert('Error ejecutando detección'); } finally { setCrisisDetecting(false); }
+  };
+
+  const addWorkflowTask = (task: Omit<typeof workflowTasks[0], 'id' | 'fecha'>) => {
+    setWorkflowTasks(prev => [{
+      ...task, id: `wf-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, fecha: today()
+    }, ...prev]);
+  };
+
+  // ── CAMILO PANEL STATE ───────────────────────────────────────
+  const [camiloTab, setCamiloTab] = useState<'insights'|'ranking'|'radar'|'objeciones'|'reporte'>('insights');
+  const [expandedInsight, setExpandedInsight] = useState<string|null>(null);
+  const [marketReport, setMarketReport] = useState<{texto:string;fecha:string}|null>(null);
+  const [radarData, setRadarData] = useState<{titulo:string;descripcion:string;argumentos:string[];precio_ref?:string}[]>([]);
+  const [generatingReport, setGeneratingReport] = useState(false);
+  const [generatingRadar, setGeneratingRadar] = useState(false);
+  const [sendingReport, setSendingReport] = useState(false);
+
+  // Aprobar insight → crear tareas en workflow
+  const approveInsight = (ins: typeof camiloInsights[0]) => {
+    setCamiloInsights(prev => prev.map(i => i.id === ins.id ? { ...i, status: 'revisado' as const } : i));
+    const prioridad = ins.impacto === 'alto' ? 'alta' : ins.impacto === 'medio' ? 'media' : 'baja';
+    if ((ins as any).acciones_valeria) addWorkflowTask({ from:'CAMILO', to:'VALERIA', tipo:`Insight ${ins.tipo}`, titulo:`📊 ${ins.titulo}`, contenido:`DATOS:\n${ins.datos}\n\n➡️ TAREA PARA VALERIA:\n${(ins as any).acciones_valeria}`, status:'pendiente', prioridad, ref_id:ins.id });
+    if ((ins as any).acciones_isabella) addWorkflowTask({ from:'CAMILO', to:'ISABELLA', tipo:`Video ${ins.tipo}`, titulo:`🎬 ${ins.titulo}`, contenido:`DATOS:\n${ins.datos}\n\n➡️ TAREA PARA ISABELLA:\n${(ins as any).acciones_isabella}`, status:'pendiente', prioridad, ref_id:ins.id });
+    if ((ins as any).acciones_sara) addWorkflowTask({ from:'CAMILO', to:'SARA', tipo:'FAQ / Respuesta', titulo:`💬 ${ins.titulo}`, contenido:`DATOS:\n${ins.datos}\n\n➡️ TAREA PARA SARA:\n${(ins as any).acciones_sara}`, status:'pendiente', prioridad:'media', ref_id:ins.id });
+  };
+  const rejectInsight = (id: string) => setCamiloInsights(prev => prev.map(i => i.id === id ? { ...i, status: 'aplicado' as const } : i));
+
+  // Score de conversión: (presupuesto normalizado 40%) + (etapa avanzada 35%) + (actividad reciente 15%) + (interés multi-proyecto 10%)
+  const getProspectScore = (p: Prospect) => {
+    const maxBudget = Math.max(...prospects.map(x => x.presupuesto_usd || 0), 1);
+    const budgetScore = ((p.presupuesto_usd || 0) / maxBudget) * 40;
+    const stageScores: Record<string,number> = { 'Contacto Inicial':5,'Calificación':15,'Presentación':25,'Negociación':30,'Cierre':35,'Post-venta':35 };
+    const stageScore = stageScores[p.estado] || 5;
+    const lastActivity = new Date(p.fecha_ultima_actividad || p.fecha_registro || Date.now());
+    const daysSince = Math.floor((Date.now() - lastActivity.getTime()) / 86400000);
+    const activityScore = Math.max(0, 15 - daysSince * 1.5);
+    const projectScore = Array.isArray(p.proyectos_interes) && p.proyectos_interes.length > 1 ? 10 : 5;
+    return Math.min(99, Math.round(budgetScore + stageScore + activityScore + projectScore));
+  };
+
+  // Días estimados para cierre según etapa
+  const getTimingDays = (p: Prospect) => {
+    const base: Record<string,number> = { 'Contacto Inicial':45,'Calificación':30,'Presentación':21,'Negociación':10,'Cierre':3,'Post-venta':0 };
+    const days = base[p.estado] || 30;
+    const lastActivity = new Date(p.fecha_ultima_actividad || p.fecha_registro || Date.now());
+    const stale = Math.floor((Date.now() - lastActivity.getTime()) / 86400000);
+    return days + Math.floor(stale * 0.5);
+  };
+
+  const generateMarketReport = async () => {
+    setGeneratingReport(true);
+    try {
+      const kpiSummary = `Prospectos: ${prospects.length}, en Negociación/Cierre: ${prospects.filter(p=>['Negociación','Cierre'].includes(p.estado)).length}, presupuesto promedio $${prospects.length>0?Math.round(prospects.reduce((s,p)=>s+(p.presupuesto_usd||0),0)/prospects.length).toLocaleString():0} USD`;
+      const objSummary = objStats.map(s=>`${s.tipo}: ${s.total} reportes (${s.ultimos_7d} esta semana)`).join(', ') || 'Sin objeciones registradas';
+      const prompt = `Eres Camilo, analista de mercado de GLP Wealth Management Panamá.
+
+Genera el REPORTE SEMANAL DE COLOR DEL MERCADO para la semana del ${today()}.
+
+CONTEXTO INTERNO GLP:
+- ${kpiSummary}
+- Objeciones de brokers: ${objSummary}
+
+El reporte debe cubrir:
+1. PANORAMA MACRO (economía panameña, tipo de cambio USD/COP, condiciones de crédito)
+2. MERCADO INMOBILIARIO PANAMÁ (tendencias de precios, zonas activas, demanda extranjera)
+3. COMPETENCIA (proyectos activos en Costa Rica, Portugal, Miami, otras opciones de panamá)
+4. SEÑALES DE RIESGO (lo que podría frenar ventas esta semana)
+5. OPORTUNIDADES (lo que el equipo debería aprovechar esta semana)
+6. RECOMENDACIÓN TÁCTICA (una acción concreta que el equipo comercial puede tomar HOY)
+
+Formato: texto profesional, párrafos cortos, en español. Máximo 600 palabras. Tono de analista senior, no genérico.`;
+
+      const texto = await triggerOpenAI(prompt, 'Eres Camilo, analista de mercado inmobiliario y financiero para Panamá y Colombia, 2025-2026.', 1500);
+      const report = { texto, fecha: today() };
+      setMarketReport(report);
+
+      // Guardar en Supabase como contexto global
+      await fetch('http://localhost:3001/api/settings/market-report', {
+        method: 'PUT', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(report)
+      }).catch(()=>{}); // silencioso si falla
+    } catch(e:any) {
+      alert('Error generando reporte: ' + e.message);
+    } finally { setGeneratingReport(false); }
+  };
+
+  const generateRadar = async () => {
+    setGeneratingRadar(true);
+    try {
+      const prompt = `Eres Camilo, analista competitivo de GLP Wealth Management.
+
+Genera un RADAR DE COMPETENCIA actualizado para la semana del ${today()}.
+Analiza los principales destinos que compiten con GLP Panamá para inversores colombianos:
+1. Costa Rica (proyectos de playa, Guanacaste, Jacó)
+2. Portugal (Golden Visa, Lisboa, Algarve)
+3. Miami/Orlando (Florida, condominios, inversión en USD)
+4. Otros proyectos en Panamá (Ciudad de Panamá, Coronado, Chiriquí)
+
+Para cada competidor devuelve un JSON array con esta estructura EXACTA:
+[
+  {
+    "titulo": "nombre del destino/competidor",
+    "descripcion": "situación actual en 2 oraciones",
+    "precio_ref": "rango de precios típico en USD",
+    "argumentos": ["argumento GLP que lo supera 1", "argumento GLP que lo supera 2", "argumento GLP que lo supera 3"]
+  }
+]
+
+Sin markdown, solo el JSON array.`;
+
+      const res = await triggerOpenAI(prompt, 'Eres Camilo, analista competitivo inmobiliario LatAm 2025-2026.', 1200);
+      const clean = res.replace(/```json/g,'').replace(/```/g,'').trim();
+      const data = JSON.parse(clean);
+      setRadarData(Array.isArray(data) ? data : []);
+    } catch(e:any) {
+      alert('Error generando radar: ' + e.message);
+    } finally { setGeneratingRadar(false); }
+  };
+
+  const sendReportEmail = async () => {
+    if (!marketReport) return;
+    setSendingReport(true);
+    try {
+      await fetch('http://localhost:3001/api/email/send', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          to: 'armandohortua@gmail.com',
+          subject: `📊 Reporte Semanal de Mercado GLP — ${marketReport.fecha}`,
+          body: marketReport.texto,
+        })
+      });
+      alert('✅ Reporte enviado por correo.');
+    } catch { alert('Error enviando correo'); } finally { setSendingReport(false); }
+  };
   const [saraReportText, setSaraReportText] = useState(
     'REPORTE DE CONTINGENCIA DE MERCADO - GLP PANAMÁ\n' +
     'Generado por: Sara (Customer Success)\n' +
@@ -825,10 +1244,62 @@ export default function CRMDashboard() {
     'Roberto Castaño: Requiere confirmación de exención de impuesto de inmuebles.',
     'Laura Sánchez: Interés de compra en Playa Caracol requiere llamada de seguimiento.'
   ]);
-  const [valeriaDrafts, setValeriaDrafts] = useState<AgentDraft[]>([
-    { id: 'vd_1', date: new Date().toISOString().split('T')[0], type: 'LinkedIn Post', status: 'pending', content: '¿Sabías que el Real Estate en Panamá ofrece rendimientos netos superiores al 8% en USD? Descubre por qué Punta Pacífica sigue siendo la joya de Centroamérica. #GLP #PanamaRealEstate #Inversión' },
-    { id: 'vd_2', date: new Date().toISOString().split('T')[0], type: 'Newsletter', status: 'pending', content: 'Actualización Mensual GLP:\n\nEste mes destacamos 3 proyectos que han recibido la nueva certificación de exención de impuesto predial por 20 años. Descarga el reporte completo aquí.' }
-  ]);
+  const [valeriaDrafts, setValeriaDrafts] = useState<AgentDraft[]>([]);
+  const [valeriaGenerating, setValeriaGenerating] = useState(false);
+  const [valeriaSelectedCanal, setValeriaSelectedCanal] = useState<string>('Reel Instagram');
+  const [valeriaFilterCanal, setValeriaFilterCanal] = useState<string>('todos');
+  const [valeriaTab, setValeriaTab] = useState<'contenido' | 'perfil'>('contenido');
+  const [brandProfile, setBrandProfile] = useState<GlpBrandProfile>(DEFAULT_BRAND_PROFILE);
+  const [profileDirty, setProfileDirty] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+
+  // Cargar perfil desde Supabase al montar
+  useEffect(() => {
+    fetch('http://localhost:3001/api/brand-profile')
+      .then(r => r.json())
+      .then(data => {
+        if (data && typeof data === 'object') {
+          setBrandProfile({ ...DEFAULT_BRAND_PROFILE, ...data });
+        }
+      })
+      .catch(() => {
+        // fallback localStorage
+        try {
+          const saved = localStorage.getItem('glp_brand_profile');
+          if (saved) setBrandProfile({ ...DEFAULT_BRAND_PROFILE, ...JSON.parse(saved) });
+        } catch {}
+      });
+  }, []);
+
+  const updateProfile = (field: keyof GlpBrandProfile, value: any) => {
+    setBrandProfile(prev => ({ ...prev, [field]: value }));
+    setProfileDirty(true);
+  };
+
+  const saveProfile = async () => {
+    setProfileSaving(true);
+    try {
+      await fetch('http://localhost:3001/api/brand-profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(brandProfile)
+      });
+      localStorage.setItem('glp_brand_profile', JSON.stringify(brandProfile));
+      setProfileDirty(false);
+    } catch {
+      // Si falla el servidor, al menos guarda en localStorage
+      localStorage.setItem('glp_brand_profile', JSON.stringify(brandProfile));
+      setProfileDirty(false);
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const resetProfile = () => {
+    setBrandProfile(DEFAULT_BRAND_PROFILE);
+    localStorage.removeItem('glp_brand_profile');
+    setProfileDirty(false);
+  };
   const [crmProjSearchQuery, setCrmProjSearchQuery] = useState('');
   const [swarmRunning, setSwarmRunning] = useState(false);
   const [swarmStep, setSwarmStep] = useState<number | null>(null);
@@ -837,47 +1308,166 @@ export default function CRMDashboard() {
   ]);
 
   // ── OPENAI & INTERACTIVE AGENTS FUNCTIONS ──────────────────
-  const triggerOpenAI = async (prompt: string, systemPrompt: string): Promise<string> => {
-    if (!openaiKey.trim() || openaiKey.startsWith('sk-gpt-4o-mini-always-on')) {
-      throw new Error('Fallback simulación avanzada activa');
-    }
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const triggerOpenAI = async (prompt: string, systemPrompt: string, max_tokens?: number): Promise<string> => {
+    const response = await fetch('http://localhost:3001/api/ai', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openaiKey}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt }
         ],
-        temperature: 0.7
+        ...(max_tokens ? { max_tokens } : {})
       })
     });
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
-      throw new Error(err.error?.message || `Error del servidor (${response.status})`);
+      throw new Error(err.error || `Error del servidor (${response.status})`);
     }
     const data = await response.json();
     return data.choices[0].message.content || '';
   };
 
-  const handleCamilo = async (isSwarm = false, silent = false) => {
+  const handleCamilo = async (isSwarm = false, silent = false, modeOverride?: 'prospectos' | 'research') => {
     setAgentCamiloActive(true);
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const logMsg = (msg: string) => {
-      if (!silent) {
-        setSwarmLogs(prev => [...prev, { time: timeStr, agent: 'CAMILO', msg }]);
-      }
+      if (!silent) setSwarmLogs(prev => [...prev, { time: timeStr, agent: 'CAMILO', msg }]);
     };
 
+    const mode = modeOverride || camiloMode;
+
+    // ── MODO RESEARCH DE MERCADO ────────────────────────────
+    if (mode === 'research') {
+      logMsg('Camilo iniciando research de mercado e inteligencia competitiva...');
+
+      const kpiCtx = `
+KPIs actuales del dashboard GLP:
+- Prospectos activos: ${prospects.length}
+- En Negociación/Cierre: ${prospects.filter(p => ['Negociación','Cierre'].includes(p.estado)).length}
+- Presupuesto promedio: $${prospects.length > 0 ? Math.round(prospects.reduce((s,p) => s + (p.presupuesto_usd||0), 0) / prospects.length).toLocaleString() : 0} USD
+- Proyectos más solicitados: ${PROJECTS.slice(0,3).map(p=>p.name).join(', ')}
+- Alertas activas SARA: ${prospectAlerts.length}`;
+
+      const brandCtxSummary = `
+Audiencia GLP: ${brandProfile.audiencias.slice(0,2).join(' | ')}
+Objeciones frecuentes: ${brandProfile.objeciones.slice(0,3).map(o=>o.split('→')[0].trim()).join(' / ')}
+Diferenciadores: ${brandProfile.diferenciadores.slice(0,3).join(' · ')}`;
+
+      try {
+        logMsg('Conectando con OpenAI — generando inteligencia de mercado...');
+        const prompt = `Eres Camilo, Científico de Datos y Estratega de Inteligencia de Mercado de GLP Wealth Management.
+
+Tu misión: generar un reporte de inteligencia accionable que alimentará a los agentes SARA (respuestas), VALERIA (contenido) e ISABELLA (video).
+
+CONTEXTO OPERATIVO GLP:
+${kpiCtx}
+
+PERFIL DE MARCA Y AUDIENCIA:
+${brandCtxSummary}
+
+PORTAFOLIO ACTUAL:
+${PROJECTS.map(p=>`• ${p.name} (${p.zone}) desde $${p.minPrice?.toLocaleString()||'consultar'} USD`).join('\n')}
+
+Genera un reporte de inteligencia con EXACTAMENTE esta estructura JSON (sin markdown):
+{
+  "resumen_ejecutivo": "párrafo de 3-4 líneas con el estado del mercado ahora mismo",
+  "insights": [
+    {
+      "tipo": "mercado|crisis|oportunidad|audiencia",
+      "titulo": "título del insight (máx 10 palabras)",
+      "datos": "los datos concretos, cifras, tendencias — mínimo 150 palabras con datos reales de Panamá y Colombia 2024-2026",
+      "impacto": "alto|medio|bajo",
+      "acciones_sara": "qué debe hacer SARA con este insight (respuestas, FAQs a actualizar)",
+      "acciones_valeria": "qué contenido debe crear Valeria con este insight",
+      "acciones_isabella": "qué video debe crear Isabella con este insight",
+      "fuentes": ["fuente 1", "fuente 2"]
+    }
+  ],
+  "señales_crisis": "descripción de riesgos actuales para ventas GLP (tasa de cambio, competencia, mercado)",
+  "oportunidades_inmediatas": "top 3 oportunidades concretas para cerrar más negocios esta semana"
+}
+
+Genera 4-5 insights variados (mercado macro, oportunidad de proyecto, audiencia colombiana, señal de crisis/riesgo). Usa datos reales y actuales de Panamá y Colombia.`;
+
+        const res = await triggerOpenAI(prompt, 'Eres Camilo, analista de datos inmobiliarios con conocimiento profundo del mercado panameño y colombiano 2024-2026.', 3500);
+        const clean = res.replace(/```json/g,'').replace(/```/g,'').trim();
+        let parsed: any;
+        try {
+          parsed = JSON.parse(clean);
+        } catch {
+          // JSON truncado — intentar extraer los insights completos que sí cerraron
+          const insightsMatch = clean.match(/"insights"\s*:\s*(\[[\s\S]*)/);
+          if (insightsMatch) {
+            let arr = insightsMatch[1];
+            // Cerrar el array en el último objeto completo
+            const lastClose = arr.lastIndexOf('}');
+            arr = arr.slice(0, lastClose + 1) + ']';
+            try {
+              parsed = { insights: JSON.parse(arr), resumen_ejecutivo: '', señales_crisis: '', oportunidades_inmediatas: '' };
+            } catch {
+              throw new Error('Respuesta de OpenAI incompleta — intenta de nuevo');
+            }
+          } else {
+            throw new Error('Respuesta de OpenAI incompleta — intenta de nuevo');
+          }
+        }
+
+        // Guardar insights
+        const nuevosInsights = (parsed.insights || []).map((ins: any, i: number) => ({
+          id: `ci-${Date.now()}-${i}`,
+          fecha: today(),
+          tipo: ins.tipo || 'mercado',
+          titulo: ins.titulo,
+          resumen: ins.datos.slice(0, 120) + '...',
+          datos: ins.datos,
+          fuentes: ins.fuentes || [],
+          impacto: ins.impacto || 'medio',
+          status: 'nuevo' as const,
+          acciones_sara: ins.acciones_sara,
+          acciones_valeria: ins.acciones_valeria,
+          acciones_isabella: ins.acciones_isabella,
+        }));
+
+        setCamiloInsights(prev => [...nuevosInsights, ...prev]);
+
+        // Actualizar reporte SARA con el contexto de Camilo
+        setSaraReportText(
+          `REPORTE DE INTELIGENCIA — GLP PANAMÁ · ${today()}\nGenerado por: Camilo (Research & Data Intelligence)\n\n` +
+          `RESUMEN EJECUTIVO:\n${parsed.resumen_ejecutivo}\n\n` +
+          `SEÑALES DE RIESGO/CRISIS:\n${parsed.señales_crisis}\n\n` +
+          `OPORTUNIDADES INMEDIATAS:\n${parsed.oportunidades_inmediatas}\n\n` +
+          nuevosInsights.map((ins: any) => `[${ins.tipo.toUpperCase()}] ${ins.titulo}\n${ins.datos}`).join('\n\n')
+        );
+
+        // Los insights quedan en status 'nuevo' — el admin los aprueba desde la Bitácora
+        // para que se conviertan en tareas de workflow (ver approveInsight)
+        nuevosInsights.forEach((_ins: any) => {
+          if (false) {
+            addWorkflowTask({
+              from: 'CAMILO', to: 'SARA',
+              tipo: '', titulo: '', contenido: '', status: 'pendiente', prioridad: 'media',
+              ref_id: '',
+            });
+          }
+        });
+
+        setAgentCamiloLastRun(new Date().toLocaleString());
+        logMsg(`✅ Research completo — ${nuevosInsights.length} insights generados, tareas enviadas a Valeria, Isabella y Sara.`);
+      } catch (e: any) {
+        logMsg(`Error en research de Camilo: ${e.message}`);
+      } finally {
+        setAgentCamiloActive(false);
+      }
+      return;
+    }
+
+    // ── MODO PROSPECCIÓN ────────────────────────────────────
     logMsg('Iniciando rastreo de bases de datos de prospectos en Colombia...');
     
     try {
       let generatedProspects: any[] = [];
-      if (openaiKey.trim() && !openaiKey.startsWith('sk-gpt-4o-mini-always-on')) {
+      if (true) {
         logMsg('Conectando con la plataforma OpenAI para minería de datos...');
         const prompt = `Eres Camilo, Data Miner y Growth Hacker de la promotora GLP Panamáá. Genera 2 nuevos prospectos ficticios pero realistas con perfiles detallados de inversores colombianos premium (empresarios, médicos, C-level) interesados en los proyectos de Panamáá. Devuelve UN ARREGLO JSON EXACTAMENTE en el siguiente formato, sin bloques de código markdown, sin \`\`\`json, sin texto adicional:
 [{"nombre": "nombre", "apellido": "apellido", "direccion": "dirección en Colombia", "correo": "correo@dominio.com", "telefono": "+57 310...", "ocupacion": "ocupación de alto perfil", "proyectos_interes": ["proyectos aquí"], "forma_contacto": "Referido o Evento o Redes", "broker_asignado": "Patricia Vargas o Santiago Mesa", "presupuesto_usd": 300000, "notas": "notas de interés"}]
@@ -1075,87 +1665,510 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
   };
 
 
-  const handleValeria = async (isSwarm = false, silent = false, reportTextSrc?: string) => {
+  const handleValeria = async (isSwarm = false, silent = false, reportTextSrc?: string, canalOverride?: string) => {
     setAgentValeriaActive(true);
+    setValeriaGenerating(true);
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const logMsg = (msg: string) => {
-      if (!silent) {
-        setSwarmLogs(prev => [...prev, { time: timeStr, agent: 'VALERIA', msg }]);
-      }
+      if (!silent) setSwarmLogs(prev => [...prev, { time: timeStr, agent: 'VALERIA', msg }]);
     };
 
-    logMsg('Valeria redactando correos de ventas y contenido basados en el reporte de Sara...');
-    const srcText = reportTextSrc || saraReportText;
+    const canal = canalOverride || valeriaSelectedCanal;
+    logMsg(`Valeria preparando ${canal} con contexto real de proyectos y prospectos...`);
+
+    // Contexto real: catálogo de proyectos
+    const catalogoReal = PROJECTS.map(p =>
+      `• ${p.name} (${p.zone}) — desde $${p.minPrice?.toLocaleString() || 'consultar'} USD — ${p.tipo} — entrega ${p.entrega} — ${p.category}`
+    ).join('\n');
+
+    // Contexto real: prospectos activos con perfil
+    const prospectosActivos = prospects.slice(0, 5).map(p =>
+      `• ${p.nombre} ${p.apellido} — ${p.estado} — presupuesto $${p.presupuesto_usd?.toLocaleString() || 0} — interés: ${(p.proyectos_interes || []).join(', ') || 'general'}`
+    ).join('\n') || 'Sin prospectos activos aún.';
+
+    // Contexto de Sara (reporte si hay)
+    const saraCtx = reportTextSrc || saraReportText || 'Monitoreo activo de prospectos. Sin contingencias críticas actuales.';
+
+    // Contexto de marca dinámico — viene del perfil editable por el admin
+    const BRAND_CTX = `
+PROPUESTA DE VALOR GLP:
+${brandProfile.propuesta_valor}
+
+AUDIENCIAS OBJETIVO:
+${brandProfile.audiencias.map(a => `- ${a}`).join('\n')}
+
+TONO DE MARCA:
+${brandProfile.tonos.map(t => `- ${t}`).join('\n')}
+
+OBJETIVOS DEL CONTENIDO:
+${brandProfile.objetivos.map(o => `- ${o}`).join('\n')}
+
+DIFERENCIADORES CLAVE GLP:
+${brandProfile.diferenciadores.map(d => `- ${d}`).join('\n')}
+
+OBJECIONES A REBATIR (sin mencionarlas directamente, disueltas en el contenido):
+${brandProfile.objeciones.map(o => `- ${o}`).join('\n')}
+
+ACTIVOS VISUALES DISPONIBLES:
+${brandProfile.activos_visuales.map(a => `- ${a}`).join('\n')}
+
+HASHTAGS POR RED:
+- Instagram: ${brandProfile.hashtags_instagram.join(' ')}
+- LinkedIn: ${brandProfile.hashtags_linkedin.join(' ')}
+
+CTA PRINCIPAL: ${brandProfile.cta_principal}
+${brandProfile.notas_adicionales ? `\nNOTAS ADICIONALES DEL EQUIPO:\n${brandProfile.notas_adicionales}` : ''}
+`;
+
+    const toneByCanal: Record<string, string> = {
+      'LinkedIn Post': `
+Tono ejecutivo-financiero. Audiencia: directivos y empresarios colombianos.
+Estructura: dato impactante de apertura → desarrollo con contexto → CTA profesional.
+Máx 280 palabras. Incluye 4-6 hashtags estratégicos al final.
+Formato: texto plano, sin bullets excesivos, párrafos cortos.`,
+
+      'Newsletter': `
+Tono editorial premium. Estructura obligatoria:
+1. TITULAR (gancho emocional + dato financiero)
+2. CONTEXTO (por qué esto importa ahora para un colombiano)
+3. OPORTUNIDAD CONCRETA (proyecto específico con datos reales)
+4. DATO EXCLUSIVO (algo que no encuentran en Google)
+5. CTA (agendar llamada o descargar brochure)
+Máx 450 palabras. Incluir sección "Número de la semana" con dato financiero relevante.`,
+
+      'Email Masivo': `
+Asunto magnético (máx 8 palabras, que genere curiosidad o urgencia genuina).
+Cuerpo: personalizado con [NOMBRE]. Un dato de valor concreto. Un beneficio claro. Un CTA único.
+Máx 180 palabras. Sin múltiples CTAs. Sin listar proyectos — enfocarse en UN beneficio.`,
+
+      'Email Seguimiento': `
+Tono: asesor de confianza que recuerda al cliente.
+Referencia algo específico de la conversación anterior si es posible.
+Máx 120 palabras. Zero presión. Alta calidez. Cierre con pregunta abierta.`,
+
+      'Reel Instagram': `
+AUDIENCIA: Colombianos 35-55 que ya tienen capital pero no conocen Panamá como destino de inversión.
+OBJETIVO: Que el video genere guardados y compartidos, no solo likes.
+
+Estructura del guion (video 30-45 segundos):
+GANCHO (0-3s): Frase disruptiva que detenga el scroll. Debe hablar de dinero, Colombia o un miedo común.
+  - Ejemplos de ganchos que funcionan: "Lo que no te dijeron de sacar plata de Colombia", "8.5% de rentabilidad anual en dólares y no es crypto", "El impuesto predial que pagas vs el que NO pagas en Panamá"
+DESARROLLO (3-35s): 3 datos concretos presentados visualmente (texto en pantalla + voz en off)
+  - Dato 1: estadístico o comparativo (ej: "Mientras en Colombia el predial sube cada año, en Panamá es $0 por 20 años")
+  - Dato 2: del portafolio real (nombre de proyecto, precio de entrada, ubicación)
+  - Dato 3: beneficio aspiracional (uso propio + renta, dolarización, calidad de vida)
+CTA (35-45s): Acción específica y fácil. Nunca "visita nuestra web". Sí: "Escríbenos PANAMÁ al DM y te mandamos el análisis completo".
+
+INDICACIONES DE VIDEO (para el equipo de producción):
+- Tipo de plano sugerido por sección
+- Texto en pantalla para cada segmento (máx 6 palabras por texto)
+- Sugerencia de música/ambiente
+- Subtítulos completos del audio
+
+Formato de respuesta en el campo "contenido":
+GANCHO: [texto]
+---
+SECCIÓN 1 - [tiempo]:
+  Texto en pantalla: [máx 6 palabras]
+  Audio/voz en off: [frase completa]
+  Plano sugerido: [tipo de imagen/video a usar]
+---
+[repetir para cada sección]
+---
+CTA FINAL: [texto]
+SUBTÍTULOS COMPLETOS: [transcripción completa del audio]
+HASHTAGS: [8-10 hashtags estratégicos]`,
+
+      'Post Estático Instagram': `
+AUDIENCIA: Colombianos 35-55 que siguen a GLP o llegaron por anuncio.
+OBJETIVO: Guardar el post (señal de alta intención) + DM o link en bio.
+
+Estructura del caption:
+LÍNEA 1 (gancho): La frase que aparece antes del "ver más". Máx 125 caracteres. Debe generar curiosidad o impacto inmediato.
+CUERPO: 3-5 párrafos cortos. Cada párrafo = una idea. Usa emojis como viñetas (máx 1 emoji por párrafo, solo si aporta). Rebate un miedo real o presenta un dato del portafolio.
+SEPARADOR: línea con puntos o guiones para separar visualmente.
+CTA: Frase de cierre con acción específica (comentar, guardar, DM).
+HASHTAGS: 20-25 hashtags en comentario aparte, mezcla de alto y bajo volumen.
+
+INDICACIONES DE IMAGEN (para el diseñador/fotógrafo):
+- Descripción de la imagen o render ideal para este post
+- Elementos de texto a superponer en la imagen (si aplica)
+- Paleta de color sugerida (acorde a la marca GLP: navy, dorado, blanco)
+
+Formato de respuesta en el campo "contenido":
+CAPTION:
+[Línea de gancho]
+
+[Párrafo 1]
+
+[Párrafo 2]
+
+[Párrafo 3]
+
+[CTA]
+---
+HASHTAGS (pegar como primer comentario):
+[lista de hashtags]
+---
+INDICACIONES PARA LA IMAGEN:
+[descripción detallada]`,
+
+      'Instagram Story': `
+AUDIENCIA: Seguidores actuales de GLP en Instagram (ya nos conocen).
+OBJETIVO: Mantener top-of-mind, generar respuestas/DMs, llevar al link de bio.
+
+Diseña una secuencia de 4-5 stories:
+Story 1 — GANCHO: Pregunta o dato que genere respuesta (usar sticker de encuesta o pregunta)
+Story 2 — VALOR: Dato educativo o de portafolio (imagen + texto corto)
+Story 3 — PRUEBA SOCIAL o DATO EXCLUSIVO: Testimonio, cifra, ranking
+Story 4 — CTA: Swipe up / Link / DM / Encuesta de intención
+
+Para cada story:
+- Texto principal (máx 15 palabras, que se lea en 2 segundos)
+- Descripción de la imagen/video de fondo sugerida
+- Sticker o elemento interactivo recomendado
+- Duración sugerida (3-7 segundos)`,
+
+      'WhatsApp Masivo': `
+Tono: directo, como un mensaje de un conocido que te da un tip valioso (no publicidad obvia).
+Apertura con emoji. Un solo dato impactante. Un beneficio claro. Link o CTA al final.
+Máx 100 palabras. Sin saludos corporativos. Sin "estimado cliente".`,
+
+      'Guion Video': `
+Guion completo para video 60-90 segundos (YouTube, LinkedIn o presentación).
+Estructura: Gancho (10s) → Problema que resuelve GLP (20s) → Solución/Portafolio (40s) → CTA (10s).
+Incluir: indicaciones de plano, texto en pantalla, voz en off completa.`,
+    };
+
+    const instruccionCanal = toneByCanal[canal] || 'tono profesional y persuasivo';
 
     try {
-      if (openaiKey.trim() && !openaiKey.startsWith('sk-gpt-4o-mini-always-on')) {
-        logMsg('Conectando con OpenAI para redacción persuasiva de alto perfil...');
-        const prompt = `Eres Valeria, Copywriter estrella de GLP Panamáá. Diseña un correo de seguimiento a clientes y una publicación para LinkedIn basados en el siguiente reporte de contingencia: "${srcText}". Devuelve UN OBJETO JSON EXACTAMENTE en el siguiente formato, sin bloques de código markdown, sin \`\`\`json, sin texto adicional:
-{"correo": "texto del correo de ventas", "linkedin": "texto de la publicación de LinkedIn"}`;
+      logMsg('Conectando con OpenAI — construyendo copy con contexto real y estrategia de marca...');
+      const prompt = `Eres Valeria, Copywriter estrella y Estratega de Contenidos de GLP Wealth Management, firma de inversión inmobiliaria de lujo en Panamá.
 
-        const res = await triggerOpenAI(prompt, 'Eres Valeria, copywriter persuasiva para inversores de lujo.');
-        const cleanRes = res.replace(/```json/g, '').replace(/```/g, '').trim();
-        const parsed = JSON.parse(cleanRes);
-        setValeriaDrafts(prev => [
-          { id: 'vd_' + Date.now(), date: today(), type: 'Email', status: 'pending', content: parsed.correo },
-          { id: 'vd_' + (Date.now() + 1), date: today(), type: 'LinkedIn Post', status: 'pending', content: parsed.linkedin },
-          ...prev
-        ]);
-      } else {
-        // High fidelity mock fallback
-        setValeriaDrafts(prev => [
-          { id: 'vd_' + Date.now(), date: today(), type: 'Email', status: 'pending', content: 'Asunto: Exoneración de Impuesto Predial en Panamá - Su Inversión con GLP\n\nEstimado inversionista,\n\nLe escribimos para compartirle un dato de alto interés: todas las propiedades nuevas del portafolio GLP en Panamá cuentan con exoneración del impuesto predial por hasta 20 años. En el contexto regional actual, dolarizar su patrimonio en activos libres de gravámenes inmobiliarios es la decisión más inteligente para proteger y rentabilizar su capital.\n\nContáctenos para enviarle un análisis de NOI y Cap Rate de nuestros proyectos en Playa Caracol o Santa María.\n\nAtentamente,\nEquipo de Ventas GLP' },
-          { id: 'vd_' + (Date.now() + 1), date: today(), type: 'LinkedIn Post', status: 'pending', content: '¿Sabías que Panamá ofrece exención predial de hasta 20 años para nuevos proyectos residenciales? Mientras las tasas locales fluctúan, tu inversión inmobiliaria en dólares rinde de forma segura, exenta y con cap rates de hasta 8.5%. Mira nuestro catálogo de proyectos en Playa Caracol y Costa del Este. #GLPPanama #Dolarizacion #WealthManagement' },
-          ...prev
-        ]);
-      }
-      setAgentValeriaContent(c => c + 2);
-      logMsg('Completado. Valeria generó nuevas plantillas de email y copys de redes.');
+${BRAND_CTX}
+
+CANAL A REDACTAR: ${canal}
+INSTRUCCIONES ESPECÍFICAS DEL CANAL:
+${instruccionCanal}
+
+PORTAFOLIO GLP ACTUAL (usa estos datos reales, no inventes precios):
+${catalogoReal}
+
+CONTEXTO DE PROSPECTOS ACTIVOS (para personalización):
+${prospectosActivos}
+
+CONTEXTO OPERATIVO (Reporte SARA):
+${saraCtx}
+
+REGLAS ABSOLUTAS:
+- USA datos REALES del portafolio (nombres exactos de proyectos, precios reales, zonas reales)
+- NUNCA escribas "[Proyecto X]" ni "[precio]" — usa los datos del portafolio arriba
+- NUNCA prometas "la mejor inversión" — sé específico con datos
+- El contenido debe hacer que un colombiano de 45 años con $200K USD piense "esto es para mí"
+- Idioma: Español colombiano sofisticado (no panameño, no neutro genérico)
+
+Responde SOLO con JSON sin bloques de código markdown:
+{"asunto": "título o asunto del contenido", "contenido": "el copy completo con toda la estructura pedida", "tags": ["tag1","tag2","tag3"], "contexto_generacion": "qué dato real del portafolio o de los prospectos motivó este contenido específico"}`;
+
+      const res = await triggerOpenAI(prompt, 'Eres Valeria, la copywriter más efectiva del sector inmobiliario de lujo en Latinoamérica.');
+      const cleanRes = res.replace(/```json/g, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(cleanRes);
+
+      const newDraft: AgentDraft = {
+        id: 'vd_' + Date.now(),
+        date: today(),
+        type: canal,
+        canal,
+        asunto: parsed.asunto,
+        content: parsed.contenido,
+        tags: parsed.tags || [],
+        contexto: parsed.contexto_generacion || '',
+        status: 'pending',
+        notas_admin: ''
+      };
+
+      setValeriaDrafts(prev => [newDraft, ...prev]);
+      setAgentValeriaContent(c => c + 1);
+      logMsg(`✅ ${canal} generado: "${parsed.asunto}" — listo para revisión del administrador.`);
     } catch (e: any) {
       logMsg(`Error en redacción de Valeria: ${e.message}`);
+      // Fallback con contexto real
+      const fallback: AgentDraft = {
+        id: 'vd_' + Date.now(),
+        date: today(),
+        type: canal,
+        canal,
+        asunto: `GLP Panamá — Oportunidad en ${PROJECTS[0]?.name || 'nuestros proyectos'}`,
+        content: `${canal === 'LinkedIn Post' ? '🏙️' : '✉️'} [Borrador sin IA — editar]\n\n${canal === 'LinkedIn Post'
+          ? `¿Sabías que invertir en ${PROJECTS[0]?.name || 'Panamá'} te da exención predial por 20 años en USD?\n\nMientras las tasas en Latinoamérica fluctúan, tu capital trabaja seguro, rentable y libre de impuestos prediales.\n\nPortafolio GLP: desde $${PROJECTS[0]?.minPrice?.toLocaleString() || '150,000'} USD.\n\n#GLP #PanamaRealEstate #InversionInmobiliaria`
+          : `Estimado/a [NOMBRE],\n\nQueremos compartirle una oportunidad concreta en ${PROJECTS[0]?.name || 'nuestros proyectos'}: rentabilidad superior al 8% anual en USD, con exención predial por 20 años.\n\nAgendemos una llamada de 20 minutos.\n\nValeria · GLP Wealth Management`
+        }`,
+        tags: ['GLP', 'Panama', 'InversionInmobiliaria'],
+        contexto: 'Generado sin IA — API no disponible',
+        status: 'pending',
+        notas_admin: ''
+      };
+      setValeriaDrafts(prev => [fallback, ...prev]);
     } finally {
       setAgentValeriaActive(false);
+      setValeriaGenerating(false);
     }
   };
 
-  const handleIsabella = async (isSwarm = false, silent = false, reportTextSrc?: string) => {
+  // Genera video de Isabella a partir de un contenido aprobado de Valeria
+  const handleIsabellaFromValeria = async (valeriaDraft: AgentDraft) => {
+    setAgentIsabellaActive(true);
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const logMsg = (msg: string) => setSwarmLogs(prev => [...prev, { time: timeStr, agent: 'ISABELLA', msg }]);
+    logMsg(`Isabella adaptando contenido de Valeria a video: "${valeriaDraft.asunto}"...`);
+
+    const catalogoReal = PROJECTS.map(p =>
+      `• ${p.name} (${p.zone}) — desde $${p.minPrice?.toLocaleString()||'consultar'} USD`
+    ).join('\n');
+
+    try {
+      const prompt = `Eres Isabella, Brand Ambassador de GLP Wealth Management. Valeria (tu compañera copywriter) acaba de producir el siguiente contenido de marketing:
+
+CANAL ORIGINAL: ${valeriaDraft.canal || valeriaDraft.type}
+TÍTULO: ${valeriaDraft.asunto}
+CONTENIDO DE VALERIA:
+"""
+${valeriaDraft.content}
+"""
+
+PERFIL DE MARCA:
+- Audiencia: ${brandProfile.audiencias[0]}
+- Tono: ${brandProfile.tonos.slice(0,2).join(' + ')}
+- CTA: ${brandProfile.cta_principal}
+- Activos disponibles: ${brandProfile.activos_visuales.slice(0,3).join(' · ')}
+
+PORTAFOLIO:
+${catalogoReal}
+
+Tu misión: Convierte este contenido de Valeria en un Reel de 45 segundos que Isabella presentará en cámara. El guion debe:
+1. Respetar los mensajes clave del texto de Valeria
+2. Adaptarlos al formato de video (frases más cortas, más impacto visual, lenguaje hablado)
+3. Incluir indicaciones de producción completas
+
+Responde SOLO con JSON sin bloques de código:
+{"titulo": "título del reel", "duracion": "45s", "contenido": "guion completo con secciones GANCHO/DESARROLLO/CTA, texto en pantalla por sección, planos sugeridos y activos de video a usar", "notas_produccion": "notas para el equipo de producción", "assets_requeridos": ["asset 1", "asset 2"]}`;
+
+      const res = await triggerOpenAI(prompt, 'Eres Isabella, presentadora de GLP. Adaptas copies de marketing a guiones de video ejecutables.');
+      const parsed = JSON.parse(res.replace(/```json/g,'').replace(/```/g,'').trim());
+
+      const newScript: AgentDraft = {
+        id: 'is_vd_' + Date.now(),
+        date: today(), type: 'Reel desde Valeria', canal: 'Reel Instagram',
+        asunto: parsed.titulo,
+        content: `🔗 Basado en: "${valeriaDraft.asunto}" (Valeria)\n\nDURACIÓN: ${parsed.duracion}\n\n${parsed.contenido}\n\n---\n📋 NOTAS DE PRODUCCIÓN:\n${parsed.notas_produccion}\n\n🎬 ASSETS:\n${(parsed.assets_requeridos||[]).map((a:string)=>`• ${a}`).join('\n')}`,
+        tags: ['Isabella','Valeria','Coordinado','Reel'],
+        contexto: `Adaptado desde contenido de Valeria: ${valeriaDraft.asunto}`,
+        status: 'pending', notas_admin: ''
+      };
+      setIsabellaScripts(prev => [newScript, ...prev]);
+
+      // Marcar la tarea de workflow como completada si existía
+      setWorkflowTasks(prev => prev.map(t =>
+        t.ref_id === valeriaDraft.id ? { ...t, status: 'completado' } : t
+      ));
+
+      // Registrar en workflow
+      addWorkflowTask({
+        from: 'VALERIA', to: 'ISABELLA',
+        tipo: 'Adaptación a Video', titulo: `🎬 Reel desde: "${valeriaDraft.asunto}"`,
+        contenido: `Isabella adaptó el contenido de Valeria a Reel de 45s.\nGuion: "${parsed.titulo}"`,
+        status: 'completado', prioridad: 'alta', ref_id: newScript.id,
+      });
+
+      logMsg(`✅ Reel generado desde contenido de Valeria: "${parsed.titulo}"`);
+    } catch(e: any) {
+      logMsg(`Error adaptando contenido de Valeria: ${e.message}`);
+    } finally {
+      setAgentIsabellaActive(false);
+    }
+  };
+
+  const handleIsabella = async (isSwarm = false, silent = false, reportTextSrc?: string, tipoVideoOverride?: string) => {
     setAgentIsabellaActive(true);
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const logMsg = (msg: string) => {
-      if (!silent) {
-        setSwarmLogs(prev => [...prev, { time: timeStr, agent: 'ISABELLA', msg }]);
-      }
+      if (!silent) setSwarmLogs(prev => [...prev, { time: timeStr, agent: 'ISABELLA', msg }]);
     };
 
-    logMsg('Isabella diseñando la programación de publicaciones y scripts de video...');
-    const srcText = reportTextSrc || saraReportText;
+    const tipoVideo = tipoVideoOverride || 'Reel 45s';
+    logMsg(`Isabella preparando producción de ${tipoVideo} con perfil de marca GLP...`);
+
+    // Contexto de marca compartido con Valeria
+    const catalogoReal = PROJECTS.map(p =>
+      `• ${p.name} (${p.zone}) — desde $${p.minPrice?.toLocaleString() || 'consultar'} USD — ${p.tipo} — entrega ${p.entrega}`
+    ).join('\n');
+
+    const saraCtx = reportTextSrc || saraReportText || 'Sin alertas críticas activas. Prospectos en monitoreo.';
+
+    // Contexto del perfil de marca (mismo que Valeria)
+    const brandCtx = `
+PROPUESTA DE VALOR GLP: ${brandProfile.propuesta_valor}
+AUDIENCIA: ${brandProfile.audiencias.slice(0, 3).join(' | ')}
+TONO: ${brandProfile.tonos.slice(0, 2).join(' | ')}
+DIFERENCIADORES: ${brandProfile.diferenciadores.join(' · ')}
+OBJECIONES A DISOLVER: ${brandProfile.objeciones.map(o => o.split('→')[0].trim()).join(' / ')}
+CTA PRINCIPAL: ${brandProfile.cta_principal}
+ACTIVOS VISUALES: ${brandProfile.activos_visuales.join(' · ')}
+${brandProfile.notas_adicionales ? `NOTAS DEL EQUIPO: ${brandProfile.notas_adicionales}` : ''}`;
+
+    const TIPOS_VIDEO: Record<string, string> = {
+      'Reel 45s': `
+Reel de Instagram/TikTok de 45 segundos.
+Estructura obligatoria:
+SECCIÓN 1 — GANCHO (0-5s): Una frase que detenga el scroll. Texto en pantalla grande. Isabella de pie, cámara directa.
+SECCIÓN 2 — TENSIÓN (5-15s): Dato que genera intriga o contraste. Ej: comparativa Colombia vs Panamá. B-roll recomendado.
+SECCIÓN 3 — SOLUCIÓN (15-35s): Isabella explica el diferenciador GLP con datos reales. Texto en pantalla por dato.
+SECCIÓN 4 — CTA (35-45s): Acción específica (DM, link, comentar palabra clave). Isabella de frente, energía alta.
+
+Para cada sección incluir:
+- AUDIO (voz en off de Isabella — texto completo listo para grabar)
+- TEXTO EN PANTALLA (máx 6 palabras, fuente grande, contraste alto)
+- PLANO SUGERIDO (tipo de toma, ángulo, movimiento)
+- ACTIVO VISUAL (qué imagen/video del banco usar)
+- DURACIÓN EXACTA`,
+
+      'Video Educativo 90s': `
+Video educativo de 90 segundos para Instagram/LinkedIn/YouTube Shorts.
+Isabella como experta — no como vendedora.
+Estructura:
+INTRO (0-8s): Isabella se presenta + promesa de valor ("En los próximos 90 segundos vas a entender X")
+PUNTO 1 (8-35s): Primer concepto clave con dato real
+PUNTO 2 (35-60s): Segundo concepto — giro o contraste inesperado
+PUNTO 3 (60-80s): Tercer concepto — el que genera el "aha moment"
+CTA (80-90s): Acción específica + urgencia genuina
+
+Incluir por sección: audio completo, texto pantalla, plano, activo visual, prop/elemento visual si aplica.`,
+
+      'Testimonial 60s': `
+Video de testimonio/caso de éxito de 60 segundos.
+Formato: Isabella presenta el caso → datos del cliente (anónimo) → resultado → invitación.
+IMPORTANTE: El cliente debe ser un colombiano anónimo ("un cliente de Bogotá", "empresario de Medellín").
+Incluir: guion de Isabella + preguntas sugeridas para el entrevistado + b-roll para cada segmento.`,
+
+      'Historia de Proyecto 120s': `
+Mini-documental de 2 minutos sobre un proyecto específico del portafolio GLP.
+Estructura cinematográfica: Establecimiento → Conflicto/Necesidad → Solución (el proyecto) → Transformación → CTA.
+Isabella como narradora principal. Incluir escenas sugeridas en ubicación real del proyecto.`,
+
+      'Calendario Semanal': `
+Calendario completo de producción para la semana siguiente (lunes a viernes + fin de semana).
+Para cada día: tipo de contenido, plataforma, tema, activos necesarios, hora de publicación sugerida, caption corto, CTA.
+Formato tabla con columnas: DÍA | PLATAFORMA | FORMATO | TEMA | ASSET NECESARIO | HORA | CTA.
+Incluir también: 1 Reel principal (con guion), 2 Stories, 1 carrusel educativo, 1 post estático.`,
+    };
+
+    const instrucciones = TIPOS_VIDEO[tipoVideo] || TIPOS_VIDEO['Reel 45s'];
 
     try {
-      if (openaiKey.trim() && !openaiKey.startsWith('sk-gpt-4o-mini-always-on')) {
-        logMsg('Conectando con OpenAI para guión y cronograma de marca de alto nivel...');
-        const prompt = `Eres Isabella, Brand Ambassador y la cara pública de GLP Panamáá. Redacta un script de video corto de 1 minuto y un cronograma de publicaciones semanales basados en el siguiente reporte: "${srcText}". Devuelve UN OBJETO JSON EXACTAMENTE en el siguiente formato, sin bloques de código markdown, sin \`\`\`json, sin texto adicional:
-{"script": "texto del script del video", "cronograma": "texto de la programación semanal"}`;
+      logMsg('Conectando con OpenAI — generando guion de producción profesional...');
+      const prompt = `Eres Isabella, Brand Ambassador y Presentadora Principal de GLP Wealth Management. Eres la cara visible de la firma — elegante, experta, cercana. Hablas de inversión inmobiliaria en Panamá de manera que un colombiano de 45 años con patrimonio entiende y confía en ti.
 
-        const res = await triggerOpenAI(prompt, 'Eres Isabella, embajadora elegante de bienes raíces de lujo.');
-        const cleanRes = res.replace(/```json/g, '').replace(/```/g, '').trim();
-        const parsed = JSON.parse(cleanRes);
-        setIsabellaScripts(prev => [
-          { id: 'is_' + Date.now(), date: today(), type: 'Video Script', status: 'pending', content: parsed.script },
-          { id: 'is_' + (Date.now() + 1), date: today(), type: 'Calendario Semanal', status: 'pending', content: parsed.cronograma },
-          ...prev
-        ]);
-      } else {
-        // High fidelity mock fallback
-        setIsabellaScripts(prev => [
-          { id: 'is_' + Date.now(), date: today(), type: 'Video Script', status: 'pending', content: '"¿Doble tributación entre Colombia y Panamá? ¡Aquí te lo explico fácil! Hola, soy Isabella de GLP. Muchos inversionistas colombianos me preguntan si deben declarar sus propiedades en Panamá. La respuesta es sí, pero gracias al convenio de doble imposición de 2015, puedes acreditar lo que pagas allá en tu declaración local. Dolarizas, te exentas de predial, y declaras con total tranquilidad jurídica. Deja la palabra PANAMA y mi equipo legal te asesora gratis."' },
-          { id: 'is_' + (Date.now() + 1), date: today(), type: 'Calendario Semanal', status: 'pending', content: 'Calendario de Publicaciones:\n- Lunes: Reels de Isabella sobre doble tributación Colombia-Panamá.\n- Miércoles: Carrusel detallado de amenidades en The Tides Playa Caracol.\n- Viernes: Hito corporativo: los desarrollos icónicos de Grupo Los Pueblos.' },
-          ...prev
-        ]);
+PERFIL DE MARCA GLP:
+${brandCtx}
+
+PORTAFOLIO REAL GLP (usa estos datos — no inventes precios ni proyectos):
+${catalogoReal}
+
+CONTEXTO OPERATIVO (SARA):
+${saraCtx}
+
+TIPO DE CONTENIDO A GENERAR: ${tipoVideo}
+INSTRUCCIONES ESPECÍFICAS:
+${instrucciones}
+
+REGLAS ABSOLUTAS:
+- Usa proyectos y precios REALES del portafolio arriba
+- El audio de Isabella debe sonar natural — como habla una persona, no como lee un texto
+- Cada dato financiero que menciones debe ser real y verificable (% de rentabilidad, años de exención, precios)
+- Los textos en pantalla deben poder leerse en 2 segundos
+- El guion debe ser ejecutable por un equipo de producción sin preguntas adicionales
+
+Responde SOLO con JSON sin bloques de código:
+{"titulo": "título del video", "duracion": "duración total", "contenido": "el guion completo con todas las secciones estructuradas", "notas_produccion": "notas técnicas para el equipo de producción (equipamiento, locación sugerida, vestuario Isabella, etc.)", "assets_requeridos": ["lista de activos visuales necesarios del banco de contenido"]}`;
+
+      const res = await triggerOpenAI(prompt, 'Eres Isabella, presentadora y brand ambassador de GLP Wealth Management. Tu guion debe ser ejecutable en producción real.');
+      const cleanRes = res.replace(/```json/g, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(cleanRes);
+
+      // Si contenido viene como objeto JSON (secciones), lo formateamos como texto
+      const contenidoRaw = parsed.contenido;
+      let contenidoTexto = '';
+      if (typeof contenidoRaw === 'string') {
+        contenidoTexto = contenidoRaw;
+      } else if (Array.isArray(contenidoRaw)) {
+        contenidoTexto = contenidoRaw.map((s: any, i: number) => {
+          const nombre = s.nombre || s.titulo || s.seccion || `Sección ${i+1}`;
+          const duracion = s.duracion || '';
+          const audio = s.audio || s.gancho?.audio || '';
+          const texto = s.texto_pantalla || s.texto || s.gancho?.texto || '';
+          const plano = s.plano || s.gancho?.plano || '';
+          const asset = s.activo_visual || s.asset || '';
+          return [
+            `── ${nombre.toUpperCase()} ${duracion ? `(${duracion})` : ''} ──`,
+            audio ? `🎙 AUDIO: "${audio}"` : '',
+            texto ? `📺 TEXTO PANTALLA: ${texto}` : '',
+            plano ? `🎬 PLANO: ${plano}` : '',
+            asset ? `🖼 ASSET: ${asset}` : '',
+          ].filter(Boolean).join('\n');
+        }).join('\n\n');
+      } else if (typeof contenidoRaw === 'object' && contenidoRaw !== null) {
+        contenidoTexto = Object.entries(contenidoRaw).map(([k,v]) =>
+          `── ${k.toUpperCase()} ──\n${typeof v === 'object' ? JSON.stringify(v, null, 2) : v}`
+        ).join('\n\n');
       }
-      setAgentIsabellaPosts(p => p + 3);
-      logMsg('Completado. Isabella generó su script de video de marca y agenda de contenidos.');
+
+      const newScript: AgentDraft = {
+        id: 'is_' + Date.now(),
+        date: today(),
+        type: tipoVideo,
+        canal: tipoVideo,
+        asunto: parsed.titulo,
+        content: `DURACIÓN: ${parsed.duracion}\n\n${contenidoTexto}\n\n${'─'.repeat(40)}\n📋 NOTAS DE PRODUCCIÓN:\n${parsed.notas_produccion}\n\n🎬 ASSETS REQUERIDOS:\n${(parsed.assets_requeridos || []).map((a: string) => `• ${a}`).join('\n')}`,
+        tags: ['Isabella', 'Video', tipoVideo.replace(' ', ''), 'Producción'],
+        contexto: `Generado con perfil de marca GLP · ${brandProfile.audiencias[0]?.slice(0, 40) || 'Audiencia colombiana'}`,
+        status: 'pending',
+        notas_admin: ''
+      };
+
+      setIsabellaScripts(prev => [newScript, ...prev]);
+
+      // También notificar a Valeria si el tipo es Reel (coordinación cross-agent)
+      if (tipoVideo === 'Reel 45s' || tipoVideo === 'Video Educativo 90s') {
+        const coordinationNote: AgentDraft = {
+          id: 'vd_coord_' + Date.now(),
+          date: today(),
+          type: 'Coordinación Isabella→Valeria',
+          canal: 'Coordinación',
+          asunto: `Copy para acompañar: "${parsed.titulo}"`,
+          content: `[PENDIENTE — Valeria debe generar el caption y hashtags para este video de Isabella]\n\nTítulo del video: ${parsed.titulo}\nDuración: ${parsed.duracion}\nCanal: ${tipoVideo}\n\nGenera un Post Estático Instagram o Reel caption que acompañe este video.`,
+          tags: ['Coordinación', 'Isabella', 'PendienteValeria'],
+          contexto: 'Tarea de coordinación generada automáticamente por Isabella',
+          status: 'pending',
+          notas_admin: 'Isabella generó el guion de video — Valeria debe generar el copy de acompañamiento'
+        };
+        setValeriaDrafts(prev => [coordinationNote, ...prev]);
+        logMsg(`✅ Coordinación activada: Valeria recibió tarea de copy para "${parsed.titulo}"`);
+      }
+
+      setAgentIsabellaPosts(p => p + 1);
+      logMsg(`✅ Guion de producción "${parsed.titulo}" listo para revisión del administrador.`);
     } catch (e: any) {
       logMsg(`Error en Isabella: ${e.message}`);
+      // Fallback
+      setIsabellaScripts(prev => [{
+        id: 'is_' + Date.now(), date: today(), type: tipoVideo, canal: tipoVideo,
+        asunto: `Reel GLP — ${PROJECTS[0]?.name || 'Inversión en Panamá'}`,
+        content: `SECCIÓN 1 — GANCHO (0-5s)\nAUDIO: "¿Sabías que en Panamá llevas 20 años sin pagar impuesto predial?"\nTEXTO PANTALLA: $0 PREDIAL · 20 AÑOS\nPLANO: Plano medio Isabella, cámara directa, fondo neutro o proyecto\n\nSECCIÓN 2 — DATO (5-25s)\nAUDIO: "Mientras en Colombia el predial sube cada año, en ${PROJECTS[0]?.name || 'nuestros proyectos'} desde $${PROJECTS[0]?.minPrice?.toLocaleString() || '150,000'} USD, tu rentabilidad en dólares supera el 8% anual sin ese costo."\nTEXTO PANTALLA: +8% USD · SIN PREDIAL\nPLANO: B-roll del proyecto o render\n\nSECCIÓN 3 — CTA (25-45s)\nAUDIO: "${brandProfile.cta_principal}"\nTEXTO PANTALLA: ESCRÍBENOS "PANAMÁ"\nPLANO: Isabella de frente, sonríe, gesto hacia cámara`,
+        tags: ['Isabella', 'Video', 'Fallback'],
+        contexto: 'Generado sin IA — editar antes de producción',
+        status: 'pending', notas_admin: ''
+      }, ...prev]);
     } finally {
       setAgentIsabellaActive(false);
     }
@@ -1166,49 +2179,43 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
     setSwarmRunning(true);
     setSwarmLogs([]);
     const timeStr = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    
-    // Step 1: Camilo
+
+    // PASO 1: Camilo — Research de mercado (alimenta todo el enjambre)
     setSwarmStep(0);
-    setSwarmLogs(prev => [...prev, { time: timeStr(), agent: 'SISTEMA', msg: '🚀 INICIANDO ENJAMBRE DE AGENTES INMOBILIARIOS...' }]);
-    await handleCamilo(true, false);
-    
-    // Sleep 2s
+    setSwarmLogs(prev => [...prev, { time: timeStr(), agent: 'SISTEMA', msg: '🚀 ENJAMBRE INICIADO — Camilo hace research primero para alimentar a Sara, Valeria e Isabella...' }]);
+    await handleCamilo(true, false, 'research');
     await new Promise(r => setTimeout(r, 2000));
-    
-    // Step 2: Sara
+
+    // PASO 2: Sara — Usa el reporte de Camilo para monitorear prospectos
     setSwarmStep(1);
+    setSwarmLogs(prev => [...prev, { time: timeStr(), agent: 'SISTEMA', msg: '📡 Sara recibe inteligencia de Camilo y actualiza monitoreo de prospectos...' }]);
     let latestProspects: Prospect[] = [];
-    setProspects(prev => {
-      latestProspects = prev;
-      return prev;
-    });
+    setProspects(prev => { latestProspects = prev; return prev; });
     await handleSara(true, false, latestProspects);
-    
-    // Sleep 2s
     await new Promise(r => setTimeout(r, 2000));
-    
-    // Step 3: Valeria
+
+    // PASO 3: Valeria — Genera contenido con los insights de Camilo + reporte Sara
     setSwarmStep(2);
     let latestReport = '';
-    setSaraReportText(prev => {
-      latestReport = prev;
-      return prev;
-    });
+    setSaraReportText(prev => { latestReport = prev; return prev; });
+    setSwarmLogs(prev => [...prev, { time: timeStr(), agent: 'SISTEMA', msg: '✍️ Valeria recibe insights de Camilo + reporte Sara y genera contenido...' }]);
     await handleValeria(true, false, latestReport);
-    
-    // Sleep 2s
     await new Promise(r => setTimeout(r, 2000));
-    
-    // Step 4: Isabella
+
+    // PASO 4: Isabella — Genera video usando el reporte enriquecido por Camilo
     setSwarmStep(3);
-    await handleIsabella(true, false, latestReport);
-    
-    // Sleep 1s
+    setSwarmLogs(prev => [...prev, { time: timeStr(), agent: 'SISTEMA', msg: '🎬 Isabella recibe briefing completo y genera guion de producción...' }]);
+    await handleIsabella(true, false, latestReport, 'Reel 45s');
     await new Promise(r => setTimeout(r, 1000));
-    
+
     setSwarmStep(null);
     setSwarmRunning(false);
-    setSwarmLogs(prev => [...prev, { time: timeStr(), agent: 'SISTEMA', msg: '✅ ENJAMBRE FINALIZADO CON ÉXITO. Todos los datos, alertas y contenidos han sido sincronizados.' }]);
+
+    const totalTasks = workflowTasks.filter(t => t.status === 'pendiente').length;
+    setSwarmLogs(prev => [...prev, {
+      time: timeStr(), agent: 'SISTEMA',
+      msg: `✅ ENJAMBRE COMPLETO — Insights generados, prospectos monitoreados, contenido creado, video en producción. ${totalTasks} tareas pendientes en el Flujo de Trabajo.`
+    }]);
   };
 
   const runCrisisSwarm = async () => {
@@ -1442,6 +2449,18 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
   // ══════════════════════════════════════════════════════
   const today = () => new Date().toISOString().split('T')[0];
 
+  const calcIRR = (cashFlows: number[]): number | null => {
+    const npv = (r: number) => cashFlows.reduce((acc, cf, t) => acc + cf / Math.pow(1 + r, t), 0);
+    let lo = -0.999, hi = 10;
+    if (npv(lo) * npv(hi) > 0) return null;
+    for (let i = 0; i < 200; i++) {
+      const mid = (lo + hi) / 2;
+      if (Math.abs(npv(mid)) < 1e-6) return mid;
+      npv(lo) * npv(mid) < 0 ? (hi = mid) : (lo = mid);
+    }
+    return (lo + hi) / 2;
+  };
+
   const calcMortgage = useCallback((principal: number, rateAnual: number, years: number) => {
     if (principal <= 0 || rateAnual <= 0 || years <= 0) return 0;
     const r = rateAnual / 100 / 12;
@@ -1456,7 +2475,7 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
     if (!p) return;
     setCalcPrecio(p.minPrice);
     setCalcArea(p.areaMin);
-    setCalcRentaM2(p.rentM2Min || 12);
+    setCalcRentaM2(p.rentM2Max || p.rentM2Min || 12);
     setCalcVacancia(p.vacancyDef);
     setCalcCondominio(0); // always default to 0
     setCalcValorizacion(p.appreciationDef);
@@ -1493,6 +2512,7 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
   const renderSidebarIcon = (id: string, color: string) => {
     const size = 16;
     switch (id) {
+      case 'catalogo': return <Icon name="database" size={size} color={color} style={{ flexShrink: 0 }} />;
       case 'portafolio':
         return (
           <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -1564,11 +2584,10 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
             <line x1="12" y1="18" x2="12" y2="18.01" />
           </svg>
         );
-      case 'acceso':
+      case 'configuracion':
         return (
           <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>
         );
       default:
@@ -1748,8 +2767,9 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
   // MODULE 1: PORTAFOLIO GLP
   // ══════════════════════════════════════════════════════════════
   const renderPortafolio = () => {
-    const sortedProjects = [...PROJECTS].sort((a, b) => a.name.localeCompare(b.name));
-    const filtered = portFilter === 'all' ? sortedProjects : sortedProjects.filter(p => p.investorType === portFilter);
+    const sortedProjects = [...editableProjects].sort((a, b) => a.name.localeCompare(b.name));
+    const filtered = portFilter === 'all' ? sortedProjects : sortedProjects.filter(p => p.category === portFilter);
+    const catColors: Record<string, string> = { 'Proyecto de Ciudad': T.teal, 'Ocean Reef Islands': T.sky, 'Playa Caracol': T.palm };
     const fallbackGradients = [
       T.teal,
       T.sky,
@@ -1758,18 +2778,32 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
       T.textSec,
     ];
 
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file || !uploadingProject) return;
+      const proyectoId = uploadingProject.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+      const url = await uploadProjectImage(proyectoId, file);
+      if (url) {
+        setProjectImageOverrides(prev => ({ ...prev, [uploadingProject]: url }));
+        await saveProjectImageUrl(proyectoId, url);
+      }
+      setUploadingProject(null);
+      e.target.value = '';
+    };
+
     return (
       <div>
+        <input ref={uploadInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageUpload} />
         {sectionTitle('Portafolio GLP · Proyectos de Inversión')}
         <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
-          {[['all', 'Todos', ''], ['renta', 'Renta', 'renta'], ['disfrute', 'Disfrute', 'disfrute'], ['patrimonial', 'Patrimonial', 'patrimonial']].map(([id, label, iconName]) => (
+          {[['all', 'Todos'], ['Proyecto de Ciudad', 'Ciudad'], ['Ocean Reef Islands', 'Ocean Reef Islands'], ['Playa Caracol', 'Playa Caracol']].map(([id, label]) => (
             <button key={id} onClick={() => setPortFilter(id)} style={{
-              ...btnSecondary({ display: 'inline-flex', alignItems: 'center', gap: 6 }),
-              background: portFilter === id ? T.teal : 'transparent',
-              color: portFilter === id ? T.card : T.teal,
+              padding: '6px 14px', borderRadius: 16, border: `1px solid ${id === 'all' ? T.teal : catColors[id] || T.teal}`,
+              background: portFilter === id ? (id === 'all' ? T.teal : catColors[id]) : 'transparent',
+              color: portFilter === id ? '#fff' : T.text,
+              fontSize: 12, fontWeight: 600, cursor: 'pointer',
             }}>
-              {iconName && renderButtonIcon(iconName, 12)}
-              <span>{label}</span>
+              {label}
             </button>
           ))}
           <span style={{ fontSize: 12, color: T.textSec, alignSelf: 'center', marginLeft: 8 }}>{filtered.length} proyectos</span>
@@ -1778,9 +2812,11 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
           {filtered.map((p, i) => {
             const expanded = expandedProject === p.name;
             const imgs = PROJECT_IMAGES[p.name];
-            const heroStyle = imgs
-              ? { backgroundImage: `url(${imgs.main})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+            const heroUrl = projectImageOverrides[p.name] || imgs?.main;
+            const heroStyle = heroUrl
+              ? { backgroundImage: `url(${heroUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
               : { background: fallbackGradients[i % fallbackGradients.length] };
+            const isUploading = uploadingProject === p.name;
             return (
               <div key={p.name} style={{ ...cardStyle({ padding: 0, overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s' }), ...(expanded ? { gridColumn: '1 / -1' } : {}) }}
                 onClick={() => {
@@ -1793,12 +2829,26 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
                 }}>
                 <div style={{ height: expanded ? 200 : 160, ...heroStyle, display: 'flex', alignItems: 'flex-end', padding: 16, position: 'relative' as const }}>
                   <div style={{ position: 'absolute' as const, inset: 0, background: 'linear-gradient(transparent 40%, rgba(0,0,0,0.55))' }} />
+                  {/* Upload button */}
+                  <button onClick={e => {
+                    e.stopPropagation();
+                    setUploadingProject(p.name);
+                    uploadInputRef.current?.click();
+                  }} title="Subir imagen de portada" style={{
+                    position: 'absolute' as const, top: 8, right: 8, zIndex: 10,
+                    background: 'rgba(0,0,0,0.5)', border: 'none', borderRadius: 6,
+                    color: '#fff', fontSize: 16, width: 32, height: 32, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {isUploading ? '⏳' : '📷'}
+                  </button>
                   <div style={{ position: 'relative' as const, zIndex: 1, display: 'flex', gap: 6, alignItems: 'flex-end', width: '100%' }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: expanded ? 18 : 15, fontWeight: 700, color: '#fff', textShadow: '0 1px 3px rgba(0,0,0,0.4)' }}>{p.name}</div>
                       <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)' }}>{p.zoneShort}</div>
                     </div>
-                    {badge(p.investorType === 'renta' ? 'Renta' : p.investorType === 'disfrute' ? 'Disfrute' : 'Patrimonial', 'rgba(255,255,255,0.2)', '#fff')}
+                    {badge(p.category, 'rgba(255,255,255,0.2)', '#fff')}
+                    {p.entrega && <span style={{ fontSize: 9, background: 'rgba(0,0,0,0.4)', color: '#fff', padding: '2px 6px', borderRadius: 8, whiteSpace: 'nowrap' }}>🗓 {p.entrega}</span>}
                   </div>
                 </div>
                 <div style={{ padding: '16px 20px' }}>
@@ -1826,17 +2876,81 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
                           </div>
                         </div>
                       )}
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 12, marginBottom: 16 }}>
-                        <div><span style={{ color: T.textSec }}>Zona: </span>{p.zone}</div>
-                        <div><span style={{ color: T.textSec }}>Construcción: </span>{p.construction}</div>
-                        <div><span style={{ color: T.textSec }}>Precio/m²: </span>{usd(p.priceM2Min)}–{usd(p.priceM2Max)}</div>
-                        <div><span style={{ color: T.textSec }}>Renta sugerida: </span>{usd(p.rentSuggest)}/mes</div>
-                        <div><span style={{ color: T.textSec }}>Vacancia: </span>{p.vacancyDef}%</div>
-                        <div><span style={{ color: T.textSec }}>Condominio: </span>{usd(p.condominioMes)}/mes</div>
-                        <div><span style={{ color: T.textSec }}>Valorización: </span>{p.appreciationDef}% anual</div>
-                        <div><span style={{ color: T.textSec }}>Renta/m²: </span>${p.rentM2Min}–${p.rentM2Max}</div>
+                      {/* Edit toggle */}
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+                        <button onClick={e => { e.stopPropagation(); setEditingProject(editingProject === p.name ? null : p.name); }}
+                          style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', padding: '5px 14px', border: `1px solid ${T.teal}`, background: editingProject === p.name ? T.teal : 'transparent', color: editingProject === p.name ? '#fff' : T.teal, cursor: 'pointer', borderRadius: 3 }}>
+                          {editingProject === p.name ? '✓ Guardar' : '✏️ Editar proyecto'}
+                        </button>
                       </div>
-                      <div style={{ fontSize: 12, color: T.textSec, marginBottom: 8 }}>{p.appreciationNote}</div>
+
+                      {editingProject === p.name ? (
+                        /* ── MODO EDICIÓN ── */
+                        <div onClick={e => e.stopPropagation()}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 12, marginBottom: 14 }}>
+                            {([
+                              { label: 'Nombre', field: 'name', type: 'text' },
+                              { label: 'Entrega', field: 'entrega', type: 'text' },
+                              { label: 'Zona completa', field: 'zone', type: 'text' },
+                              { label: 'Zona corta', field: 'zoneShort', type: 'text' },
+                              { label: 'Tipo', field: 'tipo', type: 'text' },
+                              { label: 'Categoría', field: 'category', type: 'text' },
+                              { label: 'Habitaciones', field: 'bedrooms', type: 'text' },
+                              { label: 'Precio mín (USD)', field: 'minPrice', type: 'number' },
+                              { label: 'Precio máx (USD)', field: 'maxPrice', type: 'number' },
+                              { label: 'Área mín (m²)', field: 'areaMin', type: 'number' },
+                              { label: 'Área máx (m²)', field: 'areaMax', type: 'number' },
+                              { label: 'Precio/m² mín', field: 'priceM2Min', type: 'number' },
+                              { label: 'Precio/m² máx', field: 'priceM2Max', type: 'number' },
+                              { label: 'Renta sugerida/mes', field: 'rentSuggest', type: 'number' },
+                              { label: 'Renta/m² mín', field: 'rentM2Min', type: 'number' },
+                              { label: 'Renta/m² máx', field: 'rentM2Max', type: 'number' },
+                              { label: 'Condominio/mes', field: 'condominioMes', type: 'number' },
+                              { label: 'Vacancia (%)', field: 'vacancyDef', type: 'number' },
+                              { label: 'Valorización (% anual)', field: 'appreciationDef', type: 'number' },
+                              { label: 'Cap rate mín (%)', field: 'capRateMin', type: 'number' },
+                              { label: 'Cap rate máx (%)', field: 'capRateMax', type: 'number' },
+                            ] as { label: string; field: keyof ProjectData; type: string }[]).map(({ label, field, type }) => (
+                              <div key={field as string}>
+                                <div style={{ fontSize: 10, color: T.textSec, marginBottom: 3, fontWeight: 600 }}>{label}</div>
+                                <input
+                                  type={type}
+                                  value={p[field] as string | number}
+                                  onChange={e => updateProject(p.name, field, type === 'number' ? Number(e.target.value) : e.target.value)}
+                                  style={{ ...inputStyle({ fontSize: 11, padding: '5px 8px' }), width: '100%', boxSizing: 'border-box' as const }}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                          <div style={{ marginBottom: 10 }}>
+                            <div style={{ fontSize: 10, color: T.textSec, marginBottom: 3, fontWeight: 600 }}>Nota de valorización</div>
+                            <textarea value={p.appreciationNote} onChange={e => updateProject(p.name, 'appreciationNote', e.target.value)}
+                              style={{ ...inputStyle(), width: '100%', boxSizing: 'border-box' as const, fontSize: 11, minHeight: 60, resize: 'vertical' as const }} />
+                          </div>
+                          <div style={{ marginBottom: 10 }}>
+                            <div style={{ fontSize: 10, color: T.textSec, marginBottom: 3, fontWeight: 600 }}>Amenidades (separadas por coma)</div>
+                            <input value={p.amenities.join(', ')} onChange={e => updateProject(p.name, 'amenities', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                              style={{ ...inputStyle({ fontSize: 11, padding: '5px 8px' }), width: '100%', boxSizing: 'border-box' as const }} />
+                          </div>
+                        </div>
+                      ) : (
+                        /* ── MODO LECTURA ── */
+                        <>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 12, marginBottom: 16 }}>
+                          <div><span style={{ color: T.textSec }}>Categoría: </span><b style={{ color: catColors[p.category] || T.teal }}>{p.category}</b></div>
+                          <div><span style={{ color: T.textSec }}>Entrega: </span><b>{p.entrega}</b></div>
+                          <div><span style={{ color: T.textSec }}>Zona: </span>{p.zone}</div>
+                          <div><span style={{ color: T.textSec }}>Tipo: </span>{p.tipo}</div>
+                          <div><span style={{ color: T.textSec }}>Precio/m²: </span>{usd(p.priceM2Min)}–{usd(p.priceM2Max)}</div>
+                          <div><span style={{ color: T.textSec }}>Renta sugerida: </span>{usd(p.rentSuggest)}/mes</div>
+                          <div><span style={{ color: T.textSec }}>Vacancia: </span>{p.vacancyDef}%</div>
+                          <div><span style={{ color: T.textSec }}>Condominio: </span>{usd(p.condominioMes)}/mes</div>
+                          <div><span style={{ color: T.textSec }}>Valorización: </span>{p.appreciationDef}% anual</div>
+                          <div><span style={{ color: T.textSec }}>Renta/m²: </span>${p.rentM2Min}–${p.rentM2Max}</div>
+                        </div>
+                        <div style={{ fontSize: 12, color: T.textSec, marginBottom: 8 }}>{p.appreciationNote}</div>
+                        </>
+                      )}
 
                       {/* ZONE FOOTNOTE */}
                       <div style={{ marginTop: 12, paddingTop: 8, borderTop: `1px solid ${T.borderLight}`, fontSize: 11, color: T.textSec, fontStyle: 'italic', lineHeight: 1.4 }}>
@@ -2312,7 +3426,7 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
               transition: 'all 0.2s'
             })}
           >
-            <div style={{ fontSize: 28, marginBottom: 4 }}>💰</div>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}><Icon name="currency" size={28} color={T.teal} /></div>
             <div style={{ fontSize: 22, fontWeight: 700, color: T.teal }}>
               {editableValue('ticket', kpiTicketPromedio, setOverrideTicketPromedio, '$')}
             </div>
@@ -2330,7 +3444,7 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
               transition: 'all 0.2s'
             })}
           >
-            <div style={{ fontSize: 28, marginBottom: 4 }}>📈</div>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}><Icon name="trend-up" size={28} color={T.palm} /></div>
             <div style={{ fontSize: 22, fontWeight: 700, color: T.palm }}>
               {editableValue('conversion', kpiConversion, setOverrideConversion, '', '%')}
             </div>
@@ -2348,7 +3462,7 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
               transition: 'all 0.2s'
             })}
           >
-            <div style={{ fontSize: 28, marginBottom: 4 }}>👥</div>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}><Icon name="users" size={28} color={T.sky} /></div>
             <div style={{ fontSize: 22, fontWeight: 700, color: T.sky }}>{prospects.length}</div>
             <div style={{ fontSize: 12, color: T.textSec, marginTop: 4 }}>Prospectos Totales</div>
             <div style={{ fontSize: 10, color: T.sky, marginTop: 6, fontWeight: 600 }}>Ver Detalle (Drilldown)</div>
@@ -2364,7 +3478,7 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
               transition: 'all 0.2s'
             })}
           >
-            <div style={{ fontSize: 28, marginBottom: 4 }}>🤝</div>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}><Icon name="handshake" size={28} color={T.coral} /></div>
             <div style={{ fontSize: 22, fontWeight: 700, color: T.coral }}>{brokers.filter(b => b.estado === 'activo').length}</div>
             <div style={{ fontSize: 12, color: T.textSec, marginTop: 4 }}>Brokers Activos</div>
             <div style={{ fontSize: 10, color: T.coral, marginTop: 6, fontWeight: 600 }}>Ver Detalle (Drilldown)</div>
@@ -2654,22 +3768,67 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
   };
 
   // ══════════════════════════════════════════════════════════════
+  // ── CLOSING PROBABILITY ────────────────────────────────────────
+  const calcClosingProb = (p: Prospect): number => {
+    const stageBase: Record<string, number> = {
+      'Contacto Inicial': 8, 'Calificación': 25, 'Presentación': 45,
+      'Negociación': 68, 'Cierre': 95, 'Post-venta': 100,
+    };
+    let score = stageBase[p.estado] ?? 5;
+    if ((p.emailHistory || []).length >= 3) score += 8;
+    else if ((p.emailHistory || []).length >= 1) score += 4;
+    if (p.broker_asignado) score += 6;
+    if ((p.proyectos_interes || []).length >= 2) score += 5;
+    if (p.notas && p.notas.length > 40) score += 4;
+    if (p.presupuesto_usd >= 300000) score += 4;
+    return Math.min(score, 99);
+  };
+
+  const ThermometerBar = ({ prob }: { prob: number }) => {
+    const color = prob >= 70 ? '#48BB78' : prob >= 40 ? '#ECC94B' : '#FC8181';
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+        <div style={{ flex: 1, height: 5, background: '#E2E8F0', borderRadius: 3, overflow: 'hidden' }}>
+          <div style={{ width: `${prob}%`, height: '100%', background: color, borderRadius: 3, transition: 'width 0.4s' }} />
+        </div>
+        <span style={{ fontSize: 9, fontWeight: 700, color, minWidth: 28, textAlign: 'right' }}>{prob}%</span>
+      </div>
+    );
+  };
+
   // MODULE 3: BROKERS
   // ══════════════════════════════════════════════════════════════
   const renderBrokers = () => {
-    const commissionEntities = [
-      { name: 'Colombia Tax Law Group', pct: 1 },
-      { name: 'Grupo Valverde', pct: 1 },
-      { name: 'Capital Brokers', pct: 1 },
-      { name: 'Red de Brokers (distribuible)', pct: 2 },
-    ];
+    // commissionEntities viene del state global (editable en Configuración)
 
-    const filteredBrokers = brokers.filter(b => {
-      const matchNombre = b.nombre.toLowerCase().includes(brokerFilters.nombre.toLowerCase());
-      const matchEmpresa = b.empresa.toLowerCase().includes(brokerFilters.empresa.toLowerCase());
-      const matchZona = brokerFilters.zona === '' || b.zona === brokerFilters.zona;
-      return matchNombre && matchEmpresa && matchZona;
-    });
+    const filteredBrokers = brokers
+      .filter(b => {
+        const matchNombre = b.nombre.toLowerCase().includes(brokerFilters.nombre.toLowerCase());
+        const matchEmpresa = b.empresa.toLowerCase().includes(brokerFilters.empresa.toLowerCase());
+        const matchZona = brokerFilters.zona === '' || b.zona === brokerFilters.zona;
+        return matchNombre && matchEmpresa && matchZona;
+      })
+      .sort((a, b) => {
+        const getVal = (br: typeof a): number | string => {
+          const bClosed = closedSales.filter(s => s.broker === br.nombre);
+          const bLost = lostSales.filter(l => l.broker === br.nombre);
+          const totalDeals = bClosed.length + bLost.length;
+          switch (brokerSort.field) {
+            case 'nombre': return br.nombre;
+            case 'empresa': return br.empresa;
+            case 'zona': return br.zona || '';
+            case 'estado': return br.estado || '';
+            case 'prospectos': return prospects.filter(p => p.broker_asignado === br.nombre && p.estado !== 'Cierre' && p.estado !== 'Post-venta').length;
+            case 'cerrados': return bClosed.length;
+            case 'tasaCierre': return totalDeals > 0 ? bClosed.length / totalDeals : 0;
+            case 'comisiones': return bClosed.reduce((sum, s) => sum + s.value * 0.02, 0);
+            default: return br.nombre;
+          }
+        };
+        const av = getVal(a), bv = getVal(b);
+        const cmp = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv));
+        return brokerSort.dir === 'asc' ? cmp : -cmp;
+      });
 
     const validBrokerNames = new Set(filteredBrokers.map(b => b.nombre));
 
@@ -2685,10 +3844,26 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
         };
       });
 
-    const totalVentas = sampleDeals.reduce((sum, d) => sum + d.valorVenta, 0);
+    // Contexto activo: broker individual o empresa buscada
+    const drillBrokerObj = brokerDrilldown ? brokers.find(b => b.id === brokerDrilldown) : null;
+    const empresaContexto = brokerFilters.empresa.trim().length >= 2 ? brokerFilters.empresa.trim() : null;
+
+    const contextLabel: string | null = drillBrokerObj
+      ? `${drillBrokerObj.nombre} · ${drillBrokerObj.empresa}`
+      : empresaContexto
+        ? `Empresa: ${empresaContexto}`
+        : null;
+
+    const contextFilteredDeals = sampleDeals.filter(d => {
+      if (drillBrokerObj) return d.broker === drillBrokerObj.nombre;
+      if (empresaContexto) return d.empresa.toLowerCase().includes(empresaContexto.toLowerCase());
+      return true;
+    });
+
+    const totalVentas = contextFilteredDeals.reduce((sum, d) => sum + d.valorVenta, 0);
     const totalComision = totalVentas * 0.05;
 
-    const filteredDeals = sampleDeals; // Show all closed sales!
+    const filteredDeals = contextFilteredDeals;
     const visibleEntities = brokerEntityFilter === 'all' ? commissionEntities :
       commissionEntities.filter(e => e.name === brokerEntityFilter);
 
@@ -2707,10 +3882,11 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
       let rows: any[][] = [];
       let totals: any[] = [];
 
+      const contextSuffix = contextLabel ? ` · ${contextLabel}` : '';
       if (brokerEntityFilter === 'all') {
-        title = 'Reporte Consolidado de Comisiones GLP';
+        title = `Reporte Consolidado de Comisiones GLP${contextSuffix}`;
         headers = ['Deal / Propiedad', 'Broker', 'Valor Venta', 'Comisión Total (5%)', 'Col. Tax Law (1%)', 'Valverde (1%)', 'Capital Brokers (1%)', 'Red de Brokers (2%)'];
-        rows = sampleDeals.map(d => [
+        rows = filteredDeals.map(d => [
           d.deal,
           d.broker,
           usd(d.valorVenta),
@@ -2731,9 +3907,9 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
           usd(totalVentas * 0.02)
         ];
       } else if (brokerEntityFilter === 'Colombia Tax Law Group') {
-        title = 'Reporte de Comisiones - Colombia Tax Law Group';
+        title = `Reporte de Comisiones - Colombia Tax Law Group${contextSuffix}`;
         headers = ['Deal / Propiedad', 'Broker Asignado', 'Valor Venta', 'Comisión CTLG (1% Share)'];
-        rows = sampleDeals.map(d => [
+        rows = filteredDeals.map(d => [
           d.deal,
           d.broker,
           usd(d.valorVenta),
@@ -2741,9 +3917,9 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
         ]);
         totals = ['TOTAL ENTIDAD', '', usd(totalVentas), usd(totalVentas * 0.01)];
       } else if (brokerEntityFilter === 'Grupo Valverde') {
-        title = 'Reporte de Comisiones - Grupo Valverde';
+        title = `Reporte de Comisiones - Grupo Valverde${contextSuffix}`;
         headers = ['Deal / Propiedad', 'Broker Asignado', 'Valor Venta', 'Comisión Valverde (1% Share)'];
-        rows = sampleDeals.map(d => [
+        rows = filteredDeals.map(d => [
           d.deal,
           d.broker,
           usd(d.valorVenta),
@@ -2751,9 +3927,9 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
         ]);
         totals = ['TOTAL ENTIDAD', '', usd(totalVentas), usd(totalVentas * 0.01)];
       } else if (brokerEntityFilter === 'Capital Brokers') {
-        title = 'Reporte de Comisiones - Capital Brokers';
+        title = `Reporte de Comisiones - Capital Brokers${contextSuffix}`;
         headers = ['Deal / Propiedad', 'Broker Asignado', 'Valor Venta', 'Comisión Capital (1% Share)'];
-        rows = sampleDeals.map(d => [
+        rows = filteredDeals.map(d => [
           d.deal,
           d.broker,
           usd(d.valorVenta),
@@ -2761,9 +3937,9 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
         ]);
         totals = ['TOTAL ENTIDAD', '', usd(totalVentas), usd(totalVentas * 0.01)];
       } else if (brokerEntityFilter === 'Red de Brokers (distribuible)') {
-        title = 'Reporte de Comisiones - Red de Brokers Consolidado';
+        title = `Reporte de Comisiones - Red de Brokers${contextSuffix}`;
         headers = ['Deal / Propiedad', 'Broker Asignado', 'Valor Venta', 'Comisión Red (2% Share)'];
-        rows = sampleDeals.map(d => [
+        rows = filteredDeals.map(d => [
           d.deal,
           d.broker,
           usd(d.valorVenta),
@@ -2828,63 +4004,144 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
 
       const exportPDF = (titleStr: string, headersStr: string[], dataRows: any[][], totalsRow: any[]) => {
         const win = window.open('', '_blank');
-        if (!win) {
-          alert('Por favor permite las ventanas emergentes para generar el PDF');
-          return;
-        }
-        let html = `<html><head><title>${titleStr}</title>`;
-        html += `<style>`;
-        html += `body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #3E2723; padding: 40px; background-color: #FAF8F5; }`;
-        html += `.header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #8A5A36; padding-bottom: 10px; margin-bottom: 20px; }`;
-        html += `.logo { font-size: 24px; font-weight: bold; color: #8A5A36; }`;
-        html += `.title { font-size: 18px; font-weight: bold; color: #3E2723; text-transform: uppercase; }`;
-        html += `.meta { font-size: 12px; color: #7E6B5D; margin-bottom: 20px; }`;
-        html += `table { width: 100%; border-collapse: collapse; margin-top: 10px; }`;
-        html += `th { background-color: #8A5A36; color: #FFFFFF; font-weight: bold; border: 1px solid #EBE5DF; padding: 10px; text-align: left; font-size: 12px; }`;
-        html += `td { border: 1px solid #EBE5DF; padding: 10px; font-size: 12px; color: #3E2723; }`;
-        html += `.text-left { text-align: left; }`;
-        html += `.text-right { text-align: right; }`;
-        html += `.total-row { background-color: #F5E6D3; font-weight: bold; }`;
-        html += `.footer { margin-top: 40px; border-top: 1px solid #EBE5DF; padding-top: 10px; font-size: 10px; color: #7E6B5D; text-align: center; }`;
-        html += `@media print { body { background-color: #FFFFFF; padding: 0; } .no-print { display: none; } }`;
-        html += `</style></head><body>`;
-        html += `<div class="header">`;
-        html += `<div class="logo">GLP · GRUPO LOS PUEBLOS</div>`;
-        html += `<div class="title">Reporte de Comisiones</div>`;
-        html += `</div>`;
-        html += `<div class="meta">`;
-        html += `<strong>Reporte:</strong> ${titleStr}<br/>`;
-        html += `<strong>Fecha de Generación:</strong> ${new Date().toLocaleString()}<br/>`;
-        html += `<strong>Moneda:</strong> USD (Dólares Americanos)`;
-        html += `</div>`;
+        if (!win) { alert('Por favor permite las ventanas emergentes para generar el PDF'); return; }
+
+        const totalVentasDoc = dataRows.reduce((s, r) => {
+          const v = r.find((c: any) => typeof c === 'string' && c.startsWith('$') && !c.includes('0.0'));
+          return s + (v ? parseFloat(v.replace(/[$,]/g, '')) : 0);
+        }, 0);
+        const fecha = new Date().toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
+
+        let html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>${titleStr}</title><style>
+          @import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@300;400;500;600;700&display=swap');
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif; background: #FAFAF8; color: #1C1917; }
+          .page { max-width: 860px; margin: 0 auto; padding: 56px 48px; background: #FFFFFF; min-height: 100vh; }
+
+          /* Header */
+          .masthead { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 24px; border-bottom: 1px solid #1C1917; margin-bottom: 32px; }
+          .brand { font-family: 'EB Garamond', Georgia, serif; font-size: 22px; font-weight: 600; letter-spacing: 0.08em; color: #1C1917; text-transform: uppercase; }
+          .brand-sub { font-family: 'Inter', sans-serif; font-size: 9px; font-weight: 500; letter-spacing: 0.22em; color: #78716C; text-transform: uppercase; margin-top: 3px; }
+          .doc-label { text-align: right; }
+          .doc-label .type { font-size: 9px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: #78716C; margin-bottom: 4px; }
+          .doc-label .ref { font-family: 'Inter', sans-serif; font-size: 11px; color: #44403C; }
+
+          /* Report title block */
+          .title-block { margin-bottom: 32px; padding-bottom: 20px; border-bottom: 1px solid #E7E5E4; }
+          .report-title { font-family: 'EB Garamond', Georgia, serif; font-size: 28px; font-weight: 500; color: #1C1917; letter-spacing: -0.01em; line-height: 1.2; margin-bottom: 8px; }
+          .report-meta { display: flex; gap: 32px; margin-top: 12px; }
+          .meta-item { }
+          .meta-label { font-size: 9px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #A8A29E; margin-bottom: 2px; }
+          .meta-value { font-size: 12px; color: #44403C; font-weight: 500; }
+
+          /* Context badge */
+          .context-badge { display: inline-block; border: 1px solid #1C1917; padding: 4px 14px; font-size: 9px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: #1C1917; margin-top: 10px; }
+
+          /* Table */
+          table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+          thead tr { border-top: 1.5px solid #1C1917; border-bottom: 1px solid #1C1917; }
+          th { padding: 10px 14px; font-size: 9px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #44403C; text-align: left; background: transparent; }
+          th.num { text-align: right; }
+          tbody tr { border-bottom: 1px solid #E7E5E4; }
+          tbody tr:nth-child(even) { background: #FAFAF8; }
+          td { padding: 11px 14px; font-size: 12px; color: #1C1917; vertical-align: middle; }
+          td.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
+          td.deal { font-weight: 500; }
+          td.broker-name { color: #44403C; }
+          td.amount { font-weight: 600; }
+          td.commission { color: #1C1917; font-weight: 700; }
+
+          /* Totals */
+          .total-row { border-top: 1.5px solid #1C1917 !important; border-bottom: 1.5px solid #1C1917 !important; background: #F5F4F2 !important; }
+          .total-row td { font-size: 12px; font-weight: 700; padding: 13px 14px; letter-spacing: 0.01em; }
+
+          /* Summary strip */
+          .summary { display: flex; gap: 0; margin: 28px 0 36px; border: 1px solid #E7E5E4; }
+          .summary-item { flex: 1; padding: 16px 20px; border-right: 1px solid #E7E5E4; }
+          .summary-item:last-child { border-right: none; }
+          .summary-label { font-size: 9px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #A8A29E; margin-bottom: 6px; }
+          .summary-value { font-size: 20px; font-family: 'EB Garamond', serif; font-weight: 500; color: #1C1917; }
+
+          /* Footer */
+          .footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid #1C1917; display: flex; justify-content: space-between; align-items: center; }
+          .footer-brand { font-size: 9px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: #78716C; }
+          .footer-note { font-size: 9px; color: #A8A29E; text-align: right; max-width: 320px; line-height: 1.5; }
+
+          @media print {
+            body { background: #fff; }
+            .page { padding: 32px 40px; }
+            .no-print { display: none; }
+          }
+        </style></head><body><div class="page">`;
+
+        // Masthead
+        html += `<div class="masthead">
+          <div>
+            <div class="brand">GLP · Grupo Los Pueblos</div>
+            <div class="brand-sub">Panama · Real Estate &amp; Investment</div>
+          </div>
+          <div class="doc-label">
+            <div class="type">Documento Confidencial</div>
+            <div class="ref">Fecha: ${fecha}</div>
+            <div class="ref" style="margin-top:2px">Moneda: USD</div>
+          </div>
+        </div>`;
+
+        // Title block
+        const cleanTitle = titleStr.replace(/·.*$/, '').trim();
+        const contextPart = contextLabel ? contextLabel : null;
+        html += `<div class="title-block">
+          <div class="report-title">Liquidación de Comisiones</div>
+          <div class="report-meta">
+            <div class="meta-item"><div class="meta-label">Entidad</div><div class="meta-value">${brokerEntityFilter === 'all' ? 'Consolidado General — 5% Total' : brokerEntityFilter}</div></div>
+            <div class="meta-item"><div class="meta-label">Operaciones</div><div class="meta-value">${dataRows.length} cierres</div></div>
+            <div class="meta-item"><div class="meta-label">Período</div><div class="meta-value">Acumulado al ${fecha}</div></div>
+          </div>
+          ${contextPart ? `<div class="context-badge">Filtrado: ${contextPart}</div>` : ''}
+        </div>`;
+
+        // Summary strip
+        const comTotal = totalsRow.find((c: any) => typeof c === 'string' && c.startsWith('$') && c !== totalsRow[2]);
+        html += `<div class="summary">
+          <div class="summary-item"><div class="summary-label">Valor Total Transacciones</div><div class="summary-value">${totalsRow[2] ?? '—'}</div></div>
+          <div class="summary-item"><div class="summary-label">Comisiones Totales</div><div class="summary-value">${totalsRow[3] ?? '—'}</div></div>
+          <div class="summary-item"><div class="summary-label">Operaciones Incluidas</div><div class="summary-value">${dataRows.length}</div></div>
+        </div>`;
+
+        // Table
         html += `<table><thead><tr>`;
-        headersStr.forEach(h => {
-          html += `<th>${h}</th>`;
+        headersStr.forEach((h, i) => {
+          const isNum = i > 1;
+          html += `<th class="${isNum ? 'num' : ''}">${h}</th>`;
         });
         html += `</tr></thead><tbody>`;
-        dataRows.forEach(row => {
+        dataRows.forEach((row, ri) => {
           html += `<tr>`;
-          row.forEach(cell => {
-            const isNum = typeof cell === 'number' || (typeof cell === 'string' && cell.startsWith('$'));
-            const alignClass = isNum ? 'text-right' : 'text-left';
-            html += `<td class="${alignClass}">${cell}</td>`;
+          row.forEach((cell: any, ci: number) => {
+            const isNum = ci > 1;
+            const cls = ci === 0 ? 'deal' : ci === 1 ? 'broker-name' : ci === 2 ? 'amount num' : 'commission num';
+            html += `<td class="${cls}">${cell}</td>`;
           });
           html += `</tr>`;
         });
         if (totalsRow && totalsRow.length > 0) {
           html += `<tr class="total-row">`;
-          totalsRow.forEach(cell => {
-            const isNum = typeof cell === 'number' || (typeof cell === 'string' && cell.startsWith('$'));
-            const alignClass = isNum ? 'text-right' : 'text-left';
-            html += `<td class="${alignClass}">${cell}</td>`;
+          totalsRow.forEach((cell: any, ci: number) => {
+            const isNum = ci > 1;
+            html += `<td class="${isNum ? 'num' : ''}">${cell}</td>`;
           });
           html += `</tr>`;
         }
         html += `</tbody></table>`;
-        html += `<div class="footer">Este documento es un reporte financiero comercial emitido por la plataforma GLP CRM. Todos los montos están expresados en USD.</div>`;
-        html += `<script>window.onload = function() { window.print(); }</script>`;
-        html += `</body></html>`;
 
+        // Footer
+        html += `<div class="footer">
+          <div class="footer-brand">GLP · Grupo Los Pueblos · Panama</div>
+          <div class="footer-note">Este documento es de carácter confidencial. Emitido por la plataforma GLP CRM. Todos los montos expresados en dólares americanos (USD).</div>
+        </div>`;
+
+        html += `<script>window.onload = function() { window.print(); }</script>`;
+        html += `</div></body></html>`;
         win.document.write(html);
         win.document.close();
       };
@@ -2962,9 +4219,9 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
             onChange={e => setBrokerFilters({ ...brokerFilters, empresa: e.target.value })} 
             style={{ padding: '8px 12px', border: '1px solid #E5E7EB', borderRadius: 6, fontSize: 13, width: 200 }}
           />
-          <select 
-            value={brokerFilters.zona} 
-            onChange={e => setBrokerFilters({ ...brokerFilters, zona: e.target.value })} 
+          <select
+            value={brokerFilters.zona}
+            onChange={e => setBrokerFilters({ ...brokerFilters, zona: e.target.value })}
             style={{ padding: '8px 12px', border: '1px solid #E5E7EB', borderRadius: 6, fontSize: 13, width: 200 }}
           >
             <option value="">Todas las Zonas</option>
@@ -2972,6 +4229,27 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
               <option key={z as string} value={z as string}>{z as string}</option>
             ))}
           </select>
+          <select
+            value={brokerSort.field}
+            onChange={e => setBrokerSort(s => ({ ...s, field: e.target.value }))}
+            style={{ padding: '8px 12px', border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 13, background: T.card, color: T.text }}
+          >
+            <option value="nombre">Ordenar: Nombre</option>
+            <option value="empresa">Ordenar: Empresa</option>
+            <option value="zona">Ordenar: Zona</option>
+            <option value="prospectos">Ordenar: Prospectos</option>
+            <option value="cerrados">Ordenar: Negocios Cerrados</option>
+            <option value="tasaCierre">Ordenar: Tasa de Cierre</option>
+            <option value="comisiones">Ordenar: Comisiones</option>
+            <option value="estado">Ordenar: Estado</option>
+          </select>
+          <button
+            onClick={() => setBrokerSort(s => ({ ...s, dir: s.dir === 'asc' ? 'desc' : 'asc' }))}
+            style={{ padding: '8px 12px', border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 13, background: T.card, color: T.teal, fontWeight: 700, cursor: 'pointer' }}
+            title={brokerSort.dir === 'asc' ? 'Ascendente' : 'Descendente'}
+          >
+            {brokerSort.dir === 'asc' ? '↑' : '↓'}
+          </button>
         </div>
 
         <div style={{ ...cardStyle({ padding: 0, overflowHidden: true, marginBottom: 20 }) }}>
@@ -3158,10 +4436,20 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
 
         {/* Report Generation Center - BOTTOM */}
         <div style={{ ...cardStyle({ marginTop: 24, background: `${T.teal}05`, border: `1px solid ${T.teal}30` }) }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 12 }}>📊 Centro de Reportes Financieros (Comisiones)</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Centro de Reportes Financieros · Comisiones</div>
+            {contextLabel && (
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.teal, background: `${T.teal}12`, border: `1px solid ${T.teal}30`, borderRadius: 20, padding: '3px 12px' }}>
+                Contexto: {contextLabel}
+              </div>
+            )}
+          </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
             <div style={{ fontSize: '0.9rem', color: T.text }}>
-              Genera reportes de Excel o PDF filtrados según la entidad seleccionada en la tabla: <strong>{brokerEntityFilter === 'all' ? 'Consolidado General (5% Total)' : brokerEntityFilter}</strong>.
+              {contextLabel
+                ? <>Reporte filtrado para <strong>{contextLabel}</strong> · entidad: <strong>{brokerEntityFilter === 'all' ? 'Consolidado' : brokerEntityFilter}</strong> · <strong>{filteredDeals.length} deals</strong> · <strong>{usd(totalVentas)}</strong> en ventas.</>
+                : <>Genera reportes filtrados por entidad: <strong>{brokerEntityFilter === 'all' ? 'Consolidado General (5% Total)' : brokerEntityFilter}</strong>.</>
+              }
             </div>
             <div style={{ display: 'flex', gap: 8, height: 38 }}>
               <button onClick={() => handleExport('excel')} style={btnPrimary({ display: 'flex', alignItems: 'center', gap: 6 })}>
@@ -3179,7 +4467,10 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
         {/* Commission liquidation table - BOTTOM */}
         <div style={{ ...cardStyle({ marginTop: 24, marginBottom: 24 }) }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Liquidación de Comisiones por Cierre</div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Liquidación de Comisiones por Cierre</div>
+              {contextLabel && <div style={{ fontSize: 11, color: T.teal, marginTop: 2 }}>Filtrado por: {contextLabel} · {filteredDeals.length} deal{filteredDeals.length !== 1 ? 's' : ''}</div>}
+            </div>
             <select value={brokerEntityFilter} onChange={e => setBrokerEntityFilter(e.target.value)} style={inputStyle({ width: 200 })}>
               <option value="all">Todas las entidades</option>
               {commissionEntities.map(e => <option key={e.name} value={e.name}>{e.name}</option>)}
@@ -3219,12 +4510,24 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
   // MODULE 4: PROSPECTOS (CRM)
   // ══════════════════════════════════════════════════════════════
   const renderProspectos = () => {
-    const filtered = prospects.filter(p => {
-      if (prospectFilterBroker !== 'all' && p.broker_asignado !== prospectFilterBroker) return false;
-      if (prospectFilterStage !== 'all' && p.estado !== prospectFilterStage) return false;
-      if (prospectFilterProject !== 'all' && !p.proyectos_interes.includes(prospectFilterProject)) return false;
-      return true;
-    });
+    const filtered = prospects
+      .filter(p => {
+        if (prospectFilterBroker !== 'all' && p.broker_asignado !== prospectFilterBroker) return false;
+        if (prospectFilterStage !== 'all' && p.estado !== prospectFilterStage) return false;
+        if (prospectFilterProject !== 'all' && !p.proyectos_interes.includes(prospectFilterProject)) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        const stageOrder = Object.fromEntries(FUNNEL_STAGES.map((s, i) => [s, i]));
+        const av: any = prospectSort.field === 'etapa' ? stageOrder[a.estado] ?? 0
+          : prospectSort.field === 'probCierre' ? calcClosingProb(a)
+          : (a as any)[prospectSort.field] ?? '';
+        const bv: any = prospectSort.field === 'etapa' ? stageOrder[b.estado] ?? 0
+          : prospectSort.field === 'probCierre' ? calcClosingProb(b)
+          : (b as any)[prospectSort.field] ?? '';
+        const cmp = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv));
+        return prospectSort.dir === 'asc' ? cmp : -cmp;
+      });
 
     const detailProspect = prospectDetail ? prospects.find(p => p.id === prospectDetail) : null;
 
@@ -3294,12 +4597,82 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
     if (detailProspect) {
       const dp = detailProspect;
       const isEditing = prospectEdit === dp.id;
+      const dpAlerta = prospectAlerts.find(a => Number(a.prospecto_id) === Number(dp.id));
+      const ALERT_BG: Record<string,string> = { critico: '#FEF2F2', frio: '#FFF7ED', tibio: '#FEFCE8', oportunidad: '#EFF6FF' };
+      const ALERT_BORDER: Record<string,string> = { critico: '#DC2626', frio: '#EA580C', tibio: '#CA8A04', oportunidad: '#0284C7' };
+      const ALERT_LABEL: Record<string,string> = { critico: '🔴 CRÍTICO', frio: '🟠 FRÍO', tibio: '🟡 TIBIO', oportunidad: '🔵 OPORTUNIDAD' };
+      const TASK_ICONS: Record<string,string> = { email: '✉️', llamada: '📞', whatsapp: '💬', reunion: '🤝', escalacion: '⚡', decision: '⚖️' };
+
       return (
         <div>
           <button onClick={() => { setProspectDetail(null); setProspectEdit(null); if (previousModule) { setActiveModule(previousModule); setPreviousModule(null); } }} style={btnSecondary({ marginBottom: 16, display: 'inline-flex', alignItems: 'center', gap: 6 })}>
             {renderButtonIcon('arrow-left')}
             <span>Volver a lista/embudo</span>
           </button>
+
+          {/* ALERTA SARA */}
+          {dpAlerta && (
+            <div style={{ background: ALERT_BG[dpAlerta.nivel], border: `2px solid ${ALERT_BORDER[dpAlerta.nivel]}`, borderRadius: 12, padding: 20, marginBottom: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: ALERT_BORDER[dpAlerta.nivel], marginBottom: 4 }}>
+                    {ALERT_LABEL[dpAlerta.nivel]} — Alerta SARA
+                  </div>
+                  <div style={{ fontSize: 13, color: T.text }}>{dpAlerta.motivo}</div>
+                </div>
+                <button onClick={() => dismissAlert(dpAlerta.id)} style={{ fontSize: 10, padding: '4px 10px', background: ALERT_BORDER[dpAlerta.nivel], color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}>
+                  Marcar gestionada
+                </button>
+              </div>
+
+              {/* Tareas sugeridas */}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: T.textSec, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Plan de Acción Sugerido</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {(Array.isArray(dpAlerta.tareas) ? dpAlerta.tareas : JSON.parse(dpAlerta.tareas || '[]')).map((t: any, i: number) => (
+                    <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: 'rgba(255,255,255,0.6)', padding: '8px 12px', borderRadius: 8 }}>
+                      <span style={{ fontSize: 16, flexShrink: 0 }}>{TASK_ICONS[t.tipo] || '📌'}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: T.text }}>{t.titulo}</div>
+                        <div style={{ fontSize: 11, color: T.textSec }}>{t.detalle}</div>
+                      </div>
+                      <div style={{ fontSize: 10, color: ALERT_BORDER[dpAlerta.nivel], fontWeight: 700, whiteSpace: 'nowrap' }}>{t.fecha}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Borrador de recuperación */}
+              {dpAlerta.borrador_asunto && (
+                <div style={{ background: 'rgba(255,255,255,0.7)', borderRadius: 8, padding: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: T.textSec, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>✉️ Borrador de Reactivación (SARA)</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Asunto: {dpAlerta.borrador_asunto}</div>
+                  <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', color: T.text, margin: 0, fontFamily: 'inherit', lineHeight: 1.5 }}>{dpAlerta.borrador_cuerpo}</pre>
+                  <button
+                    onClick={() => {
+                      fetch('http://localhost:3001/api/drafts', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          id: `draft-recovery-${Date.now()}`,
+                          destinatario: `${dp.nombre} (${dp.correo})`,
+                          project: 'Reactivación',
+                          subject: dpAlerta.borrador_asunto,
+                          body: dpAlerta.borrador_cuerpo,
+                          status: 'pending',
+                          prioridad: dpAlerta.nivel
+                        })
+                      }).then(() => alert('Borrador enviado al Buzón SARA para aprobación'));
+                    }}
+                    style={{ ...btnPrimary({ marginTop: 10, fontSize: 11, padding: '6px 14px' }), background: ALERT_BORDER[dpAlerta.nivel] }}
+                  >
+                    Enviar al Buzón para Aprobación
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           <div style={cardStyle()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
               <div>
@@ -3475,7 +4848,30 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
                   No hay historial de correos para este cliente.
                 </div>
               )}
-              
+
+              {/* Historial de respuestas enviadas (desde DB) */}
+              {dp.historial && dp.historial.filter((h: any) => h.tipo === 'respuesta_enviada').length > 0 && (
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: T.textSec, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Respuestas Enviadas</div>
+                  {dp.historial.filter((h: any) => h.tipo === 'respuesta_enviada').map((h: any) => (
+                    <div key={h.id} style={{ padding: 12, borderRadius: 8, background: '#F0FDF4', border: `1px solid ${T.success}`, marginBottom: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: T.text }}>✓ {h.asunto}</div>
+                        <div style={{ fontSize: 10, color: T.textSec }}>{new Date(h.fecha).toLocaleDateString('es-CO')} · Aprobado por {h.aprobado_por}</div>
+                      </div>
+                      <textarea
+                        defaultValue={h.cuerpo || h.resumen}
+                        style={{ ...inputStyle(), fontSize: 11, minHeight: 60, width: '100%', resize: 'vertical' as const }}
+                        onChange={e => {
+                          const updated = dp.historial.map((item: any) => item.id === h.id ? { ...item, cuerpo: e.target.value } : item);
+                          setProspects(prospects.map(p => p.id === dp.id ? { ...p, historial: updated } : p));
+                          updateProspectBackend({ ...dp, historial: updated });
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Stage movement */}
@@ -3566,12 +4962,12 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
               border: 'none', background: prospectViewMode === 'embudo' ? T.teal : 'transparent',
               color: prospectViewMode === 'embudo' ? T.card : T.text,
               padding: '6px 14px', borderRadius: 18, cursor: 'pointer', fontSize: 11, fontWeight: 600, transition: 'all 0.2s'
-            }}>📊 Vista Embudo</button>
+            }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="funnel" size={12} color={prospectViewMode === 'embudo' ? T.card : T.text} /> Vista Embudo</span></button>
             <button onClick={() => setProspectViewMode('lista')} style={{
               border: 'none', background: prospectViewMode === 'lista' ? T.teal : 'transparent',
               color: prospectViewMode === 'lista' ? T.card : T.text,
               padding: '6px 14px', borderRadius: 18, cursor: 'pointer', fontSize: 11, fontWeight: 600, transition: 'all 0.2s'
-            }}>📋 Vista Lista</button>
+            }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="list" size={12} color={prospectViewMode === 'lista' ? T.card : T.text} /> Vista Lista</span></button>
           </div>
 
           <select value={prospectFilterBroker} onChange={e => setProspectFilterBroker(e.target.value)} style={inputStyle({ width: 150 })}>
@@ -3583,6 +4979,27 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
             {PROJECTS.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
           </select>
           <button onClick={() => { setProspectFilterBroker('all'); setProspectFilterStage('all'); setProspectFilterProject('all'); }} style={btnSecondary({ fontSize: 11 })}>Limpiar filtros</button>
+          <select
+            value={prospectSort.field}
+            onChange={e => setProspectSort(s => ({ ...s, field: e.target.value }))}
+            style={inputStyle({ width: 170 })}
+          >
+            <option value="nombre">Ordenar: Nombre</option>
+            <option value="fecha_entrada">Ordenar: Registro</option>
+            <option value="ocupacion">Ordenar: Ocupación</option>
+            <option value="broker_asignado">Ordenar: Broker</option>
+            <option value="presupuesto_usd">Ordenar: Presupuesto</option>
+            <option value="etapa">Ordenar: Etapa</option>
+            <option value="forma_contacto">Ordenar: Canal</option>
+            <option value="probCierre">Ordenar: Prob. Cierre</option>
+          </select>
+          <button
+            onClick={() => setProspectSort(s => ({ ...s, dir: s.dir === 'asc' ? 'desc' : 'asc' }))}
+            style={{ ...btnSecondary({ fontSize: 13 }), color: T.teal, fontWeight: 700, minWidth: 34 }}
+            title={prospectSort.dir === 'asc' ? 'Ascendente' : 'Descendente'}
+          >
+            {prospectSort.dir === 'asc' ? '↑' : '↓'}
+          </button>
           <div style={{ flex: 1 }} />
           <button onClick={() => {
             if(confirm('¿Restaurar la base de datos a los prospectos de prueba iniciales? Esto combinará los actuales con la data original.')) {
@@ -3672,6 +5089,8 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
           <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 16 }}>
             {FUNNEL_STAGES.map(stage => {
               const stageProspects = filtered.filter(p => p.estado === stage);
+              const ALERT_COLORS: Record<string,string> = { critico: '#DC2626', frio: '#EA580C', tibio: '#CA8A04', oportunidad: '#0284C7' };
+              const ALERT_ICONS: Record<string,string> = { critico: '🔴', frio: '🟠', tibio: '🟡', oportunidad: '🔵' };
               return (
                 <div key={stage} style={{
                   flex: '1 0 260px', background: `${T.sand}40`, borderRadius: 12,
@@ -3690,6 +5109,15 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
                       }}
                       onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'}
                       onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}>
+                        {(() => {
+                          const alerta = prospectAlerts.find(a => Number(a.prospecto_id) === Number(p.id));
+                          if (!alerta) return null;
+                          return (
+                            <div style={{ fontSize: 9, fontWeight: 700, color: '#fff', background: ALERT_COLORS[alerta.nivel], padding: '2px 7px', borderRadius: 4, marginBottom: 6, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                              {ALERT_ICONS[alerta.nivel]} {alerta.nivel.toUpperCase()} · {alerta.dias_sin_actividad}d
+                            </div>
+                          );
+                        })()}
                         <div style={{ fontWeight: 700, color: T.teal, cursor: 'pointer', fontSize: 13, marginBottom: 4 }}
                           onClick={() => setProspectDetail(p.id)}>
                           {p.nombre} {p.apellido}
@@ -3704,11 +5132,9 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
                           <span style={{ fontStyle: 'italic' }}>{p.broker_asignado ? p.broker_asignado.split(' ')[0] : 'Sin broker'}</span>
                         </div>
                         {/* Thermometer */}
-                        <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <div style={{ fontSize: 9, color: T.textSec, fontWeight: 600 }}>🌡️ Cierre ({p.estado === 'Contacto Inicial' ? 10 : p.estado === 'Calificación' ? 30 : p.estado === 'Presentación' ? 50 : p.estado === 'Negociación' ? 75 : p.estado === 'Cierre' ? 100 : 0}%)</div>
-                          <div style={{ flex: 1, height: 4, background: T.borderLight, borderRadius: 2, overflow: 'hidden' }}>
-                            <div style={{ width: `${p.estado === 'Contacto Inicial' ? 10 : p.estado === 'Calificación' ? 30 : p.estado === 'Presentación' ? 50 : p.estado === 'Negociación' ? 75 : p.estado === 'Cierre' ? 100 : 0}%`, height: '100%', background: p.estado === 'Cierre' ? T.success : p.estado === 'Negociación' ? T.warning : T.teal }} />
-                          </div>
+                        <div style={{ marginTop: 8 }}>
+                          <div style={{ fontSize: 9, color: T.textSec, fontWeight: 600, marginBottom: 3 }}>Prob. Cierre · Sara</div>
+                          <ThermometerBar prob={calcClosingProb(p)} />
                         </div>
                         {/* Quick move buttons */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, paddingTop: 6, borderTop: `1px solid ${T.borderLight}` }}>
@@ -3740,7 +5166,7 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
             <table style={{ width: '100%', borderCollapse: 'collapse' as const, fontSize: 13 }}>
               <thead>
                 <tr>
-                  {['Nombre', 'Registro', 'Ocupación', 'Proyectos', 'Broker', 'Presupuesto', 'Etapa', 'Canal', 'Acciones'].map(h => (
+                  {['Nombre', 'Registro', 'Ocupación', 'Proyectos', 'Broker', 'Presupuesto', 'Etapa', 'P. Cierre', 'Canal', 'Acciones'].map(h => (
                     <th key={h} style={{ background: T.teal, color: T.card, padding: '10px 12px', textAlign: 'left' as const, fontWeight: 600, fontSize: 12 }}>{h}</th>
                   ))}
                 </tr>
@@ -3769,6 +5195,9 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
                         style={{ ...inputStyle({ width: 'auto', fontSize: 11, padding: '4px 8px' }), background: T.sand }}>
                         {FUNNEL_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
+                    </td>
+                    <td style={{ padding: '10px 12px', minWidth: 110 }}>
+                      <ThermometerBar prob={calcClosingProb(p)} />
                     </td>
                     <td style={{ padding: '10px 12px', fontSize: 11 }}>{p.forma_contacto}</td>
                     <td style={{ padding: '10px 12px' }}>
@@ -4167,31 +5596,29 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
 
     const agents = [
       {
-        name: 'CAMILO', emoji: '🕵️‍♂️', role: 'Científico de Datos & Prospección Inteligente',
+        name: 'CAMILO', emoji: '🕵️‍♂️', role: 'VP de Investigación y Mercados',
         photo: '/img/agents/camilo.png',
-        desc: 'Algoritmos avanzados de Big Data que escanean diariamente el mercado. Especialista en minería de datos, scraping y clustering de clientes HNWI con perfil de inversión dolarizada.',
+        desc: 'Dual-mode: genera prospectos calificados Y produce inteligencia de mercado accionable (macro, crisis, oportunidades, audiencia). Sus insights alimentan automáticamente a Sara, Valeria e Isabella en el Flujo de Trabajo.',
         lastRun: agentCamiloLastRun,
         stats: [
-          { label: 'Prospectos encontrados', value: agentCamiloProspects },
-          { label: 'Fuentes escaneadas', value: 47 },
-          { label: 'Precisión matching', value: '84%' },
+          { label: 'Prospectos generados', value: agentCamiloProspects },
+          { label: 'Insights producidos', value: camiloInsights.length },
+          { label: 'Tareas en flujo', value: workflowTasks.filter(t => t.from === 'CAMILO' && t.status === 'pendiente').length },
         ],
-        status: agentCamiloActive ? 'Buscando...' : 'En espera',
+        status: agentCamiloActive ? (camiloMode === 'research' ? 'Investigando...' : 'Prospectando...') : 'Listo',
         statusColor: agentCamiloActive ? T.success : T.textSec,
-        logs: [
-          { time: '08:00', msg: 'Inicio de rastreo programado' },
-          { time: '08:15', msg: 'LinkedIn Sales Navigator: 8 perfiles coincidentes' },
-          { time: '08:22', msg: 'Registros Cámara de Comercio: 4 empresarios HNWI' },
-          { time: '08:30', msg: 'Reportes La República: 2 menciones inversión exterior' },
-          { time: '08:35', msg: 'Rastreo finalizado. Prospectos potenciales identificados.' },
-        ],
+        logs: camiloInsights.length > 0
+          ? camiloInsights.slice(0, 4).map(i => ({ time: i.fecha, msg: `[${i.tipo.toUpperCase()}] ${i.titulo} — Impacto: ${i.impacto} · ${i.status}` }))
+          : [
+            { time: '08:00', msg: 'Sin insights generados aún. Usa "Research de Mercado" o activa el Enjambre.' },
+          ],
         actions: [
-          { label: agentCamiloActive ? 'Buscando...' : 'Buscar Prospectos', icon: 'play', onClick: () => handleCamilo() },
-          { label: 'Ver prospectos', icon: 'chart', onClick: () => { setActiveModule('kpis'); setActiveDrilldown({ type: 'camilo_prospects' }); window.scrollTo({top:0, behavior:'smooth'}); } },
+          { label: agentCamiloActive ? 'Trabajando...' : 'Research de Mercado', icon: 'chart-bar', onClick: () => handleCamilo(false, false, 'research') },
+          { label: '🕵️ Panel de Inteligencia', icon: 'eye', onClick: () => setAgentHistoryDetail('CAMILO') },
         ],
       },
       {
-        name: 'SARA', emoji: '🤖', role: 'Directora de Customer Success & Back-Office Comercial',
+        name: 'SARA', emoji: '🤖', role: 'Directora de Experiencia de Cliente',
         photo: '/img/agents/sara.png',
         desc: 'Gestión automatizada del back-office comercial. Monitorea y clasifica leads en tiempo real, redacta cotizaciones personalizadas y prepara respuestas comerciales listas para aprobación.',
         lastRun: 'Activo en tiempo real',
@@ -4214,166 +5641,544 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
         ],
       },
       {
-        name: 'VALERIA', emoji: '✍️', role: 'Copywriter de Conversión & Estrategia de Contenidos',
+        name: 'VALERIA', emoji: '✍️', role: 'VP de Medios',
         photo: '/img/agents/alicia.png',
-        desc: 'Experta en persuasión y marketing de contenidos de lujo. Redacta copys para campañas publicitarias, newsletters, redes sociales y plantillas de correo de alta tasa de apertura.',
-        lastRun: 'Sincronizado con Sara',
+        desc: 'Experta en persuasión y marketing de contenidos de lujo. Redacta copys con contexto real del portafolio GLP, datos de prospectos e insights de mercado. Todo editable y aprobable por el administrador.',
+        lastRun: valeriaDrafts.length > 0 ? `Último: ${valeriaDrafts[0].canal || valeriaDrafts[0].type} · ${valeriaDrafts[0].date}` : 'Sin contenido generado aún',
         stats: [
-          { label: 'Contenidos generados', value: agentValeriaContent },
-          { label: 'Plantillas activas', value: 18 },
-          { label: 'Borradores pendientes', value: valeriaDrafts.length },
+          { label: 'Contenidos generados', value: valeriaDrafts.length },
+          { label: 'Publicados / Activos', value: valeriaDrafts.filter(d => d.status === 'active').length },
+          { label: 'Pendientes revisión', value: valeriaDrafts.filter(d => d.status === 'pending').length },
         ],
         status: agentValeriaActive ? 'Redactando...' : 'Listo',
         statusColor: agentValeriaActive ? T.coral : T.sky,
-        logs: [
-          { time: '10:00', msg: 'Post LinkedIn generado: "5 razones para invertir en Panamá en 2026"' },
-          { time: '10:15', msg: 'Story Instagram: Infografía de valorización anual en Santa María' },
-          { time: '11:00', msg: 'Borrador newsletter junio completado - pendiente revisión' },
-        ],
+        logs: valeriaDrafts.length > 0
+          ? valeriaDrafts.slice(0, 4).map(d => ({ time: d.date, msg: `${d.canal || d.type}: "${d.asunto || d.content.slice(0, 50)}..." — ${d.status === 'active' ? '🚀 Publicado' : d.status === 'approved' ? '✅ Aprobado' : '📝 Pendiente'}` }))
+          : [{ time: '--:--', msg: 'Aún no se ha generado contenido. Usa "Gestionar Contenido" para crear tu primer copy con contexto real.' }],
         actions: [
-          { label: agentValeriaActive ? 'Redactando...' : 'Redactar Copys', icon: 'document', onClick: () => handleValeria() },
-          { label: 'Consultar Historial', icon: 'eye', onClick: () => setAgentHistoryDetail('VALERIA') },
+          { label: agentValeriaActive ? 'Redactando...' : 'Gestionar Contenido', icon: 'draft', onClick: () => setAgentHistoryDetail('VALERIA') },
         ],
       },
       {
-        name: 'ISABELLA', emoji: '🎙️', role: 'Brand Ambassador & Estratega de Video Marketing',
+        name: 'ISABELLA', emoji: '🎙️', role: 'Embajadora de Marca GLP',
         photo: '/img/agents/isabella.png',
-        desc: 'Cara visible y presentadora digital de GLP. Genera guiones interactivos sobre estabilidad jurídica, exenciones de impuestos, macroeconomía y estilo de vida premium en Panamá.',
-        lastRun: 'Sincronizado con Sara',
+        desc: 'Cara visible y presentadora de GLP. Genera guiones de producción ejecutables: Reels, videos educativos, testimoniales y calendarios de contenido. Coordina automáticamente con Valeria para el copy de acompañamiento. Usa el mismo Perfil de Marca que Valeria.',
+        lastRun: isabellaScripts.length > 0 ? `Último: ${isabellaScripts[0].asunto || isabellaScripts[0].type} · ${isabellaScripts[0].date}` : 'Sin guiones generados aún',
         stats: [
-          { label: 'Posts programados', value: agentIsabellaPosts },
-          { label: 'Videos en script', value: isabellaScripts.length },
-          { label: 'Engagement rate', value: '4.8%' },
+          { label: 'Guiones generados', value: isabellaScripts.length },
+          { label: 'Listos para producción', value: isabellaScripts.filter(s => s.status === 'approved' || s.status === 'active').length },
+          { label: 'Pendientes revisión', value: isabellaScripts.filter(s => s.status === 'pending').length },
         ],
-        status: agentIsabellaActive ? 'Generando...' : 'Listo',
+        status: agentIsabellaActive ? 'Generando...' : 'Lista',
         statusColor: agentIsabellaActive ? T.coral : T.palm,
-        logs: [
-          { time: '11:00', msg: 'Video script: "¿Sabías que el predial es $0 por 20 años en Panamá?"' },
-          { time: '11:20', msg: 'Programación: 3 posts para esta semana en Instagram y LinkedIn' },
-          { time: '12:00', msg: 'Análisis engagement semana anterior: +12% interacciones' },
-        ],
+        logs: isabellaScripts.length > 0
+          ? isabellaScripts.slice(0, 4).map(s => ({ time: s.date, msg: `${s.canal || s.type}: "${s.asunto || s.content.slice(0, 50)}..." — ${s.status === 'active' ? '🎬 En producción' : s.status === 'approved' ? '✅ Aprobado' : '📝 Pendiente'}` }))
+          : [{ time: '--:--', msg: 'Sin guiones aún. Usa "Crear Guion" para generar producción de video con el perfil de marca GLP.' }],
         actions: [
-          { label: agentIsabellaActive ? 'Generando...' : 'Crear Guiones', icon: 'video', onClick: () => handleIsabella() },
-          { label: 'Consultar Historial', icon: 'eye', onClick: () => setAgentHistoryDetail('ISABELLA') },
+          { label: agentIsabellaActive ? 'Generando...' : 'Crear Guion', icon: 'video', onClick: () => handleIsabella() },
+          { label: 'Ver Historial', icon: 'eye', onClick: () => setAgentHistoryDetail('ISABELLA') },
         ],
       },
     ];
 
 
     if (agentHistoryDetail) {
-      if (agentHistoryDetail === 'SARA') {
+      // ── PANEL CAMILO ────────────────────────────────────────────
+      if (agentHistoryDetail === 'CAMILO') {
+        const TIPO_COLOR: Record<string,string> = { mercado:'#3B82F6', crisis:'#EF4444', oportunidad:'#10B981', audiencia:'#8B5CF6' };
+        const IMPACTO_COLOR: Record<string,string> = { alto:'#EF4444', medio:'#F59E0B', bajo:'#10B981' };
+
+        // Ranking de prospectos
+        const rankedProspects = [...prospects]
+          .filter(p=>!['Post-venta','Perdido'].includes(p.estado))
+          .map(p => ({
+            ...p,
+            score: getProspectScore(p),
+            timing: getTimingDays(p),
+            objActivasTipo: objections.filter(o => o.prospecto && p.nombre && o.prospecto.toLowerCase().includes(p.nombre.toLowerCase())).map(o=>o.tipo),
+          }))
+          .sort((a,b) => b.score - a.score);
+
+        const TABS = [
+          { key:'insights', label:'🧠 Insights', badge: camiloInsights.filter(i=>i.status==='nuevo').length },
+          { key:'ranking', label:'📊 Ranking Prospectos', badge:0 },
+          { key:'radar', label:'🎯 Radar Competencia', badge:0 },
+          { key:'objeciones', label:'🗺 Mapa Objeciones', badge:0 },
+          { key:'reporte', label:'📰 Reporte Semanal', badge:0 },
+        ] as const;
+
         return (
           <div>
-            <button onClick={() => { setAgentHistoryDetail(null); setAgentHistoryTab('pending'); }} style={btnSecondary({ marginBottom: 16, display: 'inline-flex', alignItems: 'center', gap: 6 })}>
-              {renderButtonIcon('arrow-left')}
-              <span>Volver a Agentes</span>
-            </button>
-            <div style={cardStyle()}>
-              <h2 style={{ margin: '0 0 16px', fontSize: 20, color: T.text }}>Respuestas, Cotizaciones Pendientes y FAQs (SARA)</h2>
-              <div style={{ fontSize: 13, color: T.textSec, marginBottom: 20 }}>
-                Todos los correos entrantes, estadísticas de consultas de FAQ y las cotizaciones pendientes de aprobación dejan trazabilidad en este módulo.
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 20 }}>
-                {/* Panel FAQ & Reporte */}
-                <div>
-                  <div style={{ background: '#F0F9FF', padding: 14, borderRadius: 10, border: `1px solid ${T.sky}`, marginBottom: 16 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: T.teal, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      📊 Trazabilidad FAQs Automáticas
-                    </div>
-                    <div style={{ fontSize: 11, color: T.textSec, marginBottom: 8 }}>
-                      Las siguientes FAQs han sido consultadas mediante chatbot / email entrante:
-                    </div>
-                    {faqs.slice(0, 3).map(f => (
-                      <div key={f.id} style={{ background: '#FFF', padding: '6px 10px', borderRadius: 6, marginBottom: 6, border: `1px solid ${T.borderLight}` }}>
-                        <div style={{ fontSize: 10, fontWeight: 600, color: T.text }}>{f.pregunta}</div>
-                        <div style={{ fontSize: 9, color: T.textSec, marginTop: 2 }}>{Math.floor(Math.random() * 15) + 3} consultas automáticas recientes</div>
-                      </div>
-                    ))}
-                  </div>
+            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
+              <button onClick={() => setAgentHistoryDetail(null)}
+                style={{ background:'none', border:`1px solid ${T.border}`, borderRadius:8, padding:'6px 12px', color:T.textSec, cursor:'pointer', fontSize:12 }}>
+                ← Volver
+              </button>
+              <h2 style={{ margin:0, fontSize:20, color:T.text }}>🕵️ Camilo — VP de Investigación y Mercados</h2>
+            </div>
 
-                  <div style={{ fontSize: 11, fontWeight: 700, color: T.text, marginBottom: 4 }}>📋 Reporte de Contingencia (Editable):</div>
-                  <textarea
-                    value={saraReportText}
-                    onChange={e => setSaraReportText(e.target.value)}
-                    style={{ width: '100%', height: 200, fontSize: 11, fontFamily: 'monospace', padding: 8, borderRadius: 6, border: `1px solid ${T.border}`, background: T.bg, color: T.text, outline: 'none', resize: 'vertical' }}
-                  />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-                    <button type="button" onClick={() => alert('Reporte de contingencia guardado localmente en el estado del CRM.')} style={btnPrimary({ padding: '4px 10px', fontSize: 10 })}>
-                      💾 Guardar Reporte
-                    </button>
-                    <span style={{ fontSize: 9, color: T.textSec, fontStyle: 'italic' }}>El reporte se puede editar libremente</span>
-                  </div>
-                </div>
+            {/* Tabs */}
+            <div style={{ display:'flex', gap:4, marginBottom:20, flexWrap:'wrap' }}>
+              {TABS.map(t => (
+                <button key={t.key} onClick={()=>setCamiloTab(t.key)}
+                  style={{ padding:'7px 14px', borderRadius:8, border:'none', fontSize:12, fontWeight:700, cursor:'pointer',
+                    background: camiloTab===t.key ? '#3B82F6' : T.bgAlt||T.borderLight,
+                    color: camiloTab===t.key ? '#fff' : T.textSec,
+                    display:'flex', alignItems:'center', gap:6 }}>
+                  {t.label}
+                  {t.badge > 0 && <span style={{ background:'#EF4444', color:'#fff', borderRadius:10, padding:'0 6px', fontSize:10 }}>{t.badge}</span>}
+                </button>
+              ))}
+            </div>
 
-                {/* Bandeja de Correos y Borradores */}
-                <div>
-                  <div style={{ background: T.bg, padding: 14, borderRadius: 10, border: `1px solid ${T.borderLight}`, height: '100%' }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      📧 Buzón Unificado SARA: Entrantes y Borradores de Cotización
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 600, overflowY: 'auto', paddingRight: 4 }}>
-                      {(prospects.flatMap(p => (p.emailHistory || []).map(eh => ({
-                        id: eh.id,
-                        to: `${p.nombre} ${p.apellido} (${p.correo})`,
-                        prospectId: p.id,
-                        project: p.proyectos_interes.join(', '),
-                        subject: eh.subject,
-                        body: eh.body,
-                        status: eh.status, // incoming, draft, sent
-                        date: eh.date,
-                        direction: eh.direction
-                      }))).filter(d => ['draft', 'sent', 'incoming'].includes(d.status))).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(draft => {
-                        const isSent = draft.status === 'sent';
-                        const isIncoming = draft.status === 'incoming';
-                        return (
-                          <div key={draft.id} style={{ background: isIncoming ? '#F0F9FF' : (isSent ? '#F0FDF4' : '#FFFBEB'), border: `1px solid ${isIncoming ? T.sky : (isSent ? T.success : T.warning)}`, borderRadius: 8, padding: 12 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 4 }}>
-                              <span><b>{isIncoming ? 'De:' : 'Para:'}</b> {draft.to}</span>
-                              <span style={{ color: T.teal, fontWeight: 600 }}>{isIncoming ? 'Consulta' : 'Proyecto'}: {draft.project || 'General'}</span>
-                            </div>
-                            <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>Asunto: {draft.subject}</div>
-                            <pre style={{ fontSize: 10, background: isIncoming ? '#FFF' : T.bg, padding: 8, borderRadius: 6, whiteSpace: 'pre-wrap', fontFamily: 'monospace', margin: '0 0 8px', color: T.textSec, border: isIncoming ? `1px solid ${T.borderLight}` : 'none' }}>
-                              {draft.body}
-                            </pre>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                {(() => {
-                                  const pEstado = prospects.find(p => p.id === draft.prospectId)?.estado || 'Contacto Inicial';
-                                  const probCierre = pEstado === 'Contacto Inicial' ? 10 : pEstado === 'Calificación' ? 30 : pEstado === 'Presentación' ? 50 : pEstado === 'Negociación' ? 75 : pEstado === 'Cierre' ? 100 : 0;
-                                  return (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                      <div style={{ fontSize: 10, color: T.textSec, fontWeight: 600 }}>🌡️ Temp. Cierre ({probCierre}%)</div>
-                                      <div style={{ width: 60, height: 6, background: T.borderLight, borderRadius: 3, overflow: 'hidden' }}>
-                                        <div style={{ width: `${probCierre}%`, height: '100%', background: pEstado === 'Cierre' ? T.success : pEstado === 'Negociación' ? T.warning : T.teal, transition: 'width 0.5s ease' }} />
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-                                {draft.subject.toLowerCase().includes('faq') && <span style={{ fontSize: 9, background: T.warning, color: '#FFF', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>📊 Trazabilidad FAQ</span>}
+            {/* TAB: INSIGHTS */}
+            {camiloTab === 'insights' && (
+              <div>
+                {camiloInsights.length === 0 && (
+                  <div style={{ ...cardStyle(), textAlign:'center', color:T.textSec, padding:40 }}>
+                    Sin insights aún. Ejecuta "Research de Mercado" desde la tarjeta de Camilo.
+                  </div>
+                )}
+                {camiloInsights.map(ins => (
+                  <div key={ins.id} style={{ ...cardStyle(), marginBottom:12, border:`1.5px solid ${ins.status==='nuevo'?TIPO_COLOR[ins.tipo]:T.borderLight}` }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12 }}>
+                      <div style={{ flex:1 }}>
+                        <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:6, flexWrap:'wrap' }}>
+                          <span style={{ fontSize:11, fontWeight:700, background:TIPO_COLOR[ins.tipo], color:'#fff', padding:'2px 8px', borderRadius:4, textTransform:'uppercase' }}>{ins.tipo}</span>
+                          <span style={{ fontSize:11, fontWeight:700, color:IMPACTO_COLOR[ins.impacto] }}>Impacto {ins.impacto}</span>
+                          <span style={{ fontSize:10, color:T.textSec }}>{ins.fecha}</span>
+                          {ins.status !== 'nuevo' && <span style={{ fontSize:10, color:T.success, fontWeight:600 }}>✓ {ins.status}</span>}
+                        </div>
+                        <div style={{ fontWeight:700, fontSize:14, color:T.text, marginBottom:4 }}>{ins.titulo}</div>
+                        <div style={{ fontSize:12, color:T.textSec }}>{expandedInsight===ins.id ? ins.datos : ins.resumen}</div>
+                        {expandedInsight===ins.id && (ins as any).acciones_sara && (
+                          <div style={{ marginTop:10, display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
+                            {[{label:'Sara',val:(ins as any).acciones_sara,c:'#10B981'},{label:'Valeria',val:(ins as any).acciones_valeria,c:'#8B5CF6'},{label:'Isabella',val:(ins as any).acciones_isabella,c:'#F59E0B'}].map(a=>(
+                              <div key={a.label} style={{ background:`${a.c}10`, border:`1px solid ${a.c}40`, borderRadius:8, padding:10 }}>
+                                <div style={{ fontSize:10, fontWeight:700, color:a.c, marginBottom:4 }}>➡️ {a.label}</div>
+                                <div style={{ fontSize:11, color:T.text }}>{a.val||'—'}</div>
                               </div>
-                              <div>
-                                {isIncoming ? (
-                                  <span style={{ color: T.sky, fontSize: 11, fontWeight: 700 }}>📥 Recibido ({draft.date})</span>
-                                ) : isSent ? (
-                                  <span style={{ color: T.palm, fontSize: 11, fontWeight: 700 }}>✓ Aprobado y Enviado ({draft.date})</span>
-                                ) : (
-                                  <button 
-                                    onClick={() => handleApproveDraft(draft.id, draft.prospectId, draft.project)}
-                                    style={btnPrimary({ padding: '6px 14px', fontSize: 10, background: T.teal })}
-                                  >
-                                    Aprobar Cotización / Respuesta
-                                  </button>
-                                )}
-                              </div>
-                            </div>
+                            ))}
                           </div>
-                        );
-                      })}
-                      {prospects.flatMap(p => p.emailHistory || []).filter(eh => ['draft', 'sent', 'incoming'].includes(eh.status)).length === 0 && (
-                        <div style={{ fontSize: 12, color: T.textSec, textAlign: 'center', padding: 20 }}>No hay correos entrantes ni cotizaciones pendientes de aprobación.</div>
+                        )}
+                        <button onClick={()=>setExpandedInsight(expandedInsight===ins.id?null:ins.id)}
+                          style={{ background:'none', border:'none', color:'#3B82F6', fontSize:11, cursor:'pointer', marginTop:6, padding:0 }}>
+                          {expandedInsight===ins.id ? '▲ Ver menos' : '▼ Ver completo + acciones por agente'}
+                        </button>
+                      </div>
+                      {ins.status === 'nuevo' && (
+                        <div style={{ display:'flex', flexDirection:'column', gap:6, minWidth:100 }}>
+                          <button onClick={()=>approveInsight(ins)}
+                            style={{ background:'#10B981', color:'#fff', border:'none', borderRadius:6, padding:'6px 12px', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                            ✅ Aprobar
+                          </button>
+                          <button onClick={()=>rejectInsight(ins.id)}
+                            style={{ background:'none', border:`1px solid ${T.border}`, borderRadius:6, padding:'6px 12px', fontSize:11, color:T.textSec, cursor:'pointer' }}>
+                            ✕ Rechazar
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
+                ))}
+              </div>
+            )}
+
+            {/* TAB: RANKING PROSPECTOS */}
+            {camiloTab === 'ranking' && (
+              <div style={{ ...cardStyle() }}>
+                <div style={{ fontWeight:700, fontSize:14, color:T.text, marginBottom:14 }}>
+                  Ranking de conversión — {rankedProspects.length} prospectos activos
+                </div>
+                <div style={{ overflowX:'auto' }}>
+                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                    <thead>
+                      <tr style={{ borderBottom:`2px solid ${T.border}` }}>
+                        {['#','Prospecto','Etapa','Score %','Cierre est.','Objeciones activas','Recomendación Sara'].map(h=>(
+                          <th key={h} style={{ padding:'8px 10px', textAlign:'left', color:T.textSec, fontSize:11, fontWeight:700 }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rankedProspects.map((p, i) => {
+                        const objTipos = p.objActivasTipo;
+                        const scoreBg = p.score >= 70 ? '#10B98120' : p.score >= 40 ? '#F59E0B20' : '#EF444420';
+                        const scoreColor = p.score >= 70 ? '#10B981' : p.score >= 40 ? '#F59E0B' : '#EF4444';
+                        const rec = p.score >= 70 ? 'Llamar hoy — cierre inminente' :
+                                    p.score >= 50 ? 'Enviar propuesta actualizada' :
+                                    p.score >= 30 ? 'Email de valor + agenda reunión' : 'Reactivar con incentivo especial';
+                        return (
+                          <tr key={p.id} style={{ borderBottom:`1px solid ${T.borderLight}`, background: i%2===0?T.bg:'transparent' }}>
+                            <td style={{ padding:'8px 10px', color:T.textSec, fontWeight:700 }}>{i+1}</td>
+                            <td style={{ padding:'8px 10px' }}>
+                              <div style={{ fontWeight:600, color:T.text }}>{p.nombre} {p.apellido}</div>
+                              <div style={{ fontSize:10, color:T.textSec }}>${(p.presupuesto_usd||0).toLocaleString()} USD · {p.ocupacion||'—'}</div>
+                            </td>
+                            <td style={{ padding:'8px 10px', color:T.text }}>{p.estado}</td>
+                            <td style={{ padding:'8px 10px' }}>
+                              <div style={{ display:'inline-block', background:scoreBg, color:scoreColor, fontWeight:800, fontSize:13, padding:'3px 10px', borderRadius:6 }}>{p.score}%</div>
+                            </td>
+                            <td style={{ padding:'8px 10px', color:T.text }}>{p.timing > 0 ? `~${p.timing}d` : 'Cerrado'}</td>
+                            <td style={{ padding:'8px 10px' }}>
+                              {objTipos.length > 0
+                                ? objTipos.map((t,idx)=>(
+                                  <span key={idx} style={{ fontSize:10, background:'#EF444420', color:'#EF4444', padding:'2px 6px', borderRadius:4, marginRight:4 }}>
+                                    {OBJECTION_TIPOS.find(o=>o.value===t)?.icon} {t}
+                                  </span>
+                                ))
+                                : <span style={{ fontSize:10, color:T.textSec }}>Sin objeciones</span>
+                              }
+                            </td>
+                            <td style={{ padding:'8px 10px', fontSize:11, color:T.text, maxWidth:180 }}>{rec}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* TAB: RADAR DE COMPETENCIA */}
+            {camiloTab === 'radar' && (
+              <div>
+                <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:14 }}>
+                  <button onClick={generateRadar} disabled={generatingRadar}
+                    style={{ background:'#3B82F6', color:'#fff', border:'none', borderRadius:8, padding:'8px 18px', fontWeight:700, fontSize:12, cursor:'pointer' }}>
+                    {generatingRadar ? '⏳ Analizando...' : '🎯 Actualizar Radar'}
+                  </button>
+                </div>
+                {radarData.length === 0 && !generatingRadar && (
+                  <div style={{ ...cardStyle(), textAlign:'center', color:T.textSec, padding:40 }}>
+                    Haz clic en "Actualizar Radar" para analizar la competencia.
+                  </div>
+                )}
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:14 }}>
+                  {radarData.map((r,i) => (
+                    <div key={i} style={{ ...cardStyle(), border:`1.5px solid #3B82F640` }}>
+                      <div style={{ fontWeight:700, fontSize:14, color:T.text, marginBottom:4 }}>{r.titulo}</div>
+                      {r.precio_ref && <div style={{ fontSize:11, color:'#3B82F6', fontWeight:600, marginBottom:6 }}>💰 {r.precio_ref}</div>}
+                      <div style={{ fontSize:12, color:T.textSec, marginBottom:10 }}>{r.descripcion}</div>
+                      <div style={{ fontSize:11, fontWeight:700, color:T.text, marginBottom:6 }}>Argumentos GLP vs esta opción:</div>
+                      {r.argumentos.map((arg,j)=>(
+                        <div key={j} style={{ fontSize:11, color:T.text, padding:'4px 0', borderBottom:`1px solid ${T.borderLight}`, display:'flex', gap:6 }}>
+                          <span style={{ color:'#10B981', fontWeight:700 }}>✓</span>{arg}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* TAB: MAPA DE OBJECIONES */}
+            {camiloTab === 'objeciones' && (
+              <div>
+                <div style={{ fontWeight:700, fontSize:13, color:T.text, marginBottom:14 }}>
+                  Prospectos con objeciones activas registradas por brokers
+                </div>
+                {rankedProspects.filter(p=>p.objActivasTipo.length>0).length === 0 && (
+                  <div style={{ ...cardStyle(), textAlign:'center', color:T.textSec, padding:40 }}>
+                    Sin cruce de objeciones. Registra objeciones en el módulo 📋 Objeciones.
+                  </div>
+                )}
+                {rankedProspects.filter(p=>p.objActivasTipo.length>0).map(p=>(
+                  <div key={p.id} style={{ ...cardStyle(), marginBottom:10, border:`1.5px solid #EF444430` }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:8 }}>
+                      <div>
+                        <div style={{ fontWeight:700, color:T.text }}>{p.nombre} {p.apellido}</div>
+                        <div style={{ fontSize:11, color:T.textSec }}>{p.estado} · ${(p.presupuesto_usd||0).toLocaleString()} USD</div>
+                      </div>
+                      <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                        {p.objActivasTipo.map((t,i)=>{
+                          const info = OBJECTION_TIPOS.find(o=>o.value===t);
+                          return <span key={i} style={{ fontSize:11, background:'#EF444420', color:'#EF4444', padding:'3px 8px', borderRadius:6, fontWeight:600 }}>{info?.icon} {info?.label||t}</span>;
+                        })}
+                      </div>
+                    </div>
+                    {objections.filter(o=>o.prospecto&&p.nombre&&o.prospecto.toLowerCase().includes(p.nombre.toLowerCase())).map(o=>(
+                      <div key={o.id} style={{ marginTop:8, fontSize:11, color:T.text, background:T.bg, padding:'6px 10px', borderRadius:6, borderLeft:`3px solid #EF4444` }}>
+                        <span style={{ fontWeight:600 }}>{o.broker}:</span> {o.descripcion}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* TAB: REPORTE SEMANAL */}
+            {camiloTab === 'reporte' && (
+              <div>
+                <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap' }}>
+                  <button onClick={generateMarketReport} disabled={generatingReport}
+                    style={{ background:'#3B82F6', color:'#fff', border:'none', borderRadius:8, padding:'8px 18px', fontWeight:700, fontSize:12, cursor:'pointer' }}>
+                    {generatingReport ? '⏳ Generando...' : '📰 Generar Reporte'}
+                  </button>
+                  {marketReport && (
+                    <button onClick={sendReportEmail} disabled={sendingReport}
+                      style={{ background:'#10B981', color:'#fff', border:'none', borderRadius:8, padding:'8px 18px', fontWeight:700, fontSize:12, cursor:'pointer' }}>
+                      {sendingReport ? '⏳ Enviando...' : '📧 Enviar por Correo'}
+                    </button>
+                  )}
+                </div>
+                {!marketReport && !generatingReport && (
+                  <div style={{ ...cardStyle(), textAlign:'center', color:T.textSec, padding:40 }}>
+                    Genera el reporte semanal de color del mercado inmobiliario y financiero de Panamá.
+                  </div>
+                )}
+                {marketReport && (
+                  <div style={{ ...cardStyle(), border:`1.5px solid #3B82F6` }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', marginBottom:12 }}>
+                      <div style={{ fontWeight:700, fontSize:14, color:T.text }}>📊 Reporte Semanal — {marketReport.fecha}</div>
+                      <span style={{ fontSize:10, background:'#3B82F620', color:'#3B82F6', padding:'3px 8px', borderRadius:4, fontWeight:600 }}>Guardado como contexto global</span>
+                    </div>
+                    <div style={{ fontSize:13, color:T.text, whiteSpace:'pre-wrap', lineHeight:1.7 }}>{marketReport.texto}</div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      if (agentHistoryDetail === 'SARA') {
+        const S_NAVY = '#001A37';
+        const S_GOLD = '#B89047';
+        const S_GOLD_L = '#D4AF6A';
+        const S_CREAM = '#F7F4EF';
+        const S_PARCH = '#EDE8DF';
+
+        const allDraftsFromHistory = (prospects.flatMap(p => (p.emailHistory || []).map(eh => ({
+          id: eh.id, to: `${p.nombre} ${p.apellido} (${p.correo})`,
+          prospectId: p.id, project: p.proyectos_interes.join(', '),
+          subject: eh.subject, body: eh.body,
+          status: eh.status, date: eh.date, direction: eh.direction,
+          isApi: false,
+        })))).filter(d => ['draft','sent','incoming'].includes(d.status));
+
+        const apiDraftsMapped = apiDrafts.filter(d => d.status === 'pending').map(d => ({
+          id: d.id, to: d.destinatario, prospectId: -1,
+          project: d.project, subject: d.subject, body: d.body,
+          status: 'draft', date: d.created_at, direction: 'out',
+          isApi: true, prioridad: d.prioridad,
+        }));
+
+        const allMsgs = [...allDraftsFromHistory, ...apiDraftsMapped]
+          .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+        const pendingCount = allMsgs.filter(m => m.status === 'draft').length;
+
+        const ALERT_ACCENT: Record<string,string> = { critico:'#B91C1C', frio:'#C2410C', tibio:'#B45309', oportunidad: S_NAVY };
+        const ALERT_LABEL: Record<string,string> = { critico:'CRÍTICO', frio:'FRÍO', tibio:'TIBIO', oportunidad:'OPORTUNIDAD' };
+
+        return (
+          <div style={{ background: S_CREAM, minHeight: '100%' }}>
+
+            {/* Header */}
+            <div style={{ background: S_NAVY, padding: '24px 32px 20px' }}>
+              <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:16 }}>
+                <div>
+                  <div style={{ fontSize:9, letterSpacing:4, color:S_GOLD, fontWeight:700, textTransform:'uppercase', marginBottom:5 }}>Sara · Directora de Experiencia de Cliente</div>
+                  <h2 style={{ margin:0, fontSize:22, fontFamily:T.fontSerif, fontWeight:400, color:'#fff', letterSpacing:0.5 }}>
+                    Bandeja de Comunicaciones
+                  </h2>
+                  <div style={{ fontSize:11, color:'rgba(255,255,255,0.45)', marginTop:3, fontStyle:'italic' }}>
+                    Correos entrantes · Cotizaciones pendientes · Alertas de prospectos
+                  </div>
+                </div>
+                <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                  {pendingCount > 0 && (
+                    <div style={{ background:`${S_GOLD}20`, border:`1px solid ${S_GOLD}`, borderRadius:3, padding:'6px 14px', display:'flex', alignItems:'center', gap:8 }}>
+                      <span style={{ width:6, height:6, borderRadius:'50%', background:S_GOLD, display:'inline-block', animation:'pulse 1.5s infinite' }} />
+                      <span style={{ fontSize:11, color:S_GOLD_L, fontWeight:600 }}>{pendingCount} pendiente{pendingCount>1?'s':''} de aprobación</span>
+                    </div>
+                  )}
+                  <button onClick={() => { setAgentHistoryDetail(null); setAgentHistoryTab('pending'); }}
+                    style={{ background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.15)', borderRadius:3, padding:'7px 16px', color:'rgba(255,255,255,0.6)', fontSize:10, fontWeight:700, letterSpacing:1, textTransform:'uppercase', cursor:'pointer' }}>
+                    ← Volver
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display:'grid', gridTemplateColumns:'300px 1fr', gap:0, minHeight:'calc(100vh - 180px)' }}>
+
+              {/* ── LEFT SIDEBAR ── */}
+              <div style={{ background: S_PARCH, borderRight:`1px solid #D6CEBC`, padding:'20px 0' }}>
+
+                {/* Alertas de prospectos */}
+                <div style={{ padding:'0 20px 20px', borderBottom:`1px solid #D6CEBC` }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+                    <div style={{ fontSize:9, letterSpacing:3, color:'#9CA3AF', fontWeight:700, textTransform:'uppercase' }}>Alertas de Prospectos</div>
+                    <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                      {prospectAlerts.length > 0 && <span style={{ background:S_NAVY, color:S_GOLD, fontSize:9, fontWeight:800, padding:'2px 7px', borderRadius:2 }}>{prospectAlerts.length}</span>}
+                      <button onClick={() => fetch('http://localhost:3001/api/sara/monitor',{method:'POST'}).then(()=>refreshAlerts())}
+                        style={{ background:'transparent', border:`1px solid #D6CEBC`, borderRadius:2, padding:'3px 8px', fontSize:9, color:'#6B7280', cursor:'pointer', fontWeight:600 }}>↻</button>
+                    </div>
+                  </div>
+                  {prospectAlerts.length === 0 ? (
+                    <div style={{ fontSize:11, color:'#9CA3AF', textAlign:'center', padding:'16px 0', fontStyle:'italic' }}>Sin alertas activas</div>
+                  ) : (
+                    <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:260, overflowY:'auto' }}>
+                      {prospectAlerts.map(a => (
+                        <div key={a.id} style={{ background:'#fff', borderLeft:`3px solid ${ALERT_ACCENT[a.nivel]||S_NAVY}`, padding:'9px 12px', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ fontSize:8, letterSpacing:2, fontWeight:700, color:ALERT_ACCENT[a.nivel]||S_NAVY, textTransform:'uppercase', marginBottom:2 }}>{ALERT_LABEL[a.nivel]||a.nivel}</div>
+                            <div style={{ fontSize:11, fontWeight:600, color:S_NAVY, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.nombre} {a.apellido}</div>
+                            <div style={{ fontSize:10, color:'#6B7280', marginTop:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.motivo}</div>
+                          </div>
+                          <div style={{ display:'flex', flexDirection:'column', gap:4, flexShrink:0 }}>
+                            <button onClick={() => { setProspectDetail(a.prospecto_id); setActiveModule('prospectos'); }}
+                              style={{ background:ALERT_ACCENT[a.nivel]||S_NAVY, color:'#fff', border:'none', borderRadius:2, padding:'3px 8px', fontSize:9, fontWeight:700, cursor:'pointer', letterSpacing:0.5 }}>Ficha</button>
+                            <button onClick={() => dismissAlert(a.id)}
+                              style={{ background:'transparent', color:'#9CA3AF', border:'1px solid #E5E7EB', borderRadius:2, padding:'3px 8px', fontSize:9, cursor:'pointer' }}>✓</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* FAQs frecuentes */}
+                <div style={{ padding:'20px 20px 20px', borderBottom:`1px solid #D6CEBC` }}>
+                  <div style={{ fontSize:9, letterSpacing:3, color:'#9CA3AF', fontWeight:700, textTransform:'uppercase', marginBottom:12 }}>FAQs Más Consultadas</div>
+                  {faqs.slice(0,4).map((f,i) => (
+                    <div key={f.id} style={{ display:'flex', gap:10, alignItems:'flex-start', padding:'8px 0', borderBottom:`1px solid #E9E4DA` }}>
+                      <div style={{ fontSize:14, fontWeight:800, color:S_GOLD, fontFamily:T.fontSerif, minWidth:18, textAlign:'right', flexShrink:0 }}>{i+1}</div>
+                      <div>
+                        <div style={{ fontSize:11, color:S_NAVY, fontWeight:500, lineHeight:1.4 }}>{f.pregunta}</div>
+                        <div style={{ fontSize:9, color:'#9CA3AF', marginTop:2 }}>{3+i*4+Math.floor(i*2.3)} consultas recientes</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Reporte de contingencia */}
+                <div style={{ padding:'20px' }}>
+                  <div style={{ fontSize:9, letterSpacing:3, color:'#9CA3AF', fontWeight:700, textTransform:'uppercase', marginBottom:10 }}>Reporte de Contingencia</div>
+                  <textarea value={saraReportText} onChange={e => setSaraReportText(e.target.value)}
+                    style={{ width:'100%', boxSizing:'border-box', height:180, fontSize:10, fontFamily:'monospace', padding:'10px', border:`1px solid #D6CEBC`, background:'#fff', color:'#374151', outline:'none', resize:'vertical', lineHeight:1.6 }} />
+                  <button onClick={() => alert('Reporte guardado.')}
+                    style={{ marginTop:8, background:S_NAVY, color:S_GOLD_L, border:'none', padding:'7px 14px', fontSize:9, fontWeight:700, letterSpacing:1, textTransform:'uppercase', cursor:'pointer', width:'100%' }}>
+                    Guardar Reporte
+                  </button>
+                </div>
+              </div>
+
+              {/* ── MAIN PANEL: BANDEJA ── */}
+              <div style={{ background:'#fff', padding:'0' }}>
+
+                {/* Toolbar */}
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'16px 24px', borderBottom:`1px solid ${S_PARCH}` }}>
+                  <div style={{ fontSize:9, letterSpacing:3, color:'#9CA3AF', fontWeight:700, textTransform:'uppercase' }}>
+                    {allMsgs.length} mensaje{allMsgs.length!==1?'s':''} · {pendingCount} pendiente{pendingCount!==1?'s':''}
+                  </div>
+                  <button onClick={() => {
+                    fetch('http://localhost:3001/api/sara/check-inbox',{method:'POST'})
+                      .then(r=>r.json())
+                      .then(()=>fetch('http://localhost:3001/api/drafts').then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setApiDrafts(data); }))
+                      .catch(e=>console.error('Error revisando bandeja:',e));
+                  }} style={{ background:'transparent', border:`1px solid #D6CEBC`, borderRadius:2, padding:'6px 14px', fontSize:9, color:'#6B7280', cursor:'pointer', fontWeight:700, letterSpacing:1, textTransform:'uppercase' }}>
+                    ↻ Revisar bandeja
+                  </button>
+                </div>
+
+                {/* Message list */}
+                <div style={{ maxHeight:'calc(100vh - 260px)', overflowY:'auto' }}>
+                  {allMsgs.length === 0 && (
+                    <div style={{ textAlign:'center', padding:60, color:'#9CA3AF', fontStyle:'italic', fontSize:13 }}>
+                      Bandeja vacía. Sin correos entrantes ni cotizaciones pendientes.
+                    </div>
+                  )}
+                  {allMsgs.map((msg, idx) => {
+                    const isDraft = msg.status === 'draft';
+                    const isIncoming = msg.status === 'incoming';
+                    const isSent = msg.status === 'sent';
+                    const pEstado = msg.prospectId > 0 ? prospects.find(p=>p.id===msg.prospectId)?.estado || '' : '';
+                    const probCierre = pEstado==='Contacto Inicial'?10:pEstado==='Calificación'?30:pEstado==='Presentación'?50:pEstado==='Negociación'?75:pEstado==='Cierre'?95:0;
+
+                    return (
+                      <div key={msg.id} style={{ borderBottom:`1px solid ${S_PARCH}`, padding:'18px 24px',
+                        background: isDraft ? '#FFFDF7' : '#fff',
+                        borderLeft: isDraft ? `3px solid ${S_GOLD}` : isSent ? `3px solid #10B981` : isIncoming ? `3px solid ${S_NAVY}` : '3px solid transparent' }}>
+
+                        {/* Row 1: meta */}
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6, gap:12 }}>
+                          <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+                            {isIncoming && <span style={{ fontSize:8, letterSpacing:2, fontWeight:700, color:S_NAVY, background:`${S_NAVY}12`, padding:'2px 8px', textTransform:'uppercase' }}>Entrante</span>}
+                            {isDraft && <span style={{ fontSize:8, letterSpacing:2, fontWeight:700, color:S_GOLD, background:`${S_GOLD}18`, padding:'2px 8px', textTransform:'uppercase' }}>Pendiente aprobación</span>}
+                            {isSent && <span style={{ fontSize:8, letterSpacing:2, fontWeight:700, color:'#10B981', background:'#F0FDF4', padding:'2px 8px', textTransform:'uppercase' }}>Enviado</span>}
+                            {(msg as any).prioridad === 'alta' && <span style={{ fontSize:8, letterSpacing:2, fontWeight:700, color:'#B91C1C', background:'#FEF2F2', padding:'2px 8px', textTransform:'uppercase' }}>Alta prioridad</span>}
+                            <span style={{ fontSize:11, color:'#374151', fontWeight:500 }}>{isIncoming?'De:':'Para:'} <span style={{ fontWeight:700, color:S_NAVY }}>{msg.to}</span></span>
+                          </div>
+                          <div style={{ fontSize:10, color:'#9CA3AF', flexShrink:0 }}>
+                            {new Date(msg.date).toLocaleDateString('es-CO',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}
+                          </div>
+                        </div>
+
+                        {/* Row 2: subject */}
+                        <div style={{ fontSize:13, fontWeight:600, color:S_NAVY, fontFamily:T.fontSerif, marginBottom:10, letterSpacing:0.2 }}>
+                          {msg.subject}
+                        </div>
+
+                        {/* Row 3: body */}
+                        {isIncoming ? (
+                          <div style={{ fontSize:11, color:'#4B5563', lineHeight:1.7, whiteSpace:'pre-wrap', background:S_CREAM, padding:'12px 14px', borderLeft:`2px solid #D6CEBC`, marginBottom:12 }}>
+                            {msg.body}
+                          </div>
+                        ) : (
+                          <textarea
+                            value={msg.body}
+                            onChange={e => {
+                              const newBody = e.target.value;
+                              if ((msg as any).isApi) {
+                                setApiDrafts(prev => prev.map(d => d.id === msg.id ? { ...d, body: newBody } : d));
+                              } else {
+                                // update in prospect emailHistory
+                              }
+                            }}
+                            style={{ width:'100%', boxSizing:'border-box' as const, fontSize:11, color:'#374151', lineHeight:1.7, background:S_PARCH, padding:'12px 14px', borderLeft:`2px solid #D6CEBC`, border:`1px solid #D6CEBC`, marginBottom:12, minHeight:120, resize:'vertical' as const, fontFamily:'inherit', outline:'none' }}
+                          />
+                        )}
+
+                        {/* Row 4: footer */}
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                          <div style={{ display:'flex', gap:16, alignItems:'center' }}>
+                            {pEstado && probCierre > 0 && (
+                              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                                <div style={{ fontSize:9, color:'#9CA3AF', letterSpacing:1, textTransform:'uppercase' }}>Probabilidad cierre</div>
+                                <div style={{ width:80, height:4, background:'#E9E4DA', borderRadius:0, overflow:'hidden' }}>
+                                  <div style={{ width:`${probCierre}%`, height:'100%', background: probCierre>=75?S_GOLD:probCierre>=50?'#D97706':S_NAVY }} />
+                                </div>
+                                <div style={{ fontSize:10, fontWeight:700, color:S_NAVY }}>{probCierre}%</div>
+                              </div>
+                            )}
+                            {msg.project && <div style={{ fontSize:10, color:'#9CA3AF' }}>Proyecto: <span style={{ color:'#374151', fontWeight:600 }}>{msg.project}</span></div>}
+                          </div>
+
+                          <div>
+                            {isSent && <span style={{ fontSize:10, color:'#10B981', fontWeight:600, letterSpacing:0.5 }}>✓ Aprobado y enviado</span>}
+                            {isIncoming && <span style={{ fontSize:10, color:S_NAVY, fontWeight:500 }}>Recibido</span>}
+                            {isDraft && !(msg as any).isApi && (
+                              <button onClick={() => handleApproveDraft(msg.id, msg.prospectId, msg.project)}
+                                style={{ background:S_NAVY, color:S_GOLD_L, border:'none', padding:'7px 18px', fontSize:9, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', cursor:'pointer' }}>
+                                Aprobar y Enviar
+                              </button>
+                            )}
+                            {isDraft && (msg as any).isApi && (
+                              <button onClick={() => {
+                                fetch('http://localhost:3001/api/send-draft',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:msg.id})})
+                                  .then(()=>setApiDrafts(prev=>prev.map(d=>d.id===msg.id?{...d,status:'sent'}:d)))
+                                  .catch(e=>console.error('Error enviando draft:',e));
+                              }} style={{ background:S_NAVY, color:S_GOLD_L, border:'none', padding:'7px 18px', fontSize:9, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', cursor:'pointer' }}>
+                                Aprobar y Enviar
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -4381,78 +6186,658 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
         );
       }
 
-      const historyItems = agentHistoryDetail === 'VALERIA' ? valeriaDrafts : isabellaScripts;
-      const setHistoryItems = agentHistoryDetail === 'VALERIA' ? setValeriaDrafts : setIsabellaScripts;
-      
+      // ── VALERIA PANEL COMPLETO ───────────────────────────────
+      if (agentHistoryDetail === 'VALERIA') {
+        const CANALES_VALERIA = ['LinkedIn Post', 'Newsletter', 'Email Masivo', 'Email Seguimiento', 'Reel Instagram', 'Post Estático Instagram', 'Instagram Story', 'WhatsApp Masivo', 'Guion Video'];
+        const CANAL_ICONS: Record<string,string> = { 'LinkedIn Post': '💼', 'Newsletter': '📰', 'Email Masivo': '📧', 'Email Seguimiento': '✉️', 'Reel Instagram': '🎬', 'Post Estático Instagram': '📸', 'Instagram Story': '📲', 'WhatsApp Masivo': '💬', 'Guion Video': '🎥' };
+
+        const vFiltered = valeriaDrafts.filter(d =>
+          (agentHistoryTab === 'pending' ? d.status === 'pending' : agentHistoryTab === 'approved' ? d.status === 'approved' : d.status === 'active') &&
+          (valeriaFilterCanal === 'todos' || d.canal === valeriaFilterCanal)
+        );
+
+        const vPending = valeriaDrafts.filter(d => d.status === 'pending').length;
+        const vApproved = valeriaDrafts.filter(d => d.status === 'approved').length;
+        const vPublished = valeriaDrafts.filter(d => d.status === 'active').length;
+
+        const V_NAVY = '#001A37'; const V_GOLD = '#B89047'; const V_GOLD_L = '#D4AF6A'; const V_CREAM = '#F7F4EF'; const V_PARCH = '#EDE8DF';
+
+        return (
+          <div style={{ background: V_CREAM, minHeight: '100%' }}>
+
+            {/* Header Sotheby's */}
+            <div style={{ background: V_NAVY, padding: '24px 32px 20px' }}>
+              <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:16, flexWrap:'wrap' }}>
+                <div>
+                  <div style={{ fontSize:9, letterSpacing:4, color:V_GOLD, fontWeight:700, textTransform:'uppercase', marginBottom:5 }}>Valeria · VP de Medios</div>
+                  <h2 style={{ margin:0, fontSize:22, fontFamily:T.fontSerif, fontWeight:400, color:'#fff', letterSpacing:0.5 }}>Gestión de Contenidos</h2>
+                  <div style={{ fontSize:11, color:'rgba(255,255,255,0.45)', marginTop:3, fontStyle:'italic' }}>
+                    Contenido IA con perfil de marca editable · Aprobable por administrador
+                  </div>
+                </div>
+                <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+                  {valeriaTab === 'contenido' && <>
+                    <select value={valeriaSelectedCanal} onChange={e => setValeriaSelectedCanal(e.target.value)}
+                      style={{ background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.18)', borderRadius:2, padding:'7px 10px', color:'#fff', fontSize:11, outline:'none', minWidth:160 }}>
+                      {CANALES_VALERIA.map(c => <option key={c} value={c} style={{background:V_NAVY}}>{CANAL_ICONS[c]} {c}</option>)}
+                    </select>
+                    <button onClick={() => handleValeria(false, false, undefined, valeriaSelectedCanal)} disabled={valeriaGenerating}
+                      style={{ background: valeriaGenerating ? 'rgba(184,144,71,0.4)' : V_GOLD, color: V_NAVY, border:'none', borderRadius:2, padding:'8px 18px', fontSize:10, fontWeight:800, letterSpacing:1.5, textTransform:'uppercase', cursor: valeriaGenerating ? 'default':'pointer' }}>
+                      {valeriaGenerating ? 'Generando...' : 'Generar con IA'}
+                    </button>
+                  </>}
+                  <button onClick={() => { setAgentHistoryDetail(null); setAgentHistoryTab('pending'); }}
+                    style={{ background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.15)', borderRadius:2, padding:'7px 16px', color:'rgba(255,255,255,0.6)', fontSize:10, fontWeight:700, letterSpacing:1, textTransform:'uppercase', cursor:'pointer' }}>
+                    ← Volver
+                  </button>
+                </div>
+              </div>
+
+              {/* Tabs nav */}
+              <div style={{ display:'flex', gap:0, marginTop:20, borderBottom:'1px solid rgba(255,255,255,0.1)' }}>
+                {([
+                  { key:'contenido', label:'Contenido Generado' },
+                  { key:'perfil',    label:'Perfil de Marca' },
+                ] as const).map(t => (
+                  <button key={t.key} onClick={() => setValeriaTab(t.key)} style={{
+                    padding:'10px 22px', fontSize:10, fontWeight:700, letterSpacing:2, textTransform:'uppercase', cursor:'pointer', border:'none', background:'transparent',
+                    borderBottom: valeriaTab === t.key ? `2px solid ${V_GOLD}` : '2px solid transparent',
+                    color: valeriaTab === t.key ? V_GOLD_L : 'rgba(255,255,255,0.4)', marginBottom:-1,
+                  }}>{t.label}</button>
+                ))}
+                {profileDirty && (
+                  <span style={{ marginLeft:'auto', fontSize:10, color:V_GOLD, alignSelf:'center', fontWeight:700, letterSpacing:1 }}>
+                    ● Sin guardar
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div style={{ padding:'24px 32px' }}>
+
+              {/* ── TAB PERFIL DE MARCA ── */}
+              {valeriaTab === 'perfil' && (() => {
+                // Opciones predefinidas por sección
+                const OPTS: Record<string, string[]> = {
+                  audiencias: [
+                    'Colombianos 35-55 años con capital disponible ($50K-$500K USD)',
+                    'Empresarios e independientes que buscan dolarizar patrimonio',
+                    'Inversionistas con experiencia en finca raíz local',
+                    'Profesionales jóvenes 28-38 aspiracionales',
+                    'Venezolanos / venezolanos en Colombia buscando activos en dólares',
+                    'Peruanos y ecuatorianos con perfil inversor internacional',
+                    'Pensionados extranjeros buscando residencia + rentabilidad',
+                    'Family offices latinoamericanos diversificando portafolio',
+                  ],
+                  tonos: [
+                    'Experto y sólido en lo financiero (datos duros, % reales, cifras)',
+                    'Aspiracional y visual en el gancho (imágenes mentales de vida y libertad)',
+                    'Directo y sin adornos — confianza sin arrogancia',
+                    'Sofisticado pero accesible — no corporativo genérico',
+                    'Cercano y empático — habla de persona a persona',
+                    'Urgente y exclusivo — ventanas de oportunidad reales',
+                    'Educativo y transparente — explica antes de vender',
+                  ],
+                  objetivos: [
+                    'Construir autoridad y confianza antes de vender',
+                    'Generar leads directos (DM / link en bio / formulario)',
+                    'Nutrir prospectos ya en el CRM (top-of-mind)',
+                    'Rebatir objeciones sin mencionarlas directamente',
+                    'Posicionar a Panamá como mejor destino de inversión vs Colombia',
+                    'Aumentar compartidos y guardados (contenido de valor)',
+                    'Convertir seguidores fríos en leads calificados',
+                  ],
+                  objeciones: [
+                    '¿Es seguro llevar plata a otro país? → Panamá dolarizado, banca top-10 mundial',
+                    '¿Cómo lo manejo con la DIAN? → Activos en el exterior son legales y declarables',
+                    '¿Y si el proyecto no se entrega? → Fiducia de garantía en todos los proyectos GLP',
+                    '¿Puedo usarlo o es solo para arrendar? → Doble beneficio: uso propio + renta',
+                    '¿No es muy caro para mí? → Desde $150K USD con financiamiento disponible',
+                    '¿El peso colombiano me afecta? → Todo en dólares, sin riesgo cambiario',
+                    '¿Quién me garantiza la renta? → Operadoras con track record verificado',
+                  ],
+                  diferenciadores: [
+                    'Exención predial por 20 años en todos los proyectos nuevos',
+                    'Rentabilidad neta superior al 8% anual en USD',
+                    'Panamá dolarizado — sin riesgo cambiario',
+                    'GLP solo trabaja proyectos con fiducia de garantía',
+                    'Asesoría integral: desde selección hasta declaración en Colombia',
+                    'Acceso a preventas exclusivas antes de apertura al público',
+                    'Red de brokers certificados en Bogotá, Medellín y Cali',
+                  ],
+                  activos_visuales: [
+                    'Renders y fotos profesionales de proyectos (Ocean Reef Park, Ventu, Santa María)',
+                    'Video drone de zonas: Punta Pacífica, Costa del Este, Playa Caracol',
+                    'Fotos del equipo en eventos y reuniones con clientes',
+                    'Infografías de rentabilidad y comparativas de mercado',
+                    'Testimonios en video de clientes colombianos',
+                    'Imágenes de lifestyle: playa, rooftop, amenidades premium',
+                    'Datos y gráficos de valorización histórica',
+                  ],
+                  hashtags_instagram: [
+                    '#GLP', '#PanamaRealEstate', '#InversionInmobiliaria', '#DolarizaTuPatrimonio',
+                    '#PanamáInversión', '#WealthManagement', '#InversionEnDolares', '#GlpWealthManagement',
+                    '#OceanReefPark', '#VentuPanama', '#PuntaPacifica', '#CostaDelEste',
+                    '#LibertadFinanciera', '#InvierteEnPanama', '#PatrimonioEnDolares',
+                    '#InmobiliariaLujo', '#InversionColombia', '#DolarizaciónPatrimonio',
+                    '#PanamaCityLife', '#RealEstateLujo', '#InversionistaColombia',
+                  ],
+                  hashtags_linkedin: [
+                    '#InversionInmobiliaria', '#WealthManagement', '#PanamaRealEstate', '#GLP',
+                    '#PatrimonioDolarizado', '#RealEstatePanama', '#InversionInternacional',
+                    '#FinanzasPersonales', '#Inmobiliaria', '#InversionInteligente',
+                    '#LiderazgoFinanciero', '#EmpresariosColombia', '#PatrimonioFamiliar',
+                  ],
+                };
+
+                const ProfileChips = ({ field, label, icon }: { field: keyof GlpBrandProfile, label: string, icon: string }) => {
+                  const items = brandProfile[field] as string[];
+                  const opts = OPTS[field] || [];
+                  const available = opts.filter(o => !items.includes(o));
+                  const [custom, setCustom] = useState('');
+                  return (
+                    <div style={{ marginBottom: 20 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 16 }}>{icon}</span> {label}
+                        <span style={{ marginLeft: 'auto', fontSize: 10, color: T.textSec, fontWeight: 400 }}>{items.length} activos</span>
+                      </div>
+                      {/* Chips activos */}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                        {items.map((item, i) => (
+                          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, background: `${T.teal}12`, border: `1px solid ${T.teal}30`, borderRadius: 20, padding: '3px 10px 3px 12px', fontSize: 11, color: T.teal }}>
+                            <span>{item.length > 60 ? item.slice(0, 58) + '…' : item}</span>
+                            <button onClick={() => updateProfile(field, items.filter((_, j) => j !== i))}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.danger, fontSize: 13, lineHeight: 1, padding: '0 2px', fontWeight: 700 }}>×</button>
+                          </div>
+                        ))}
+                        {items.length === 0 && <span style={{ fontSize: 11, color: T.textSec, fontStyle: 'italic' }}>Sin elementos — añade desde la lista o escribe uno personalizado</span>}
+                      </div>
+                      {/* Añadir desde lista + campo libre */}
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {available.length > 0 && (
+                          <select defaultValue="" onChange={e => { if (e.target.value) { updateProfile(field, [...items, e.target.value]); e.target.value = ''; } }}
+                            style={{ ...inputStyle({ fontSize: 11, padding: '5px 8px' }), flex: 1, minWidth: 180 }}>
+                            <option value="">+ Agregar de la lista...</option>
+                            {available.map(o => <option key={o} value={o}>{o.length > 70 ? o.slice(0, 68) + '…' : o}</option>)}
+                          </select>
+                        )}
+                        <div style={{ display: 'flex', gap: 4, flex: 1, minWidth: 180 }}>
+                          <input value={custom} onChange={e => setCustom(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter' && custom.trim()) { updateProfile(field, [...items, custom.trim()]); setCustom(''); } }}
+                            placeholder="Escribir personalizado + Enter"
+                            style={{ ...inputStyle({ fontSize: 11, padding: '5px 8px' }), flex: 1 }} />
+                          <button onClick={() => { if (custom.trim()) { updateProfile(field, [...items, custom.trim()]); setCustom(''); } }}
+                            style={btnPrimary({ padding: '5px 12px', fontSize: 11 })}>+</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                };
+
+                return (
+                  <div>
+                    {/* Propuesta de valor */}
+                    <div style={{ marginBottom: 20, padding: 14, background: `${T.teal}06`, borderRadius: 10, border: `1px solid ${T.teal}20` }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 8 }}>🏆 Propuesta de Valor Principal</div>
+                      <textarea value={brandProfile.propuesta_valor}
+                        onChange={e => updateProfile('propuesta_valor', e.target.value)}
+                        style={{ ...inputStyle(), width: '100%', minHeight: 70, fontSize: 12, resize: 'vertical' as const }} />
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                      <div>
+                        <ProfileChips field="audiencias" label="Audiencias Objetivo" icon="👥" />
+                        <ProfileChips field="tonos" label="Tonos de Marca" icon="🎙️" />
+                        <ProfileChips field="objetivos" label="Objetivos del Contenido" icon="🎯" />
+                        <ProfileChips field="objeciones" label="Objeciones a Disolver" icon="🛡️" />
+                      </div>
+                      <div>
+                        <ProfileChips field="diferenciadores" label="Diferenciadores GLP" icon="⭐" />
+                        <ProfileChips field="activos_visuales" label="Activos Visuales Disponibles" icon="📷" />
+                        <ProfileChips field="hashtags_instagram" label="Hashtags Instagram" icon="📸" />
+                        <ProfileChips field="hashtags_linkedin" label="Hashtags LinkedIn" icon="💼" />
+                      </div>
+                    </div>
+
+                    {/* CTA principal */}
+                    <div style={{ marginBottom: 16 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 6 }}>📣 CTA Principal</div>
+                      <input value={brandProfile.cta_principal}
+                        onChange={e => updateProfile('cta_principal', e.target.value)}
+                        style={{ ...inputStyle({ fontSize: 12 }), width: '100%' }} />
+                    </div>
+
+                    {/* Notas adicionales */}
+                    <div style={{ marginBottom: 20 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 6 }}>📋 Notas Adicionales del Equipo</div>
+                      <textarea value={brandProfile.notas_adicionales}
+                        onChange={e => updateProfile('notas_adicionales', e.target.value)}
+                        placeholder="Contexto especial, restricciones legales, campañas activas, temporadas..."
+                        style={{ ...inputStyle(), width: '100%', minHeight: 60, fontSize: 12, resize: 'vertical' as const }} />
+                    </div>
+
+                    {/* Acciones */}
+                    <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                      <button onClick={resetProfile} style={btnSecondary({ padding: '8px 16px', fontSize: 12, color: T.danger, borderColor: T.danger })}>
+                        ↺ Restablecer valores por defecto
+                      </button>
+                      <button onClick={saveProfile} disabled={profileSaving}
+                        style={btnPrimary({ padding: '8px 20px', fontSize: 12, background: profileSaving ? T.textSec : profileDirty ? T.success : T.teal, opacity: profileSaving ? 0.7 : 1 })}>
+                        {profileSaving ? '⏳ Guardando...' : profileDirty ? '💾 Guardar en Supabase' : '✓ Guardado en Supabase'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* ── TAB CONTENIDO ── */}
+              {valeriaTab === 'contenido' && <>
+
+              {/* KPIs */}
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:24 }}>
+                {[
+                  { label:'Borradores', value:vPending, accent:V_GOLD },
+                  { label:'Aprobados', value:vApproved, accent:V_NAVY },
+                  { label:'Publicados', value:vPublished, accent:'#10B981' },
+                ].map(s => (
+                  <div key={s.label} style={{ background:'#fff', border:`1px solid #D6CEBC`, padding:'16px 20px', display:'flex', alignItems:'center', gap:14 }}>
+                    <div style={{ width:3, alignSelf:'stretch', background:s.accent, flexShrink:0 }} />
+                    <div>
+                      <div style={{ fontSize:28, fontWeight:300, fontFamily:T.fontSerif, color:s.accent, lineHeight:1 }}>{s.value}</div>
+                      <div style={{ fontSize:9, letterSpacing:2, color:'#9CA3AF', textTransform:'uppercase', marginTop:3 }}>{s.label}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Filtros */}
+              <div style={{ display:'flex', gap:8, marginBottom:20, flexWrap:'wrap', alignItems:'center' }}>
+                {(['pending','approved','active'] as const).map(tab => {
+                  const isActive = agentHistoryTab === tab;
+                  const count = tab==='pending'?vPending:tab==='approved'?vApproved:vPublished;
+                  const label = tab==='pending'?'Borradores':tab==='approved'?'Aprobados':'Publicados';
+                  return (
+                    <button key={tab} onClick={() => setAgentHistoryTab(tab)} style={{
+                      padding:'7px 16px', fontSize:9, fontWeight:700, letterSpacing:2, textTransform:'uppercase', cursor:'pointer',
+                      background: isActive ? V_NAVY : 'transparent',
+                      color: isActive ? V_GOLD_L : '#6B7280',
+                      border:`1px solid ${isActive ? V_NAVY : '#D6CEBC'}`,
+                      borderRadius:2,
+                    }}>{label} ({count})</button>
+                  );
+                })}
+                <select value={valeriaFilterCanal} onChange={e => setValeriaFilterCanal(e.target.value)}
+                  style={{ marginLeft:'auto', background:'#fff', border:'1px solid #D6CEBC', borderRadius:2, padding:'6px 10px', fontSize:10, color:'#374151', outline:'none' }}>
+                  <option value="todos">Todos los canales</option>
+                  {CANALES_VALERIA.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+
+              {/* Lista */}
+              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                {vFiltered.length === 0 ? (
+                  <div style={{ padding:40, textAlign:'center', border:`1px dashed #D6CEBC`, background:'#fff' }}>
+                    <div style={{ fontFamily:T.fontSerif, fontSize:18, color:V_NAVY, marginBottom:6 }}>Sin contenido aquí</div>
+                    <div style={{ fontSize:11, color:'#9CA3AF' }}>Selecciona un canal y pulsa "Generar con IA" para crear contenido</div>
+                  </div>
+                ) : vFiltered.map(item => {
+                  const statusColor = item.status==='active'?'#10B981':item.status==='approved'?V_NAVY:V_GOLD;
+                  const statusLabel = item.status==='active'?'Publicado':item.status==='approved'?'Aprobado':'Borrador';
+                  return (
+                    <div key={item.id} style={{ background:'#fff', border:`1px solid #D6CEBC`, borderLeft:`3px solid ${statusColor}` }}>
+                      {/* Card header */}
+                      <div style={{ padding:'14px 18px 12px', borderBottom:'1px solid #F0EDE8', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12 }}>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                            <span style={{ fontSize:14 }}>{CANAL_ICONS[item.canal || item.type] || '📄'}</span>
+                            <span style={{ fontSize:13, fontWeight:600, color:V_NAVY, fontFamily:T.fontSerif }}>{item.asunto || item.type}</span>
+                          </div>
+                          <div style={{ fontSize:9, letterSpacing:2, color:'#9CA3AF', textTransform:'uppercase' }}>{item.canal || item.type} · {item.date}</div>
+                          {item.contexto && <div style={{ fontSize:10, color:'#6B7280', marginTop:4, fontStyle:'italic' }}>{item.contexto}</div>}
+                          {item.tags && item.tags.length > 0 && (
+                            <div style={{ display:'flex', gap:4, marginTop:6, flexWrap:'wrap' }}>
+                              {item.tags.map(t => <span key={t} style={{ fontSize:8, background:`${V_NAVY}10`, color:V_NAVY, padding:'2px 7px', fontWeight:700, letterSpacing:1 }}>#{t}</span>)}
+                            </div>
+                          )}
+                        </div>
+                        <span style={{ fontSize:8, letterSpacing:2, fontWeight:700, color:statusColor, background:`${statusColor}12`, padding:'4px 10px', flexShrink:0, textTransform:'uppercase' }}>{statusLabel}</span>
+                      </div>
+
+                      {/* Body */}
+                      <div style={{ padding:'14px 18px' }}>
+                        <textarea value={item.content}
+                          onChange={e => setValeriaDrafts(prev => prev.map(x => x.id === item.id ? { ...x, content: e.target.value } : x))}
+                          style={{ width:'100%', boxSizing:'border-box', fontSize:12, minHeight:100, border:'1px solid #E9E4DA', padding:'10px 12px', fontFamily:T.fontSans, lineHeight:1.7, color:'#374151', outline:'none', resize:'vertical' as const, marginBottom:8 }}
+                        />
+                        <input placeholder="Notas del administrador..."
+                          value={item.notas_admin || ''}
+                          onChange={e => setValeriaDrafts(prev => prev.map(x => x.id === item.id ? { ...x, notas_admin: e.target.value } : x))}
+                          style={{ width:'100%', boxSizing:'border-box', fontSize:11, border:'1px solid #E9E4DA', padding:'7px 10px', color:'#374151', outline:'none', marginBottom:12, fontStyle: !item.notas_admin ? 'italic' : 'normal' }}
+                        />
+
+                        <div style={{ display:'flex', gap:8, justifyContent:'flex-end', flexWrap:'wrap', alignItems:'center' }}>
+                          {item.aprobado_por && (
+                            <span style={{ fontSize:9, color:'#9CA3AF', marginRight:'auto' }}>
+                              Aprobado por {item.aprobado_por} · {item.fecha_aprobacion}
+                            </span>
+                          )}
+                          <button onClick={() => setValeriaDrafts(prev => prev.filter(x => x.id !== item.id))}
+                            style={{ background:'transparent', border:'1px solid #FECACA', color:'#DC2626', padding:'6px 12px', fontSize:9, fontWeight:700, letterSpacing:1, textTransform:'uppercase', cursor:'pointer' }}>
+                            Eliminar
+                          </button>
+                          {item.status === 'pending' && (
+                            <button onClick={() => setValeriaDrafts(prev => prev.map(x => x.id === item.id
+                              ? { ...x, status:'approved', aprobado_por:'Admin', fecha_aprobacion:today() } : x))}
+                              style={{ background:V_NAVY, color:V_GOLD_L, border:'none', padding:'6px 16px', fontSize:9, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', cursor:'pointer' }}>
+                              Aprobar
+                            </button>
+                          )}
+                          {item.status === 'approved' && (
+                            <button onClick={() => setValeriaDrafts(prev => prev.map(x => x.id === item.id ? { ...x, status:'pending' } : x))}
+                              style={{ background:'transparent', border:`1px solid #D6CEBC`, color:'#6B7280', padding:'6px 12px', fontSize:9, fontWeight:700, letterSpacing:1, textTransform:'uppercase', cursor:'pointer' }}>
+                              Devolver
+                            </button>
+                          )}
+                          {(item.status === 'approved' || item.status === 'pending') && (
+                            <button onClick={() => setValeriaDrafts(prev => prev.map(x => x.id === item.id
+                              ? { ...x, status:'active', aprobado_por: x.aprobado_por||'Admin', fecha_aprobacion: x.fecha_aprobacion||today() } : x))}
+                              style={{ background:'#10B981', color:'#fff', border:'none', padding:'6px 16px', fontSize:9, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', cursor:'pointer' }}>
+                              Publicar
+                            </button>
+                          )}
+                          {(item.status === 'approved' || item.status === 'active') && !['Coordinación','Guion Video'].includes(item.canal||'') && (
+                            <button onClick={() => { handleIsabellaFromValeria(item); setAgentHistoryDetail('ISABELLA'); }}
+                              disabled={agentIsabellaActive}
+                              style={{ background: agentIsabellaActive ? '#9CA3AF' : V_GOLD, color: V_NAVY, border:'none', padding:'6px 16px', fontSize:9, fontWeight:800, letterSpacing:1.5, textTransform:'uppercase', cursor: agentIsabellaActive ? 'default':'pointer' }}>
+                              Crear Video · Isabella
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              </>}
+            </div>
+          </div>
+        );
+      }
+
+      // ── ISABELLA ─────────────────────────────────────────────
+      const I_NAVY = '#001A37'; const I_GOLD = '#B89047'; const I_GOLD_L = '#D4AF6A'; const I_CREAM = '#F7F4EF'; const I_PARCH = '#EDE8DF';
+      const historyItems = isabellaScripts;
+      const setHistoryItems = setIsabellaScripts;
       const filteredItems = historyItems.filter(i => i.status === agentHistoryTab);
+      const iPending = historyItems.filter(i => i.status === 'pending').length;
+      const iApproved = historyItems.filter(i => i.status === 'approved').length;
+      const iActive = historyItems.filter(i => i.status === 'active').length;
 
       return (
-        <div>
-          <button onClick={() => { setAgentHistoryDetail(null); setAgentHistoryTab('pending'); }} style={btnSecondary({ marginBottom: 16, display: 'inline-flex', alignItems: 'center', gap: 6 })}>
-            {renderButtonIcon('arrow-left')}
-            <span>Volver a Agentes</span>
-          </button>
-          
-          <div style={cardStyle()}>
-            <h2 style={{ margin: '0 0 16px', fontSize: 20, color: T.text }}>Historial y Aprobaciones: {agentHistoryDetail}</h2>
-            
-            {/* Tabs */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 20, borderBottom: `1px solid ${T.borderLight}`, paddingBottom: 12 }}>
-              {(['pending', 'approved', 'active'] as const).map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => setAgentHistoryTab(tab)}
-                  style={{
-                    padding: '8px 16px',
-                    background: agentHistoryTab === tab ? (tab === 'pending' ? T.warning : tab === 'approved' ? T.sky : T.success) : 'transparent',
-                    color: agentHistoryTab === tab ? '#FFF' : T.textSec,
-                    border: `1px solid ${agentHistoryTab === tab ? 'transparent' : T.borderLight}`,
-                    borderRadius: 20,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  {tab === 'pending' ? 'Borradores Pendientes' : tab === 'approved' ? 'Aprobados' : 'Publicados / Activos'}
-                </button>
+        <div style={{ background: I_CREAM, minHeight:'100%' }}>
+
+          {/* Header */}
+          <div style={{ background: I_NAVY, padding:'24px 32px 0' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:16, flexWrap:'wrap', paddingBottom:20 }}>
+              <div>
+                <div style={{ fontSize:9, letterSpacing:4, color:I_GOLD, fontWeight:700, textTransform:'uppercase', marginBottom:5 }}>Isabella · Embajadora de Marca GLP</div>
+                <h2 style={{ margin:0, fontSize:22, fontFamily:T.fontSerif, fontWeight:400, color:'#fff', letterSpacing:0.5 }}>Historial y Aprobaciones</h2>
+                <div style={{ fontSize:11, color:'rgba(255,255,255,0.4)', marginTop:3, fontStyle:'italic' }}>Guiones de video · Reels · Producción audiovisual</div>
+              </div>
+              <button onClick={() => { setAgentHistoryDetail(null); setAgentHistoryTab('pending'); }}
+                style={{ background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.15)', borderRadius:2, padding:'7px 16px', color:'rgba(255,255,255,0.6)', fontSize:10, fontWeight:700, letterSpacing:1, textTransform:'uppercase', cursor:'pointer' }}>
+                ← Volver
+              </button>
+            </div>
+
+            {/* Tab nav */}
+            <div style={{ display:'flex', gap:0, borderBottom:'1px solid rgba(255,255,255,0.1)' }}>
+              {([
+                { key:'pending',  label:`Borradores (${iPending})` },
+                { key:'approved', label:`Aprobados (${iApproved})` },
+                { key:'active',   label:`Publicados (${iActive})` },
+              ] as const).map(t => (
+                <button key={t.key} onClick={() => setAgentHistoryTab(t.key)} style={{
+                  padding:'10px 22px', fontSize:10, fontWeight:700, letterSpacing:2, textTransform:'uppercase', cursor:'pointer', border:'none', background:'transparent', marginBottom:-1,
+                  borderBottom: agentHistoryTab===t.key ? `2px solid ${I_GOLD}` : '2px solid transparent',
+                  color: agentHistoryTab===t.key ? I_GOLD_L : 'rgba(255,255,255,0.4)',
+                }}>{t.label}</button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ padding:'24px 32px' }}>
+            {/* KPIs */}
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:24 }}>
+              {[
+                { label:'Borradores', value:iPending, accent:I_GOLD },
+                { label:'Aprobados',  value:iApproved, accent:I_NAVY },
+                { label:'Publicados', value:iActive,   accent:'#10B981' },
+              ].map(s => (
+                <div key={s.label} style={{ background:'#fff', border:'1px solid #D6CEBC', padding:'16px 20px', display:'flex', alignItems:'center', gap:14 }}>
+                  <div style={{ width:3, alignSelf:'stretch', background:s.accent, flexShrink:0 }} />
+                  <div>
+                    <div style={{ fontSize:28, fontWeight:300, fontFamily:T.fontSerif, color:s.accent, lineHeight:1 }}>{s.value}</div>
+                    <div style={{ fontSize:9, letterSpacing:2, color:'#9CA3AF', textTransform:'uppercase', marginTop:3 }}>{s.label}</div>
+                  </div>
+                </div>
               ))}
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Lista */}
+            <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
               {filteredItems.length === 0 ? (
-                <div style={{ padding: 20, textAlign: 'center', color: T.textSec, border: `1px dashed ${T.borderLight}`, borderRadius: 8 }}>
-                  No hay contenidos en esta pestaña.
+                <div style={{ padding:40, textAlign:'center', border:'1px dashed #D6CEBC', background:'#fff' }}>
+                  <div style={{ fontFamily:T.fontSerif, fontSize:18, color:I_NAVY, marginBottom:6 }}>Sin contenidos en esta sección</div>
+                  <div style={{ fontSize:11, color:'#9CA3AF' }}>Los guiones de video aparecerán aquí una vez generados</div>
                 </div>
-              ) : filteredItems.map(item => (
-                <div key={item.id} style={{ border: `1px solid ${T.border}`, borderRadius: 12, padding: 16, background: item.status === 'active' ? '#F0FDF4' : (item.status === 'approved' ? '#EFF6FF' : '#FFFBEB') }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: T.textSec, textTransform: 'uppercase', letterSpacing: 0.5 }}>{item.type} · {item.date}</div>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: T.text, marginTop: 4 }}>ID: {item.id}</div>
+              ) : filteredItems.map(item => {
+                const sColor = item.status==='active'?'#10B981':item.status==='approved'?I_NAVY:I_GOLD;
+                const sLabel = item.status==='active'?'Publicado':item.status==='approved'?'Aprobado':'Borrador';
+                return (
+                  <div key={item.id} style={{ background:'#fff', border:'1px solid #D6CEBC', borderLeft:`3px solid ${sColor}` }}>
+                    {/* Header card */}
+                    <div style={{ padding:'14px 18px 12px', borderBottom:'1px solid #F0EDE8', display:'flex', justifyContent:'space-between', alignItems:'center', gap:12 }}>
+                      <div>
+                        <div style={{ fontSize:9, letterSpacing:2, color:'#9CA3AF', textTransform:'uppercase', marginBottom:3 }}>{item.type} · {item.date}</div>
+                        {item.asunto && <div style={{ fontSize:13, fontWeight:600, color:I_NAVY, fontFamily:T.fontSerif }}>{item.asunto}</div>}
+                      </div>
+                      <span style={{ fontSize:8, letterSpacing:2, fontWeight:700, color:sColor, background:`${sColor}12`, padding:'4px 10px', textTransform:'uppercase', flexShrink:0 }}>{sLabel}</span>
                     </div>
-                    {badge(
-                      item.status === 'active' ? 'PUBLICADO' : (item.status === 'approved' ? 'APROBADO' : 'PENDIENTE'),
-                      item.status === 'active' ? T.success : (item.status === 'approved' ? T.sky : T.warning),
-                      T.card
-                    )}
+
+                    {/* Contenido del guion */}
+                    <div style={{ padding:'16px 18px' }}>
+                      <div style={{ fontSize:12, color:'#374151', whiteSpace:'pre-wrap', lineHeight:1.8, background:I_PARCH, padding:'14px 16px', borderLeft:`2px solid #D6CEBC`, marginBottom:14 }}>
+                        {item.content}
+                      </div>
+
+                      <div style={{ display:'flex', gap:8, justifyContent:'flex-end', flexWrap:'wrap' }}>
+                        {item.status !== 'active' && (
+                          <button onClick={() => setHistoryItems(prev => prev.filter(x => x.id !== item.id))}
+                            style={{ background:'transparent', border:'1px solid #FECACA', color:'#DC2626', padding:'6px 12px', fontSize:9, fontWeight:700, letterSpacing:1, textTransform:'uppercase', cursor:'pointer' }}>
+                            Descartar
+                          </button>
+                        )}
+                        {item.status === 'pending' && (
+                          <button onClick={() => setHistoryItems(prev => prev.map(x => x.id===item.id ? {...x,status:'approved'} : x))}
+                            style={{ background:I_NAVY, color:I_GOLD_L, border:'none', padding:'6px 18px', fontSize:9, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', cursor:'pointer' }}>
+                            Aprobar
+                          </button>
+                        )}
+                        {(item.status === 'approved' || item.status === 'pending') && (
+                          <button onClick={() => setHistoryItems(prev => prev.map(x => x.id===item.id ? {...x,status:'active'} : x))}
+                            style={{ background:'#10B981', color:'#fff', border:'none', padding:'6px 18px', fontSize:9, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', cursor:'pointer' }}>
+                            Publicar
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Recuadro de video al final */}
+                      {item.status === 'active' && (
+                        <div style={{ marginTop:16, border:'1px solid #D6CEBC', background:I_PARCH, padding:'16px 18px' }}>
+                          <div style={{ fontSize:9, letterSpacing:3, color:'#9CA3AF', textTransform:'uppercase', marginBottom:10 }}>Preview de producción</div>
+                          <div style={{ background:I_NAVY, aspectRatio:'16/9', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:8 }}>
+                            <div style={{ width:48, height:48, borderRadius:'50%', border:`2px solid ${I_GOLD}`, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                              <div style={{ width:0, height:0, borderTop:'8px solid transparent', borderBottom:'8px solid transparent', borderLeft:`14px solid ${I_GOLD}`, marginLeft:3 }} />
+                            </div>
+                            <div style={{ fontSize:9, letterSpacing:2, color:'rgba(255,255,255,0.4)', textTransform:'uppercase' }}>Video en producción</div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  
-                  <div style={{ fontSize: 13, color: T.text, whiteSpace: 'pre-wrap', lineHeight: 1.6, background: '#FFF', padding: 12, borderRadius: 8, border: `1px solid ${T.borderLight}`, marginBottom: 12 }}>
-                    {item.content}
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ── PANEL FLUJO DE TRABAJO ───────────────────────────────
+    if (agentHistoryDetail === 'WORKFLOW') {
+      const AGENT_COLORS: Record<string,string> = { CAMILO: '#3B82F6', SARA: '#10B981', VALERIA: '#8B5CF6', ISABELLA: '#F59E0B', ADMIN: T.teal };
+      const PRIORIDAD_COLOR: Record<string,string> = { alta: T.danger, media: T.warning, baja: T.success };
+      const STATUS_LABEL: Record<string,string> = { pendiente: '⏳ Pendiente', en_revision: '🔍 En revisión', aprobado: '✅ Aprobado', rechazado: '❌ Rechazado', completado: '✓ Completado' };
+
+      const wfFiltered = workflowTasks.filter(t =>
+        workflowTab === 'pendiente' ? ['pendiente','en_revision'].includes(t.status) : ['aprobado','rechazado','completado'].includes(t.status)
+      );
+      const pendingCount = workflowTasks.filter(t => t.status === 'pendiente').length;
+
+      return (
+        <div>
+          <button onClick={() => setAgentHistoryDetail(null)} style={btnSecondary({ marginBottom: 16, display: 'inline-flex', alignItems: 'center', gap: 6 })}>
+            {renderButtonIcon('arrow-left')}<span>Volver a Agentes</span>
+          </button>
+
+          <div style={cardStyle()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 20, color: T.text }}>🔄 Flujo de Trabajo entre Agentes</h2>
+                <div style={{ fontSize: 12, color: T.textSec, marginTop: 4 }}>
+                  Tareas generadas automáticamente por Camilo → Sara / Valeria / Isabella. El admin aprueba, redirige o descarta.
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => handleCamilo(false, false, 'research')} disabled={agentCamiloActive}
+                  style={btnPrimary({ padding: '8px 14px', fontSize: 12, background: '#3B82F6', opacity: agentCamiloActive ? 0.6 : 1 })}>
+                  {agentCamiloActive ? '⏳ Investigando...' : '🔍 Nuevo Research (Camilo)'}
+                </button>
+              </div>
+            </div>
+
+            {/* Stats flujo */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 20 }}>
+              {[
+                { label: 'Pendientes', value: workflowTasks.filter(t=>t.status==='pendiente').length, color: T.warning },
+                { label: 'Para Valeria', value: workflowTasks.filter(t=>t.to==='VALERIA'&&t.status==='pendiente').length, color: '#8B5CF6' },
+                { label: 'Para Isabella', value: workflowTasks.filter(t=>t.to==='ISABELLA'&&t.status==='pendiente').length, color: '#F59E0B' },
+                { label: 'Completadas', value: workflowTasks.filter(t=>['completado','aprobado'].includes(t.status)).length, color: T.success },
+              ].map(s => (
+                <div key={s.label} style={{ padding: '10px 14px', borderRadius: 8, background: `${s.color}12`, border: `1px solid ${s.color}40`, textAlign: 'center' }}>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: s.color }}>{s.value}</div>
+                  <div style={{ fontSize: 11, color: T.textSec }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Tabs */}
+            <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: `2px solid ${T.borderLight}`, paddingBottom: 0 }}>
+              {([
+                { key: 'pendiente', label: `⏳ Por gestionar (${pendingCount})` },
+                { key: 'completado', label: `✓ Historial` },
+              ] as const).map(t => (
+                <button key={t.key} onClick={() => setWorkflowTab(t.key)} style={{
+                  padding: '8px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none',
+                  background: 'transparent', marginBottom: -2,
+                  borderBottom: workflowTab === t.key ? `3px solid ${T.teal}` : '3px solid transparent',
+                  color: workflowTab === t.key ? T.teal : T.textSec,
+                }}>{t.label}</button>
+              ))}
+            </div>
+
+            {/* Lista de tareas */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {wfFiltered.length === 0 ? (
+                <div style={{ padding: 32, textAlign: 'center', color: T.textSec, border: `2px dashed ${T.borderLight}`, borderRadius: 10 }}>
+                  <div style={{ fontSize: 32, marginBottom: 8 }}>🔄</div>
+                  <div style={{ fontWeight: 600 }}>Sin tareas aquí</div>
+                  <div style={{ fontSize: 12, marginTop: 4 }}>Ejecuta "Research de Mercado" con Camilo o activa el Enjambre para generar tareas</div>
+                </div>
+              ) : wfFiltered.map(task => (
+                <div key={task.id} style={{
+                  border: `1.5px solid ${task.status === 'pendiente' ? AGENT_COLORS[task.to] || T.border : T.borderLight}`,
+                  borderRadius: 12, padding: 14, background: task.status === 'completado' ? '#F9FAFB' : T.card,
+                  opacity: task.status === 'rechazado' ? 0.6 : 1
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+                    <div style={{ flex: 1 }}>
+                      {/* Route: FROM → TO */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                        <span style={{ fontSize: 10, fontWeight: 800, background: AGENT_COLORS[task.from]+'20', color: AGENT_COLORS[task.from], padding: '2px 8px', borderRadius: 10 }}>{task.from}</span>
+                        <span style={{ fontSize: 11, color: T.textSec }}>→</span>
+                        <span style={{ fontSize: 10, fontWeight: 800, background: AGENT_COLORS[task.to]+'20', color: AGENT_COLORS[task.to], padding: '2px 8px', borderRadius: 10 }}>{task.to}</span>
+                        <span style={{ fontSize: 9, background: `${PRIORIDAD_COLOR[task.prioridad]}20`, color: PRIORIDAD_COLOR[task.prioridad], padding: '2px 6px', borderRadius: 6, fontWeight: 700, marginLeft: 4 }}>
+                          {task.prioridad.toUpperCase()}
+                        </span>
+                        <span style={{ fontSize: 9, color: T.textSec, marginLeft: 'auto' }}>{task.fecha}</span>
+                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 4 }}>{task.titulo}</div>
+                      <div style={{ fontSize: 11, color: T.textSec, fontStyle: 'italic' }}>{task.tipo}</div>
+                    </div>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: T.textSec }}>{STATUS_LABEL[task.status]}</span>
                   </div>
-                  
-                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                    {item.status !== 'active' && (
-                      <button onClick={() => setHistoryItems(prev => prev.filter(x => x.id !== item.id))} style={btnSecondary({ padding: '6px 14px', fontSize: 11 })}>Descartar</button>
-                    )}
-                    {item.status === 'pending' && (
-                      <button onClick={() => setHistoryItems(prev => prev.map(x => x.id === item.id ? { ...x, status: 'approved' } : x))} style={btnPrimary({ padding: '6px 14px', fontSize: 11, background: T.sky, color: T.card })}>Aprobar Contenido</button>
-                    )}
-                    {(item.status === 'approved' || item.status === 'pending') && (
-                      <button onClick={() => setHistoryItems(prev => prev.map(x => x.id === item.id ? { ...x, status: 'active' } : x))} style={btnPrimary({ padding: '6px 14px', fontSize: 11, background: T.teal, color: T.card })}>Activar / Publicar</button>
-                    )}
+
+                  {/* Contenido expandible */}
+                  <div style={{ fontSize: 11, color: T.text, whiteSpace: 'pre-wrap', background: '#F9FAFB', padding: '8px 12px', borderRadius: 6, border: `1px solid ${T.borderLight}`, marginBottom: 10, maxHeight: 120, overflowY: 'auto', lineHeight: 1.6 }}>
+                    {task.contenido}
                   </div>
+
+                  {/* Acciones */}
+                  {task.status === 'pendiente' && (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button onClick={() => setWorkflowTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: 'rechazado' } : t))}
+                        style={btnSecondary({ padding: '5px 12px', fontSize: 11, color: T.danger, borderColor: T.danger })}>
+                        ✕ Descartar
+                      </button>
+                      {task.to === 'VALERIA' && (
+                        <button onClick={() => {
+                          setValeriaDrafts(prev => [{
+                            id: 'vd_wf_' + Date.now(), date: today(), type: task.tipo, canal: task.tipo,
+                            asunto: task.titulo.replace(/^📊 /,''), content: task.contenido,
+                            tags: ['Camilo','Research','Workflow'], contexto: `Insight de Camilo — ${task.tipo}`,
+                            status: 'pending', notas_admin: ''
+                          }, ...prev]);
+                          setWorkflowTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: 'completado' } : t));
+                          setAgentHistoryDetail('VALERIA');
+                        }} style={btnPrimary({ padding: '5px 12px', fontSize: 11, background: '#8B5CF6', color: '#fff' })}>
+                          ✍️ Enviar a Valeria
+                        </button>
+                      )}
+                      {task.to === 'ISABELLA' && (
+                        <button onClick={() => {
+                          handleIsabella(false, false, task.contenido, 'Reel 45s');
+                          setWorkflowTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: 'completado' } : t));
+                          setAgentHistoryDetail('ISABELLA');
+                        }} style={btnPrimary({ padding: '5px 12px', fontSize: 11, background: '#F59E0B', color: '#fff' })}>
+                          🎬 Enviar a Isabella
+                        </button>
+                      )}
+                      {task.to === 'SARA' && (
+                        <button onClick={() => {
+                          setSaraReportText(prev => prev + '\n\n[CAMILO] ' + task.contenido);
+                          setWorkflowTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: 'completado' } : t));
+                        }} style={btnPrimary({ padding: '5px 12px', fontSize: 11, background: '#10B981', color: '#fff' })}>
+                          📡 Aplicar a Sara
+                        </button>
+                      )}
+                      <button onClick={() => setWorkflowTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: 'aprobado' } : t))}
+                        style={btnPrimary({ padding: '5px 12px', fontSize: 11 })}>
+                        ✅ Marcar gestionado
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -4461,330 +6846,569 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
       );
     }
 
-    return (
-      <div>
-        {sectionTitle('Agentes IA - Consola de Gestión Back-Office Comercial')}
+    // ── PANEL OBJECIONES DE BROKERS ──────────────────────────────
+    if (agentHistoryDetail === 'OBJECTIONS') {
+      const CANAL_OPTS = ['llamada','reunion','correo','whatsapp','formulario'];
+      const TIPO_COLOR: Record<string,string> = {
+        peso_dolar:'#3B82F6', dian:'#EF4444', competencia:'#8B5CF6',
+        entrega:'#F59E0B', precio:'#10B981', otro:'#6B7280'
+      };
 
-        {/* AGENT INTEGRATIONS PANEL (World-Real) */}
-        <div style={{ ...cardStyle(), marginBottom: 16, border: `1.5px solid ${openaiKey ? T.success : T.border}` }}>
-          <div onClick={() => setShowOpenaiConfig(!showOpenaiConfig)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 18 }}>🔌</span>
-              <div style={{ fontWeight: 700, fontSize: 13, color: T.text }}>
-                Integraciones de Agentes IA {openaiKey && !openaiKey.startsWith('sk-gpt-4o-mini-always-on') ? '• OpenAI Conectado ✓' : '• Motor Cognitivo Avanzado Activo ✓'}
-              </div>
-            </div>
-            <span style={{ fontSize: 12, color: T.textSec }}>{showOpenaiConfig ? '▲ Ocultar Panel' : '▼ Expandir Panel de Integraciones'}</span>
-          </div>
-
-          {showOpenaiConfig && (
-            <div style={{ marginTop: 14, borderTop: `1px solid ${T.borderLight}`, paddingTop: 14 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
-                {/* GPT-4o-mini */}
-                <div style={{ background: T.bg, padding: 12, borderRadius: 8, border: `1px solid ${T.borderLight}` }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: T.text, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    🧠 OpenAI (GPT-4o-mini)
-                    {openaiKey && <span style={{ color: T.success, fontSize: 10 }}>✓ Conectado</span>}
-                  </div>
-                  <div style={{ fontSize: 10, color: T.textSec, marginBottom: 8, lineHeight: 1.4 }}>
-                    Motor cognitivo base para razonamiento de agentes, redacción persuasiva de Valeria y toma de decisiones de SARA.
-                  </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <input
-                      type="password"
-                      placeholder="sk-..."
-                      value={openaiKey}
-                      onChange={e => setOpenaiKey(e.target.value)}
-                      style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 11 }}
-                    />
-                    <button onClick={() => {
-                      localStorage.setItem('glp_openai_key', openaiKey);
-                      alert('API Key de OpenAI guardada. Los agentes ahora usarán inferencia real en vez de simulada.');
-                    }} style={btnPrimary({ padding: '6px 10px', fontSize: 10 })}>
-                      Guardar
-                    </button>
-                  </div>
-                </div>
-
-                {/* Gmail Integration */}
-                <div style={{ background: T.bg, padding: 12, borderRadius: 8, border: `1px solid ${T.borderLight}` }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: T.text, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    📧 Gmail Workspace API
-                    <span style={{ color: T.textSec, fontSize: 10 }}>• Oauth2</span>
-                  </div>
-                  <div style={{ fontSize: 10, color: T.textSec, marginBottom: 8, lineHeight: 1.4 }}>
-                    Permite a SARA leer la bandeja de entrada, preparar borradores reales en Gmail y enviar cotizaciones tras su aprobación.
-                  </div>
-                  <button onClick={() => alert('Simulación: Autenticación de Google Workspace iniciada.')} style={btnSecondary({ width: '100%', padding: '6px 10px', fontSize: 11, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 6 })}>
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/120px-Google_%22G%22_logo.svg.png" style={{ width: 12, height: 12 }} alt="G"/>
-                    Conectar con Google Workspace
-                  </button>
-                </div>
-
-                {/* Apollo.io Integration */}
-                <div style={{ background: T.bg, padding: 12, borderRadius: 8, border: `1px solid ${T.borderLight}` }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: T.text, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    🚀 Apollo.io (Minería B2B)
-                  </div>
-                  <div style={{ fontSize: 10, color: T.textSec, marginBottom: 8, lineHeight: 1.4 }}>
-                    Conecta a Camilo con la base de datos de 275M+ contactos para extraer perfiles HNWI y correos corporativos reales.
-                  </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <input
-                      type="password"
-                      placeholder="Apollo API Key"
-                      style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 11 }}
-                    />
-                    <button onClick={() => alert('API Key de Apollo guardada. Camilo ahora prospectará con datos reales.')} style={btnPrimary({ padding: '6px 10px', fontSize: 10, background: T.teal })}>
-                      Conectar
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Swarm / Console Panel */}
-        <div style={{
-          background: 'linear-gradient(135deg, #07152B 0%, #0F2C59 100%)',
-          borderRadius: 20, padding: 24, marginBottom: 24, color: '#FFF',
-          boxShadow: '0 8px 30px rgba(7,21,43,0.15)', border: '1px solid rgba(255,255,255,0.08)'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <div>
-              <h3 style={{ fontSize: 16, fontWeight: 800, margin: 0 }}>👥 Consola de Colaboración de Agentes (Flujo de Back-Office)</h3>
-              <p style={{ margin: '4px 0 0', fontSize: 12, opacity: 0.8 }}>
-                Orqueste el back-office comercial completo: Camilo busca leads, Sara clasifica y prepara respuestas, Valeria redacta y optimiza copys, Isabella publica contenido.
-              </p>
-            </div>
-            <button type="button"
-              onClick={() => runSwarm()}
-              disabled={swarmRunning}
-              style={{
-                background: swarmRunning ? 'rgba(255,255,255,0.15)' : T.success,
-                color: '#FFF', border: 'none', borderRadius: 10,
-                padding: '10px 20px', fontWeight: 700, cursor: swarmRunning ? 'not-allowed' : 'pointer',
-                fontSize: 12, display: 'flex', alignItems: 'center', gap: 8,
-                transition: 'all 0.3s', boxShadow: swarmRunning ? 'none' : '0 4px 15px rgba(16,185,129,0.3)'
-              }}
-            >
-              {swarmRunning ? (
-                <>
-                  <div style={{ width: 12, height: 12, borderRadius: '50%', border: '2px solid white', borderTopColor: 'transparent', animation: 'spin 1s linear infinite' }} />
-                  <span>Consola de Gestión Activa...</span>
-                </>
-              ) : (
-                <>
-                  <span>▶ Disparar Consola de Gestión</span>
-                </>
-              )}
+      return (
+        <div>
+          <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
+            <button onClick={() => setAgentHistoryDetail(null)}
+              style={{ background:'none', border:`1px solid ${T.border}`, borderRadius:8, padding:'6px 12px', color:T.textSec, cursor:'pointer', fontSize:12 }}>
+              ← Volver
+            </button>
+            <h2 style={{ margin:0, fontSize:20, color:T.text }}>📋 Reporte de Objeciones de Brokers</h2>
+            <button onClick={loadObjections} disabled={objLoading}
+              style={{ marginLeft:'auto', background:'none', border:`1px solid ${T.border}`, borderRadius:8, padding:'6px 14px', color:T.textSec, cursor:'pointer', fontSize:12 }}>
+              {objLoading ? 'Cargando...' : '↻ Actualizar'}
             </button>
           </div>
 
-          {/* Visual Timeline */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.06)', padding: '16px 20px', borderRadius: 8, marginBottom: 16, overflowX: 'auto' }}>
-            {[
-              { idx: 0, label: '🕵️‍♂️ Camilo', role: 'Minería' },
-              { idx: 1, label: '🤖 Sara', role: 'Back-Office' },
-              { idx: 2, label: '✍️ Valeria', role: 'Copywriting' },
-              { idx: 3, label: '🎙️ Isabella', role: 'Social Media' }
-            ].map((step, sIdx) => {
-              const active = swarmStep === step.idx;
-              const completed = swarmStep !== null && swarmStep > step.idx;
-              return (
-                <div key={step.idx} style={{ display: 'flex', alignItems: 'center', flex: sIdx < 3 ? 1 : 'none' }}>
-                  <div style={{
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                    padding: '8px 16px', borderRadius: 8, transition: 'all 0.3s',
-                    background: active ? 'rgba(255,255,255,0.18)' : completed ? 'rgba(16,185,129,0.2)' : 'transparent',
-                    border: active ? `2px solid ${T.coral}` : completed ? `1.5px solid ${T.palm}` : '1.5px solid transparent',
-                    boxShadow: active ? `0 0 12px ${T.coral}` : 'none'
-                  }}>
-                    <span style={{ fontSize: 12, fontWeight: active || completed ? 700 : 500, color: active || completed ? '#FFF' : 'rgba(255,255,255,0.6)' }}>{step.label}</span>
-                    <span style={{ fontSize: 9, opacity: 0.7 }}>{step.role}</span>
+          {/* Estadísticas por tipo */}
+          {objStats.length > 0 && (
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:20 }}>
+              {objStats.map(s => {
+                const info = OBJECTION_TIPOS.find(t=>t.value===s.tipo);
+                return (
+                  <div key={s.tipo} style={{ ...cardStyle(), textAlign:'center', border:`1.5px solid ${TIPO_COLOR[s.tipo] || T.border}` }}>
+                    <div style={{ fontSize:22 }}>{info?.icon || '💬'}</div>
+                    <div style={{ fontSize:11, fontWeight:700, color:T.text, margin:'4px 0 2px' }}>{info?.label || s.tipo}</div>
+                    <div style={{ fontSize:18, fontWeight:800, color:TIPO_COLOR[s.tipo] || T.text }}>{s.total}</div>
+                    <div style={{ fontSize:10, color: Number(s.ultimos_7d) >= 3 ? T.danger : T.textSec }}>
+                      {s.ultimos_7d} esta semana{Number(s.ultimos_7d) >= 3 ? ' ⚠️' : ''}
+                    </div>
                   </div>
-                  {sIdx < 3 && (
-                    <div style={{ flex: 1, height: 2, background: completed ? T.palm : 'rgba(255,255,255,0.15)', margin: '0 8px', minWidth: 20 }} />
+                );
+              })}
+            </div>
+          )}
+
+          {/* Formulario nuevo reporte */}
+          <div style={{ ...cardStyle(), marginBottom:16, border:`1.5px solid ${T.teal}` }}>
+            <div style={{ fontWeight:700, fontSize:14, color:T.text, marginBottom:14 }}>➕ Registrar Objeción</div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
+              <div>
+                <div style={{ fontSize:11, color:T.textSec, marginBottom:4 }}>Broker *</div>
+                <input value={objForm.broker} onChange={e=>setObjForm(p=>({...p,broker:e.target.value}))}
+                  placeholder="Nombre del broker"
+                  style={{ width:'100%', boxSizing:'border-box', padding:'8px 10px', borderRadius:8, border:`1px solid ${T.border}`, background:T.bg, color:T.text, fontSize:13 }} />
+              </div>
+              <div>
+                <div style={{ fontSize:11, color:T.textSec, marginBottom:4 }}>Prospecto (opcional)</div>
+                <input value={objForm.prospecto} onChange={e=>setObjForm(p=>({...p,prospecto:e.target.value}))}
+                  placeholder="Nombre del cliente"
+                  style={{ width:'100%', boxSizing:'border-box', padding:'8px 10px', borderRadius:8, border:`1px solid ${T.border}`, background:T.bg, color:T.text, fontSize:13 }} />
+              </div>
+              <div>
+                <div style={{ fontSize:11, color:T.textSec, marginBottom:4 }}>Tipo de objeción *</div>
+                <select value={objForm.tipo} onChange={e=>setObjForm(p=>({...p,tipo:e.target.value as BrokerObjection['tipo']}))}
+                  style={{ width:'100%', padding:'8px 10px', borderRadius:8, border:`1px solid ${T.border}`, background:T.bg, color:T.text, fontSize:13 }}>
+                  {OBJECTION_TIPOS.map(t => <option key={t.value} value={t.value}>{t.icon} {t.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <div style={{ fontSize:11, color:T.textSec, marginBottom:4 }}>Canal donde se recibió</div>
+                <select value={objForm.canal} onChange={e=>setObjForm(p=>({...p,canal:e.target.value}))}
+                  style={{ width:'100%', padding:'8px 10px', borderRadius:8, border:`1px solid ${T.border}`, background:T.bg, color:T.text, fontSize:13 }}>
+                  {CANAL_OPTS.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase()+c.slice(1)}</option>)}
+                </select>
+              </div>
+              <div>
+                <div style={{ fontSize:11, color:T.textSec, marginBottom:4 }}>Proyecto (opcional)</div>
+                <select value={objForm.proyecto} onChange={e=>setObjForm(p=>({...p,proyecto:e.target.value}))}
+                  style={{ width:'100%', padding:'8px 10px', borderRadius:8, border:`1px solid ${T.border}`, background:T.bg, color:T.text, fontSize:13 }}>
+                  <option value="">-- Todos / No específico --</option>
+                  {PROJECTS.map(pr => <option key={pr.name} value={pr.name}>{pr.name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{ marginBottom:12 }}>
+              <div style={{ fontSize:11, color:T.textSec, marginBottom:4 }}>Descripción de la objeción *</div>
+              <textarea value={objForm.descripcion} onChange={e=>setObjForm(p=>({...p,descripcion:e.target.value}))}
+                placeholder="¿Qué dijo exactamente el cliente? Incluye contexto, tono y si pidió algo específico..."
+                rows={3}
+                style={{ width:'100%', boxSizing:'border-box', padding:'8px 10px', borderRadius:8, border:`1px solid ${T.border}`, background:T.bg, color:T.text, fontSize:13, resize:'vertical' }} />
+            </div>
+            {objSuccess && <div style={{ color:T.success, fontSize:12, fontWeight:600, marginBottom:8 }}>✅ Objeción registrada correctamente.</div>}
+            <button onClick={submitObjection} disabled={objSaving || !objForm.broker || !objForm.descripcion}
+              style={{ background:T.teal, color:'#fff', border:'none', borderRadius:8, padding:'9px 20px', fontWeight:700, fontSize:13, cursor:'pointer', opacity: (!objForm.broker||!objForm.descripcion) ? 0.5 : 1 }}>
+              {objSaving ? 'Guardando...' : '📋 Registrar Objeción'}
+            </button>
+          </div>
+
+          {/* Historial de objeciones */}
+          <div style={{ ...cardStyle() }}>
+            <div style={{ fontWeight:700, fontSize:14, color:T.text, marginBottom:12 }}>
+              Historial ({objections.length} registros)
+            </div>
+            {objections.length === 0 && !objLoading && (
+              <div style={{ textAlign:'center', color:T.textSec, fontSize:13, padding:24 }}>
+                Sin registros aún. Sé el primero en reportar una objeción.
+              </div>
+            )}
+            {objections.slice(0,30).map(obj => {
+              const info = OBJECTION_TIPOS.find(t=>t.value===obj.tipo);
+              return (
+                <div key={obj.id} style={{ display:'flex', gap:12, alignItems:'flex-start', padding:'10px 0', borderBottom:`1px solid ${T.borderLight}` }}>
+                  <div style={{ fontSize:22, minWidth:28 }}>{info?.icon || '💬'}</div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap', marginBottom:4 }}>
+                      <span style={{ fontSize:11, fontWeight:700, color:'#fff', background:TIPO_COLOR[obj.tipo]||T.textSec, padding:'2px 8px', borderRadius:4 }}>{info?.label||obj.tipo}</span>
+                      <span style={{ fontSize:11, color:T.textSec }}>{obj.broker}</span>
+                      {obj.prospecto && <span style={{ fontSize:11, color:T.textSec }}>→ {obj.prospecto}</span>}
+                      {obj.proyecto && <span style={{ fontSize:10, color:T.textSec, background:T.bgAlt||T.borderLight, padding:'1px 6px', borderRadius:4 }}>{obj.proyecto}</span>}
+                      <span style={{ fontSize:10, color:T.textSec, marginLeft:'auto' }}>
+                        {new Date(obj.created_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}
+                      </span>
+                    </div>
+                    <div style={{ fontSize:12, color:T.text }}>{obj.descripcion}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    // ── PANEL CRISIS ─────────────────────────────────────────────
+    if (agentHistoryDetail === 'CRISIS') {
+      const TIPO_INFO: Record<string,{label:string;icon:string;color:string}> = {
+        prospectos_nuevos: { label: 'Caída de leads', icon: '📉', color: '#EF4444' },
+        estancamiento:     { label: 'Embudo estancado', icon: '🧊', color: '#F59E0B' },
+        valor_pipeline:    { label: 'Valor pipeline', icon: '💸', color: '#8B5CF6' },
+      };
+      const NIVEL_COLOR: Record<string,string> = { leve: '#F59E0B', moderada: '#EF4444', grave: '#DC2626' };
+      const STATUS_LABEL: Record<string,string> = {
+        nueva: '🆕 Nueva', notificada: '🔔 Notificada',
+        en_contingencia: '🚨 En Contingencia', resuelta: '✅ Resuelta', descartada: '🗑 Descartada'
+      };
+
+      const activas = crisisAlerts.filter(a => !['resuelta','descartada'].includes(a.status));
+      const resueltas = crisisAlerts.filter(a => ['resuelta','descartada'].includes(a.status));
+
+      return (
+        <div>
+          <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
+            <button onClick={() => setAgentHistoryDetail(null)}
+              style={{ background:'none', border:`1px solid ${T.border}`, borderRadius:8, padding:'6px 12px', color:T.textSec, cursor:'pointer', fontSize:12 }}>
+              ← Volver
+            </button>
+            <h2 style={{ margin:0, fontSize:20, color:T.text }}>🚨 Monitor de Crisis de Ventas</h2>
+            <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
+              <button onClick={loadCrisisAlerts} disabled={crisisLoading}
+                style={{ background:'none', border:`1px solid ${T.border}`, borderRadius:8, padding:'6px 14px', color:T.textSec, cursor:'pointer', fontSize:12 }}>
+                {crisisLoading ? 'Cargando...' : '↻ Actualizar'}
+              </button>
+              <button onClick={triggerCrisisDetect} disabled={crisisDetecting}
+                style={{ background: crisisDetecting ? T.textSec : '#EF4444', border:'none', borderRadius:8, padding:'6px 16px', color:'#fff', cursor:'pointer', fontWeight:700, fontSize:12 }}>
+                {crisisDetecting ? '⏳ Analizando...' : '🔍 Ejecutar Análisis Ahora'}
+              </button>
+            </div>
+          </div>
+
+          {/* KPI summary */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:20 }}>
+            {(['prospectos_nuevos','estancamiento','valor_pipeline'] as const).map(tipo => {
+              const info = TIPO_INFO[tipo];
+              const alerta = activas.find(a => a.tipo === tipo);
+              return (
+                <div key={tipo} style={{ ...cardStyle(), border:`2px solid ${alerta ? NIVEL_COLOR[alerta.nivel] : T.border}`, textAlign:'center' }}>
+                  <div style={{ fontSize:28 }}>{info.icon}</div>
+                  <div style={{ fontWeight:700, fontSize:13, color:T.text, margin:'6px 0 2px' }}>{info.label}</div>
+                  {alerta ? (
+                    <>
+                      <div style={{ fontSize:11, fontWeight:700, color:NIVEL_COLOR[alerta.nivel], textTransform:'uppercase' }}>{alerta.nivel} — {alerta.variacion_pct.toFixed(1)}%</div>
+                      <div style={{ fontSize:10, color:T.textSec, marginTop:4 }}>{STATUS_LABEL[alerta.status]}</div>
+                    </>
+                  ) : (
+                    <div style={{ fontSize:11, color:T.success, fontWeight:600 }}>✓ Normal</div>
                   )}
                 </div>
               );
             })}
           </div>
 
-          {/* Terminal Console Logs */}
-          <div style={{ background: '#07152B', borderRadius: 8, padding: 12, height: 110, overflowY: 'auto', fontFamily: 'monospace', fontSize: 11, border: '1px solid rgba(255,255,255,0.1)' }}>
-            {swarmLogs.map((log, i) => (
-              <div key={i} style={{ display: 'flex', marginBottom: 4 }}>
-                <span style={{ color: '#00D2FF', marginRight: 8 }}>[{log.time}]</span>
-                <span style={{ color: log.agent === 'SISTEMA' ? '#FFD700' : log.agent === 'SARA' ? '#10B981' : log.agent === 'CAMILO' ? '#EF4444' : '#E2E8F0', fontWeight: 600, marginRight: 8 }}>{log.agent === 'SISTEMA' ? 'CONSOLA' : log.agent}:</span>
-                <span style={{ color: '#FFF' }}>{log.msg.replace('ENJAMBRE', 'CONSOLA DE GESTIÓN')}</span>
+          {/* Alertas activas */}
+          <div style={{ ...cardStyle(), marginBottom:16 }}>
+            <div style={{ fontWeight:700, fontSize:14, color:T.text, marginBottom:12 }}>
+              Alertas Activas ({activas.length})
+            </div>
+            {activas.length === 0 && (
+              <div style={{ textAlign:'center', color:T.textSec, fontSize:13, padding:32 }}>
+                ✅ No hay alertas activas. Sistema en rango normal.
+              </div>
+            )}
+            {activas.map(alert => (
+              <div key={alert.id} style={{
+                border:`1.5px solid ${NIVEL_COLOR[alert.nivel]}`,
+                borderRadius:10, padding:16, marginBottom:10,
+                background:`${NIVEL_COLOR[alert.nivel]}0a`
+              }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:8 }}>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontWeight:700, fontSize:13, color:T.text, marginBottom:4 }}>{alert.titulo}</div>
+                    <div style={{ fontSize:12, color:T.textSec, marginBottom:8 }}>{alert.descripcion}</div>
+                    <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                      <span style={{ fontSize:10, fontWeight:700, background:NIVEL_COLOR[alert.nivel], color:'#fff', padding:'2px 8px', borderRadius:4, textTransform:'uppercase' }}>
+                        {alert.nivel}
+                      </span>
+                      <span style={{ fontSize:10, color:T.textSec, padding:'2px 8px', border:`1px solid ${T.borderLight}`, borderRadius:4 }}>
+                        {TIPO_INFO[alert.tipo]?.icon} {TIPO_INFO[alert.tipo]?.label}
+                      </span>
+                      <span style={{ fontSize:10, color:T.textSec }}>
+                        Detectado: {new Date(alert.created_at).toLocaleDateString('es-CO', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:6, minWidth:120 }}>
+                    <button onClick={() => updateCrisisStatus(alert.id, 'en_contingencia')}
+                      disabled={alert.status === 'en_contingencia'}
+                      style={{ background:'#EF4444', border:'none', borderRadius:6, padding:'5px 10px', color:'#fff', fontSize:11, fontWeight:700, cursor:'pointer', opacity: alert.status==='en_contingencia'?0.5:1 }}>
+                      🚨 Activar Contingencia
+                    </button>
+                    <button onClick={() => updateCrisisStatus(alert.id, 'notificada')}
+                      disabled={alert.status !== 'nueva'}
+                      style={{ background:'none', border:`1px solid ${T.border}`, borderRadius:6, padding:'5px 10px', color:T.textSec, fontSize:11, cursor:'pointer', opacity: alert.status!=='nueva'?0.5:1 }}>
+                      🔔 Marcar Notificada
+                    </button>
+                    <button onClick={() => updateCrisisStatus(alert.id, 'resuelta')}
+                      style={{ background:'none', border:`1px solid ${T.success}`, borderRadius:6, padding:'5px 10px', color:T.success, fontSize:11, cursor:'pointer' }}>
+                      ✅ Resolver
+                    </button>
+                    <button onClick={() => updateCrisisStatus(alert.id, 'descartada')}
+                      style={{ background:'none', border:`1px solid ${T.borderLight}`, borderRadius:6, padding:'5px 10px', color:T.textSec, fontSize:11, cursor:'pointer' }}>
+                      🗑 Descartar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Historial resueltas */}
+          {resueltas.length > 0 && (
+            <div style={{ ...cardStyle() }}>
+              <div style={{ fontWeight:700, fontSize:13, color:T.textSec, marginBottom:10 }}>
+                Historial Resueltas/Descartadas ({resueltas.length})
+              </div>
+              {resueltas.slice(0,10).map(alert => (
+                <div key={alert.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:`1px solid ${T.borderLight}` }}>
+                  <div>
+                    <span style={{ fontSize:12, color:T.text }}>{TIPO_INFO[alert.tipo]?.icon} {alert.titulo.slice(0,60)}…</span>
+                    <span style={{ fontSize:10, color:T.textSec, marginLeft:8 }}>{new Date(alert.created_at).toLocaleDateString('es-CO')}</span>
+                  </div>
+                  <span style={{ fontSize:10, color: alert.status==='resuelta' ? T.success : T.textSec }}>
+                    {STATUS_LABEL[alert.status]}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Sotheby's palette constants for agents section
+    const NAVY = '#001A37';
+    const GOLD = '#B89047';
+    const GOLD_LIGHT = '#D4AF6A';
+    const CREAM = '#F7F4EF';
+    const PARCHMENT = '#EDE8DF';
+
+    return (
+      <div style={{ background: CREAM, minHeight: '100%' }}>
+        {/* ── HEADER ── */}
+        <div style={{ background: NAVY, padding: '28px 32px 24px', marginBottom: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: 4, color: GOLD, fontWeight: 600, textTransform: 'uppercase', marginBottom: 6 }}>GLP Wealth Management</div>
+              <h2 style={{ margin: 0, fontSize: 22, fontFamily: T.fontSerif, fontWeight: 400, color: '#fff', letterSpacing: 0.5 }}>
+                Mesa de Inteligencia Comercial
+              </h2>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 4, fontStyle: 'italic' }}>
+                Camilo investiga · Sara gestiona · Valeria publica · Isabella presenta
+              </div>
+            </div>
+            {/* Status chips */}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, padding: '5px 10px' }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981', display: 'inline-block' }} />
+                <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', letterSpacing: 1 }}>GPT-4o</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, padding: '5px 10px' }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981', display: 'inline-block' }} />
+                <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', letterSpacing: 1 }}>SMTP</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, padding: '5px 10px' }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#6B7280', display: 'inline-block' }} />
+                <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: 1 }}>APOLLO</span>
+              </div>
+            </div>
+          </div>
+
+          {/* ── COMMAND BAR ── */}
+          <div style={{ display: 'flex', gap: 8, marginTop: 20, flexWrap: 'wrap', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 16 }}>
+            {/* Monitor buttons */}
+            {[
+              { label: 'Objeciones', onClick: () => { setAgentHistoryDetail('OBJECTIONS'); loadObjections(); }, alert: objStats.some(s=>Number(s.ultimos_7d)>=3), alertColor: GOLD },
+              { label: 'Crisis', onClick: () => { setAgentHistoryDetail('CRISIS'); loadCrisisAlerts(); }, alert: crisisAlerts.filter(a=>!['resuelta','descartada'].includes(a.status)).length > 0, alertColor: '#B91C1C', alertCount: crisisAlerts.filter(a=>!['resuelta','descartada'].includes(a.status)).length },
+              { label: 'Flujo de Trabajo', onClick: () => setAgentHistoryDetail('WORKFLOW'), alert: workflowTasks.filter(t=>t.status==='pendiente').length > 0, alertColor: GOLD, alertCount: workflowTasks.filter(t=>t.status==='pendiente').length },
+            ].map(btn => (
+              <button key={btn.label} onClick={btn.onClick}
+                style={{ background: btn.alert ? 'rgba(184,144,71,0.15)' : 'rgba(255,255,255,0.06)', border: `1px solid ${btn.alert ? GOLD : 'rgba(255,255,255,0.15)'}`, borderRadius: 4, padding: '7px 14px', color: btn.alert ? GOLD_LIGHT : 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: 600, cursor: 'pointer', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s' }}>
+                {btn.label}
+                {btn.alert && btn.alertCount && btn.alertCount > 0 && (
+                  <span style={{ background: btn.alertColor, color: '#fff', borderRadius: 10, padding: '1px 6px', fontSize: 10, fontWeight: 800 }}>{btn.alertCount}</span>
+                )}
+                {btn.alert && !btn.alertCount && <span style={{ color: GOLD, fontSize: 12 }}>●</span>}
+              </button>
+            ))}
+            <div style={{ flex: 1 }} />
+            <button type="button" onClick={() => runSwarm()} disabled={swarmRunning}
+              style={{ background: swarmRunning ? 'rgba(255,255,255,0.06)' : GOLD, border: `1px solid ${swarmRunning ? 'rgba(255,255,255,0.15)' : GOLD}`, borderRadius: 4, padding: '9px 22px', color: swarmRunning ? 'rgba(255,255,255,0.4)' : NAVY, fontSize: 11, fontWeight: 700, cursor: swarmRunning ? 'not-allowed' : 'pointer', letterSpacing: 1, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 8 }}>
+              {swarmRunning ? (
+                <><div style={{ width: 10, height: 10, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.4)', borderTopColor: 'transparent', animation: 'spin 1s linear infinite' }} />Ejecutando...</>
+              ) : '▶ Activar Consola'}
+            </button>
+          </div>
+        </div>
+
+        {/* ── PIPELINE TIMELINE ── */}
+        <div style={{ background: PARCHMENT, borderBottom: `1px solid #D6CEBC`, padding: '0 32px' }}>
+          <div style={{ display: 'flex', alignItems: 'stretch', overflowX: 'auto' }}>
+            {[
+              { idx: 0, name: 'CAMILO', role: 'VP de Investigación y Mercados', icon: '🕵️' },
+              { idx: 1, name: 'SARA', role: 'Directora de Experiencia de Cliente', icon: '🤖' },
+              { idx: 2, name: 'VALERIA', role: 'VP de Medios', icon: '✍️' },
+              { idx: 3, name: 'ISABELLA', role: 'Embajadora de Marca GLP', icon: '🎙️' },
+            ].map((step, sIdx) => {
+              const active = swarmStep === step.idx;
+              const completed = swarmStep !== null && swarmStep > step.idx;
+              return (
+                <div key={step.idx} style={{ flex: 1, minWidth: 120, display: 'flex', alignItems: 'center' }}>
+                  <div style={{ flex: 1, padding: '14px 16px', borderRight: sIdx < 3 ? `1px solid #D6CEBC` : 'none',
+                    background: active ? `${GOLD}15` : 'transparent', transition: 'all 0.3s' }}>
+                    <div style={{ fontSize: 9, letterSpacing: 3, color: active ? GOLD : completed ? '#10B981' : '#9CA3AF', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>
+                      {completed ? '✓ Completado' : active ? '● Activo' : 'En espera'}
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: active ? NAVY : completed ? '#374151' : '#9CA3AF' }}>
+                      {step.icon} {step.name}
+                    </div>
+                    <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 1 }}>{step.role}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── CONSOLE LOG ── */}
+        <div style={{ background: '#0A1628', padding: '10px 32px', borderBottom: `1px solid rgba(184,144,71,0.2)` }}>
+          <div style={{ height: 80, overflowY: 'auto', fontFamily: 'monospace', fontSize: 10 }}>
+            {swarmLogs.length === 0 ? (
+              <span style={{ color: 'rgba(255,255,255,0.2)', fontStyle: 'italic' }}>_ Consola lista. Active el enjambre para iniciar.</span>
+            ) : swarmLogs.map((log, i) => (
+              <div key={i} style={{ display: 'flex', gap: 10, marginBottom: 3 }}>
+                <span style={{ color: GOLD, opacity: 0.7, minWidth: 55 }}>{log.time}</span>
+                <span style={{ color: log.agent==='SISTEMA' ? GOLD : log.agent==='SARA' ? '#34D399' : log.agent==='CAMILO' ? '#60A5FA' : log.agent==='VALERIA' ? '#A78BFA' : '#FBBF24', fontWeight: 700, minWidth: 60 }}>{log.agent}</span>
+                <span style={{ color: 'rgba(255,255,255,0.7)' }}>{log.msg}</span>
               </div>
             ))}
           </div>
         </div>
 
-        {/* AGENT CARDS GRID */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        {/* ── AGENT CARDS ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: '#D6CEBC' }}>
           {agents.map(agent => {
-            const isAgentActive = (agent.name === 'CAMILO' && agentCamiloActive) || 
-                                  (swarmStep !== null && ((agent.name === 'CAMILO' && swarmStep === 0) || 
-                                                          (agent.name === 'SARA' && swarmStep === 1) || 
-                                                          (agent.name === 'VALERIA' && swarmStep === 2) || 
-                                                          (agent.name === 'ISABELLA' && swarmStep === 3)));
+            const isAgentActive = (agent.name === 'CAMILO' && agentCamiloActive) ||
+              (swarmStep !== null && ((agent.name === 'CAMILO' && swarmStep === 0) || (agent.name === 'SARA' && swarmStep === 1) || (agent.name === 'VALERIA' && swarmStep === 2) || (agent.name === 'ISABELLA' && swarmStep === 3)));
             return (
-              <div key={agent.name} style={{ ...cardStyle(), border: isAgentActive ? `2.5px solid ${T.coral}` : `1px solid ${T.borderLight}`, boxShadow: isAgentActive ? `0 8px 24px rgba(0,102,204,0.15)` : '0 1px 3px rgba(0,0,0,0.04)', transition: 'all 0.3s' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                  <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-                    <div style={{ position: 'relative' }}>
-                      <img src={agent.photo} alt={agent.name} style={{ width: 110, height: 110, borderRadius: '50%', objectFit: 'cover', border: `3px solid ${isAgentActive ? T.coral : T.teal}`, boxShadow: `0 4px 12px ${T.teal}30` }} />
-                      {isAgentActive && (
-                        <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: `3px solid ${T.coral}`, animation: 'ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite' }} />
-                      )}
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 18, fontWeight: 700, color: T.text }}>{agent.emoji} {agent.name}</div>
-                      <div style={{ fontSize: 13, color: T.teal, fontWeight: 600 }}>{agent.role}</div>
-                    </div>
+              <div key={agent.name} style={{ background: '#FFFFFF', padding: '28px 28px 20px', position: 'relative', transition: 'all 0.3s',
+                borderTop: isAgentActive ? `3px solid ${GOLD}` : `3px solid transparent` }}>
+
+                {/* Active glow bar */}
+                {isAgentActive && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${GOLD}, ${GOLD_LIGHT}, ${GOLD})` }} />}
+
+                {/* Agent header */}
+                <div style={{ display: 'flex', gap: 18, alignItems: 'flex-start', marginBottom: 20 }}>
+                  <div style={{ position: 'relative', flexShrink: 0 }}>
+                    <img src={agent.photo} alt={agent.name}
+                      style={{ width: 230, height: 230, borderRadius: 2, objectFit: 'cover', objectPosition: 'top',
+                        filter: isAgentActive ? 'none' : 'grayscale(15%)',
+                        boxShadow: isAgentActive ? `0 0 0 2px ${GOLD}, 0 4px 20px rgba(184,144,71,0.3)` : `0 2px 12px rgba(0,0,0,0.12)` }} />
+                    <div style={{ position: 'absolute', bottom: -4, right: -4, width: 14, height: 14, borderRadius: '50%',
+                      background: isAgentActive ? GOLD : '#10B981', border: '2px solid #fff',
+                      animation: isAgentActive ? 'pulse 1.2s infinite' : 'none' }} />
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: isAgentActive ? T.coral : agent.statusColor, animation: isAgentActive ? 'pulse 1s infinite' : 'none' }} />
-                    <span style={{ fontSize: 11, color: isAgentActive ? T.coral : agent.statusColor, fontWeight: 600 }}>{isAgentActive ? 'Procesando...' : agent.status}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 9, letterSpacing: 3, color: GOLD, fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Agente IA</div>
+                    <div style={{ fontSize: 17, fontFamily: T.fontSerif, fontWeight: 600, color: NAVY, letterSpacing: 0.3, lineHeight: 1.2 }}>{agent.name}</div>
+                    <div style={{ fontSize: 11, color: '#6B7280', marginTop: 3, fontStyle: 'italic' }}>{agent.role}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 8 }}>
+                      <span style={{ width: 5, height: 5, borderRadius: '50%', background: isAgentActive ? GOLD : '#10B981', display: 'inline-block' }} />
+                      <span style={{ fontSize: 10, color: isAgentActive ? GOLD : '#10B981', fontWeight: 600, letterSpacing: 0.5 }}>
+                        {isAgentActive ? 'Procesando' : agent.status}
+                      </span>
+                    </div>
                   </div>
                 </div>
-                
-                <div style={{ fontSize: 12, color: T.textSec, marginBottom: 12, lineHeight: 1.5 }}>{agent.desc}</div>
 
-                {/* Agent Stats (Clickable) */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
+                {/* Divider */}
+                <div style={{ borderTop: `1px solid ${PARCHMENT}`, marginBottom: 16 }} />
+
+                {/* Description */}
+                <div style={{ fontSize: 12, color: '#4B5563', lineHeight: 1.65, marginBottom: 18 }}>{agent.desc}</div>
+
+                {/* Stats */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 0, borderTop: `1px solid ${PARCHMENT}`, borderLeft: `1px solid ${PARCHMENT}`, marginBottom: 16 }}>
                   {agent.stats.map(s => {
                     const isSelected = activeAgentKpi?.agent === agent.name && activeAgentKpi?.label === s.label;
                     return (
-                      <div 
-                        key={s.label}
-                        onClick={() => {
-                          if (isSelected) {
-                            setActiveAgentKpi(null);
-                          } else {
-                            setActiveAgentKpi({ agent: agent.name, label: s.label });
-                          }
-                        }}
-                        style={{ 
-                          background: isSelected ? 'rgba(0,102,204,0.12)' : T.bg, 
-                          borderRadius: 8, 
-                          padding: '8px 10px', 
-                          textAlign: 'center',
-                          cursor: 'pointer',
-                          border: isSelected ? `1.5px solid ${T.coral}` : '1.5px solid transparent',
-                          transition: 'all 0.2s'
-                        }}
-                        title="Clic para ver detalle"
-                      >
-                        <div style={{ fontSize: 16, fontWeight: 700, color: isSelected ? T.coral : T.teal }}>{s.value}</div>
-                        <div style={{ fontSize: 9, color: T.textSec }}>{s.label}</div>
+                      <div key={s.label} onClick={() => isSelected ? setActiveAgentKpi(null) : setActiveAgentKpi({ agent: agent.name, label: s.label })}
+                        style={{ padding: '12px 10px', textAlign: 'center', cursor: 'pointer', borderRight: `1px solid ${PARCHMENT}`, borderBottom: `1px solid ${PARCHMENT}`,
+                          background: isSelected ? `${GOLD}10` : '#fff', transition: 'background 0.15s' }}>
+                        <div style={{ fontSize: 18, fontWeight: 700, color: isSelected ? GOLD : NAVY, fontFamily: T.fontSerif }}>{s.value}</div>
+                        <div style={{ fontSize: 9, color: '#9CA3AF', letterSpacing: 1, textTransform: 'uppercase', marginTop: 2 }}>{s.label}</div>
                       </div>
                     );
                   })}
                 </div>
 
-                {/* Agent KPI Drilldown Box */}
+                {/* KPI Drilldown */}
                 {activeAgentKpi?.agent === agent.name && (
-                  <div style={{
-                    background: '#F0F4F8',
-                    border: `1px solid ${T.border}`,
-                    borderRadius: 8,
-                    padding: '10px 12px',
-                    marginBottom: 12,
-                    fontSize: 11,
-                    color: T.text,
-                    animation: 'fadeIn 0.2s ease'
-                  }}>
-                    <div style={{ fontWeight: 700, color: T.teal, marginBottom: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span>🔍 Desglose: {activeAgentKpi.label}</span>
-                      <span onClick={(e) => { e.stopPropagation(); setActiveAgentKpi(null); }} style={{ cursor: 'pointer', fontSize: 13, fontWeight: 'bold' }}>✕</span>
+                  <div style={{ background: CREAM, border: `1px solid #D6CEBC`, borderLeft: `3px solid ${GOLD}`, padding: '12px 14px', marginBottom: 14, fontSize: 11, color: T.text }}>
+                    <div style={{ fontWeight: 700, color: NAVY, marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 9, letterSpacing: 2, textTransform: 'uppercase', color: GOLD }}>Detalle: {activeAgentKpi.label}</span>
+                      <span onClick={(e) => { e.stopPropagation(); setActiveAgentKpi(null); }} style={{ cursor: 'pointer', color: '#9CA3AF', fontSize: 14 }}>×</span>
                     </div>
                     {renderAgentKpiDetail(agent.name, activeAgentKpi.label)}
                   </div>
                 )}
 
-                <div style={{ fontSize: 10, color: T.textSec, marginBottom: 8 }}>
-                  Última actividad: {agent.lastRun}
+                {/* Last run */}
+                <div style={{ fontSize: 10, color: '#9CA3AF', marginBottom: 12, letterSpacing: 0.3 }}>
+                  Última actividad: <span style={{ color: '#6B7280' }}>{agent.lastRun}</span>
                 </div>
 
-                {/* Agent Logs (Bitácora) */}
-                <div style={{ marginTop: 12, marginBottom: 12 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: T.text, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    📋 Bitácora del Agente
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 120, overflowY: 'auto', paddingRight: 4 }}>
+                {/* Bitácora */}
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 9, letterSpacing: 2, color: '#9CA3AF', fontWeight: 700, textTransform: 'uppercase', marginBottom: 8 }}>Bitácora</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 1, maxHeight: 100, overflowY: 'auto' }}>
                     {agent.logs.map((log, i) => (
-                      <div key={i} style={{ fontSize: 10, background: T.bg, padding: '6px 10px', borderRadius: 6, border: `1px solid ${T.borderLight}`, display: 'flex', gap: 8 }}>
-                        <span style={{ color: T.teal, fontWeight: 600 }}>{log.time}</span>
-                        <span style={{ color: T.text }}>{log.msg}</span>
+                      <div key={i} style={{ fontSize: 10, display: 'flex', gap: 10, padding: '5px 0', borderBottom: `1px solid ${PARCHMENT}` }}>
+                        <span style={{ color: GOLD, fontWeight: 600, minWidth: 38, flexShrink: 0 }}>{log.time}</span>
+                        <span style={{ color: '#374151' }}>{log.msg}</span>
                       </div>
                     ))}
                   </div>
                 </div>
 
                 {/* INTERACTIVE MODULE OUTPUTS */}
-                {agent.name === 'VALERIA' && (
-                  <div style={{ marginTop: 12 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: T.text, marginBottom: 4 }}>✍️ Borradores de Contenido Generados:</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 250, overflowY: 'auto', paddingRight: 4 }}>
-                      {valeriaDrafts.filter(d => d.status === 'pending').slice(0, 3).map((draft, idx) => (
-                        <div key={draft.id} style={{ background: T.bg, padding: 10, borderRadius: 6, border: `1px solid ${T.borderLight}` }}>
-                          <div style={{ fontSize: 10, color: T.teal, fontWeight: 700, marginBottom: 4 }}>Borrador #{idx + 1} ({draft.type})</div>
-                          <div style={{ fontSize: 11, color: T.text, whiteSpace: 'pre-line', maxHeight: 60, overflow: 'hidden', textOverflow: 'ellipsis' }}>{draft.content}</div>
-                          <div style={{ display: 'flex', gap: 6, marginTop: 8, justifyContent: 'flex-end' }}>
-                            <button onClick={() => setValeriaDrafts(prev => prev.map(x => x.id === draft.id ? { ...x, status: 'active' } : x))} style={btnPrimary({ padding: '4px 10px', fontSize: 10, background: T.teal })}>Aprobar y Activar</button>
-                          </div>
-                        </div>
-                      ))}
-                      {valeriaDrafts.filter(d => d.status === 'pending').length === 0 && (
-                        <div style={{ fontSize: 11, color: T.textSec, padding: 10, textAlign: 'center' }}>No hay borradores pendientes.</div>
-                      )}
-                    </div>
+                {agent.name === 'VALERIA' && valeriaDrafts.filter(d => d.status === 'pending').length > 0 && (
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 9, letterSpacing: 2, color: '#9CA3AF', fontWeight: 700, textTransform: 'uppercase', marginBottom: 8 }}>Borradores Pendientes</div>
+                    {valeriaDrafts.filter(d => d.status === 'pending').slice(0, 2).map((draft, idx) => (
+                      <div key={draft.id} style={{ background: CREAM, border: `1px solid #D6CEBC`, borderLeft: `3px solid ${GOLD}`, padding: '10px 12px', marginBottom: 6 }}>
+                        <div style={{ fontSize: 9, color: GOLD, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 }}>Borrador {idx + 1} · {draft.type}</div>
+                        <div style={{ fontSize: 11, color: '#374151', lineHeight: 1.5, maxHeight: 50, overflow: 'hidden' }}>{draft.content}</div>
+                        <button onClick={() => setValeriaDrafts(prev => prev.map(x => x.id === draft.id ? { ...x, status: 'active' } : x))}
+                          style={{ marginTop: 8, background: 'transparent', border: `1px solid ${GOLD}`, color: GOLD, fontSize: 9, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', padding: '4px 10px', cursor: 'pointer', borderRadius: 2 }}>
+                          Aprobar
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 )}
 
                 {agent.name === 'ISABELLA' && (
-                  <div style={{ marginTop: 12 }}>
-                    {/* HeyGen Video Preview */}
-                    <div style={{ marginBottom: 16 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: T.text, marginBottom: 4 }}>🎥 Pre-visualización de Avatar (HeyGen API):</div>
-                      <div style={{ position: 'relative', width: '100%', height: 180, background: '#000', borderRadius: 8, overflow: 'hidden', border: `1px solid ${T.borderLight}` }}>
-                        <img src="/img/projects/isabella.png" alt="Isabella Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.6 }} />
-                        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <button style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', border: '2px solid white', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', backdropFilter: 'blur(4px)' }}>▶</button>
-                        </div>
-                        <div style={{ position: 'absolute', bottom: 8, left: 12, right: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: 10, color: '#FFF', fontWeight: 600, textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}>Renderizando... 1080p</span>
-                          <span style={{ fontSize: 10, background: T.success, color: '#FFF', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>LIVE</span>
+                  <div style={{ marginBottom: 14 }}>
+                    {/* Banner video */}
+                    <div style={{ position: 'relative', width: '100%', height: 110, background: NAVY, overflow: 'hidden', marginBottom: 10 }}>
+                      <img src="/img/projects/isabella.png" alt="Isabella" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top', opacity: 0.4 }} />
+                      <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '10px 14px', background: 'linear-gradient(to top, rgba(0,26,55,0.95) 0%, transparent 60%)' }}>
+                        <div style={{ fontSize: 9, letterSpacing: 3, color: GOLD, fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Producción de Video</div>
+                        <div style={{ fontSize: 11, color: '#fff', fontFamily: T.fontSerif }}>
+                          {isabellaScripts.filter(d=>d.status==='pending').length > 0
+                            ? `${isabellaScripts.filter(d=>d.status==='pending').length} guión(es) pendiente(s) · ${isabellaScripts.filter(d=>d.status==='active').length} aprobado(s)`
+                            : 'Sin guiones pendientes'}
                         </div>
                       </div>
+                      <div style={{ position: 'absolute', top: 8, right: 8, background: GOLD, color: NAVY, fontSize: 8, fontWeight: 800, padding: '3px 8px', letterSpacing: 1 }}>HeyGen API</div>
                     </div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: T.text, marginBottom: 4 }}>🎙️ Guiones de Video Listos para Grabación:</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 250, overflowY: 'auto', paddingRight: 4 }}>
-                      {isabellaScripts.filter(d => d.status === 'pending').slice(0, 3).map((script, idx) => (
-                        <div key={script.id} style={{ background: T.bg, padding: 10, borderRadius: 6, border: `1px solid ${T.borderLight}` }}>
-                          <div style={{ fontSize: 10, color: T.palm, fontWeight: 700, marginBottom: 4 }}>Guión #{idx + 1}</div>
-                          <div style={{ fontSize: 11, color: T.text, fontStyle: 'italic', whiteSpace: 'pre-line', maxHeight: 60, overflow: 'hidden', textOverflow: 'ellipsis' }}>"{script.content}"</div>
-                          <div style={{ display: 'flex', gap: 6, marginTop: 8, justifyContent: 'flex-end' }}>
-                            <button onClick={() => setIsabellaScripts(prev => prev.map(x => x.id === script.id ? { ...x, status: 'active' } : x))} style={btnPrimary({ padding: '4px 10px', fontSize: 10, background: T.palm })}>Aprobar y Activar</button>
+
+                    {/* Guiones pendientes */}
+                    {isabellaScripts.filter(d => d.status === 'pending').slice(0, 2).map((script, idx) => (
+                      <div key={script.id} style={{ background: CREAM, border: `1px solid #D6CEBC`, borderLeft: `3px solid ${GOLD}`, marginBottom: 8 }}>
+                        {/* Header guion */}
+                        <div style={{ padding: '8px 12px 6px', borderBottom: `1px solid #E9E4DA`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <div style={{ fontSize: 8, color: GOLD, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase' }}>Guión #{idx + 1} · {script.canal || script.type}</div>
+                            {script.asunto && <div style={{ fontSize: 11, fontWeight: 600, color: NAVY, fontFamily: T.fontSerif, marginTop: 2 }}>{script.asunto}</div>}
+                          </div>
+                          <span style={{ fontSize: 8, background: `${GOLD}20`, color: GOLD, fontWeight: 700, padding: '2px 7px', letterSpacing: 1 }}>BORRADOR</span>
+                        </div>
+
+                        {/* Contenido del guion — completo y editable */}
+                        <div style={{ padding: '8px 12px' }}>
+                          <textarea
+                            value={script.content}
+                            onChange={e => setIsabellaScripts(prev => prev.map(x => x.id === script.id ? { ...x, content: e.target.value } : x))}
+                            style={{ width: '100%', boxSizing: 'border-box' as const, fontSize: 10, lineHeight: 1.7, color: '#374151', background: '#fff', border: '1px solid #E9E4DA', padding: '10px', fontFamily: 'monospace', resize: 'vertical' as const, minHeight: 180, outline: 'none' }}
+                          />
+
+                          {/* Contexto si existe */}
+                          {script.contexto && (
+                            <div style={{ fontSize: 9, color: '#9CA3AF', fontStyle: 'italic', marginTop: 4 }}>{script.contexto}</div>
+                          )}
+
+                          {/* Acciones */}
+                          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                            <button onClick={() => setIsabellaScripts(prev => prev.filter(x => x.id !== script.id))}
+                              style={{ background: 'transparent', border: '1px solid #FECACA', color: '#DC2626', fontSize: 8, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', padding: '5px 10px', cursor: 'pointer' }}>
+                              Descartar
+                            </button>
+                            <button onClick={() => setIsabellaScripts(prev => prev.map(x => x.id === script.id ? { ...x, status: 'approved' } : x))}
+                              style={{ flex: 1, background: NAVY, color: GOLD_LIGHT, border: 'none', fontSize: 8, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', padding: '5px 10px', cursor: 'pointer' }}>
+                              Aprobar Guion
+                            </button>
+                            <button
+                              onClick={() => {
+                                const payload = {
+                                  titulo: script.asunto || 'Video GLP',
+                                  guion: script.content,
+                                  tipo: script.canal || script.type,
+                                  fecha: script.date,
+                                };
+                                // Copiar al clipboard como JSON listo para HeyGen
+                                navigator.clipboard.writeText(JSON.stringify(payload, null, 2))
+                                  .then(() => alert('✅ Guion copiado al clipboard en formato JSON.\n\nPega este contenido en HeyGen → Script → Custom para generar el avatar de Isabella.'))
+                                  .catch(() => alert('Error al copiar. Usa "Ver Historial" para acceder al guion completo.'));
+                                setIsabellaScripts(prev => prev.map(x => x.id === script.id ? { ...x, status: 'active', notas_admin: 'Migrado a HeyGen' } : x));
+                              }}
+                              style={{ flex: 1, background: GOLD, color: NAVY, border: 'none', fontSize: 8, fontWeight: 800, letterSpacing: 1.5, textTransform: 'uppercase', padding: '5px 10px', cursor: 'pointer' }}>
+                              → HeyGen
+                            </button>
                           </div>
                         </div>
-                      ))}
-                      {isabellaScripts.filter(d => d.status === 'pending').length === 0 && (
-                        <div style={{ fontSize: 11, color: T.textSec, padding: 10, textAlign: 'center' }}>No hay guiones pendientes.</div>
-                      )}
-                    </div>
+                      </div>
+                    ))}
                   </div>
                 )}
 
                 {/* Agent Actions */}
-                <div style={{ display: 'flex', gap: 8, marginTop: 12, borderTop: `1px solid ${T.borderLight}`, paddingTop: 12 }}>
-                  {agent.actions.map(act => (
-                    <button type="button" key={act.label} onClick={act.onClick} style={btnSecondary({ padding: '6px 12px', fontSize: 11, flex: 1 })}>
+                <div style={{ display: 'flex', gap: 8, borderTop: `1px solid ${PARCHMENT}`, paddingTop: 14, marginTop: 4 }}>
+                  {agent.actions.map((act, aIdx) => (
+                    <button type="button" key={act.label} onClick={act.onClick}
+                      style={{ flex: 1, padding: '8px 12px', fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase',
+                        cursor: 'pointer', borderRadius: 2, transition: 'all 0.2s',
+                        background: aIdx === 0 ? NAVY : 'transparent',
+                        color: aIdx === 0 ? GOLD_LIGHT : NAVY,
+                        border: aIdx === 0 ? `1px solid ${NAVY}` : `1px solid #D6CEBC` }}>
                       {act.label}
                     </button>
                   ))}
@@ -4796,16 +7420,9 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
 
         {/* Swarm CSS keyframe animations */}
         <style>{`
-          @keyframes spin {
-            to { transform: rotate(360deg); }
-          }
-          @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.4; }
-          }
-          @keyframes ping {
-            75%, 100% { transform: scale(1.4); opacity: 0; }
-          }
+          @keyframes spin { to { transform: rotate(360deg); } }
+          @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+          @keyframes ping { 75%, 100% { transform: scale(1.4); opacity: 0; } }
         `}</style>
       </div>
     );
@@ -5025,25 +7642,28 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
     const rentaMensual = calcRentaM2 * calcArea;
     const rentaMensualEfectiva = rentaMensual * (1 - calcVacancia / 100);
     const ingresoBrutoAnual = rentaMensualEfectiva * 12;
-    const capRateBruto = calcPrecio > 0 ? (rentaMensual * 12 / calcPrecio) * 100 : 0;
+    const capRateBruto = cuotaInicialdUSD > 0 ? (rentaMensual * 12 / cuotaInicialdUSD) * 100 : 0;
 
     // Expenses
-    const feePMMensual = rentaMensualEfectiva * (calcFeePM / 100);
+    const valorFiscal = calcValorFiscal > 0 ? calcValorFiscal : calcPrecio * 0.70; // 70% del comercial si no se especifica
+    // PM: % sobre renta efectiva; el $ fijo es referencia visual (sincronizado externamente)
+    const feePMMensual = calcFeePMFixed > 0 ? calcFeePMFixed : rentaMensualEfectiva * (calcFeePM / 100);
     const gastosPM = feePMMensual * 12;           // property management annual
     const gastosAdmin = 0;                      // always 0 (removed input)
     const gastosCondominio = calcCondominio * 12; // Admin Conjunto annual
-    const gastosPredial = calcPrecio * (calcPredial / 100); // annual property tax
-    const gastosSeguro = calcPrecio * (calcSeguro / 100); // annual insurance
+    const gastosPredial = valorFiscal * (calcPredial / 100); // % sobre valor fiscal
+    const gastosSeguro = valorFiscal * (calcSeguro / 100);   // % sobre valor fiscal
     const gastosMantenimiento = 0;              // always 0
     const totalGastosMensual = feePMMensual + (gastosCondominio / 12) + (gastosPredial / 12) + (gastosSeguro / 12);
     const totalGastos = gastosPM + gastosCondominio + gastosPredial + gastosSeguro; // annual total
 
     // NOI & Cash flow
     const noi = ingresoBrutoAnual - totalGastos;
-    const capRateNeto = calcPrecio > 0 ? (noi / calcPrecio) * 100 : 0;
-    const cashOnCash = cuotaInicialdUSD > 0 ? ((noi - cuotaAnualHip) / cuotaInicialdUSD) * 100 : 0;
+    const capRateNeto = calcPrecio > 0 ? (noi / calcPrecio) * 100 : 0;           // sobre activo total (referencia mercado)
+    const roiEquity = cuotaInicialdUSD > 0 ? (noi / cuotaInicialdUSD) * 100 : 0; // NOI sobre equity real desembolsado
+    const cashOnCash = cuotaInicialdUSD > 0 ? ((noi - cuotaAnualHip) / cuotaInicialdUSD) * 100 : 0; // flujo libre sobre equity
     const flujoLibreMensual = (noi - cuotaAnualHip) / 12;
-    const valorFuturo = calcPrecio * Math.pow(1 + calcValorizacion / 100, calcHorizonte);
+    const valorFuturo = calcPrecio * Math.pow(1 + calcValorizacion / 100, calcPlazo);
 
     // Year-by-year table (correct amortization)
     const yearlyTable: Array<{
@@ -5060,16 +7680,16 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
       valorActivo: number;
     }> = [];
     let deudaRemanente = montoFinanciado;
-    for (let y = 1; y <= calcHorizonte; y++) {
+    for (let y = 1; y <= calcPlazo; y++) {
       const valorActivoY = calcPrecio * Math.pow(1 + calcValorizacion / 100, y);
       const ingresoAnualY = rentaMensual * 12 * (1 - calcVacancia / 100);
       const gastosAnualY = totalGastos;
       const noiY = ingresoAnualY - gastosAnualY;
-      // correct amortization: interest on remaining balance
       const intAnual = deudaRemanente * (calcTasaHip / 100);
       const amortAnual = Math.max(0, cuotaAnualHip - intAnual);
       deudaRemanente = Math.max(0, deudaRemanente - amortAnual);
-      const flujoPostHip = noiY - cuotaAnualHip;
+      const cuotaEsteAnio = deudaRemanente > 0 || amortAnual > 0 ? cuotaMes : 0;
+      const flujoPostHip = noiY - cuotaEsteAnio * 12;
       yearlyTable.push({
         year: y,
         rentaMensual,
@@ -5078,23 +7698,54 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
         gastosMensual: totalGastosMensual,
         gastosAnual: gastosAnualY,
         noi: noiY,
-        cuotaHip: cuotaMes,
+        cuotaHip: cuotaEsteAnio,
         flujoPostHip,
         deuda: deudaRemanente,
         valorActivo: valorActivoY,
       });
     }
 
-    // Sale calculation
-    const ventaValor = calcPrecio * Math.pow(1 + calcValorizacion / 100, calcVenderAnio);
-    const ventaImpuesto = ventaValor * 0.02;
-    const ventaUtilidad = ventaValor - calcPrecio - ventaImpuesto;
+    // Sale calculation (EV → Equity → Net Proceeds)
+    const ventaValor = calcPrecio * Math.pow(1 + calcValorizacion / 100, calcVenderAnio); // Enterprise Value
+    const deudaAlVender = yearlyTable[Math.min(calcVenderAnio, calcPlazo) - 1]?.deuda ?? montoFinanciado;
+    const equityValue = ventaValor - deudaAlVender; // Equity Value = EV - remaining debt
+    const costoComision = ventaValor * 0.03;         // 3% broker commission
+    const costoImpuesto = ventaValor * 0.02;         // 2% transfer tax
+    const costoLegal = ventaValor * 0.005;            // 0.5% legal
+    const totalCostosTx = costoComision + costoImpuesto + costoLegal;
+    const netProceedsVenta = equityValue - totalCostosTx; // Net to seller after debt + costs
+    const gananciaVsInversion = netProceedsVenta - cuotaInicialdUSD;
+    const gananciaVsCostoTotal = netProceedsVenta - calcPrecio;
+    const ventaImpuesto = costoImpuesto;
+    const ventaUtilidad = gananciaVsInversion;
+
+    // TIR: flujos desde perspectiva del equity (cuota inicial como inversión inicial)
+    const totalFlujosCaja = yearlyTable.slice(0, calcVenderAnio).reduce((s, r) => s + r.flujoPostHip, 0);
+    const moic = cuotaInicialdUSD > 0 ? (netProceedsVenta + totalFlujosCaja) / cuotaInicialdUSD : null;
+
+    const tirFlows: number[] = [-cuotaInicialdUSD];
+    for (let y = 1; y <= calcVenderAnio; y++) {
+      const row = yearlyTable[y - 1];
+      const flujoAnual = row ? row.flujoPostHip : (noi - cuotaAnualHip);
+      tirFlows.push(y === calcVenderAnio ? flujoAnual + netProceedsVenta : flujoAnual);
+    }
+    const tirRaw = calcIRR(tirFlows);
+    const tirPct = tirRaw !== null ? tirRaw * 100 : null;
 
     // CDT comparison
     const cdtRate = 10.5;
     const cdtDevaluation = 6;
     const cdtRealRate = cdtRate - cdtDevaluation;
-    const cdtFutureValue = cuotaInicialdUSD * Math.pow(1 + cdtRealRate / 100, calcHorizonte);
+    const cdtFutureValue = cuotaInicialdUSD * Math.pow(1 + cdtRealRate / 100, calcPlazo);
+
+    // GLP patrimonio neto al final del plazo
+    // Al final del plazo hipotecario la deuda es ~0, el activo vale valorFuturo
+    // Los FCF acumulados son la suma real año a año (pueden ser negativos en años iniciales)
+    const fcfAcumulado = yearlyTable.reduce((s, r) => s + r.flujoPostHip, 0);
+    const deudaFinal = yearlyTable[yearlyTable.length - 1]?.deuda ?? 0;
+    const patrimonioNetoGLP = valorFuturo - deudaFinal + fcfAcumulado;
+    const gananciaNetaGLP = patrimonioNetoGLP - cuotaInicialdUSD;
+    const diferencialVsCDT = patrimonioNetoGLP - cdtFutureValue;
 
     const sliderInput = (label: string, value: number, setter: (v: number) => void, min: number, max: number, step: number, suffix: string = '') => (
       <div style={{ marginBottom: 12 }}>
@@ -5121,108 +7772,90 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
 
     return (
       <div>
-        {sectionTitle('Calculadora ROI · Análisis de Inversión')}
+        {sectionTitle('Calculadora Inmobiliaria · Análisis de Inversión')}
 
-        {/* FILTER BAR: profile + zone + price — all optional */}
-        <div style={{ ...cardStyle(), marginBottom: 16 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 12 }}>Filtros de Portafolio</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
-            {/* Investor profile */}
-            <div>
-              <label style={{ ...labelStyle, marginBottom: 4, display: 'block' }}>Perfil de inversión</label>
-              <select
-                value={calcPerfil || 'all'}
-                onChange={e => { setCalcPerfil(e.target.value === 'all' ? null : e.target.value); setCalcProject(null); }}
-                style={inputStyle({ fontSize: 12, padding: '6px 10px' })}
-              >
-                <option value="all">Todos los perfiles</option>
-                {INVESTOR_PROFILES.map(p => (
-                  <option key={p.id} value={p.id}>{p.label}</option>
-                ))}
-              </select>
+        {/* Profile chips — barra liviana encima del grid */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+          <span style={{ fontSize: 12, color: T.textSec, fontWeight: 500 }}>Perfil rápido:</span>
+          {INVESTOR_PROFILES.map(p => (
+            <div key={p.id}
+              onClick={() => { setCalcPerfil(calcPerfil === p.id ? null : p.id); setCalcProject(null); }}
+              style={{
+                borderRadius: 20, padding: '5px 16px', cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                border: `1.5px solid ${calcPerfil === p.id ? p.color : T.border}`,
+                background: calcPerfil === p.id ? `${p.color}18` : T.card,
+                color: calcPerfil === p.id ? p.color : T.textSec, transition: 'all 0.15s',
+              }}
+            >
+              {p.label}
             </div>
-            {/* Zone */}
-            <div>
-              <label style={{ ...labelStyle, marginBottom: 4, display: 'block' }}>Zona</label>
-              <select value={calcFilterZone} onChange={e => { setCalcFilterZone(e.target.value); setCalcProject(null); }} style={inputStyle({ fontSize: 12, padding: '6px 10px' })}>
-                <option value="all">Todas las zonas</option>
-                <option value="Playa Caracol">Playa Caracol</option>
-                <option value="Santa María">Santa María</option>
-                <option value="Punta Pacífica">Punta Pacífica</option>
-                <option value="Costa del Este">Costa del Este / Panamá Viejo</option>
-                <option value="Arraiján / Pacífico">Arraiján / Pacífico</option>
-              </select>
-            </div>
-            {/* Price */}
-            <div>
-              <label style={{ ...labelStyle, marginBottom: 4, display: 'block' }}>Rango de precio</label>
-              <select value={calcFilterPrice} onChange={e => { setCalcFilterPrice(e.target.value); setCalcProject(null); }} style={inputStyle({ fontSize: 12, padding: '6px 10px' })}>
-                <option value="all">Todos los precios</option>
-                <option value="low">Hasta USD $250,000</option>
-                <option value="mid">USD $250,000 – $500,000</option>
-                <option value="high">Más de USD $500,000</option>
-              </select>
-            </div>
-            {/* Reset */}
-            <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-              <button
-                onClick={() => { setCalcPerfil(null); setCalcFilterZone('all'); setCalcFilterPrice('all'); setCalcProject(null); }}
-                style={{ ...btnSecondary(), width: '100%', justifyContent: 'center' }}
-              >
-                Limpiar filtros
-              </button>
-            </div>
-          </div>
-          {/* Profile chips (visual, optional click) */}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', borderTop: `1px solid ${T.borderLight}`, paddingTop: 10 }}>
-            <span style={{ fontSize: 11, color: T.textSec, alignSelf: 'center' }}>Perfil rápido:</span>
-            {INVESTOR_PROFILES.map(p => (
-              <div key={p.id}
-                onClick={() => { setCalcPerfil(calcPerfil === p.id ? null : p.id); setCalcProject(null); }}
-                style={{
-                  borderRadius: 20, padding: '4px 14px', cursor: 'pointer', fontSize: 12, fontWeight: 600,
-                  border: `1.5px solid ${calcPerfil === p.id ? p.color : T.border}`,
-                  background: calcPerfil === p.id ? `${p.color}18` : 'transparent',
-                  color: calcPerfil === p.id ? p.color : T.textSec, transition: 'all 0.15s',
-                }}
-              >
-                {p.label}
-              </div>
-            ))}
+          ))}
+          {(calcPerfil || calcFilterZone !== 'all' || calcFilterPrice !== 'all') && (
+            <button onClick={() => { setCalcPerfil(null); setCalcFilterZone('all'); setCalcFilterPrice('all'); setCalcProject(null); }}
+              style={{ fontSize: 11, color: T.textSec, background: 'none', border: 'none', cursor: 'pointer', marginLeft: 4 }}>
+              × Limpiar
+            </button>
+          )}
+          {/* Filtros secundarios inline */}
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+            <select value={calcFilterZone} onChange={e => { setCalcFilterZone(e.target.value); setCalcProject(null); }}
+              style={inputStyle({ fontSize: 11, padding: '4px 8px' })}>
+              <option value="all">Todas las zonas</option>
+              <option value="Playa Caracol">Playa Caracol</option>
+              <option value="Santa María">Santa María</option>
+              <option value="Punta Pacífica">Punta Pacífica</option>
+              <option value="Costa del Este">Costa del Este / Panamá Viejo</option>
+              <option value="Arraiján / Pacífico">Arraiján / Pacífico</option>
+            </select>
+            <select value={calcFilterPrice} onChange={e => { setCalcFilterPrice(e.target.value); setCalcProject(null); }}
+              style={inputStyle({ fontSize: 11, padding: '4px 8px' })}>
+              <option value="all">Todos los precios</option>
+              <option value="low">Hasta $250k</option>
+              <option value="mid">$250k – $500k</option>
+              <option value="high">Más de $500k</option>
+            </select>
           </div>
         </div>
 
         {/* PROJECT GRID — always visible, filtered */}
         <div style={{ ...cardStyle(), marginBottom: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: T.text }}>
               Portafolio ({filteredProjects.length} proyectos)
-              {calcProject && <span style={{ fontSize: 12, color: T.teal, marginLeft: 8 }}>· Seleccionado: {calcProject}</span>}
+              {calcProject && <span style={{ fontSize: 13, color: T.teal, marginLeft: 8, fontWeight: 500 }}>· Seleccionado: {calcProject}</span>}
             </div>
             {calcProject && (
               <button onClick={() => setCalcProject(null)} style={{ fontSize: 11, color: T.coral, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>✕ Quitar selección</button>
             )}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 12 }}>
             {filteredProjects.map(pd => {
               const pn = pd.name;
               const sel = calcProject === pn;
+              const imgs = PROJECT_IMAGES[pn];
               return (
                 <div key={pn} onClick={() => selectCalcProject(pn)}
                   style={{
-                    borderRadius: 8, padding: '12px 14px', cursor: 'pointer',
+                    borderRadius: 12, overflow: 'hidden', cursor: 'pointer',
                     border: `2px solid ${sel ? T.teal : T.border}`,
-                    background: sel ? 'rgba(14,165,172,0.06)' : T.bg,
+                    background: sel ? 'rgba(14,165,172,0.04)' : T.card,
                     transition: 'all 0.15s',
+                    boxShadow: sel ? `0 0 0 3px ${T.teal}28` : '0 1px 4px rgba(0,0,0,0.06)',
                   }}
-                  onMouseEnter={e => { if (!sel) e.currentTarget.style.borderColor = T.teal + '80'; }}
-                  onMouseLeave={e => { if (!sel) e.currentTarget.style.borderColor = T.border; }}
+                  onMouseEnter={e => { if (!sel) { e.currentTarget.style.borderColor = T.teal + '70'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)'; } }}
+                  onMouseLeave={e => { if (!sel) { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.06)'; } }}
                 >
-                  <div style={{ fontWeight: 700, fontSize: 12, color: T.text, marginBottom: 4 }}>{pn}</div>
-                  <div style={{ fontSize: 11, color: T.textSec, marginBottom: 6 }}>{pd.zoneShort}</div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
-                    <span style={{ color: T.teal, fontWeight: 600 }}>Desde {usd(pd.minPrice)}</span>
-                    <span style={{ color: T.palm, fontWeight: 600 }}>{pd.capRateMin}–{pd.capRateMax}%</span>
+                  {/* Image */}
+                  <div style={{ height: 110, background: imgs ? `url(${imgs.main}) center/cover` : `linear-gradient(135deg, ${T.teal}22, ${T.sky}33)`, display: 'flex', alignItems: 'flex-start', padding: '8px 10px' }}>
+                    {sel && <span style={{ fontSize: 9, fontWeight: 800, background: T.teal, color: '#fff', padding: '3px 8px', borderRadius: 5, letterSpacing: '0.05em' }}>SELECCIONADO</span>}
+                  </div>
+                  <div style={{ padding: '10px 12px 12px' }}>
+                    <div style={{ fontWeight: 700, fontSize: 12, color: T.text, marginBottom: 2, lineHeight: 1.3 }}>{pn}</div>
+                    <div style={{ fontSize: 10, color: T.teal, marginBottom: 6 }}>{pd.zoneShort}</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                      <span style={{ color: T.text, fontWeight: 600 }}>Desde {usd(pd.minPrice)}</span>
+                      <span style={{ color: T.palm, fontWeight: 700 }}>{pd.capRateMin}–{pd.capRateMax}%</span>
+                    </div>
                   </div>
                 </div>
               );
@@ -5239,143 +7872,237 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
         {calcProject && proj && (
 
           <>
-            <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 16 }}>
               {/* Left: Parameters */}
-              <div style={cardStyle()}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 16 }}>Parámetros de Inversión</div>
-                {sliderInput('Precio del activo', calcPrecio, setCalcPrecio, proj.minPrice, proj.minPrice * 4, 10000, '$')}
-                {sliderInput('Metraje (m²)', calcArea, setCalcArea, proj.areaMin, proj.areaMax, 1, ' m²')}
-                {sliderInput('Cuota inicial', calcCuotaInicial, setCalcCuotaInicial, 30, 100, 5, '%')}
-                {sliderInput('Tasa hipotecaria', calcTasaHip, setCalcTasaHip, 5, 12, 0.5, '%')}
-                {sliderInput('Plazo (años)', calcPlazo, setCalcPlazo, 5, 30, 1, ' años')}
-                {sliderInput('Renta por m²/mes', calcRentaM2, setCalcRentaM2, 5, 35, 1, ' USD')}
-                <div style={{ borderTop: `1px solid ${T.borderLight}`, paddingTop: 12, marginTop: 4 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 8 }}>Gastos Operativos</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                    <div>
-                      <label style={{ ...labelStyle, fontSize: 10 }}>Property Mgmt (%)</label>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <input type="number" step="0.1" value={calcFeePM} onChange={e => setCalcFeePM(Number(e.target.value))} style={inputStyle({ fontSize: 12, padding: '4px 8px', width: '50%' })} />
-                        <span style={{ fontSize: 10, color: T.textSec }}>{usd(feePMMensual)}/m</span>
-                      </div>
-                    </div>
-                    <div>
-                      <label style={{ ...labelStyle, fontSize: 10 }}>Admin Conjunto ($/m)</label>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <input type="number" value={calcCondominio} onChange={e => setCalcCondominio(Number(e.target.value))} style={inputStyle({ fontSize: 12, padding: '4px 8px', width: '50%' })} />
-                        <span style={{ fontSize: 10, color: T.textSec }}>{usd(calcCondominio)}/m</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    <div>
-                      <label style={{ ...labelStyle, fontSize: 10 }}>Seguro Propiedad (%)</label>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <input type="number" step="0.01" value={calcSeguro} onChange={e => setCalcSeguro(Number(e.target.value))} style={inputStyle({ fontSize: 12, padding: '4px 8px', width: '50%' })} />
-                        <span style={{ fontSize: 10, color: T.textSec }}>{usd(gastosSeguro)}/año</span>
-                      </div>
-                    </div>
-                    <div>
-                      <label style={{ ...labelStyle, fontSize: 10 }}>Impuesto Predial (%)</label>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <input type="number" step="0.1" value={calcPredial} onChange={e => setCalcPredial(Number(e.target.value))} style={inputStyle({ fontSize: 12, padding: '4px 8px', width: '50%' })} />
-                        <span style={{ fontSize: 10, color: T.textSec }}>{usd(gastosPredial)}/año</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                {sliderInput('Vacancia', calcVacancia, setCalcVacancia, 0, 30, 1, '%')}
-                {sliderInput('Valorización anual', calcValorizacion, setCalcValorizacion, 1, 10, 0.5, '%')}
-                {sliderInput('Horizonte inversión', calcHorizonte, setCalcHorizonte, 1, 15, 1, ' años')}
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 16 }}>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                  <label style={{ fontSize: 12, color: T.text }}>
-                    <input type="checkbox" checked={calcVender} onChange={e => setCalcVender(e.target.checked)} style={{ marginRight: 6 }} />
-                    ¿Vender en año X?
-                  </label>
-                  {calcVender && (
-                    <input type="number" value={calcVenderAnio} min={1} max={calcHorizonte}
-                      onChange={e => setCalcVenderAnio(Number(e.target.value))}
-                      style={inputStyle({ width: 60, fontSize: 12, padding: '4px 8px' })} />
-                  )}
+                {/* Activo */}
+                <div style={cardStyle()}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.08em', marginBottom: 14 }}>Activo</div>
+                  {sliderInput('Precio del activo', calcPrecio, setCalcPrecio, proj.minPrice, proj.minPrice * 4, 10000, '$')}
+                  {sliderInput('Metraje (m²)', calcArea, setCalcArea, proj.areaMin, proj.areaMax, 1, ' m²')}
+                  {sliderInput('Renta por m²/mes', calcRentaM2, setCalcRentaM2, 5, 35, 1, ' USD')}
+                  {sliderInput('Vacancia', calcVacancia, setCalcVacancia, 0, 30, 1, '%')}
+                  {sliderInput('Valorización anual', calcValorizacion, setCalcValorizacion, 1, 10, 0.5, '%')}
                 </div>
+
+                {/* Financiación */}
+                <div style={cardStyle()}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.08em', marginBottom: 14 }}>Financiación</div>
+                  {sliderInput('Cuota inicial', calcCuotaInicial, setCalcCuotaInicial, 30, 100, 5, '%')}
+                  <div style={{ marginTop: -8, marginBottom: 14, padding: '8px 12px', background: `${T.teal}0D`, border: `1px solid ${T.teal}30`, borderRadius: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 11, color: T.textSec }}>Monto desembolsado</span>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: T.teal }}>{usd(Math.round(cuotaInicialdUSD))}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 5, paddingTop: 5, borderTop: `1px solid ${T.teal}20` }}>
+                      <span style={{ fontSize: 11, color: T.textSec }}>Cuota mensual hipotecaria</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{usd(Math.round(cuotaMes))}</span>
+                    </div>
+                  </div>
+                  {sliderInput('Tasa hipotecaria', calcTasaHip, setCalcTasaHip, 5, 12, 0.5, '%')}
+                  {sliderInput('Plazo (años)', calcPlazo, setCalcPlazo, 5, 30, 1, ' años')}
+                  <div style={{ paddingTop: 12, borderTop: `1px solid ${T.borderLight}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: T.text, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={calcVender} onChange={e => setCalcVender(e.target.checked)} style={{ accentColor: T.teal }} />
+                      Simular venta en año
+                    </label>
+                    {calcVender && (
+                      <input type="number" value={calcVenderAnio} min={1} max={calcPlazo}
+                        onChange={e => setCalcVenderAnio(Number(e.target.value))}
+                        style={inputStyle({ width: 56, fontSize: 13, padding: '4px 8px', fontWeight: 700 })} />
+                    )}
+                  </div>
+                </div>
+
               </div>
 
               {/* Right: Results */}
               <div>
                 {/* Reorganized Results: particular → general */}
                 <div style={{ ...cardStyle(), marginBottom: 16 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 16 }}>Resumen Financiero — {calcProject}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 18 }}>Resumen Financiero — {calcProject}</div>
+                  {/* P&L Waterfall */}
+                  {(() => {
+                    const COL = 'minmax(0,1fr) 110px 110px max-content';
+                    const hdr = (label: string) => (
+                      <div style={{ display: 'grid', gridTemplateColumns: COL, gap: 6, padding: '5px 10px', background: T.sand, borderRadius: 6, marginTop: 10, marginBottom: 2 }}>
+                        <div style={{ fontSize: 9, fontWeight: 800, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.08em' }}>{label}</div>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: T.textSec, textAlign: 'right' as const, textTransform: 'uppercase' as const }}>Mensual</div>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: T.textSec, textAlign: 'right' as const, textTransform: 'uppercase' as const }}>Anual</div>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: T.textSec, textAlign: 'right' as const, textTransform: 'uppercase' as const, minWidth: 72 }}>Yield</div>
+                      </div>
+                    );
+                    const row = (label: string, monthly: number, annual: number, color: string, yield_: string | null = null, indent = false, bold = false, topLine = false) => (
+                      <div key={label} style={{ display: 'grid', gridTemplateColumns: COL, gap: 6, padding: `${bold ? 8 : 6}px 10px`, borderTop: topLine ? `1.5px solid ${T.border}` : `1px solid ${T.borderLight}`, background: bold ? `${color}08` : 'transparent', borderRadius: bold ? 4 : 0 }}>
+                        <div style={{ fontSize: bold ? 12 : 11, color: indent ? T.textSec : T.text, paddingLeft: indent ? 14 : 0, fontWeight: bold ? 700 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{label}</div>
+                        <div style={{ fontSize: bold ? 12 : 11, fontWeight: bold ? 700 : 500, color, textAlign: 'right' as const, whiteSpace: 'nowrap' as const }}>{usd(Math.round(monthly))}</div>
+                        <div style={{ fontSize: bold ? 12 : 11, fontWeight: bold ? 700 : 500, color, textAlign: 'right' as const, whiteSpace: 'nowrap' as const }}>{usd(Math.round(annual))}</div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: yield_ ? color : 'transparent', textAlign: 'right' as const, whiteSpace: 'nowrap' as const, minWidth: 72 }}>{yield_ ?? '—'}</div>
+                      </div>
+                    );
+                    return (
+                      <div>
+                        {hdr('Ingresos')}
+                        {row('Ingreso Bruto (renta × m²)', rentaMensual, rentaMensual * 12, T.palm, `${capRateBruto.toFixed(1)}% bruto`, false, true)}
+                        {row(`Vacancia (${calcVacancia}%)`, -(rentaMensual * calcVacancia / 100), -(rentaMensual * 12 * calcVacancia / 100), T.coral, null, true)}
+                        {row('Ingreso Efectivo Neto', rentaMensualEfectiva, ingresoBrutoAnual, T.palm, `${(cuotaInicialdUSD > 0 ? (ingresoBrutoAnual / cuotaInicialdUSD) * 100 : 0).toFixed(1)}% neto`, false, true, true)}
 
-                  {/* INGRESOS */}
-                  <div style={{ marginBottom: 14 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: T.palm, textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 8, borderBottom: `2px solid ${T.palm}22`, paddingBottom: 4 }}>📈 Ingresos</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
-                      {resultCard('Renta Mensual (bruta)', usd(Math.round(rentaMensual)), T.palm)}
-                      {resultCard(`Renta Mensual Efectiva (${calcVacancia}% vac.)`, usd(Math.round(rentaMensualEfectiva)), T.palm)}
-                      {resultCard('Ingreso Anual Efectivo', usd(Math.round(ingresoBrutoAnual)), T.teal)}
-                      {resultCard(`Cap Rate Bruto`, pct(capRateBruto), T.teal, 'Sobre precio, sin costos')}
-                      {resultCard('NOI Anual', usd(Math.round(noi)), T.teal, 'Ingreso - Gastos operativos')}
-                      {resultCard('Cap Rate Neto', pct(capRateNeto), T.teal, 'NOI / Precio activo')}
-                    </div>
-                  </div>
+                        {hdr('Gastos Operativos')}
+                        {row('Predial', -(gastosPredial / 12), -gastosPredial, T.coral, null, true)}
+                        {row('Seguros', -(gastosSeguro / 12), -gastosSeguro, T.coral, null, true)}
+                        {row('Property Management', -feePMMensual, -gastosPM, T.coral, null, true)}
+                        {row('Admin Conjunto', -(gastosCondominio / 12), -gastosCondominio, T.coral, null, true)}
+                        {row('Total Gastos Operativos', -totalGastosMensual, -totalGastos, T.coral, null, false, true, true)}
 
-                  {/* GASTOS */}
-                  <div style={{ marginBottom: 14 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: T.coral, textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 8, borderBottom: `2px solid ${T.coral}22`, paddingBottom: 4 }}>🔻 Gastos Operativos</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
-                      {resultCard('Gastos Mensual', usd(Math.round(totalGastosMensual)), T.coral, 'PM + Seguro prorr.')}
-                      {resultCard('Gastos Anual', usd(Math.round(totalGastos)), T.coral, 'PM anual + Seguro')}
-                    </div>
-                  </div>
+                        {hdr('Resultado Operativo')}
+                        {row('NOI (Ingreso Operativo Neto)', noi / 12, noi, T.teal, `${capRateNeto.toFixed(1)}% activo`, false, true, true)}
+                        {row('', 0, 0, T.teal, `${roiEquity.toFixed(1)}% equity`, false, false)}
 
-                  {/* TASAS & FINANCIACIÓN */}
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: T.sky, textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 8, borderBottom: `2px solid ${T.sky}22`, paddingBottom: 4 }}>🏦 Financiación</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
-                      {resultCard('Cuota Hipotecaria / Mes', usd(Math.round(cuotaMes)), T.sky)}
-                      {resultCard('Total Hipoteca Anual', usd(Math.round(cuotaAnualHip)), T.sky)}
-                      {resultCard('Flujo Libre / Mes', usd(Math.round(flujoLibreMensual)), flujoLibreMensual >= 0 ? T.palm : T.coral, 'NOI - Hipoteca')}
-                      {resultCard('Cash-on-Cash', pct(cashOnCash), cashOnCash >= 0 ? T.palm : T.coral, 'Sobre cuota inicial')}
-                      {resultCard('Valor Futuro (Año ' + calcHorizonte + ')', usd(Math.round(valorFuturo)), T.sky)}
-                    </div>
-                  </div>
+                        {hdr('Financiación')}
+                        {row('Cuota Hipotecaria', -cuotaMes, -cuotaAnualHip, T.sky, null, true)}
+                        {row('Free Cash Flow', flujoLibreMensual, noi - cuotaAnualHip, flujoLibreMensual >= 0 ? T.palm : T.coral, `${cashOnCash.toFixed(1)}% CoC`, false, true, true)}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Análisis de Sensibilidad Operativa */}
                 <div style={{ ...cardStyle(), marginBottom: 16 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 12 }}>Análisis de Sensibilidad (Costos Operativos)</div>
-                  <p style={{ fontSize: 11, color: T.textSec, marginBottom: 14 }}>
-                    Simulación del impacto de variaciones de +/-15% en los costos operativos totales ({usd(totalGastos)}/año) sobre el rendimiento neto.
-                  </p>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-                    {/* Optimista (-15% costos) */}
-                    <div style={{ background: '#ECFDF5', borderRadius: 8, padding: 12, border: '1px solid #A7F3D0', textAlign: 'center' }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: '#065F46' }}>Optimista (-15%)</div>
-                      <div style={{ fontSize: 10, color: T.textSec, marginTop: 4 }}>Costos: {usd(totalGastos * 0.85)}</div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: T.palm, marginTop: 8 }}>Cap Rate: {((ingresoBrutoAnual - totalGastos * 0.85) / calcPrecio * 100).toFixed(2)}%</div>
-                      <div style={{ fontSize: 11, color: T.textSec }}>CoC: {(cuotaInicialdUSD > 0 ? (((ingresoBrutoAnual - totalGastos * 0.85) - cuotaAnualHip) / cuotaInicialdUSD * 100) : 0).toFixed(2)}%</div>
-                    </div>
-                    {/* Base */}
-                    <div style={{ background: '#F8FAFC', borderRadius: 8, padding: 12, border: `1px solid ${T.borderLight}`, textAlign: 'center' }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: T.text }}>Caso Base</div>
-                      <div style={{ fontSize: 10, color: T.textSec, marginTop: 4 }}>Costos: {usd(totalGastos)}</div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: T.teal, marginTop: 8 }}>Cap Rate: {capRateNeto.toFixed(2)}%</div>
-                      <div style={{ fontSize: 11, color: T.textSec }}>CoC: {cashOnCash.toFixed(2)}%</div>
-                    </div>
-                    {/* Conservador (+15% costos) */}
-                    <div style={{ background: '#FEF2F2', borderRadius: 8, padding: 12, border: '1px solid #FCA5A5', textAlign: 'center' }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: '#991B1B' }}>Conservador (+15%)</div>
-                      <div style={{ fontSize: 10, color: T.textSec, marginTop: 4 }}>Costos: {usd(totalGastos * 1.15)}</div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: T.coral, marginTop: 8 }}>Cap Rate: {((ingresoBrutoAnual - totalGastos * 1.15) / calcPrecio * 100).toFixed(2)}%</div>
-                      <div style={{ fontSize: 11, color: T.textSec }}>CoC: {(cuotaInicialdUSD > 0 ? (((ingresoBrutoAnual - totalGastos * 1.15) - cuotaAnualHip) / cuotaInicialdUSD * 100) : 0).toFixed(2)}%</div>
-                    </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 4, letterSpacing: '-0.01em' }}>Sensibilidad · Costos Operativos</div>
+                  <div style={{ fontSize: 11, color: T.textSec, marginBottom: 16 }}>
+                    Variación ±15% sobre costos base de {usd(totalGastos)}/año — impacto en Cap Rate Neto y Cash-on-Cash.
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, background: T.border, borderRadius: 10, overflow: 'hidden' }}>
+                    {([
+                      { label: 'Optimista', sub: '−15% costos', mult: 0.85, accent: T.teal },
+                      { label: 'Caso Base', sub: 'costos actuales', mult: 1.00, accent: T.text },
+                      { label: 'Conservador', sub: '+15% costos', mult: 1.15, accent: '#8B6914' },
+                    ] as { label: string; sub: string; mult: number; accent: string }[]).map((s, i) => {
+                      const gastos = totalGastos * s.mult;
+                      const noiS = ingresoBrutoAnual - gastos;
+                      const crNeto = calcPrecio > 0 ? (noiS / calcPrecio * 100) : 0;
+                      const cocS = cuotaInicialdUSD > 0 ? ((noiS - cuotaAnualHip) / cuotaInicialdUSD * 100) : 0;
+                      const fcfS = (noiS - cuotaAnualHip) / 12;
+                      return (
+                        <div key={s.label} style={{ background: i === 1 ? T.sand : T.card, padding: '16px 18px' }}>
+                          <div style={{ fontSize: 10, fontWeight: 800, color: s.accent, textTransform: 'uppercase' as const, letterSpacing: '0.08em', marginBottom: 2 }}>{s.label}</div>
+                          <div style={{ fontSize: 10, color: T.textSec, marginBottom: 14 }}>{s.sub}</div>
+                          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
+                            <div>
+                              <div style={{ fontSize: 9, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: 2 }}>Gastos Anuales</div>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{usd(Math.round(gastos))}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 9, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: 2 }}>NOI Anual</div>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: noiS >= 0 ? T.teal : T.coral }}>{usd(Math.round(noiS))}</div>
+                            </div>
+                            <div style={{ borderTop: `1px solid ${T.borderLight}`, paddingTop: 10, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                              <div>
+                                <div style={{ fontSize: 9, color: T.textSec, letterSpacing: '0.05em', marginBottom: 2 }}>Cap Rate</div>
+                                <div style={{ fontSize: 14, fontWeight: 800, color: s.accent }}>{crNeto.toFixed(2)}%</div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 9, color: T.textSec, letterSpacing: '0.05em', marginBottom: 2 }}>Cash-on-Cash</div>
+                                <div style={{ fontSize: 14, fontWeight: 800, color: cocS >= 0 ? T.teal : T.coral }}>{cocS.toFixed(2)}%</div>
+                              </div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 9, color: T.textSec, letterSpacing: '0.05em', marginBottom: 2 }}>Free Cash Flow / mes</div>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: fcfS >= 0 ? T.palm : T.coral }}>{usd(Math.round(fcfS))}</div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 
-                {/* Year-by-year table */}
-                <div style={{ ...cardStyle(), marginBottom: 16 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 12 }}>Proyección Año por Año (Horizonte {calcHorizonte} Años)</div>
+              </div>{/* end right column */}
+            </div>{/* end grid */}
+
+            {/* Gastos Operativos — full width, antes de la proyección */}
+            <div style={{ ...cardStyle(), marginTop: 16, marginBottom: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.08em' }}>Gastos Operativos</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 10, color: T.textSec }}>Valor fiscal del activo</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ fontSize: 11, color: T.textSec }}>$</span>
+                    <input type="number" step="1000"
+                      value={calcValorFiscal > 0 ? calcValorFiscal : Math.round(calcPrecio * 0.70)}
+                      onChange={e => setCalcValorFiscal(Number(e.target.value))}
+                      style={inputStyle({ fontSize: 12, padding: '4px 10px', width: 120, fontWeight: 600 })} />
+                  </div>
+                  <span style={{ fontSize: 10, color: T.textSec, fontStyle: 'italic' }}>
+                    (ref. {usd(Math.round(calcPrecio * 0.70))} · 70% comercial)
+                  </span>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 20 }}>
+                <div style={{ padding: '14px 16px', background: T.sand, borderRadius: 8 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.07em', marginBottom: 10 }}>
+                    Property Management · % sobre renta efectiva
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div>
+                      <label style={{ fontSize: 10, color: T.textSec, display: 'block', marginBottom: 4 }}>Porcentaje (%)</label>
+                      <input type="number" step="0.5" value={calcFeePM}
+                        onChange={e => { setCalcFeePM(Number(e.target.value)); setCalcFeePMFixed(0); }}
+                        style={inputStyle({ fontSize: 14, padding: '6px 10px', width: '100%', fontWeight: 700 })} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 10, color: T.textSec, display: 'block', marginBottom: 4 }}>Monto fijo ($/mes)</label>
+                      <input type="number" step="10"
+                        value={calcFeePMFixed > 0 ? calcFeePMFixed : Math.round(feePMMensual)}
+                        onChange={e => { setCalcFeePMFixed(Number(e.target.value)); setCalcFeePM(0); }}
+                        style={inputStyle({ fontSize: 14, padding: '6px 10px', width: '100%', fontWeight: 700 })} />
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 11, color: T.teal, fontWeight: 600 }}>
+                    {usd(Math.round(feePMMensual))}/mes · {usd(Math.round(gastosPM))}/año
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.07em', marginBottom: 8 }}>Cuota Admin</div>
+                  <div style={{ fontSize: 9, color: T.textSec, marginBottom: 6 }}>$/mes según coeficiente</div>
+                  <input type="number" step="10" value={calcCondominio}
+                    onChange={e => setCalcCondominio(Number(e.target.value))}
+                    style={inputStyle({ fontSize: 14, padding: '6px 10px', width: '100%', fontWeight: 700 })} />
+                  <div style={{ marginTop: 6, fontSize: 10, color: T.textSec }}>{usd(calcCondominio)}/mes · {usd(gastosCondominio)}/año</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.07em', marginBottom: 8 }}>Seguro Propiedad</div>
+                  <div style={{ fontSize: 9, color: T.textSec, marginBottom: 6 }}>% sobre valor fiscal</div>
+                  <input type="number" step="0.05" value={calcSeguro}
+                    onChange={e => setCalcSeguro(Number(e.target.value))}
+                    style={inputStyle({ fontSize: 14, padding: '6px 10px', width: '100%', fontWeight: 700 })} />
+                  <div style={{ marginTop: 6, fontSize: 10, color: T.textSec }}>{usd(Math.round(gastosSeguro))}/año</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.07em', marginBottom: 8 }}>Impuesto Predial</div>
+                  <div style={{ fontSize: 9, color: T.textSec, marginBottom: 6 }}>% sobre valor fiscal</div>
+                  <input type="number" step="0.1" value={calcPredial}
+                    onChange={e => setCalcPredial(Number(e.target.value))}
+                    style={inputStyle({ fontSize: 14, padding: '6px 10px', width: '100%', fontWeight: 700 })} />
+                  <div style={{ marginTop: 6, fontSize: 10, color: T.textSec }}>{usd(Math.round(gastosPredial))}/año</div>
+                </div>
+              </div>
+              <div style={{ marginTop: 16, paddingTop: 12, borderTop: `1px solid ${T.borderLight}`, display: 'flex', justifyContent: 'flex-end', gap: 32 }}>
+                <div style={{ textAlign: 'right' as const }}>
+                  <div style={{ fontSize: 9, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: 2 }}>Total mensual</div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: T.coral }}>{usd(Math.round(totalGastosMensual))}</div>
+                </div>
+                <div style={{ textAlign: 'right' as const }}>
+                  <div style={{ fontSize: 9, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: 2 }}>Total anual</div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: T.coral }}>{usd(Math.round(totalGastos))}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Year-by-year table — full width */}
+            <div style={{ ...cardStyle(), marginBottom: 16 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 12 }}>Proyección Año por Año — Plazo Hipoteca ({calcPlazo} Años)</div>
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
                       <thead>
@@ -5411,127 +8138,179 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
                     </table>
                   </div>
                   <div style={{ fontSize: 10, color: T.textSec, marginTop: 8, fontStyle: 'italic' }}>
-                    * Flujo post-hipoteca = NOI anual − cuota hipotecaria anual. Negativo cuando la hipoteca supera el ingreso operativo neto (normal en proyectos con alta financiación).
+                    * Flujo neto = NOI anual − cuota hipotecaria anual. La tabla cubre los {calcPlazo} años del plazo de la hipoteca; al final el activo queda libre de deuda.
                   </div>
                 </div>
 
                 {/* Sale scenario */}
                 {calcVender && (
-                  <div style={{ ...cardStyle(), marginBottom: 16, borderLeft: `4px solid ${T.palm}` }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 12 }}>Escenario de Venta — Año {calcVenderAnio}</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-                      {resultCard('Valor de venta', usd(Math.round(ventaValor)), T.teal)}
-                      {resultCard('Impuesto venta (2%)', usd(Math.round(ventaImpuesto)), T.coral)}
-                      {resultCard('Utilidad neta', usd(Math.round(ventaUtilidad)), ventaUtilidad >= 0 ? T.success : T.coral)}
+                  <div style={{ ...cardStyle(), marginBottom: 16 }}>
+                    {/* Header */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 20, paddingBottom: 14, borderBottom: `1px solid ${T.border}` }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: T.text, letterSpacing: '-0.01em' }}>Análisis de Salida</div>
+                        <div style={{ fontSize: 11, color: T.textSec, marginTop: 2 }}>Escenario de venta en año {calcVenderAnio} · {calcProject}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' as const }}>
+                        <div style={{ fontSize: 10, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.07em' }}>Retorno Total</div>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: (gananciaVsInversion + totalFlujosCaja) >= 0 ? T.teal : T.coral }}>
+                          {(gananciaVsInversion + totalFlujosCaja) >= 0 ? '+' : '−'}{usd(Math.round(Math.abs(gananciaVsInversion + totalFlujosCaja)))}
+                        </div>
+                        <div style={{ fontSize: 10, color: T.textSec, marginTop: 2 }}>venta + flujos netos</div>
+                      </div>
+                    </div>
+
+                    {/* Two waterfall columns */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 20 }}>
+                      {/* EV → Equity */}
+                      <div>
+                        <div style={{ fontSize: 9, fontWeight: 800, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.09em', marginBottom: 12 }}>Enterprise Value → Equity</div>
+                        {([
+                          { label: 'Enterprise Value', sub: `precio × (1 + ${calcValorizacion}%)^${calcVenderAnio}`, val: ventaValor, sign: '', color: T.text, bold: true, topLine: false },
+                          { label: 'Deuda remanente', sub: `hipoteca año ${calcVenderAnio}`, val: deudaAlVender, sign: '−', color: T.coral, bold: false, topLine: false },
+                          { label: 'Equity Value', sub: 'EV menos deuda', val: equityValue, sign: '', color: T.teal, bold: true, topLine: true },
+                        ] as {label:string;sub:string;val:number;sign:string;color:string;bold:boolean;topLine:boolean}[]).map(r => (
+                          <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '9px 0', borderTop: r.topLine ? `1.5px solid ${T.border}` : `1px solid ${T.borderLight}` }}>
+                            <div>
+                              <div style={{ fontSize: 11, fontWeight: r.bold ? 700 : 400, color: T.text }}>{r.label}</div>
+                              <div style={{ fontSize: 9, color: T.textSec, marginTop: 1 }}>{r.sub}</div>
+                            </div>
+                            <div style={{ fontSize: r.bold ? 13 : 12, fontWeight: r.bold ? 800 : 500, color: r.color, whiteSpace: 'nowrap' as const }}>
+                              {r.sign}{usd(Math.round(r.val))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Equity → Net Proceeds */}
+                      <div>
+                        <div style={{ fontSize: 9, fontWeight: 800, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.09em', marginBottom: 12 }}>Equity → Neto Inversionista</div>
+                        {([
+                          { label: 'Equity Value', sub: '', val: equityValue, sign: '', color: T.teal, bold: true, topLine: false },
+                          { label: 'Comisión broker', sub: '3% sobre EV', val: costoComision, sign: '−', color: T.textSec, bold: false, topLine: false },
+                          { label: 'Impuesto transferencia', sub: '2% sobre EV', val: costoImpuesto, sign: '−', color: T.textSec, bold: false, topLine: false },
+                          { label: 'Costos legales', sub: '0.5% sobre EV', val: costoLegal, sign: '−', color: T.textSec, bold: false, topLine: false },
+                          { label: 'Net Proceeds', sub: 'neto de la venta', val: netProceedsVenta, sign: '', color: T.text, bold: true, topLine: true },
+                          { label: 'Cuota inicial', sub: 'capital desembolsado', val: cuotaInicialdUSD, sign: '−', color: T.textSec, bold: false, topLine: false },
+                          { label: 'Ganancia por venta', sub: 'plusvalía neta', val: Math.abs(gananciaVsInversion), sign: gananciaVsInversion >= 0 ? '+' : '−', color: gananciaVsInversion >= 0 ? T.palm : T.coral, bold: true, topLine: true },
+                          { label: `FCF acumulado`, sub: `flujos netos años 1–${calcVenderAnio}`, val: Math.abs(totalFlujosCaja), sign: totalFlujosCaja >= 0 ? '+' : '−', color: totalFlujosCaja >= 0 ? T.palm : T.coral, bold: false, topLine: false },
+                          { label: 'Retorno Total', sub: 'venta + flujos', val: Math.abs(gananciaVsInversion + totalFlujosCaja), sign: (gananciaVsInversion + totalFlujosCaja) >= 0 ? '+' : '−', color: (gananciaVsInversion + totalFlujosCaja) >= 0 ? T.teal : T.coral, bold: true, topLine: true },
+                        ] as {label:string;sub:string;val:number;sign:string;color:string;bold:boolean;topLine:boolean}[]).map(r => (
+                          <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '9px 0', borderTop: r.topLine ? `1.5px solid ${T.border}` : `1px solid ${T.borderLight}` }}>
+                            <div>
+                              <div style={{ fontSize: 11, fontWeight: r.bold ? 700 : 400, color: T.text }}>{r.label}</div>
+                              {r.sub && <div style={{ fontSize: 9, color: T.textSec, marginTop: 1 }}>{r.sub}</div>}
+                            </div>
+                            <div style={{ fontSize: r.bold ? 13 : 12, fontWeight: r.bold ? 800 : 500, color: r.color, whiteSpace: 'nowrap' as const }}>
+                              {r.sign}{usd(Math.round(r.val))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* KPI strip: ROI · TIR · MOIC */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, background: T.border, borderRadius: 10, overflow: 'hidden' }}>
+                      {([
+                        { label: 'ROI Total', sub: '(Venta + FCF) ÷ cuota inicial', val: cuotaInicialdUSD > 0 ? `${(((gananciaVsInversion + totalFlujosCaja) / cuotaInicialdUSD) * 100).toFixed(1)}%` : 'N/A', good: (gananciaVsInversion + totalFlujosCaja) >= 0 },
+                        { label: 'TIR Anualizada', sub: 'Sobre equity · flujos + salida', val: tirPct !== null ? `${tirPct.toFixed(2)}%` : 'N/A', good: (tirPct ?? 0) >= 6 },
+                        { label: 'MOIC', sub: '(Net proceeds + FCF) ÷ equity', val: moic !== null ? `${moic.toFixed(2)}x` : 'N/A', good: (moic ?? 0) >= 1.5 },
+                      ] as {label:string;sub:string;val:string;good:boolean}[]).map((k, i) => (
+                        <div key={k.label} style={{ background: i === 1 ? T.sand : T.card, padding: '16px 20px' }}>
+                          <div style={{ fontSize: 9, fontWeight: 800, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.08em', marginBottom: 6 }}>{k.label}</div>
+                          <div style={{ fontSize: 24, fontWeight: 800, color: k.good ? T.teal : T.coral, letterSpacing: '-0.02em' }}>{k.val}</div>
+                          <div style={{ fontSize: 9, color: T.textSec, marginTop: 4 }}>{k.sub}</div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
 
-                {/* CDT comparison */}
-                <div style={{ ...cardStyle(), borderLeft: `4px solid ${T.sky}`, padding: 24 }}>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: T.teal, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    📊 Comparativa de Rentabilidad: Activo Físico vs. CDT Colombia
+                {/* CDT comparison — Sotheby's style */}
+                <div style={{ ...cardStyle(), padding: 28 }}>
+                  {/* Header */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 24, borderBottom: `1px solid ${T.border}`, paddingBottom: 14 }}>
+                    <div>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.12em', marginBottom: 4 }}>Análisis comparativo</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: T.text, letterSpacing: '-0.01em' }}>Activo Físico GLP · Panamá&ensp;vs.&ensp;CDT Colombia</div>
+                    </div>
+                    <div style={{ fontSize: 10, color: T.textSec, letterSpacing: '0.04em' }}>Horizonte {calcPlazo} años</div>
                   </div>
-                  
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-                    {/* Panama Card */}
-                    <div style={{ 
-                      background: 'linear-gradient(135deg, #0F2C59 0%, #1E3A60 100%)', 
-                      borderRadius: 12, 
-                      padding: 20,
-                      color: '#FFFFFF',
-                      boxShadow: '0 4px 15px rgba(15,44,89,0.1)'
-                    }}>
-                      <div style={{ fontSize: 14, fontWeight: 800, color: '#E2E8F0', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        🏗️ Inversión Inmobiliaria GLP (Panamá)
+
+                  {/* Comparison table */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, marginBottom: 24 }}>
+
+                    {/* GLP column */}
+                    <div style={{ paddingRight: 28, borderRight: `1px solid ${T.borderLight}` }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.12em', marginBottom: 16 }}>Inversión GLP · Panamá</div>
+                      {([
+                        { label: 'Capital desembolsado (cuota inicial)', val: usd(Math.round(cuotaInicialdUSD)) },
+                        { label: 'ROI anual sobre equity', val: `${roiEquity.toFixed(2)}%` },
+                        { label: `Valor del activo al año ${calcPlazo}`, val: usd(Math.round(valorFuturo)) },
+                        { label: 'Deuda remanente al final', val: usd(Math.round(deudaFinal)) },
+                        { label: 'FCF acumulado (flujos reales)', val: usd(Math.round(fcfAcumulado)) },
+                      ]).map((r, i) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', paddingBottom: 10, marginBottom: 10, borderBottom: `1px solid ${T.borderLight}` }}>
+                          <span style={{ fontSize: 11, color: T.textSec, maxWidth: '55%', lineHeight: 1.3 }}>{r.label}</span>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: T.text }}>{r.val}</span>
+                        </div>
+                      ))}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', paddingTop: 6 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: T.text, textTransform: 'uppercase' as const, letterSpacing: '0.04em' }}>Patrimonio neto final</span>
+                        <span style={{ fontSize: 20, fontWeight: 800, color: T.text }}>{usd(Math.round(patrimonioNetoGLP))}</span>
                       </div>
-                      
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12, borderBottom: '1px solid rgba(255,255,255,0.15)', paddingBottom: 12, marginBottom: 12 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ color: '#94A3B8' }}>Capital inicial (USD):</span>
-                          <span style={{ fontWeight: 700 }}>{usd(Math.round(cuotaInicialdUSD))}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ color: '#94A3B8' }}>Rendimiento Neto (Cap Rate):</span>
-                          <span style={{ fontWeight: 700 }}>{pct(capRateNeto)} en USD</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ color: '#94A3B8' }}>Valor futuro de la propiedad (Año {calcHorizonte}):</span>
-                          <span style={{ fontWeight: 700 }}>{usd(Math.round(valorFuturo))}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ color: '#94A3B8' }}>Rentas netas acumuladas:</span>
-                          <span style={{ fontWeight: 700, color: T.palm }}>{usd(Math.round(noi * calcHorizonte))}</span>
-                        </div>
-                      </div>
-                      
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: '#E2E8F0' }}>Patrimonio Neto Final:</span>
-                        <span style={{ fontSize: 16, fontWeight: 800, color: '#FFFFFF' }}>
-                          {usd(Math.round(valorFuturo + noi * calcHorizonte - montoFinanciado))}
+                      <div style={{ textAlign: 'right' as const, marginTop: 4 }}>
+                        <span style={{ fontSize: 10, color: T.textSec, fontStyle: 'italic' }}>
+                          {gananciaNetaGLP >= 0 ? '+' : ''}{usd(Math.round(gananciaNetaGLP))} sobre capital inicial
                         </span>
                       </div>
                     </div>
 
-                    {/* CDT Card */}
-                    <div style={{ 
-                      background: '#FFFFFF', 
-                      borderRadius: 12, 
-                      padding: 20,
-                      border: `1.5px solid ${T.borderLight}`,
-                      boxShadow: '0 4px 15px rgba(0,0,0,0.02)'
-                    }}>
-                      <div style={{ fontSize: 14, fontWeight: 800, color: T.text, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        🏦 CDT Tradicional (Colombia)
+                    {/* CDT column */}
+                    <div style={{ paddingLeft: 28 }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.12em', marginBottom: 16 }}>CDT Tradicional · Colombia</div>
+                      {([
+                        { label: 'Capital equivalente (USD)', val: usd(Math.round(cuotaInicialdUSD)) },
+                        { label: 'Tasa nominal E.A.', val: `${cdtRate}% COP` },
+                        { label: 'Devaluación COP/USD histórica', val: `−${cdtDevaluation}% anual` },
+                        { label: 'Retorno real ajustado en USD', val: `${cdtRealRate}% anual` },
+                        { label: 'Apreciación del capital', val: 'Ninguna' },
+                      ]).map((r, i) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', paddingBottom: 10, marginBottom: 10, borderBottom: `1px solid ${T.borderLight}` }}>
+                          <span style={{ fontSize: 11, color: T.textSec, maxWidth: '55%', lineHeight: 1.3 }}>{r.label}</span>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: T.text }}>{r.val}</span>
+                        </div>
+                      ))}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', paddingTop: 6 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: T.text, textTransform: 'uppercase' as const, letterSpacing: '0.04em' }}>Valor liquidativo final</span>
+                        <span style={{ fontSize: 20, fontWeight: 800, color: T.text }}>{usd(Math.round(cdtFutureValue))}</span>
                       </div>
-                      
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12, borderBottom: `1px solid ${T.borderLight}`, paddingBottom: 12, marginBottom: 12 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ color: T.textSec }}>Capital inicial equivalente:</span>
-                          <span style={{ fontWeight: 700, color: T.text }}>{usd(Math.round(cuotaInicialdUSD))}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ color: T.textSec }}>Tasa nominal anual (E.A.):</span>
-                          <span style={{ fontWeight: 700, color: T.text }}>{cdtRate}% en COP</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ color: T.textSec }}>Devaluación COP/USD estimada:</span>
-                          <span style={{ fontWeight: 700, color: T.coral }}>-{cdtDevaluation}% anual</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ color: T.textSec }}>Retorno real ajustado en USD:</span>
-                          <span style={{ fontWeight: 700, color: T.text }}>{cdtRealRate}%</span>
-                        </div>
-                      </div>
-                      
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: T.textSec }}>Valor Liquidativo Final:</span>
-                        <span style={{ fontSize: 16, fontWeight: 800, color: T.coral }}>
-                          {usd(Math.round(cdtFutureValue))}
+                      <div style={{ textAlign: 'right' as const, marginTop: 4 }}>
+                        <span style={{ fontSize: 10, color: T.textSec, fontStyle: 'italic' }}>
+                          +{usd(Math.round(cdtFutureValue - cuotaInicialdUSD))} sobre capital inicial
                         </span>
                       </div>
                     </div>
                   </div>
-                  
-                  {/* Analysis Summary */}
-                  <div style={{ 
-                    marginTop: 20, 
-                    padding: '16px 20px', 
-                    background: '#F0FDF4', 
-                    borderRadius: 10, 
-                    border: '1px solid #BBF7D0', 
-                    textAlign: 'center' 
-                  }}>
-                    <div style={{ fontSize: 14, fontWeight: 800, color: '#166534', marginBottom: 4 }}>
-                      🏆 Diferencial a favor de GLP Panamá: {usd(Math.round((valorFuturo + noi * calcHorizonte - montoFinanciado) - cdtFutureValue))} USD en {calcHorizonte} años
-                    </div>
-                    <div style={{ fontSize: 11, color: '#15803D', lineHeight: 1.4 }}>
-                      *Análisis cambiario: Mientras el CDT colombiano expone tu capital a la devaluación sostenida del peso (históricamente ~6% anual), la finca raíz en Panamá dolariza tu patrimonio desde el primer día, protegiéndolo de la inflación local y multiplicándolo mediante valorización inmobiliaria real y rentas netas en moneda fuerte.
+
+                  {/* Differential strip */}
+                  <div style={{ padding: '14px 20px', background: T.sand, borderRadius: 8, border: `1px solid ${T.border}` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <div>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.1em', marginBottom: 3 }}>Diferencial patrimonial a {calcPlazo} años</div>
+                        <div style={{ fontSize: 10, color: T.textSec, lineHeight: 1.5, maxWidth: 500 }}>
+                          El CDT en COP expone el capital a la devaluación histórica del peso (~{cdtDevaluation}% anual). El activo en Panamá preserva el patrimonio en USD, genera renta en moneda fuerte y captura plusvalía inmobiliaria real.
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' as const, flexShrink: 0, paddingLeft: 24 }}>
+                        <div style={{ fontSize: 9, color: T.textSec, letterSpacing: '0.06em', marginBottom: 3, textTransform: 'uppercase' as const }}>Ventaja GLP</div>
+                        <div style={{ fontSize: 24, fontWeight: 800, color: T.text, letterSpacing: '-0.02em' }}>
+                          {diferencialVsCDT >= 0 ? '+' : ''}{usd(Math.round(diferencialVsCDT))}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
           </>
         )}
       </div>
@@ -5642,11 +8421,387 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
   };
 
   // ══════════════════════════════════════════════════════════════
+  // CATÁLOGO DE PROYECTOS — CARGA Y EDICIÓN
+  // ══════════════════════════════════════════════════════════════
+  const [catalogProjects, setCatalogProjects] = useState<ProjectData[]>([...PROJECTS]);
+  const [catalogEditIdx, setCatalogEditIdx] = useState<number | null>(null);
+  const [catalogFilter, setCatalogFilter] = useState('all');
+  const [catalogTab, setCatalogTab] = useState<'tabla' | 'tarjetas'>('tabla');
+  const [catalogSort, setCatalogSort] = useState<{ field: string; dir: 'asc' | 'desc' }>({ field: 'name', dir: 'asc' });
+
+  const renderCatalogo = () => {
+    const cats = ['all', 'Proyecto de Ciudad', 'Ocean Reef Islands', 'Playa Caracol'];
+    const sortFields: { value: string; label: string }[] = [
+      { value: 'name',        label: 'Proyecto' },
+      { value: 'category',    label: 'Categoría' },
+      { value: 'tipo',        label: 'Tipo' },
+      { value: 'areaMin',     label: 'Área m²' },
+      { value: 'minPrice',    label: 'Rango Precio' },
+      { value: 'bedrooms',    label: 'Rec.' },
+      { value: 'entrega',     label: 'Entrega' },
+      { value: 'capRateMin',  label: 'Cap Rate' },
+    ];
+    const base = catalogFilter === 'all' ? catalogProjects : catalogProjects.filter(p => p.category === catalogFilter);
+    const filtered = [...base].sort((a, b) => {
+      const f = catalogSort.field as keyof ProjectData;
+      const av = a[f] ?? '';
+      const bv = b[f] ?? '';
+      const cmp = typeof av === 'number' && typeof bv === 'number'
+        ? av - bv
+        : String(av).localeCompare(String(bv));
+      return catalogSort.dir === 'asc' ? cmp : -cmp;
+    });
+    const catColors: Record<string, string> = { 'Proyecto de Ciudad': T.teal, 'Ocean Reef Islands': T.sky, 'Playa Caracol': T.palm };
+
+    const handleImgUpload = (idx: number, e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const updated = [...catalogProjects];
+        updated[idx] = { ...updated[idx], imagen: ev.target?.result as string };
+        setCatalogProjects(updated);
+      };
+      reader.readAsDataURL(file);
+    };
+
+    const handleExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      import('xlsx').then(XLSX => {
+        const reader = new FileReader();
+        reader.onload = ev => {
+          const wb = XLSX.read(ev.target?.result, { type: 'binary' });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const rows: any[] = XLSX.utils.sheet_to_json(ws);
+          if (rows.length === 0) { alert('El Excel está vacío o no tiene el formato esperado.'); return; }
+          const imported: ProjectData[] = rows.map((r: any) => ({
+            name: r['Proyecto'] || r['nombre'] || '',
+            category: r['Categoría'] || r['categoria'] || 'Proyecto de Ciudad',
+            tipo: r['Tipo'] || r['tipo'] || 'Residencia',
+            zone: r['Ubicación'] || r['ubicacion'] || '',
+            zoneShort: r['Proyecto'] || '',
+            investorType: r['investorType'] || 'renta',
+            entrega: r['Fechas Estimada de Entrega'] || r['entrega'] || '',
+            minPrice: Number(String(r['Rango de Precios'] || '0').replace(/[^0-9]/g, '').slice(0, 7)) || 0,
+            maxPrice: Number(String(r['Rango de Precios'] || '0').replace(/[^0-9]/g, '').slice(-7)) || 0,
+            areaMin: Number(String(r['Rango de Area (m2)'] || '0').split('-')[0].replace(/[^0-9]/g, '')) || 0,
+            areaMax: Number(String(r['Rango de Area (m2)'] || '0').split('-').pop()?.replace(/[^0-9]/g, '')) || 0,
+            bedrooms: String(r['Recamaras'] || r['recamaras'] || ''),
+            capRateMin: 5.5, capRateMax: 7.5, vacancyDef: 8,
+            rentSuggest: 1000, rentM2Min: 9, rentM2Max: 13,
+            condominioMes: 250, appreciationDef: 4.0,
+            appreciationNote: 'Datos importados desde Excel. Actualice las notas de valorización.',
+            amenities: [], construction: r['Fechas Estimada de Entrega'] || '',
+            priceM2Min: 0, priceM2Max: 0,
+          }));
+          setCatalogProjects(prev => {
+            const names = new Set(imported.map(p => p.name));
+            return [...prev.filter(p => !names.has(p.name)), ...imported];
+          });
+          alert(`${imported.length} proyectos importados correctamente.`);
+        };
+        reader.readAsBinaryString(file);
+      });
+    };
+
+    const handlePdfView = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      window.open(url, '_blank');
+    };
+
+    const saveEdit = (idx: number, updated: ProjectData) => {
+      const list = [...catalogProjects];
+      list[idx] = updated;
+      setCatalogProjects(list);
+      setCatalogEditIdx(null);
+    };
+
+    return (
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: T.text }}>Carga de Catálogo de Proyectos</div>
+            <div style={{ fontSize: 12, color: T.textSec }}>{catalogProjects.length} proyectos · {cats.slice(1).map(c => `${catalogProjects.filter(p=>p.category===c).length} ${c}`).join(' · ')}</div>
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: T.teal, color: T.card, borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+              📊 Importar Excel
+              <input type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={handleExcel} />
+            </label>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: T.coral, color: '#fff', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+              📄 Ver PDF
+              <input type="file" accept=".pdf" style={{ display: 'none' }} onChange={handlePdfView} />
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <select
+                value={catalogSort.field}
+                onChange={e => setCatalogSort(s => ({ ...s, field: e.target.value }))}
+                style={{ padding: '7px 10px', border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 12, background: T.card, color: T.text, cursor: 'pointer' }}
+              >
+                {sortFields.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+              </select>
+              <button
+                onClick={() => setCatalogSort(s => ({ ...s, dir: s.dir === 'asc' ? 'desc' : 'asc' }))}
+                style={{ padding: '7px 12px', border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 13, background: T.card, color: T.teal, cursor: 'pointer', fontWeight: 700 }}
+                title={catalogSort.dir === 'asc' ? 'Ascendente' : 'Descendente'}
+              >
+                {catalogSort.dir === 'asc' ? '↑' : '↓'}
+              </button>
+            </div>
+            <button onClick={() => setCatalogTab(catalogTab === 'tabla' ? 'tarjetas' : 'tabla')} style={{ padding: '8px 14px', background: T.sand, border: `1px solid ${T.border}`, borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: T.text }}>
+              {catalogTab === 'tabla' ? 'Ver Tarjetas' : 'Ver Tabla'}
+            </button>
+          </div>
+        </div>
+
+        {/* Filtro por categoría */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+          {cats.map(c => (
+            <button key={c} onClick={() => setCatalogFilter(c)} style={{ padding: '5px 14px', borderRadius: 16, border: `1px solid ${c === 'all' ? T.teal : catColors[c] || T.teal}`, background: catalogFilter === c ? (c === 'all' ? T.teal : catColors[c]) : 'transparent', color: catalogFilter === c ? '#fff' : T.text, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              {c === 'all' ? 'Todos' : c} {c !== 'all' && `(${catalogProjects.filter(p=>p.category===c).length})`}
+            </button>
+          ))}
+        </div>
+
+        {catalogTab === 'tabla' ? (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: T.teal, color: '#fff' }}>
+                  {['Imagen', 'Proyecto', 'Categoría', 'Tipo', 'Área m²', 'Rango Precio', 'Rec.', 'Entrega', 'Cap Rate', 'Acciones'].map(h => (
+                    <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((p, idx) => {
+                  const realIdx = catalogProjects.indexOf(p);
+                  const isEditing = catalogEditIdx === realIdx;
+                  return isEditing ? (
+                    <tr key={p.name} style={{ background: '#FFFBEB', borderBottom: `1px solid ${T.border}` }}>
+                      <td colSpan={10} style={{ padding: 16 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
+                          {[
+                            { label: 'Nombre', key: 'name' }, { label: 'Categoría', key: 'category' },
+                            { label: 'Tipo', key: 'tipo' }, { label: 'Zona', key: 'zone' },
+                            { label: 'Entrega', key: 'entrega' }, { label: 'Rec.', key: 'bedrooms' },
+                            { label: 'Área Min m²', key: 'areaMin' }, { label: 'Área Max m²', key: 'areaMax' },
+                            { label: 'Precio Min USD', key: 'minPrice' }, { label: 'Precio Max USD', key: 'maxPrice' },
+                            { label: 'Cap Rate Min %', key: 'capRateMin' }, { label: 'Cap Rate Max %', key: 'capRateMax' },
+                          ].map(f => (
+                            <div key={f.key}>
+                              <div style={{ fontSize: 10, color: T.textSec, marginBottom: 3 }}>{f.label}</div>
+                              <input defaultValue={(p as any)[f.key]} onChange={e => { (p as any)[f.key] = isNaN(Number(e.target.value)) ? e.target.value : Number(e.target.value); }} style={{ width: '100%', padding: '5px 8px', border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 11 }} />
+                            </div>
+                          ))}
+                          <div>
+                            <div style={{ fontSize: 10, color: T.textSec, marginBottom: 3 }}>Nota Valorización</div>
+                            <textarea defaultValue={p.appreciationNote} onChange={e => { p.appreciationNote = e.target.value; }} style={{ width: '100%', padding: '5px 8px', border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 11, minHeight: 60 }} />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 10, color: T.textSec, marginBottom: 3 }}>Imagen del proyecto</div>
+                            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', background: T.sky, color: '#fff', borderRadius: 6, cursor: 'pointer', fontSize: 11 }}>
+                              📷 Subir imagen
+                              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleImgUpload(realIdx, e)} />
+                            </label>
+                            {p.imagen && <img src={p.imagen} alt="" style={{ marginTop: 6, height: 50, borderRadius: 4, objectFit: 'cover' }} />}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                          <button onClick={() => saveEdit(realIdx, p)} style={{ padding: '6px 16px', background: T.teal, color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Guardar</button>
+                          <button onClick={() => setCatalogEditIdx(null)} style={{ padding: '6px 16px', background: T.borderLight, color: T.text, border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>Cancelar</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr key={p.name} style={{ borderBottom: `1px solid ${T.borderLight}`, background: realIdx % 2 === 0 ? T.card : T.bg }}>
+                      <td style={{ padding: '8px 12px' }}>
+                        {p.imagen
+                          ? <img src={p.imagen} alt="" style={{ width: 48, height: 36, objectFit: 'cover', borderRadius: 4 }} />
+                          : <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: T.borderLight, borderRadius: 4, cursor: 'pointer', fontSize: 10, color: T.textSec }}>
+                              📷
+                              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleImgUpload(realIdx, e)} />
+                            </label>
+                        }
+                      </td>
+                      <td style={{ padding: '8px 12px', fontWeight: 700, color: T.text, whiteSpace: 'nowrap' }}>{p.name}</td>
+                      <td style={{ padding: '8px 12px' }}><span style={{ background: `${catColors[p.category] || T.teal}22`, color: catColors[p.category] || T.teal, padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 600 }}>{p.category}</span></td>
+                      <td style={{ padding: '8px 12px', fontSize: 11, color: T.textSec }}>{p.tipo}</td>
+                      <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{p.areaMin}–{p.areaMax} m²</td>
+                      <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', fontWeight: 600, color: T.palm }}>${(p.minPrice/1000).toFixed(0)}K–${(p.maxPrice/1000).toFixed(0)}K</td>
+                      <td style={{ padding: '8px 12px' }}>{p.bedrooms}</td>
+                      <td style={{ padding: '8px 12px', fontSize: 11 }}>{p.entrega}</td>
+                      <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{p.capRateMin}–{p.capRateMax}%</td>
+                      <td style={{ padding: '8px 12px' }}>
+                        <button onClick={() => setCatalogEditIdx(realIdx)} style={{ padding: '4px 10px', background: T.sky, color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 11 }}>Editar</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+            {filtered.map((p, idx) => {
+              const realIdx = catalogProjects.indexOf(p);
+              return (
+                <div key={p.name} style={{ border: `1px solid ${T.border}`, borderRadius: 12, overflow: 'hidden', background: T.card }}>
+                  <div style={{ position: 'relative', height: 140, background: T.sand, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {p.imagen
+                      ? <img src={p.imagen} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : <div style={{ fontSize: 40, opacity: 0.2 }}>🏢</div>
+                    }
+                    <span style={{ position: 'absolute', top: 8, left: 8, background: catColors[p.category] || T.teal, color: '#fff', padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 700 }}>{p.category}</span>
+                    <label style={{ position: 'absolute', bottom: 8, right: 8, background: 'rgba(0,0,0,0.55)', color: '#fff', padding: '4px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 10 }}>
+                      📷 Cambiar foto
+                      <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleImgUpload(realIdx, e)} />
+                    </label>
+                  </div>
+                  <div style={{ padding: 14 }}>
+                    <div style={{ fontWeight: 800, fontSize: 14, color: T.text, marginBottom: 4 }}>{p.name}</div>
+                    <div style={{ fontSize: 11, color: T.textSec, marginBottom: 8 }}>{p.zoneShort}</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10 }}>
+                      <div style={{ fontSize: 11 }}><span style={{ color: T.textSec }}>Precio:</span> <b style={{ color: T.palm }}>${(p.minPrice/1000).toFixed(0)}K–${(p.maxPrice/1000).toFixed(0)}K</b></div>
+                      <div style={{ fontSize: 11 }}><span style={{ color: T.textSec }}>Área:</span> <b>{p.areaMin}–{p.areaMax} m²</b></div>
+                      <div style={{ fontSize: 11 }}><span style={{ color: T.textSec }}>Rec.:</span> <b>{p.bedrooms}</b></div>
+                      <div style={{ fontSize: 11 }}><span style={{ color: T.textSec }}>Cap Rate:</span> <b style={{ color: T.teal }}>{p.capRateMin}–{p.capRateMax}%</b></div>
+                    </div>
+                    <div style={{ fontSize: 10, color: T.textSec, background: T.bg, padding: '6px 8px', borderRadius: 6, marginBottom: 10 }}>
+                      🗓 {p.entrega}
+                    </div>
+                    <button onClick={() => { setCatalogEditIdx(realIdx); setCatalogTab('tabla'); }} style={{ width: '100%', padding: '7px', background: T.teal, color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Editar proyecto</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div style={{ marginTop: 20, padding: 14, background: `${T.teal}10`, borderRadius: 8, border: `1px solid ${T.teal}30`, fontSize: 12, color: T.textSec }}>
+          <b style={{ color: T.text }}>Cómo cargar datos:</b>
+          <ul style={{ margin: '6px 0 0 16px', lineHeight: 1.8 }}>
+            <li><b>Excel (.xlsx):</b> El archivo debe tener columnas: <i>Proyecto, Categoría, Tipo, Ubicación, Rango de Area (m2), Rango de Precios, Recamaras, Fechas Estimada de Entrega</i></li>
+            <li><b>Imágenes (.jpg/.png):</b> Clic en el ícono 📷 de cada proyecto para subir su foto de portada</li>
+            <li><b>PDF:</b> Se abre en una nueva pestaña del navegador para visualización</li>
+          </ul>
+        </div>
+      </div>
+    );
+  };
+
+  // ══════════════════════════════════════════════════════════════
   // RENDER MODULE ROUTER
   // ══════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════
+  // MODULE: CONFIGURACIÓN (antes "Clave y Seguridad")
+  // ══════════════════════════════════════════════════════════════
+  const renderConfiguracion = () => {
+    const totalPct = commissionEntities.reduce((s, e) => s + e.pct, 0);
+
+    return (
+      <div>
+        {sectionTitle('Configuración del Sistema')}
+
+        {/* ── SEGURIDAD Y ACCESO ── */}
+        <div style={{ ...cardStyle(), marginBottom: 20 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icon name="lock" size={16} color={T.teal} /> Seguridad y Acceso
+          </div>
+          <CRMAcceso currentUser={currentUser || ''} />
+        </div>
+
+        {/* ── ESTRUCTURA DE COMISIONES ── */}
+        <div style={{ ...cardStyle(), marginBottom: 20 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icon name="currency" size={16} color={T.teal} /> Estructura de Comisiones
+          </div>
+          <div style={{ fontSize: 12, color: T.textSec, marginBottom: 16 }}>
+            Define el porcentaje total y la distribución por entidad. Total actual: <strong style={{ color: totalPct === 5 ? T.success : T.danger }}>{totalPct}%</strong>
+            {totalPct !== 5 && <span style={{ color: T.danger, marginLeft: 8 }}>⚠ El total debe sumar 5%</span>}
+          </div>
+
+          {/* Tarjetas de entidades */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12, marginBottom: 20 }}>
+            {commissionEntities.map((ent, idx) => (
+              <div key={idx} style={{ background: T.bg, border: `1px solid ${T.border}`, borderRadius: 10, padding: '14px 16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <input
+                    value={ent.name}
+                    onChange={e => setCommissionEntities(prev => prev.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))}
+                    style={{ ...inputStyle({ fontSize: 12, padding: '4px 8px' }), fontWeight: 600, flex: 1, marginRight: 8 }}
+                  />
+                  <button onClick={() => setCommissionEntities(prev => prev.filter((_, i) => i !== idx))}
+                    style={{ background: 'transparent', border: 'none', color: T.danger, fontSize: 16, cursor: 'pointer', lineHeight: 1, padding: '0 4px', fontWeight: 700 }}>×</button>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="number" min={0} max={10} step={0.5}
+                    value={ent.pct}
+                    onChange={e => setCommissionEntities(prev => prev.map((x, i) => i === idx ? { ...x, pct: Number(e.target.value) } : x))}
+                    style={{ ...inputStyle({ fontSize: 22, fontWeight: 700, textAlign: 'center', padding: '4px' }), width: 64 }}
+                  />
+                  <span style={{ fontSize: 20, fontWeight: 700, color: T.teal }}>%</span>
+                  <div style={{ flex: 1, height: 6, background: T.borderLight, borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ width: `${(ent.pct / totalPct) * 100}%`, height: '100%', background: T.teal }} />
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {/* Botón agregar entidad */}
+            <button
+              onClick={() => setCommissionEntities(prev => [...prev, { name: 'Nueva Entidad', pct: 0 }])}
+              style={{ background: 'transparent', border: `2px dashed ${T.border}`, borderRadius: 10, padding: '14px 16px', color: T.textSec, fontSize: 12, cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              + Agregar entidad
+            </button>
+          </div>
+
+          {/* Resumen total */}
+          <div style={{ background: totalPct === 5 ? `${T.success}10` : `${T.danger}10`, border: `1px solid ${totalPct === 5 ? T.success : T.danger}30`, borderRadius: 8, padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>Total distribución de comisión</span>
+            <span style={{ fontSize: 20, fontWeight: 700, color: totalPct === 5 ? T.success : T.danger }}>{totalPct}%</span>
+          </div>
+        </div>
+
+        {/* ── PARÁMETROS GENERALES ── */}
+        <div style={{ ...cardStyle(), marginBottom: 20 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icon name="key" size={16} color={T.teal} /> Parámetros Generales del CRM
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, fontSize: 12 }}>
+            {[
+              { label: 'Tenant ID', value: 'tenant-glp-001' },
+              { label: 'Moneda base', value: 'USD' },
+              { label: 'País de operación principal', value: 'Panamá' },
+              { label: 'Modelo IA activo', value: 'gpt-4o-mini' },
+            ].map(param => (
+              <div key={param.label} style={{ background: T.bg, border: `1px solid ${T.border}`, borderRadius: 8, padding: '10px 14px' }}>
+                <div style={{ fontSize: 10, color: T.textSec, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>{param.label}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: 'monospace' }}>{param.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── BACKUPS Y RESTAURACIÓN ── */}
+        <div style={{ ...cardStyle() }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icon name="backup" size={16} color={T.teal} /> Backups y Restauración
+          </div>
+          {renderBackups()}
+        </div>
+      </div>
+    );
+  };
+
   const renderModule = () => {
     switch (activeModule) {
       case 'portafolio': return renderPortafolio();
+      case 'catalogo': return renderCatalogo();
       case 'kpis': return renderKPIs();
       case 'brokers': return renderBrokers();
       case 'prospectos': return renderProspectos();
@@ -5654,8 +8809,7 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
       case 'agentes': return renderAgentes();
       case 'faqs': return renderFAQs();
       case 'calculadora': return renderCalculadora();
-      case 'acceso': return <CRMAcceso currentUser={currentUser || ''} />;
-      case 'backups': return renderBackups();
+      case 'configuracion': return renderConfiguracion();
       default: return renderPortafolio();
     }
   };
@@ -5704,7 +8858,7 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
           onMouseEnter={e => e.currentTarget.style.background = '#FDE8E8'}
           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
         >
-          <span>🔓 Cerrar Sesión</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Icon name="lock" size={14} color="#E02424" /> Cerrar Sesión</span>
         </button>
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${T.borderLight}`, fontSize: 10, color: T.textSec }}>
           GLP CRM v1.0 · 2026
@@ -5723,27 +8877,9 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
             GLP CRM · Control Comercial
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-            <div 
-              onClick={() => setShowOpenaiConfig(!showOpenaiConfig)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
-                background: showOpenaiConfig ? 'rgba(255,255,255,0.2)' : 'transparent',
-                border: `1px solid ${showOpenaiConfig ? '#FFF' : 'rgba(255,255,255,0.4)'}`,
-                padding: '4px 12px', borderRadius: 20, transition: 'all 0.2s'
-              }}
-            >
-              <span style={{ fontSize: 12, fontWeight: 600, color: T.card }}>
-                IA Avanzada {showOpenaiConfig ? 'Activada' : 'Inactiva'}
-              </span>
-              <div style={{ 
-                width: 30, height: 16, background: showOpenaiConfig ? T.palm : 'rgba(255,255,255,0.3)', 
-                borderRadius: 10, position: 'relative', transition: 'background 0.3s' 
-              }}>
-                <div style={{ 
-                  position: 'absolute', top: 2, left: showOpenaiConfig ? 16 : 2, 
-                  width: 12, height: 12, background: T.card, borderRadius: '50%', transition: 'left 0.3s' 
-                }} />
-              </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)', padding: '4px 12px', borderRadius: 20 }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#10B981', display: 'inline-block', boxShadow: '0 0 6px #10B981' }} />
+              <span style={{ fontSize: 12, fontWeight: 600, color: T.card }}>IA Activa</span>
             </div>
             <a href="/" style={{ fontSize: 13, color: T.card, textDecoration: 'none', fontWeight: 600, opacity: 0.9 }}>
               Volver a Landing →
