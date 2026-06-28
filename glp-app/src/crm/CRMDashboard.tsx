@@ -9,16 +9,18 @@ import { uploadProjectImage, saveProjectImageUrl } from '../lib/supabase';
 
 // ── DESIGN TOKENS ─────────────────────────────────────────────
 const T = {
-  teal: '#002349',     // Sotheby's Navy (Primary)
+  teal: '#001A37',     // Sotheby's Navy (Primary)
   tealDark: '#001A37', // Darker Navy
   sand: '#E5E7EB',     // Slate Border
   coral: '#B89047',    // Sotheby's Gold (Accent)
   palm: '#7D6330',     // Antique Bronze/Gold
-  sky: '#002349',      // Deep Navy
+  sky: '#001A37',      // Deep Navy
   text: '#111827',     // Near Black
   textSec: '#4B5563',  // Slate Medium Gray
-  bg: '#F9FAFB',       // Cool White / Light Chalk
+  bg: '#F7F4EF',       // Sotheby's Cream
   card: '#FFFFFF',
+  parchment: '#EDE8DF', // Sotheby's Parchment
+  bgAlt: '#EDE8DF',    // Parchment alternate background
   border: '#E5E7EB',   // Fine Border
   borderLight: '#F3F4F6',
   success: '#10B981',  // Functional Green
@@ -85,29 +87,272 @@ type ProjectData = {
   amenities: string[]; construction: string;
   priceM2Min: number; priceM2Max: number;
   imagen?: string;
+  galeria?: string[]; // hasta 4 fotos de la ficha técnica
+  // Ficha del producto (Catálogo)
+  notaValorizacion?: string;
+  notaDemanda?: string;
+  insightProducto?: string;
+  // Inteligencia de zona (Camilo)
+  zonaColegios?: string;
+  zonaSupermercados?: string;
+  zonaPlaya?: string;
+  zonaEntretenimiento?: string;
+  zonaSalud?: string;
+  zonaOtros?: string;
+  velocidadColocacion?: string;
+  perfilArrendatario?: string;
+  fechaActualizacionMercado?: string;
 };
 
 const PROJECTS: ProjectData[] = [
   // ── PROYECTO DE CIUDAD ──────────────────────────────────────
-  { name: 'Armonía', category: 'Proyecto de Ciudad', tipo: 'Residencia', zone: 'Bella Vista — Ciudad de Panamá', zoneShort: 'Armonía / Bella Vista', investorType: 'renta', entrega: 'F1 Inmediata · F2 Q2 2026 · F3 Q2 2028', minPrice: 181000, maxPrice: 235000, areaMin: 45, areaMax: 71, bedrooms: '1, 2 y 3 rec.', capRateMin: 6.0, capRateMax: 7.5, vacancyDef: 6, rentSuggest: 1100, rentM2Min: 12, rentM2Max: 16, condominioMes: 220, appreciationDef: 4.0, appreciationNote: 'Bella Vista es uno de los corredores más demandados de Ciudad de Panamá. Valorización 4–6% anual. F1 con entrega inmediata ofrece plusvalía desde el primer día.', amenities: ['Piscina y área social', 'Gimnasio moderno', 'Lobby de diseño', 'Seguridad 24/7', 'Parqueo'], construction: 'Multi-fase · F1 entregada', priceM2Min: 2550, priceM2Max: 3300 },
-  { name: 'Ventu', category: 'Proyecto de Ciudad', tipo: 'Hotelero', zone: 'Bella Vista — Ciudad de Panamá', zoneShort: 'Ventu / Bella Vista', investorType: 'patrimonial', entrega: 'Q2 2028', minPrice: 136000, maxPrice: 259000, areaMin: 40, areaMax: 63, bedrooms: '1 y 2 rec.', capRateMin: 8.0, capRateMax: 12.0, vacancyDef: 20, rentSuggest: 2400, rentM2Min: 0, rentM2Max: 0, condominioMes: 250, appreciationDef: 4.5, appreciationNote: 'Único proyecto hotelero optimizado para renta corta (Airbnb/Booking) en Bella Vista. Administración profesional incluida. 4–5% valorización anual.', amenities: ['Diseño Airbnb optimizado', 'Administración hotelera', 'Pool deck', 'Coworking', 'Check-in automático', 'Seguridad 24/7'], construction: 'En construcción (entrega Q2 2028)', priceM2Min: 2100, priceM2Max: 3200 },
-  { name: 'Ocena', category: 'Proyecto de Ciudad', tipo: 'Residencia', zone: 'Santa María — Ciudad de Panamá', zoneShort: 'Ocena / Santa María', investorType: 'patrimonial', entrega: 'Q4 2027', minPrice: 446000, maxPrice: 1200000, areaMin: 100, areaMax: 270, bedrooms: '2 y 3 rec.', capRateMin: 4.7, capRateMax: 6.0, vacancyDef: 4, rentSuggest: 3500, rentM2Min: 20, rentM2Max: 25, condominioMes: 550, appreciationDef: 5.0, appreciationNote: 'Única comunidad con golf Jack Nicklaus en Santa María. Demanda de ejecutivos y familias expat. 5–7% valorización anual.', amenities: ['Golf 18 hoyos Jack Nicklaus', 'Club House', 'Piscinas resort', 'Pickleball y tenis', 'Co-working', 'Wellness center', 'Concierge'], construction: 'En construcción (entrega Q4 2027)', priceM2Min: 3200, priceM2Max: 5000 },
-  { name: 'Ipanema', category: 'Proyecto de Ciudad', tipo: 'Residencia', zone: 'Costa Sur — Ciudad de Panamá', zoneShort: 'Ipanema / Costa Sur', investorType: 'disfrute', entrega: 'F1 Q1 2028 · F2 Q4 2028', minPrice: 283000, maxPrice: 519000, areaMin: 72, areaMax: 163, bedrooms: '1, 2 y 3 rec.', capRateMin: 6.0, capRateMax: 7.5, vacancyDef: 6, rentSuggest: 1600, rentM2Min: 12, rentM2Max: 18, condominioMes: 280, appreciationDef: 4.0, appreciationNote: 'Costa del Este es hub corporativo multinacional. Alta demanda de ejecutivos expat. 4–6% valorización anual.', amenities: ['Piscina con vista al mar', 'Gimnasio', 'Co-working', 'BBQ y lounge', 'Seguridad 24/7', 'Parque infantil'], construction: 'En construcción · F1 Q1 2028', priceM2Min: 2500, priceM2Max: 3800 },
-  { name: 'Bosco', category: 'Proyecto de Ciudad', tipo: 'Residencia', zone: 'Santa María — Ciudad de Panamá', zoneShort: 'Bosco / Santa María', investorType: 'patrimonial', entrega: '2030', minPrice: 474000, maxPrice: 1100000, areaMin: 100, areaMax: 296, bedrooms: '2, 3 y 4 rec.', capRateMin: 5.5, capRateMax: 7.2, vacancyDef: 5, rentSuggest: 2800, rentM2Min: 13, rentM2Max: 18, condominioMes: 420, appreciationDef: 4.5, appreciationNote: 'Santa María en consolidación definitiva. Proyecto de lujo con jardines botánicos. 4–6% valorización anual.', amenities: ['Jardines botánicos', 'Piscina natural', 'Gimnasio', 'Senderos de meditación', 'Áreas sociales', 'Seguridad 24/7'], construction: 'En preventa (entrega 2030)', priceM2Min: 2800, priceM2Max: 4200 },
-  { name: 'Panama Viejo Residence', category: 'Proyecto de Ciudad', tipo: 'Residencia', zone: 'Panamá Viejo — Ciudad de Panamá', zoneShort: 'Panama Viejo Residence', investorType: 'renta', entrega: 'ENTREGA INMEDIATA', minPrice: 160000, maxPrice: 182000, areaMin: 58, areaMax: 58, bedrooms: '2 rec.', capRateMin: 6.5, capRateMax: 8.0, vacancyDef: 6, rentSuggest: 950, rentM2Min: 10, rentM2Max: 14, condominioMes: 200, appreciationDef: 3.2, appreciationNote: 'Entrega inmediata con valorización consistente 3–5% anual impulsada por proximidad a Costa del Este.', amenities: ['Piscina y área social', 'Gimnasio', 'Coworking', 'Seguridad 24/7', 'Parque infantil'], construction: 'Entrega inmediata', priceM2Min: 2750, priceM2Max: 3140 },
+  {
+    name: 'Armonía', category: 'Proyecto de Ciudad', tipo: 'Residencia',
+    zone: 'Bella Vista — Ciudad de Panamá', zoneShort: 'Armonía / Bella Vista',
+    investorType: 'renta', entrega: 'F1 Inmediata · F2 Q2 2026 · F3 Q2 2028',
+    minPrice: 181000, maxPrice: 235000, areaMin: 45, areaMax: 71, bedrooms: '1, 2 y 3 rec.',
+    capRateMin: 6.0, capRateMax: 7.5, vacancyDef: 6,
+    rentSuggest: 1100, rentM2Min: 12, rentM2Max: 16, condominioMes: 220,
+    appreciationDef: 4.0, appreciationNote: 'Bella Vista es uno de los corredores más demandados de Ciudad de Panamá. Valorización 4–6% anual. F1 con entrega inmediata ofrece plusvalía desde el primer día.',
+    amenities: ['Piscina y área social', 'Gimnasio moderno', 'Lobby de diseño', 'Seguridad 24/7', 'Parqueo'],
+    construction: 'Multi-fase · F1 entregada', priceM2Min: 2550, priceM2Max: 3300,
+    notaValorizacion: 'Corridor Bella Vista con crecimiento sostenido. F1 entregada genera renta desde día 1.',
+    zonaColegios: 'Instituto Alberto Einstein, Oxford International School (10 min)', zonaSupermercados: 'El Rey, Super 99, Riba Smith (5 min)', zonaEntretenimiento: 'Multiplaza Pacific, Albrook Mall, Cinta Costera (15 min)', zonaSalud: 'Hospital Punta Pacífica, Clínica Hospital San Fernando (10 min)',
+  },
+  {
+    name: 'Ventu', category: 'Proyecto de Ciudad', tipo: 'Hotelero',
+    zone: 'Bella Vista — Ciudad de Panamá', zoneShort: 'Ventu / Bella Vista',
+    investorType: 'patrimonial', entrega: 'Q2 2028',
+    minPrice: 136000, maxPrice: 259000, areaMin: 40, areaMax: 63, bedrooms: '1 y 2 rec.',
+    capRateMin: 8.0, capRateMax: 12.0, vacancyDef: 20,
+    rentSuggest: 2400, rentM2Min: 0, rentM2Max: 0, condominioMes: 250,
+    appreciationDef: 4.5, appreciationNote: 'Único proyecto hotelero optimizado para renta corta (Airbnb/Booking) en Bella Vista. Administración profesional incluida. 4–5% valorización anual.',
+    amenities: ['Diseño Airbnb optimizado', 'Administración hotelera', 'Pool deck', 'Coworking', 'Check-in automático', 'Seguridad 24/7'],
+    construction: 'En construcción (entrega Q2 2028)', priceM2Min: 2100, priceM2Max: 3200,
+    notaValorizacion: 'Modelo hotelero con administración incluida. Cap rate proyectado 8–12% con estrategia Airbnb/Booking.',
+    perfilArrendatario: 'Nómada digital, turista corporativo, visitante de corta duración',
+    zonaColegios: 'Instituto Alberto Einstein, Oxford International School (10 min)', zonaSupermercados: 'El Rey, Super 99 (5 min)', zonaEntretenimiento: 'Multiplaza Pacific, vida nocturna Bella Vista (5 min)', zonaSalud: 'Hospital San Fernando (10 min)',
+  },
+  {
+    name: 'Ocena', category: 'Proyecto de Ciudad', tipo: 'Residencia',
+    zone: 'Santa María — Ciudad de Panamá', zoneShort: 'Ocena / Santa María',
+    investorType: 'patrimonial', entrega: 'Q4 2027',
+    minPrice: 446000, maxPrice: 1200000, areaMin: 100, areaMax: 270, bedrooms: '2 y 3 rec.',
+    capRateMin: 4.7, capRateMax: 6.0, vacancyDef: 4,
+    rentSuggest: 3500, rentM2Min: 20, rentM2Max: 25, condominioMes: 550,
+    appreciationDef: 5.0, appreciationNote: 'Única comunidad con golf Jack Nicklaus en Santa María. Demanda de ejecutivos y familias expat. 5–7% valorización anual.',
+    amenities: ['Golf 18 hoyos Jack Nicklaus', 'Club House', 'Piscinas resort', 'Pickleball y tenis', 'Co-working', 'Wellness center', 'Concierge'],
+    construction: 'En construcción (entrega Q4 2027)', priceM2Min: 3200, priceM2Max: 5000,
+    notaValorizacion: 'Activo de lujo con diferencial de golf Jack Nicklaus único en Panamá. Alta plusvalía patrimonial.',
+    perfilArrendatario: 'Ejecutivo multinacional, embajador, familia expat de alto perfil',
+    zonaColegios: 'Kings College, Oxford School Panamá (5 min)', zonaSupermercados: 'Riba Smith Santa María, El Machetazo (10 min)', zonaEntretenimiento: 'Club de Golf Santa María, Costa del Este (15 min)', zonaSalud: 'Hospital Punta Pacífica, Clínica Hospital San Fernando (20 min)',
+  },
+  {
+    name: 'Ipanema', category: 'Proyecto de Ciudad', tipo: 'Residencia',
+    zone: 'Costa Sur — Ciudad de Panamá', zoneShort: 'Ipanema / Costa Sur',
+    investorType: 'disfrute', entrega: 'F1 Q1 2028 · F2 Q4 2028',
+    minPrice: 283000, maxPrice: 519000, areaMin: 72, areaMax: 163, bedrooms: '1, 2 y 3 rec.',
+    capRateMin: 6.0, capRateMax: 7.5, vacancyDef: 6,
+    rentSuggest: 1600, rentM2Min: 12, rentM2Max: 18, condominioMes: 280,
+    appreciationDef: 4.0, appreciationNote: 'Costa del Este es hub corporativo multinacional. Alta demanda de ejecutivos expat. 4–6% valorización anual.',
+    amenities: ['Piscina con vista al mar', 'Gimnasio', 'Co-working', 'BBQ y lounge', 'Seguridad 24/7', 'Parque infantil'],
+    construction: 'En construcción · F1 Q1 2028', priceM2Min: 2500, priceM2Max: 3800,
+    // Datos de mercado confirmados por marketStudyDb (Q2 2026)
+    velocidadColocacion: '1–2 meses', perfilArrendatario: 'Ejecutivo corporativo, inversor — demanda multinacional Costa del Este',
+    notaValorizacion: 'Costa del Este consolida demanda corporativa. Cap rate 6.0–7.5% confirmado por inteligencia de mercado Q2 2026.',
+    fechaActualizacionMercado: '2026-06-27',
+    zonaColegios: 'International School of Panama, Kings College (10 min)', zonaSupermercados: 'Riba Smith Costa del Este, El Rey (5 min)', zonaEntretenimiento: 'Multiplaza Panamá, Soho Mall (10 min)', zonaSalud: 'Hospital Punta Pacífica Johns Hopkins (15 min)',
+  },
+  {
+    name: 'Bosco', category: 'Proyecto de Ciudad', tipo: 'Residencia',
+    zone: 'Santa María — Ciudad de Panamá', zoneShort: 'Bosco / Santa María',
+    investorType: 'patrimonial', entrega: '2030',
+    minPrice: 474000, maxPrice: 1100000, areaMin: 100, areaMax: 296, bedrooms: '2, 3 y 4 rec.',
+    capRateMin: 5.5, capRateMax: 7.2, vacancyDef: 5,
+    rentSuggest: 2800, rentM2Min: 13, rentM2Max: 18, condominioMes: 420,
+    appreciationDef: 4.5, appreciationNote: 'Santa María en consolidación definitiva. Proyecto de lujo con jardines botánicos. 4–6% valorización anual.',
+    amenities: ['Jardines botánicos', 'Piscina natural', 'Gimnasio', 'Senderos de meditación', 'Áreas sociales', 'Seguridad 24/7'],
+    construction: 'En preventa (entrega 2030)', priceM2Min: 2800, priceM2Max: 4200,
+    velocidadColocacion: '1–2 meses', perfilArrendatario: 'Familia ejecutiva — entorno natural diferencial, perfil patrimonial',
+    notaValorizacion: 'Entorno botánico único en Santa María. Cap rate 5.5–7.2% y vacancia 4–7% confirmados por inteligencia de mercado.',
+    fechaActualizacionMercado: '2026-06-27',
+    zonaColegios: 'Kings College, Oxford School Panamá (5 min)', zonaSupermercados: 'Riba Smith Santa María (8 min)', zonaEntretenimiento: 'Club Santa María, Costa del Este (15 min)', zonaSalud: 'Hospital Punta Pacífica (20 min)',
+  },
+  {
+    name: 'Panama Viejo Residence', category: 'Proyecto de Ciudad', tipo: 'Residencia',
+    zone: 'Panamá Viejo — Ciudad de Panamá', zoneShort: 'Panama Viejo / Panamá Viejo',
+    investorType: 'renta', entrega: 'ENTREGA INMEDIATA',
+    minPrice: 160000, maxPrice: 182000, areaMin: 58, areaMax: 58, bedrooms: '2 rec.',
+    capRateMin: 6.5, capRateMax: 8.0, vacancyDef: 6,
+    rentSuggest: 950, rentM2Min: 10, rentM2Max: 14, condominioMes: 200,
+    appreciationDef: 3.2, appreciationNote: 'Entrega inmediata con valorización consistente 3–5% anual impulsada por proximidad a Costa del Este.',
+    amenities: ['Piscina y área social', 'Gimnasio', 'Coworking', 'Seguridad 24/7', 'Parque infantil'],
+    construction: 'Entrega inmediata', priceM2Min: 2750, priceM2Max: 3140,
+    velocidadColocacion: '0.5–1 mes', perfilArrendatario: 'Profesional local, familia joven — bajo riesgo mora',
+    notaValorizacion: 'Mayor velocidad de colocación del portafolio de ciudad. Renta desde el primer mes, vacancia 5–8%.',
+    fechaActualizacionMercado: '2026-06-27',
+    zonaColegios: 'Colegio Internacional de María Inmaculada (10 min)', zonaSupermercados: 'Super 99 Panamá Viejo (5 min)', zonaEntretenimiento: 'Ruinas de Panamá Viejo, Cinta Costera (10 min)', zonaSalud: 'Hospital Nacional (15 min)',
+  },
   // ── OCEAN REEF ISLANDS ──────────────────────────────────────
-  { name: 'The Palms', category: 'Ocean Reef Islands', tipo: 'Residencia', zone: 'Punta Pacífica — Ciudad de Panamá', zoneShort: 'The Palms / Punta Pacífica', investorType: 'patrimonial', entrega: 'ENTREGA INMEDIATA', minPrice: 1200000, maxPrice: 1400000, areaMin: 169, areaMax: 239, bedrooms: '2 rec.', capRateMin: 5.5, capRateMax: 7.0, vacancyDef: 4, rentSuggest: 5500, rentM2Min: 22, rentM2Max: 30, condominioMes: 700, appreciationDef: 5.5, appreciationNote: 'Isla artificial exclusiva con acceso a marina privada. Activo de mayor plusvalía del portafolio. 6–8% valorización anual.', amenities: ['Marina privada 180+ muelles', 'Yacht club', 'Piscinas infinity', 'Spa y wellness', 'Restaurantes', 'Beach club', 'Seguridad 24/7'], construction: 'Entrega inmediata', priceM2Min: 5020, priceM2Max: 5860 },
-  { name: 'Ocean Reef Park', category: 'Ocean Reef Islands', tipo: 'Residencia', zone: 'Punta Pacífica — Ciudad de Panamá', zoneShort: 'Ocean Reef Park / Punta Pacífica', investorType: 'patrimonial', entrega: 'Q2 2028', minPrice: 1700000, maxPrice: 2100000, areaMin: 491, areaMax: 569, bedrooms: '3 y 4 rec.', capRateMin: 5.0, capRateMax: 6.5, vacancyDef: 4, rentSuggest: 9000, rentM2Min: 18, rentM2Max: 25, condominioMes: 900, appreciationDef: 6.0, appreciationNote: 'La unidad de mayor tamaño y valor del portafolio. Acceso directo al Johns Hopkins. 6–9% valorización anual.', amenities: ['Marina privada', 'Yacht club', 'Piscinas infinity', 'Helipuerto', 'Spa y wellness', 'Restaurantes', 'Club privado'], construction: 'En construcción (entrega Q2 2028)', priceM2Min: 3460, priceM2Max: 3690 },
-  { name: 'O Club Residences', category: 'Ocean Reef Islands', tipo: 'Residencia', zone: 'Punta Pacífica — Ciudad de Panamá', zoneShort: 'O Club / Punta Pacífica', investorType: 'patrimonial', entrega: 'Q4 2027', minPrice: 1000000, maxPrice: 1400000, areaMin: 183, areaMax: 236, bedrooms: '2 rec.', capRateMin: 5.0, capRateMax: 6.5, vacancyDef: 4, rentSuggest: 5000, rentM2Min: 20, rentM2Max: 28, condominioMes: 750, appreciationDef: 5.5, appreciationNote: 'Isla artificial de Punta Pacífica. Acceso exclusivo a club privado y marina. 5–7% valorización.', amenities: ['Club privado O Club', 'Marina', 'Piscinas', 'Restaurantes', 'Spa', 'Seguridad 24/7'], construction: 'En construcción (entrega Q4 2027)', priceM2Min: 4230, priceM2Max: 5930 },
+  {
+    name: 'The Palms', category: 'Ocean Reef Islands', tipo: 'Residencia',
+    zone: 'Punta Pacífica — Ciudad de Panamá', zoneShort: 'The Palms / Punta Pacífica',
+    investorType: 'patrimonial', entrega: 'ENTREGA INMEDIATA',
+    minPrice: 1200000, maxPrice: 1400000, areaMin: 169, areaMax: 239, bedrooms: '2 rec.',
+    capRateMin: 5.5, capRateMax: 7.0, vacancyDef: 4,
+    rentSuggest: 5500, rentM2Min: 22, rentM2Max: 30, condominioMes: 700,
+    appreciationDef: 5.5, appreciationNote: 'Isla artificial exclusiva con acceso a marina privada. Activo de mayor plusvalía del portafolio. 6–8% valorización anual.',
+    amenities: ['Marina privada 180+ muelles', 'Yacht club', 'Piscinas infinity', 'Spa y wellness', 'Restaurantes', 'Beach club', 'Seguridad 24/7'],
+    construction: 'Entrega inmediata', priceM2Min: 5020, priceM2Max: 5860,
+    // Datos confirmados por marketStudyDb (The Palms, Punta Pacifica)
+    velocidadColocacion: '1–2 meses', perfilArrendatario: 'Ejecutivo joven, nómada digital — alta rotación baja vacancia',
+    notaValorizacion: 'Menor vacancia del portafolio (4–6%). Activo único en isla artificial con marina. Cap rate 5.5–7.0% confirmado.',
+    fechaActualizacionMercado: '2026-06-27',
+    zonaColegios: 'The Oxford School (5 min)', zonaSupermercados: 'Multiplaza Panamá (5 min)', zonaEntretenimiento: 'Multiplaza, Yatch Club, restaurantes Punta Pacífica (5 min)', zonaSalud: 'Hospital Punta Pacífica Johns Hopkins (2 min)',
+  },
+  {
+    name: 'Ocean Reef Park', category: 'Ocean Reef Islands', tipo: 'Residencia',
+    zone: 'Punta Pacífica — Ciudad de Panamá', zoneShort: 'Ocean Reef Park / Punta Pacífica',
+    investorType: 'patrimonial', entrega: 'Q2 2028',
+    minPrice: 1700000, maxPrice: 2100000, areaMin: 491, areaMax: 569, bedrooms: '3 y 4 rec.',
+    capRateMin: 5.0, capRateMax: 6.5, vacancyDef: 4,
+    rentSuggest: 9000, rentM2Min: 18, rentM2Max: 25, condominioMes: 900,
+    appreciationDef: 6.0, appreciationNote: 'La unidad de mayor tamaño y valor del portafolio. Acceso directo al Johns Hopkins. 6–9% valorización anual.',
+    amenities: ['Marina privada', 'Yacht club', 'Piscinas infinity', 'Helipuerto', 'Spa y wellness', 'Restaurantes', 'Club privado'],
+    construction: 'En construcción (entrega Q2 2028)', priceM2Min: 3460, priceM2Max: 3690,
+    velocidadColocacion: '0.5–1 mes', perfilArrendatario: 'Diplomático, C-nivel — producto único, demanda captiva',
+    notaValorizacion: 'Producto ultra-premium con demanda captiva. Vacancia 3–5%, la más baja del portafolio de isla.',
+    fechaActualizacionMercado: '2026-06-27',
+    zonaColegios: 'The Oxford School (5 min)', zonaSupermercados: 'Multiplaza Panamá (5 min)', zonaEntretenimiento: 'Multiplaza, marina privada, restaurantes premium (en proyecto)', zonaSalud: 'Hospital Punta Pacífica Johns Hopkins (2 min)',
+  },
+  {
+    name: 'O Club Residences', category: 'Ocean Reef Islands', tipo: 'Residencia',
+    zone: 'Punta Pacífica — Ciudad de Panamá', zoneShort: 'O Club / Punta Pacífica',
+    investorType: 'patrimonial', entrega: 'Q4 2027',
+    minPrice: 1000000, maxPrice: 1400000, areaMin: 183, areaMax: 236, bedrooms: '2 rec.',
+    capRateMin: 5.0, capRateMax: 6.5, vacancyDef: 4,
+    rentSuggest: 5000, rentM2Min: 20, rentM2Max: 28, condominioMes: 750,
+    appreciationDef: 5.5, appreciationNote: 'Isla artificial de Punta Pacífica. Acceso exclusivo a club privado y marina. 5–7% valorización.',
+    amenities: ['Club privado O Club', 'Marina', 'Piscinas', 'Restaurantes', 'Spa', 'Seguridad 24/7'],
+    construction: 'En construcción (entrega Q4 2027)', priceM2Min: 4230, priceM2Max: 5930,
+    notaValorizacion: 'Acceso exclusivo a O Club. Proyecto nuevo en Ocean Reef Islands sin datos históricos aún — pendiente actualización Camilo.',
+    zonaColegios: 'The Oxford School (5 min)', zonaSupermercados: 'Multiplaza Panamá (5 min)', zonaEntretenimiento: 'O Club, marina privada, Multiplaza (5 min)', zonaSalud: 'Hospital Punta Pacífica Johns Hopkins (2 min)',
+  },
   // ── PLAYA CARACOL ───────────────────────────────────────────
-  { name: 'Aires del Mar', category: 'Playa Caracol', tipo: 'Residencia', zone: 'Playa Caracol, Chame — Pacífico', zoneShort: 'Aires del Mar / Playa Caracol', investorType: 'renta', entrega: 'INMEDIATA · Q4 2026', minPrice: 143000, maxPrice: 207000, areaMin: 42, areaMax: 71, bedrooms: '2 y 3 rec.', capRateMin: 5.8, capRateMax: 7.8, vacancyDef: 11, rentSuggest: 950, rentM2Min: 9, rentM2Max: 13, condominioMes: 180, appreciationDef: 3.5, appreciationNote: 'Producto de entrada a Playa Caracol. Alta demanda vacacional de colombianos y panameños. 3.5–5% valorización.', amenities: ['Vista al océano Pacífico', 'Piscinas', 'Parques infantiles', 'Jardines', 'Seguridad 24/7'], construction: 'Entrega inmediata / Q4 2026', priceM2Min: 2010, priceM2Max: 2915 },
-  { name: 'The Tides', category: 'Playa Caracol', tipo: 'Residencia', zone: 'Playa Caracol, Chame — Pacífico', zoneShort: 'The Tides / Playa Caracol', investorType: 'disfrute', entrega: 'ENTREGA INMEDIATA', minPrice: 278000, maxPrice: 308000, areaMin: 99, areaMax: 99, bedrooms: '2 y 3 rec.', capRateMin: 5.5, capRateMax: 7.5, vacancyDef: 10, rentSuggest: 1500, rentM2Min: 10, rentM2Max: 16, condominioMes: 320, appreciationDef: 4.5, appreciationNote: 'Frente a playa de 1.2 km. Uno de los proyectos más nuevos en Playa Caracol. Valorización 4–6% anual.', amenities: ['1.2 km playa privada', 'Surf club', '3 piscinas', 'Restaurante y beach bar', 'Senderos naturales', 'Gimnasio', 'Seguridad 24/7'], construction: 'Entrega inmediata', priceM2Min: 2810, priceM2Max: 3110 },
-  { name: 'Brisas del Mar', category: 'Playa Caracol', tipo: 'Residencia', zone: 'Playa Caracol, Chame — Pacífico', zoneShort: 'Brisas del Mar / Playa Caracol', investorType: 'renta', entrega: 'ENTREGA INMEDIATA', minPrice: 276000, maxPrice: 332000, areaMin: 93, areaMax: 108, bedrooms: '2 y 3 rec.', capRateMin: 5.8, capRateMax: 7.5, vacancyDef: 10, rentSuggest: 1300, rentM2Min: 9, rentM2Max: 13, condominioMes: 260, appreciationDef: 4.0, appreciationNote: 'Entrega inmediata con flujo de renta activo desde el primer mes. Playa Caracol lidera valorización en el Pacífico.', amenities: ['Frente al mar', 'Piscina', 'BBQ', 'Área social', 'Seguridad 24/7', 'Parque infantil'], construction: 'Entrega inmediata', priceM2Min: 2555, priceM2Max: 3080 },
-  { name: 'Olas del Mar', category: 'Playa Caracol', tipo: 'Residencia', zone: 'Playa Caracol, Chame — Pacífico', zoneShort: 'Olas del Mar / Playa Caracol', investorType: 'renta', entrega: 'ENTREGA INMEDIATA', minPrice: 267000, maxPrice: 398000, areaMin: 69, areaMax: 97, bedrooms: '2 y 3 rec.', capRateMin: 6.0, capRateMax: 8.0, vacancyDef: 11, rentSuggest: 1050, rentM2Min: 8, rentM2Max: 12, condominioMes: 220, appreciationDef: 3.5, appreciationNote: 'Playa Caracol lidera valorización en el Pacífico panameño. Entrega inmediata. 4–6% anual en proyectos nuevos.', amenities: ['Piscina con vista al mar', 'Zona de BBQ', 'Área social', 'Seguridad 24/7', 'Parque infantil'], construction: 'Entrega inmediata', priceM2Min: 2750, priceM2Max: 3875 },
-  { name: 'Surfside', category: 'Playa Caracol', tipo: 'Residencia', zone: 'Playa Caracol, Chame — Pacífico', zoneShort: 'Surfside / Playa Caracol', investorType: 'disfrute', entrega: 'ENTREGA INMEDIATA', minPrice: 314000, maxPrice: 413000, areaMin: 81, areaMax: 107, bedrooms: '2 y 3 rec.', capRateMin: 5.8, capRateMax: 7.5, vacancyDef: 10, rentSuggest: 1400, rentM2Min: 10, rentM2Max: 14, condominioMes: 300, appreciationDef: 4.0, appreciationNote: 'Frente al mar con componente aparthotel. Renta vacacional activa desde entrega inmediata. 4–5% anual.', amenities: ['Playa privada', 'Piscinas y jacuzzi', 'Restaurante y bar', 'Surf lounge', 'Gimnasio', 'Seguridad 24/7'], construction: 'Entrega inmediata', priceM2Min: 2930, priceM2Max: 3860 },
-  { name: 'Beachwalk', category: 'Playa Caracol', tipo: 'Residencia', zone: 'Playa Caracol, Chame — Pacífico', zoneShort: 'Beachwalk / Playa Caracol', investorType: 'disfrute', entrega: 'Q1 2027', minPrice: 297000, maxPrice: 386000, areaMin: 85, areaMax: 97, bedrooms: '2 y 3 rec.', capRateMin: 5.5, capRateMax: 7.5, vacancyDef: 10, rentSuggest: 1300, rentM2Min: 9, rentM2Max: 14, condominioMes: 280, appreciationDef: 4.0, appreciationNote: 'Enfoque wellness frente al Pacífico. Entrega Q1 2027 — ventana de preventa activa. 4–5% valorización anual.', amenities: ['Frente al océano Pacífico', 'Wellness spa', 'Piscina paisajística', 'Gimnasio exterior', 'Yoga deck', 'BBQ', 'Seguridad 24/7'], construction: 'En construcción (entrega Q1 2027)', priceM2Min: 3060, priceM2Max: 3980 },
-  { name: 'Seashore', category: 'Playa Caracol', tipo: 'Residencia', zone: 'Playa Caracol, Chame — Pacífico', zoneShort: 'Seashore / Playa Caracol', investorType: 'renta', entrega: 'Q4 2027', minPrice: 290000, maxPrice: 490000, areaMin: 84, areaMax: 150, bedrooms: '2 y 3 rec.', capRateMin: 5.8, capRateMax: 7.5, vacancyDef: 10, rentSuggest: 1350, rentM2Min: 9, rentM2Max: 13, condominioMes: 270, appreciationDef: 4.0, appreciationNote: 'Amplio rango de área permite diversificación. Entrega Q4 2027. Valorización esperada 4–5% anual.', amenities: ['Vista al Pacífico', 'Piscina', 'Área social y BBQ', 'Gimnasio', 'Seguridad 24/7'], construction: 'En construcción (entrega Q4 2027)', priceM2Min: 2440, priceM2Max: 3870 },
-  { name: 'Seashore Reserve', category: 'Playa Caracol', tipo: 'Residencia', zone: 'Playa Caracol, Chame — Pacífico', zoneShort: 'Seashore Reserve / Playa Caracol', investorType: 'renta', entrega: 'Q4 2028', minPrice: 290000, maxPrice: 490000, areaMin: 84, areaMax: 150, bedrooms: '2 y 3 rec.', capRateMin: 5.5, capRateMax: 7.5, vacancyDef: 10, rentSuggest: 1350, rentM2Min: 9, rentM2Max: 13, condominioMes: 270, appreciationDef: 4.5, appreciationNote: 'Versión Reserve con acabados superiores. Mayor plusvalía por preventa larga. 4.5–6% valorización anual.', amenities: ['Vista Pacífico reservada', 'Club de playa', 'Piscinas', 'Wellness area', 'Seguridad 24/7'], construction: 'En preventa (entrega Q4 2028)', priceM2Min: 2440, priceM2Max: 3870 },
+  {
+    name: 'Aires del Mar', category: 'Playa Caracol', tipo: 'Residencia',
+    zone: 'Playa Caracol, Chame — Pacífico', zoneShort: 'Aires del Mar / Playa Caracol',
+    investorType: 'renta', entrega: 'INMEDIATA · Q4 2026',
+    minPrice: 143000, maxPrice: 207000, areaMin: 42, areaMax: 71, bedrooms: '2 y 3 rec.',
+    capRateMin: 5.8, capRateMax: 8.0, vacancyDef: 11,
+    rentSuggest: 950, rentM2Min: 9, rentM2Max: 13, condominioMes: 180,
+    appreciationDef: 3.5, appreciationNote: 'Producto de entrada a Playa Caracol. Alta demanda vacacional de colombianos y panameños. 3.5–5% valorización.',
+    amenities: ['Vista al océano Pacífico', 'Piscinas', 'Parques infantiles', 'Jardines', 'Seguridad 24/7'],
+    construction: 'Entrega inmediata / Q4 2026', priceM2Min: 2010, priceM2Max: 2915,
+    velocidadColocacion: '2–3.5 meses', perfilArrendatario: 'Familia segunda residencia — precio accesible en zona playa',
+    notaValorizacion: 'Punto de entrada Playa Caracol. Cap rate 5.8–8.0% con estrategia mixta larga/corta duración.',
+    fechaActualizacionMercado: '2026-06-27',
+    zonaPlaya: 'Playa Caracol 1.2 km (acceso comunitario)', zonaSupermercados: 'Centro comercial Coronado (20 min)', zonaEntretenimiento: 'Surf club Playa Caracol, restaurantes de playa (10 min)', zonaSalud: 'Centro médico Coronado (20 min)',
+  },
+  {
+    name: 'The Tides', category: 'Playa Caracol', tipo: 'Residencia',
+    zone: 'Playa Caracol, Chame — Pacífico', zoneShort: 'The Tides / Playa Caracol',
+    investorType: 'disfrute', entrega: 'ENTREGA INMEDIATA',
+    minPrice: 278000, maxPrice: 308000, areaMin: 99, areaMax: 99, bedrooms: '2 y 3 rec.',
+    capRateMin: 5.5, capRateMax: 7.5, vacancyDef: 10,
+    rentSuggest: 1500, rentM2Min: 10, rentM2Max: 16, condominioMes: 320,
+    appreciationDef: 4.5, appreciationNote: 'Frente a playa de 1.2 km. Uno de los proyectos más nuevos en Playa Caracol. Valorización 4–6% anual.',
+    amenities: ['1.2 km playa privada', 'Surf club', '3 piscinas', 'Restaurante y beach bar', 'Senderos naturales', 'Gimnasio', 'Seguridad 24/7'],
+    construction: 'Entrega inmediata', priceM2Min: 2810, priceM2Max: 3110,
+    velocidadColocacion: '2–3 meses', perfilArrendatario: 'Familia segunda residencia, expat remoto — playa privada 1.2 km',
+    notaValorizacion: 'Única playa privada de 1.2 km en Playa Caracol. Cap rate 5.5–7.5%, vacancia 7–12%.',
+    fechaActualizacionMercado: '2026-06-27',
+    zonaPlaya: 'Playa privada 1.2 km (frente al proyecto)', zonaSupermercados: 'Centro comercial Coronado (20 min)', zonaEntretenimiento: 'Surf club, beach bar, senderos naturales (en proyecto)', zonaSalud: 'Centro médico Coronado (20 min)',
+  },
+  {
+    name: 'Brisas del Mar', category: 'Playa Caracol', tipo: 'Residencia',
+    zone: 'Playa Caracol, Chame — Pacífico', zoneShort: 'Brisas del Mar / Playa Caracol',
+    investorType: 'renta', entrega: 'ENTREGA INMEDIATA',
+    minPrice: 276000, maxPrice: 332000, areaMin: 93, areaMax: 108, bedrooms: '2 y 3 rec.',
+    capRateMin: 5.8, capRateMax: 7.5, vacancyDef: 10,
+    rentSuggest: 1300, rentM2Min: 9, rentM2Max: 13, condominioMes: 260,
+    appreciationDef: 4.0, appreciationNote: 'Entrega inmediata con flujo de renta activo desde el primer mes. Playa Caracol lidera valorización en el Pacífico.',
+    amenities: ['Frente al mar', 'Piscina', 'BBQ', 'Área social', 'Seguridad 24/7', 'Parque infantil'],
+    construction: 'Entrega inmediata', priceM2Min: 2555, priceM2Max: 3080,
+    notaValorizacion: 'Proyecto nuevo en Playa Caracol — pendiente actualización de datos de mercado por Camilo.',
+    zonaPlaya: 'Playa Caracol (acceso comunitario)', zonaSupermercados: 'Centro comercial Coronado (20 min)', zonaEntretenimiento: 'Surf club Playa Caracol (10 min)', zonaSalud: 'Centro médico Coronado (20 min)',
+  },
+  {
+    name: 'Olas del Mar', category: 'Playa Caracol', tipo: 'Residencia',
+    zone: 'Playa Caracol, Chame — Pacífico', zoneShort: 'Olas del Mar / Playa Caracol',
+    investorType: 'renta', entrega: 'ENTREGA INMEDIATA',
+    minPrice: 267000, maxPrice: 398000, areaMin: 69, areaMax: 97, bedrooms: '2 y 3 rec.',
+    capRateMin: 6.0, capRateMax: 8.0, vacancyDef: 11,
+    rentSuggest: 1050, rentM2Min: 8, rentM2Max: 12, condominioMes: 220,
+    appreciationDef: 3.5, appreciationNote: 'Playa Caracol lidera valorización en el Pacífico panameño. Entrega inmediata. 4–6% anual en proyectos nuevos.',
+    amenities: ['Piscina con vista al mar', 'Zona de BBQ', 'Área social', 'Seguridad 24/7', 'Parque infantil'],
+    construction: 'Entrega inmediata', priceM2Min: 2750, priceM2Max: 3875,
+    velocidadColocacion: '2–3.5 meses', perfilArrendatario: 'Familia segunda residencia — precio accesible en zona playa',
+    notaValorizacion: 'Cap rate 5.8–8.0% con estrategia mixta. Vacancia 8–14% — mejorable con administración activa.',
+    fechaActualizacionMercado: '2026-06-27',
+    zonaPlaya: 'Playa Caracol (acceso comunitario)', zonaSupermercados: 'Centro comercial Coronado (20 min)', zonaEntretenimiento: 'Surf club, restaurantes de playa (10 min)', zonaSalud: 'Centro médico Coronado (20 min)',
+  },
+  {
+    name: 'Surfside', category: 'Playa Caracol', tipo: 'Residencia',
+    zone: 'Playa Caracol, Chame — Pacífico', zoneShort: 'Surfside / Playa Caracol',
+    investorType: 'disfrute', entrega: 'ENTREGA INMEDIATA',
+    minPrice: 314000, maxPrice: 413000, areaMin: 81, areaMax: 107, bedrooms: '2 y 3 rec.',
+    capRateMin: 5.8, capRateMax: 7.5, vacancyDef: 10,
+    rentSuggest: 1400, rentM2Min: 10, rentM2Max: 14, condominioMes: 300,
+    appreciationDef: 4.0, appreciationNote: 'Frente al mar con componente aparthotel. Renta vacacional activa desde entrega inmediata. 4–5% anual.',
+    amenities: ['Playa privada', 'Piscinas y jacuzzi', 'Restaurante y bar', 'Surf lounge', 'Gimnasio', 'Seguridad 24/7'],
+    construction: 'Entrega inmediata', priceM2Min: 2930, priceM2Max: 3860,
+    velocidadColocacion: '2–3 meses', perfilArrendatario: 'Inversor mixto — estrategia mixta eleva cap rate al 9–12%',
+    notaValorizacion: 'Componente aparthotel potencia renta a corto plazo. Cap rate 5.5–7.5%, escalable con gestión activa.',
+    fechaActualizacionMercado: '2026-06-27',
+    zonaPlaya: 'Playa privada frente al proyecto', zonaSupermercados: 'Centro comercial Coronado (20 min)', zonaEntretenimiento: 'Surf lounge, beach bar, restaurante (en proyecto)', zonaSalud: 'Centro médico Coronado (20 min)',
+  },
+  {
+    name: 'Beachwalk', category: 'Playa Caracol', tipo: 'Residencia',
+    zone: 'Playa Caracol, Chame — Pacífico', zoneShort: 'Beachwalk / Playa Caracol',
+    investorType: 'disfrute', entrega: 'Q1 2027',
+    minPrice: 297000, maxPrice: 386000, areaMin: 85, areaMax: 97, bedrooms: '2 y 3 rec.',
+    capRateMin: 5.5, capRateMax: 7.5, vacancyDef: 10,
+    rentSuggest: 1300, rentM2Min: 9, rentM2Max: 14, condominioMes: 280,
+    appreciationDef: 4.0, appreciationNote: 'Enfoque wellness frente al Pacífico. Entrega Q1 2027 — ventana de preventa activa. 4–5% valorización anual.',
+    amenities: ['Frente al océano Pacífico', 'Wellness spa', 'Piscina paisajística', 'Gimnasio exterior', 'Yoga deck', 'BBQ', 'Seguridad 24/7'],
+    construction: 'En construcción (entrega Q1 2027)', priceM2Min: 3060, priceM2Max: 3980,
+    velocidadColocacion: '2–3 meses', perfilArrendatario: 'Inversor mixto, familia wellness — estrategia mixta recomendada',
+    notaValorizacion: 'Diferencial wellness único en Playa Caracol. Cap rate 5.5–7.5%, escalable con estrategia mixta.',
+    fechaActualizacionMercado: '2026-06-27',
+    zonaPlaya: 'Frente al océano Pacífico', zonaSupermercados: 'Centro comercial Coronado (20 min)', zonaEntretenimiento: 'Yoga deck, wellness spa, surf (en proyecto)', zonaSalud: 'Centro médico Coronado (20 min)',
+  },
+  {
+    name: 'Seashore', category: 'Playa Caracol', tipo: 'Residencia',
+    zone: 'Playa Caracol, Chame — Pacífico', zoneShort: 'Seashore / Playa Caracol',
+    investorType: 'renta', entrega: 'Q4 2027',
+    minPrice: 290000, maxPrice: 490000, areaMin: 84, areaMax: 150, bedrooms: '2 y 3 rec.',
+    capRateMin: 5.8, capRateMax: 7.5, vacancyDef: 10,
+    rentSuggest: 1350, rentM2Min: 9, rentM2Max: 13, condominioMes: 270,
+    appreciationDef: 4.0, appreciationNote: 'Amplio rango de área permite diversificación. Entrega Q4 2027. Valorización esperada 4–5% anual.',
+    amenities: ['Vista al Pacífico', 'Piscina', 'Área social y BBQ', 'Gimnasio', 'Seguridad 24/7'],
+    construction: 'En construcción (entrega Q4 2027)', priceM2Min: 2440, priceM2Max: 3870,
+    notaValorizacion: 'Proyecto nuevo en Playa Caracol — pendiente actualización de datos de mercado por Camilo.',
+    zonaPlaya: 'Playa Caracol (acceso comunitario)', zonaSupermercados: 'Centro comercial Coronado (20 min)', zonaEntretenimiento: 'Surf club Playa Caracol (10 min)', zonaSalud: 'Centro médico Coronado (20 min)',
+  },
+  {
+    name: 'Seashore Reserve', category: 'Playa Caracol', tipo: 'Residencia',
+    zone: 'Playa Caracol, Chame — Pacífico', zoneShort: 'Seashore Reserve / Playa Caracol',
+    investorType: 'renta', entrega: 'Q4 2028',
+    minPrice: 290000, maxPrice: 490000, areaMin: 84, areaMax: 150, bedrooms: '2 y 3 rec.',
+    capRateMin: 5.5, capRateMax: 7.5, vacancyDef: 10,
+    rentSuggest: 1350, rentM2Min: 9, rentM2Max: 13, condominioMes: 270,
+    appreciationDef: 4.5, appreciationNote: 'Versión Reserve con acabados superiores. Mayor plusvalía por preventa larga. 4.5–6% valorización anual.',
+    amenities: ['Vista Pacífico reservada', 'Club de playa', 'Piscinas', 'Wellness area', 'Seguridad 24/7'],
+    construction: 'En preventa (entrega Q4 2028)', priceM2Min: 2440, priceM2Max: 3870,
+    notaValorizacion: 'Versión premium de Seashore — pendiente actualización de datos de mercado por Camilo.',
+    zonaPlaya: 'Playa Caracol (acceso comunitario)', zonaSupermercados: 'Centro comercial Coronado (20 min)', zonaEntretenimiento: 'Club de playa, wellness area (en proyecto)', zonaSalud: 'Centro médico Coronado (20 min)',
+  },
 ];
 
 // ── ZONE FOOTNOTES HELPER ─────────────────────────────────────
@@ -133,22 +378,28 @@ const INVESTOR_PROFILES = [
 ];
 
 // ── PROJECT IMAGES MAP ────────────────────────────────────────
+// Claves coinciden EXACTAMENTE con PROJECTS[].name (taxonomía oficial GLP)
 const PROJECT_IMAGES: Record<string, { main: string; gallery: string[] }> = {
-  'Ocean Reef Park': { main: 'https://glp.com.pa/wp-content/uploads/2026/05/ocean_reef.webp', gallery: ['https://glp.com.pa/wp-content/uploads/2026/05/ocean_reef.webp', 'https://glp.com.pa/wp-content/uploads/2025/07/apartamentos-de-lujo-en-panama-1.webp'] },
-  'Oceana Residences & Skyhomes': { main: '/img/projects/oceana.jpg', gallery: ['/img/projects/oceana-g_1.jpg', '/img/projects/oceana-g_2.jpg', '/img/projects/oceana-g_3.jpg'] },
-  'Bosco di Santa María': { main: 'https://glp.com.pa/wp-content/uploads/2026/05/casabosco.webp', gallery: ['https://glp.com.pa/wp-content/uploads/2026/05/casabosco.webp', 'https://glp.com.pa/wp-content/uploads/2026/05/bosco-torres.webp', 'https://glp.com.pa/wp-content/uploads/2025/11/bosco.webp', 'https://glp.com.pa/wp-content/uploads/2026/03/palada-bosco-di-santa-maria.jpg'] },
-  'The Palms': { main: '/img/projects/the-palms.jpg', gallery: ['/img/projects/the-palms-g_1.jpg'] },
+  // Proyecto de Ciudad
+  'Armonía': { main: 'https://glp.com.pa/wp-content/uploads/2026/05/armonia-1.webp', gallery: ['https://glp.com.pa/wp-content/uploads/2026/05/armonia-1.webp', 'https://glp.com.pa/wp-content/uploads/2025/07/apartamentos-de-lujo-en-panama-1.webp'] },
   'Ventu': { main: 'https://glp.com.pa/wp-content/uploads/2026/05/armonia-1.webp', gallery: ['https://glp.com.pa/wp-content/uploads/2026/05/armonia-1.webp', 'https://glp.com.pa/wp-content/uploads/2025/07/apartamentos-de-lujo-en-panama-1.webp'] },
-  'Ipanema Panamáá': { main: '/img/projects/ipanema.jpg', gallery: ['/img/projects/ipanema-g_1.jpg', '/img/projects/ipanema-g_2.jpg', '/img/projects/ipanema-g_3.jpg'] },
-  'Panamáa Viejo Residences': { main: '/img/projects/panama-viejo.jpg', gallery: ['/img/projects/panama-viejo-g_1.jpg', '/img/projects/panama-viejo-g_2.jpg', '/img/projects/panama-viejo-g_3.jpg'] },
-  'Bayside Resort Panamáá': { main: '/img/projects/bayside.jpg', gallery: ['/img/projects/bayside-g_1.jpg', '/img/projects/bayside-g_2.jpg', '/img/projects/bayside-g_3.jpg'] },
-  'The Tides – Playa Caracol': { main: '/img/projects/the-tides.jpg', gallery: ['/img/projects/the-tides-g_1.jpg', '/img/projects/the-tides-g_2.jpg', '/img/projects/the-tides-g_3.jpg'] },
-  'Surfside': { main: '/img/projects/surfside.jpg', gallery: ['/img/projects/surfside-g_1.jpg', '/img/projects/surfside-g_2.jpg', '/img/projects/surfside-g_3.jpg'] },
-  'BeachWalk Resort Playa Caracol': { main: '/img/projects/beachwalk.jpg', gallery: ['/img/projects/beachwalk-g_1.jpg', '/img/projects/beachwalk-g_2.jpg', '/img/projects/beachwalk-g_3.jpg'] },
-  'Playa Dorada': { main: '/img/projects/playa-dorada.jpg', gallery: ['/img/projects/playa-dorada-g_1.jpg', '/img/projects/playa-dorada-g_2.jpg', '/img/projects/playa-dorada-g_3.jpg'] },
-  'Ocean Front': { main: '/img/projects/ocean-front.jpg', gallery: ['/img/projects/ocean-front-g_1.jpg', '/img/projects/ocean-front-g_2.jpg', '/img/projects/ocean-front-g_3.jpg'] },
+  'Ocena': { main: '/img/projects/oceana.jpg', gallery: ['/img/projects/oceana-g_1.jpg', '/img/projects/oceana-g_2.jpg', '/img/projects/oceana-g_3.jpg'] },
+  'Ipanema': { main: '/img/projects/ipanema.jpg', gallery: ['/img/projects/ipanema-g_1.jpg', '/img/projects/ipanema-g_2.jpg', '/img/projects/ipanema-g_3.jpg'] },
+  'Bosco': { main: 'https://glp.com.pa/wp-content/uploads/2026/05/casabosco.webp', gallery: ['https://glp.com.pa/wp-content/uploads/2026/05/casabosco.webp', 'https://glp.com.pa/wp-content/uploads/2026/05/bosco-torres.webp', 'https://glp.com.pa/wp-content/uploads/2025/11/bosco.webp', 'https://glp.com.pa/wp-content/uploads/2026/03/palada-bosco-di-santa-maria.jpg'] },
+  'Panama Viejo Residence': { main: '/img/projects/panama-viejo.jpg', gallery: ['/img/projects/panama-viejo-g_1.jpg', '/img/projects/panama-viejo-g_2.jpg', '/img/projects/panama-viejo-g_3.jpg'] },
+  // Ocean Reef Islands
+  'The Palms': { main: '/img/projects/the-palms.jpg', gallery: ['/img/projects/the-palms-g_1.jpg'] },
+  'Ocean Reef Park': { main: 'https://glp.com.pa/wp-content/uploads/2026/05/ocean_reef.webp', gallery: ['https://glp.com.pa/wp-content/uploads/2026/05/ocean_reef.webp', 'https://glp.com.pa/wp-content/uploads/2025/07/apartamentos-de-lujo-en-panama-1.webp'] },
+  'O Club Residences': { main: '/img/projects/o-club.jpg', gallery: ['/img/projects/o-club-g_1.jpg'] },
+  // Playa Caracol
+  'Aires del Mar': { main: '/img/projects/aires-del-mar.jpg', gallery: ['/img/projects/aires-del-mar-g_1.jpg', '/img/projects/aires-del-mar-g_2.jpg', '/img/projects/aires-del-mar-g_3.jpg'] },
+  'The Tides': { main: '/img/projects/the-tides.jpg', gallery: ['/img/projects/the-tides-g_1.jpg', '/img/projects/the-tides-g_2.jpg', '/img/projects/the-tides-g_3.jpg'] },
+  'Brisas del Mar': { main: '/img/projects/brisas-del-mar.jpg', gallery: ['/img/projects/brisas-del-mar-g_1.jpg'] },
   'Olas del Mar': { main: '/img/projects/olas-del-mar.jpg', gallery: ['/img/projects/olas-del-mar-g_1.jpg', '/img/projects/olas-del-mar-g_2.jpg', '/img/projects/olas-del-mar-g_3.jpg'] },
-  'Aires del Mar – Playa Caracol': { main: '/img/projects/aires-del-mar.jpg', gallery: ['/img/projects/aires-del-mar-g_1.jpg', '/img/projects/aires-del-mar-g_2.jpg', '/img/projects/aires-del-mar-g_3.jpg'] },
+  'Surfside': { main: '/img/projects/surfside.jpg', gallery: ['/img/projects/surfside-g_1.jpg', '/img/projects/surfside-g_2.jpg', '/img/projects/surfside-g_3.jpg'] },
+  'Beachwalk': { main: '/img/projects/beachwalk.jpg', gallery: ['/img/projects/beachwalk-g_1.jpg', '/img/projects/beachwalk-g_2.jpg', '/img/projects/beachwalk-g_3.jpg'] },
+  'Seashore': { main: '/img/projects/seashore.jpg', gallery: ['/img/projects/seashore-g_1.jpg'] },
+  'Seashore Reserve': { main: '/img/projects/seashore-reserve.jpg', gallery: ['/img/projects/seashore-reserve-g_1.jpg'] },
 };
 
 // ── CLOSED & LOST SALES DATABASES ──────────────────────────────
@@ -306,6 +557,8 @@ type Prospect = {
   broker_asignado: string; estado: string; presupuesto_usd: number;
   notas: string; historial: HistEntry[];
   fecha_entrada: string;
+  fecha_registro?: string;
+  fecha_ultima_actividad?: string;
   emailHistory?: EmailThreadItem[];
 };
 
@@ -525,18 +778,21 @@ const INITIAL_FAQS: FAQ[] = [
 ];
 
 // ── MODULE DEFINITIONS ────────────────────────────────────────
-const MODULES = [
-  { id: 'portafolio', label: 'Portafolio GLP' },
-  { id: 'catalogo', label: 'Carga de Catálogo de Proyectos' },
-  { id: 'kpis', label: 'Dashboard KPIs' },
-  { id: 'brokers', label: 'Brokers' },
-  { id: 'prospectos', label: 'Prospectos' },
-  { id: 'eventos', label: 'Presupuesto Eventos' },
-  { id: 'agentes', label: 'Agentes IA' },
-  { id: 'faqs', label: 'FAQs' },
-  { id: 'calculadora', label: 'Calculadora Inmobiliaria' },
-  { id: 'configuracion', label: 'Configuración' },
+const MODULES_PRIMARY = [
+  { id: 'kpis',         label: 'Dashboard' },
+  { id: 'prospectos',   label: 'Prospectos' },
+  { id: 'portafolio',   label: 'Portafolio GLP' },
+  { id: 'calculadora',  label: 'Calculadora' },
+  { id: 'agentes',      label: 'Agentes IA' },
 ];
+const MODULES_SECONDARY = [
+  { id: 'brokers',      label: 'Brokers' },
+  { id: 'eventos',      label: 'Presupuesto' },
+  { id: 'faqs',         label: 'FAQs' },
+  { id: 'catalogo',     label: 'Catálogo' },
+  { id: 'configuracion',label: 'Configuración' },
+];
+const MODULES = [...MODULES_PRIMARY, ...MODULES_SECONDARY];
 
 const getAdminUsers = () => {
   const usersSaved = localStorage.getItem('glp_crm_users');
@@ -626,7 +882,10 @@ const labelStyle = {
 };
 
 export default function CRMDashboard() {
-  const [activeModule, setActiveModule] = useState('portafolio');
+  const [activeModule, setActiveModule] = useState('kpis');
+  const [activeProspect, setActiveProspect] = useState<Prospect | null>(null);
+  const [calcDrawerOpen, setCalcDrawerOpen] = useState(false);
+  const [calcModalExpanded, setCalcModalExpanded] = useState(false);
 
   // ── Authentication States ──
   const [currentUser, setCurrentUser] = useState<string | null>(() => {
@@ -637,11 +896,12 @@ export default function CRMDashboard() {
   const [closedSales, setClosedSales] = useState<Sale[]>(INITIAL_CLOSED_SALES);
   const [lostSales, setLostSales] = useState<LostSale[]>(INITIAL_LOST_SALES);
   const [activeDrilldown, setActiveDrilldown] = useState<{
-    type: 'ticket' | 'conversion' | 'funnel' | 'source' | 'prospect' | 'broker' | 'prospects_total' | 'brokers_active' | 'presupuesto' | 'camilo_prospects' | 'sara_history';
+    type: 'ticket' | 'conversion' | 'funnel' | 'source' | 'prospect' | 'broker' | 'prospects_total' | 'brokers_active' | 'camilo_prospects' | 'sara_history';
     stage?: string;
     source?: string;
     id?: number;
   } | null>(null);
+  const [showBudgetDetail, setShowBudgetDetail] = useState(false);
 
   // Portafolio
   const [portFilter, setPortFilter] = useState('all');
@@ -651,6 +911,7 @@ export default function CRMDashboard() {
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const [crmLightboxImg, setCrmLightboxImg] = useState<string | null>(null);
   const [editableProjects, setEditableProjects] = useState<ProjectData[]>(PROJECTS);
+  const [catalogProjects, setCatalogProjects] = useState<ProjectData[]>([...PROJECTS]);
   const [commissionEntities, setCommissionEntities] = useState<{name:string;pct:number}[]>([
     { name: 'Colombia Tax Law Group', pct: 1 },
     { name: 'Grupo Valverde', pct: 1 },
@@ -660,12 +921,28 @@ export default function CRMDashboard() {
   const [editingProject, setEditingProject] = useState<string | null>(null);
 
   const updateProject = (name: string, field: keyof ProjectData, value: any) => {
-    setEditableProjects(prev => prev.map(p => p.name === name ? { ...p, [field]: value } : p));
+    const updater = (prev: ProjectData[]) => prev.map(p => p.name === name ? { ...p, [field]: value } : p);
+    setEditableProjects(updater);
+    setCatalogProjects(updater);
+  };
+
+  const saveProjectToDB = async (project: ProjectData & { id?: string }) => {
+    if (!project.id) return;
+    try {
+      await fetch(`http://localhost:3001/api/projects/${project.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-tenant-id': 'tenant-glp-001' },
+        body: JSON.stringify(project),
+      });
+    } catch {
+      // silencioso — el estado local ya está actualizado
+    }
   };
 
   // KPIs
   const [kpiPresupuestoEjecutado, setKpiPresupuestoEjecutado] = useState(68000);
   const [kpiPresupuestoPlaneado, setKpiPresupuestoPlaneado] = useState(95000);
+  const [budgetMonthlyRate, setBudgetMonthlyRate] = useState(2500);
   
   const [overrideFunnelContacto, setOverrideFunnelContacto] = useState<number | null>(null);
   const [overrideFunnelCalif, setOverrideFunnelCalif] = useState<number | null>(null);
@@ -2476,7 +2753,7 @@ Responde SOLO con JSON sin bloques de código:
   // ── Select Calc Project ─────────────────────────────────
   const selectCalcProject = (name: string) => {
     setCalcProject(name);
-    const p = PROJECTS.find(x => x.name === name);
+    const p = editableProjects.find(x => x.name === name);
     if (!p) return;
     setCalcPrecio(p.minPrice);
     setCalcArea(p.areaMin);
@@ -2499,10 +2776,10 @@ Responde SOLO con JSON sin bloques de código:
     borderRadius: 8,
     cursor: 'pointer' as const,
     fontSize: 13,
-    fontWeight: activeModule === moduleId ? 700 : 500,
+    fontWeight: activeModule === moduleId ? 700 : 400,
     fontFamily: 'Inter, sans-serif',
-    color: activeModule === moduleId ? T.card : T.text,
-    background: activeModule === moduleId ? T.teal : 'transparent',
+    color: activeModule === moduleId ? T.teal : 'rgba(255,255,255,0.82)',
+    background: activeModule === moduleId ? T.coral : 'transparent',
     transition: 'all 0.2s',
     textAlign: 'left' as const,
     marginBottom: 4,
@@ -2822,8 +3099,9 @@ Responde SOLO con JSON sin bloques de código:
               ? { backgroundImage: `url(${heroUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
               : { background: fallbackGradients[i % fallbackGradients.length] };
             const isUploading = uploadingProject === p.name;
+            const isProspectInterest = activeProspect?.proyectos_interes?.includes(p.name);
             return (
-              <div key={p.name} style={{ ...cardStyle({ padding: 0, overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s' }), ...(expanded ? { gridColumn: '1 / -1' } : {}) }}
+              <div key={p.name} style={{ ...cardStyle({ padding: 0, overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s' }), ...(expanded ? { gridColumn: '1 / -1' } : {}), ...(isProspectInterest ? { outline: `3px solid ${T.coral}`, outlineOffset: 2 } : {}) }}
                 onClick={() => {
                   if (expanded) {
                     setExpandedProject(null);
@@ -2847,6 +3125,26 @@ Responde SOLO con JSON sin bloques de código:
                   }}>
                     {isUploading ? '⏳' : '📷'}
                   </button>
+                  {/* Badge de interés del prospecto activo */}
+                  {isProspectInterest && !expanded && (
+                    <div style={{ position: 'absolute' as const, top: 8, left: 8, zIndex: 10, background: T.coral, color: '#fff', fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 4, letterSpacing: 0.5, textTransform: 'uppercase' as const }}>
+                      ★ {activeProspect?.nombre?.split(' ')[0]}
+                    </div>
+                  )}
+                  {/* Close / collapse button — only visible when expanded */}
+                  {expanded && (
+                    <button onClick={e => { e.stopPropagation(); setExpandedProject(null); }}
+                      title="Volver a la grilla"
+                      style={{
+                        position: 'absolute' as const, top: 10, left: 10, zIndex: 10,
+                        background: T.coral, border: 'none', borderRadius: 8,
+                        color: '#fff', fontSize: 13, fontWeight: 800, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.35)', letterSpacing: 0.3,
+                      }}>
+                      ‹ Volver a proyectos
+                    </button>
+                  )}
                   <div style={{ position: 'relative' as const, zIndex: 1, display: 'flex', gap: 6, alignItems: 'flex-end', width: '100%' }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: expanded ? 18 : 15, fontWeight: 700, color: '#fff', textShadow: '0 1px 3px rgba(0,0,0,0.4)' }}>{p.name}</div>
@@ -2865,22 +3163,28 @@ Responde SOLO con JSON sin bloques de código:
                   {expanded && (
                     <div style={{ marginTop: 16, borderTop: `1px solid ${T.borderLight}`, paddingTop: 16 }} onClick={e => e.stopPropagation()}>
                       {/* PHOTO GALLERY */}
-                      {imgs && imgs.gallery.length > 0 && (
-                        <div style={{ marginBottom: 16 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>📸 Galería del Proyecto</div>
-                            <div style={{ fontSize: 11, color: T.textSec, fontStyle: 'italic' }}>Clic para ampliar</div>
+                      {(() => {
+                        const allPhotos = [
+                          ...(imgs?.gallery || []),
+                          ...(p.galeria || []),
+                        ].filter(Boolean);
+                        return allPhotos.length > 0 ? (
+                          <div style={{ marginBottom: 16 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>📸 Galería del Proyecto</div>
+                              <div style={{ fontSize: 11, color: T.textSec, fontStyle: 'italic' }}>Clic para ampliar</div>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(allPhotos.length, 3)}, 1fr)`, gap: 8 }}>
+                              {allPhotos.slice(0, 6).map((g, gi) => (
+                                <div key={gi} style={{ borderRadius: 8, overflow: 'hidden', height: 140 }}
+                                  onClick={e => { e.stopPropagation(); setCrmLightboxImg(g); }}>
+                                  <img src={g} alt={`${p.name} ${gi+1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'zoom-in' }} />
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(imgs.gallery.length, 3)}, 1fr)`, gap: 8 }}>
-                            {imgs.gallery.slice(0, 6).map((g, gi) => (
-                              <div key={gi} style={{ borderRadius: 8, overflow: 'hidden', height: 140 }}
-                                onClick={e => { e.stopPropagation(); setCrmLightboxImg(g); }}>
-                                <img src={g} alt={`${p.name} ${gi+1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'zoom-in' }} />
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                        ) : null;
+                      })()}
                       {/* Edit toggle */}
                       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
                         <button onClick={e => { e.stopPropagation(); setEditingProject(editingProject === p.name ? null : p.name); }}
@@ -2920,8 +3224,17 @@ Responde SOLO con JSON sin bloques de código:
                                 <div style={{ fontSize: 10, color: T.textSec, marginBottom: 3, fontWeight: 600 }}>{label}</div>
                                 <input
                                   type={type}
-                                  value={p[field] as string | number}
-                                  onChange={e => updateProject(p.name, field, type === 'number' ? Number(e.target.value) : e.target.value)}
+                                  key={`${p.name}-${field as string}`}
+                                  defaultValue={p[field] as string | number}
+                                  onBlur={e => {
+                                    if (type === 'number') {
+                                      const n = parseFloat(e.target.value);
+                                      if (!isNaN(n)) updateProject(p.name, field, n);
+                                      else e.target.value = String(p[field]);
+                                    } else {
+                                      updateProject(p.name, field, e.target.value);
+                                    }
+                                  }}
                                   style={{ ...inputStyle({ fontSize: 11, padding: '5px 8px' }), width: '100%', boxSizing: 'border-box' as const }}
                                 />
                               </div>
@@ -2937,25 +3250,43 @@ Responde SOLO con JSON sin bloques de código:
                             <input value={p.amenities.join(', ')} onChange={e => updateProject(p.name, 'amenities', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
                               style={{ ...inputStyle({ fontSize: 11, padding: '5px 8px' }), width: '100%', boxSizing: 'border-box' as const }} />
                           </div>
+                          {/* GALERÍA DE FOTOS (hasta 4) */}
+                          <div style={{ marginBottom: 10 }}>
+                            <div style={{ fontSize: 10, color: T.textSec, marginBottom: 6, fontWeight: 600 }}>Galería de fotos (hasta 4)</div>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const, marginBottom: 8 }}>
+                              {(p.galeria || []).slice(0, 4).map((src, gi) => (
+                                <div key={gi} style={{ position: 'relative' as const, width: 72, height: 54, borderRadius: 6, overflow: 'hidden', border: `1px solid ${T.border}` }}>
+                                  <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  <button onClick={() => {
+                                    const g = [...(p.galeria || [])];
+                                    g.splice(gi, 1);
+                                    updateProject(p.name, 'galeria', g);
+                                  }} style={{ position: 'absolute' as const, top: 2, right: 2, background: 'rgba(185,28,28,0.85)', border: 'none', color: '#fff', borderRadius: 3, width: 16, height: 16, fontSize: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>✕</button>
+                                </div>
+                              ))}
+                              {(p.galeria || []).length < 4 && (
+                                <label style={{ width: 72, height: 54, borderRadius: 6, border: `2px dashed ${T.border}`, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 10, color: T.textSec, gap: 2 }}>
+                                  <span style={{ fontSize: 18 }}>+</span>
+                                  <span>Foto</span>
+                                  <input type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={e => {
+                                    const files = Array.from(e.target.files || []);
+                                    const current = p.galeria || [];
+                                    const slots = 4 - current.length;
+                                    files.slice(0, slots).forEach(file => {
+                                      const reader = new FileReader();
+                                      reader.onload = ev => {
+                                        updateProject(p.name, 'galeria', [...(p.galeria || []), ev.target?.result as string]);
+                                      };
+                                      reader.readAsDataURL(file);
+                                    });
+                                    e.target.value = '';
+                                  }} />
+                                </label>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                      ) : (
-                        /* ── MODO LECTURA ── */
-                        <>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 12, marginBottom: 16 }}>
-                          <div><span style={{ color: T.textSec }}>Categoría: </span><b style={{ color: catColors[p.category] || T.teal }}>{p.category}</b></div>
-                          <div><span style={{ color: T.textSec }}>Entrega: </span><b>{p.entrega}</b></div>
-                          <div><span style={{ color: T.textSec }}>Zona: </span>{p.zone}</div>
-                          <div><span style={{ color: T.textSec }}>Tipo: </span>{p.tipo}</div>
-                          <div><span style={{ color: T.textSec }}>Precio/m²: </span>{usd(p.priceM2Min)}–{usd(p.priceM2Max)}</div>
-                          <div><span style={{ color: T.textSec }}>Renta sugerida: </span>{usd(p.rentSuggest)}/mes</div>
-                          <div><span style={{ color: T.textSec }}>Vacancia: </span>{p.vacancyDef}%</div>
-                          <div><span style={{ color: T.textSec }}>Condominio: </span>{usd(p.condominioMes)}/mes</div>
-                          <div><span style={{ color: T.textSec }}>Valorización: </span>{p.appreciationDef}% anual</div>
-                          <div><span style={{ color: T.textSec }}>Renta/m²: </span>${p.rentM2Min}–${p.rentM2Max}</div>
-                        </div>
-                        <div style={{ fontSize: 12, color: T.textSec, marginBottom: 8 }}>{p.appreciationNote}</div>
-                        </>
-                      )}
+                      ) : null}
 
                       {/* ZONE FOOTNOTE */}
                       <div style={{ marginTop: 12, paddingTop: 8, borderTop: `1px solid ${T.borderLight}`, fontSize: 11, color: T.textSec, fontStyle: 'italic', lineHeight: 1.4 }}>
@@ -2998,15 +3329,6 @@ Responde SOLO con JSON sin bloques de código:
                           ).length === 0 && (
                             <div style={{ fontSize: 11, color: T.textSec, fontStyle: 'italic', textAlign: 'center', padding: '6px 0' }}>Sin resultados para "{crmProjSearchQuery}".</div>
                           )}
-                        </div>
-                      </div>
-
-                      <div style={{ marginTop: 12 }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 8 }}>Amenidades</div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                          {p.amenities.map(a => (
-                            <span key={a} style={{ background: T.sand, color: T.text, padding: '4px 10px', borderRadius: 16, fontSize: 11 }}>{a}</span>
-                          ))}
                         </div>
                       </div>
 
@@ -3420,235 +3742,55 @@ Responde SOLO con JSON sin bloques de código:
         {sectionTitle('Dashboard KPIs · Control Comercial')}
         
         {/* Top metric cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginBottom: 24 }}>
-          <div 
-            onClick={() => setActiveDrilldown(activeDrilldown?.type === 'ticket' ? null : { type: 'ticket' })}
-            style={cardStyle({ 
-              textAlign: 'center' as const, 
-              cursor: 'pointer', 
-              border: activeDrilldown?.type === 'ticket' ? `2px solid ${T.teal}` : `1.5px solid ${T.borderLight}`,
-              boxShadow: activeDrilldown?.type === 'ticket' ? '0 4px 10px rgba(0,0,0,0.06)' : 'none',
-              transition: 'all 0.2s'
-            })}
-          >
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}><Icon name="currency" size={28} color={T.teal} /></div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: T.teal }}>
-              {editableValue('ticket', kpiTicketPromedio, setOverrideTicketPromedio, '$')}
+        {(() => {
+          const today = new Date();
+          const startOfYear = new Date(today.getFullYear(), 0, 1);
+          const monthsElapsed = today.getMonth() + 1; // Jan=1 … Dec=12
+          const budgetAccumulado = monthsElapsed * budgetMonthlyRate;
+          const budgetEjecutado = events.filter(e => new Date(e.fecha) <= today).reduce((s, e) => s + (e.presupuesto_ejecutado || 0), 0);
+          const budgetDisponible = Math.max(0, budgetAccumulado - budgetEjecutado);
+          const budgetPct = budgetAccumulado > 0 ? Math.min(100, (budgetEjecutado / budgetAccumulado) * 100) : 0;
+          const ventasTotales = closedSales.reduce((s, v) => s + v.value, 0);
+          const nextEvent = events.filter(e => new Date(e.fecha) > today).sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())[0];
+          const eventosProximos = events.filter(e => new Date(e.fecha) > today).length;
+          const diasNextEvent = nextEvent ? Math.ceil((new Date(nextEvent.fecha).getTime() - today.getTime()) / 86400000) : null;
+          const kpiCard = (type: string, icon: string, value: React.ReactNode, label: string, sub: string, color: string) => (
+            <div onClick={() => setActiveDrilldown(activeDrilldown?.type === type ? null : { type } as any)}
+              style={cardStyle({ textAlign: 'center' as const, cursor: 'pointer', border: activeDrilldown?.type === type ? `2px solid ${color}` : `1.5px solid ${T.borderLight}`, transition: 'all 0.2s' })}>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}><Icon name={icon} size={24} color={color} /></div>
+              <div style={{ fontSize: 20, fontWeight: 700, color, lineHeight: 1.2 }}>{value}</div>
+              <div style={{ fontSize: 11, color: T.textSec, marginTop: 4 }}>{label}</div>
+              <div style={{ fontSize: 10, color, marginTop: 5, fontWeight: 600 }}>{sub}</div>
             </div>
-            <div style={{ fontSize: 12, color: T.textSec, marginTop: 4 }}>Ticket Promedio USD</div>
-            <div style={{ fontSize: 10, color: T.teal, marginTop: 6, fontWeight: 600 }}>Ver Detalle (Drilldown)</div>
-          </div>
-          
-          <div 
-            onClick={() => setActiveDrilldown(activeDrilldown?.type === 'conversion' ? null : { type: 'conversion' })}
-            style={cardStyle({ 
-              textAlign: 'center' as const, 
-              cursor: 'pointer', 
-              border: activeDrilldown?.type === 'conversion' ? `2px solid ${T.palm}` : `1.5px solid ${T.borderLight}`,
-              boxShadow: activeDrilldown?.type === 'conversion' ? '0 4px 10px rgba(0,0,0,0.06)' : 'none',
-              transition: 'all 0.2s'
-            })}
-          >
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}><Icon name="trend-up" size={28} color={T.palm} /></div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: T.palm }}>
-              {editableValue('conversion', kpiConversion, setOverrideConversion, '', '%')}
-            </div>
-            <div style={{ fontSize: 12, color: T.textSec, marginTop: 4 }}>Conversión Global</div>
-            <div style={{ fontSize: 10, color: T.palm, marginTop: 6, fontWeight: 600 }}>Ver Detalle (Objeciones)</div>
-          </div>
-          
-          <div 
-            onClick={() => setActiveDrilldown(activeDrilldown?.type === 'prospects_total' ? null : { type: 'prospects_total' })}
-            style={cardStyle({ 
-              textAlign: 'center' as const, 
-              cursor: 'pointer', 
-              border: activeDrilldown?.type === 'prospects_total' ? `2px solid ${T.sky}` : `1.5px solid ${T.borderLight}`,
-              boxShadow: activeDrilldown?.type === 'prospects_total' ? '0 4px 10px rgba(0,0,0,0.06)' : 'none',
-              transition: 'all 0.2s'
-            })}
-          >
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}><Icon name="users" size={28} color={T.sky} /></div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: T.sky }}>{prospects.length}</div>
-            <div style={{ fontSize: 12, color: T.textSec, marginTop: 4 }}>Prospectos Totales</div>
-            <div style={{ fontSize: 10, color: T.sky, marginTop: 6, fontWeight: 600 }}>Ver Detalle (Drilldown)</div>
-          </div>
-          
-          <div 
-            onClick={() => setActiveDrilldown(activeDrilldown?.type === 'brokers_active' ? null : { type: 'brokers_active' })}
-            style={cardStyle({ 
-              textAlign: 'center' as const, 
-              cursor: 'pointer', 
-              border: activeDrilldown?.type === 'brokers_active' ? `2px solid ${T.coral}` : `1.5px solid ${T.borderLight}`,
-              boxShadow: activeDrilldown?.type === 'brokers_active' ? '0 4px 10px rgba(0,0,0,0.06)' : 'none',
-              transition: 'all 0.2s'
-            })}
-          >
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}><Icon name="handshake" size={28} color={T.coral} /></div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: T.coral }}>{brokers.filter(b => b.estado === 'activo').length}</div>
-            <div style={{ fontSize: 12, color: T.textSec, marginTop: 4 }}>Brokers Activos</div>
-            <div style={{ fontSize: 10, color: T.coral, marginTop: 6, fontWeight: 600 }}>Ver Detalle (Drilldown)</div>
-          </div>
-        </div>
-
-        {/* Presupuesto bar con drilldown */}
-        <div style={{ ...cardStyle(), marginBottom: 24 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Presupuesto: Ejecutado vs Planeado</div>
-            <button
-              onClick={() => setActiveDrilldown(activeDrilldown?.type === 'presupuesto' ? null : { type: 'presupuesto' })}
-              style={{
-                background: activeDrilldown?.type === 'presupuesto' ? T.teal : 'transparent',
-                color: activeDrilldown?.type === 'presupuesto' ? '#fff' : T.teal,
-                border: `1.5px solid ${T.teal}`, borderRadius: 6, padding: '4px 12px',
-                fontSize: 11, fontWeight: 700, cursor: 'pointer',
-              }}
-            >
-              {activeDrilldown?.type === 'presupuesto' ? '▲ Cerrar detalle' : '▼ Ver detalle'}
-            </button>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: 12, color: T.textSec, minWidth: 80 }}>Ejecutado</span>
-            <div style={{ flex: 1, height: 28, background: T.borderLight, borderRadius: 14, overflow: 'hidden', position: 'relative' as const }}>
-              <div style={{ height: '100%', width: `${Math.min(100, (kpiPresupuestoEjecutado / kpiPresupuestoPlaneado) * 100)}%`, background: T.teal, borderRadius: 14, transition: 'width 0.5s' }} />
-              <span style={{ position: 'absolute' as const, left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 12, fontWeight: 700, color: T.card }}>
-                {usd(kpiPresupuestoEjecutado)}
-              </span>
-            </div>
-            <span style={{ fontSize: 12, color: T.textSec, minWidth: 90, textAlign: 'right' as const }}>
-              de {editableValue('presPlaneado', kpiPresupuestoPlaneado, setKpiPresupuestoPlaneado, '$')}
-            </span>
-          </div>
-          <div style={{ textAlign: 'right' as const, fontSize: 11, color: T.textSec, marginTop: 4 }}>
-            {pct((kpiPresupuestoEjecutado / kpiPresupuestoPlaneado) * 100)} ejecutado · Clic en valores para editar
-          </div>
-
-          {/* Drilldown presupuesto por evento */}
-          {activeDrilldown?.type === 'presupuesto' && (
-            <div style={{ marginTop: 16, borderTop: `1px solid ${T.borderLight}`, paddingTop: 16 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 12 }}>Ejecución Presupuestal por Evento</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {events.map(ev => {
-                  const asignado = ev.presupuesto_asignado || 0;
-                  const ejecutado = ev.presupuesto_ejecutado || 0;
-                  const pctExec = asignado > 0 ? Math.min(100, (ejecutado / asignado) * 100) : 0;
-                  const color = pctExec > 90 ? T.coral : pctExec > 60 ? '#D97706' : T.palm;
-                  return (
-                    <div key={ev.id} style={{ padding: '10px 14px', background: T.bg, borderRadius: 10, border: `1px solid ${T.borderLight}` }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                        <div>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: T.text }}>{ev.titulo}</div>
-                          <div style={{ fontSize: 11, color: T.textSec }}>{ev.fecha} · {ev.venue}</div>
-                        </div>
-                        <div style={{ textAlign: 'right' as const }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color }}>{pct(pctExec)} ejecutado</div>
-                          <div style={{ fontSize: 11, color: T.textSec }}>{usd(ejecutado)} / {usd(asignado)}</div>
-                        </div>
-                      </div>
-                      <div style={{ height: 6, background: T.borderLight, borderRadius: 3, overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${pctExec}%`, background: color, borderRadius: 3, transition: 'width 0.4s' }} />
-                      </div>
-                      {ev.items_costo.length > 0 && (
-                        <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                          {ev.items_costo.map((item, ii) => (
-                            <span key={ii} style={{
-                              fontSize: 10, background: `${color}15`, color,
-                              border: `1px solid ${color}30`, borderRadius: 5, padding: '2px 8px', fontWeight: 600,
-                            }}>{item.concepto}: {usd(item.valor)}</span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-                <div style={{ fontSize: 11, color: T.textSec, fontStyle: 'italic', marginTop: 4 }}>
-                  Total ejecutado en eventos: {usd(events.reduce((s, e) => s + (e.presupuesto_ejecutado || 0), 0))} ·
-                  Total asignado: {usd(events.reduce((s, e) => s + (e.presupuesto_asignado || 0), 0))}
+          );
+          return (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
+                {kpiCard('ticket',         'chart-bar',  <>{usd(ventasTotales)}</>,                                                                 'Ventas Totales',     `${closedSales.length} cierres`, T.success)}
+                {kpiCard('ticket',         'currency',   <>{editableValue('ticket', kpiTicketPromedio, setOverrideTicketPromedio, '$')}</>,         'Ticket Promedio',    'Ver Detalle (Drilldown)', T.teal)}
+                {kpiCard('conversion',     'trend-up',   <>{editableValue('conversion', kpiConversion, setOverrideConversion, '', '%')}</>,         'Conversión Global',  'Ver Detalle (Objeciones)', T.palm)}
+                {kpiCard('prospects_total','users',       <>{prospects.length}</>,                                                                   'Prospectos Totales', 'Ver Detalle (Drilldown)', T.sky)}
+                {kpiCard('brokers_active', 'handshake',  <>{brokers.filter(b => b.estado === 'activo').length}</>,                                  'Brokers Activos',    'Ver Detalle (Drilldown)', T.coral)}
+                <div style={cardStyle({ textAlign: 'center' as const })}>
+                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}><Icon name="calendar" size={24} color={T.coral} /></div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: T.coral, lineHeight: 1.2 }}>
+                    {diasNextEvent !== null ? `${diasNextEvent}d` : '—'}
+                  </div>
+                  <div style={{ fontSize: 11, color: T.textSec, marginTop: 4 }}>Próximo Evento</div>
+                  <div style={{ fontSize: 10, color: T.coral, marginTop: 5, fontWeight: 600, lineHeight: 1.3 }}>
+                    {nextEvent ? nextEvent.titulo.slice(0, 22) + (nextEvent.titulo.length > 22 ? '…' : '') : 'Sin eventos'}
+                  </div>
+                </div>
+                <div onClick={() => setActiveModule('eventos')} style={cardStyle({ textAlign: 'center' as const, cursor: 'pointer' })}>
+                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}><Icon name="events" size={24} color={T.palm} /></div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: T.palm, lineHeight: 1.2 }}>{eventosProximos}</div>
+                  <div style={{ fontSize: 11, color: T.textSec, marginTop: 4 }}>Eventos Programados</div>
+                  <div style={{ fontSize: 10, color: T.palm, marginTop: 5, fontWeight: 600 }}>Ver Presupuesto →</div>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          {/* Pipeline Funnel */}
-          <div style={cardStyle()}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 16 }}>Pipeline de Ventas (Clic en filas para ver proyectos/leads)</div>
-            {funnelStages.map((s, i) => {
-              const maxVal = funnelStages[0].value || 1;
-              const widthPct = Math.max(15, (s.value / maxVal) * 100);
-              const isSelected = activeDrilldown?.type === 'funnel' && activeDrilldown?.stage === s.label;
-              return (
-                <div 
-                  key={s.label} 
-                  onClick={() => setActiveDrilldown(isSelected ? null : { type: 'funnel', stage: s.label })}
-                  style={{ 
-                    marginBottom: 10, 
-                    cursor: 'pointer', 
-                    padding: '6px 8px', 
-                    borderRadius: 8, 
-                    border: `1px solid ${isSelected ? s.color : 'transparent'}`,
-                    background: isSelected ? `${s.color}08` : 'transparent',
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
-                    <span style={{ color: T.text, fontWeight: isSelected ? 700 : 500 }}>{s.label}</span>
-                    <span style={{ fontWeight: 700, color: s.color, cursor: 'pointer', borderBottom: `1px dashed ${T.border}` }}
-                      onClick={e => { 
-                        e.stopPropagation(); 
-                        setKpiEditMode(`funnel_${i}`); 
-                      }}>
-                      {kpiEditMode === `funnel_${i}` ? (
-                        <input type="number" autoFocus value={s.value}
-                          onChange={e => s.set(Number(e.target.value))}
-                          onBlur={() => setKpiEditMode(null)}
-                          onKeyDown={e => { if (e.key === 'Enter') setKpiEditMode(null); }}
-                          style={{ ...inputStyle({ width: 50, fontSize: 12, fontWeight: 700, padding: '2px 4px', textAlign: 'center' as const }) }}
-                        />
-                      ) : s.value}
-                    </span>
-                  </div>
-                  <div style={{ height: 24, background: T.borderLight, borderRadius: 12, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${widthPct}%`, background: s.color, borderRadius: 12, transition: 'width 0.4s', display: 'flex', alignItems: 'center', paddingLeft: 8 }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: T.card }}>{s.value}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Leads por fuente */}
-          <div style={cardStyle()}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 16 }}>Leads por Fuente (Clic en filas para ver prospectos)</div>
-            {leadSources.map(s => {
-              const isSelected = activeDrilldown?.type === 'source' && activeDrilldown?.source === s.label;
-              return (
-                <div 
-                  key={s.label} 
-                  onClick={() => setActiveDrilldown(isSelected ? null : { type: 'source', source: s.label })}
-                  style={{ 
-                    marginBottom: 12, 
-                    cursor: 'pointer', 
-                    padding: '6px 8px', 
-                    borderRadius: 8, 
-                    border: `1px solid ${isSelected ? s.color : 'transparent'}`,
-                    background: isSelected ? `${s.color}08` : 'transparent',
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
-                    <span style={{ color: T.text, fontWeight: isSelected ? 700 : 500 }}>{s.label}</span>
-                    <span style={{ fontWeight: 700, color: s.color }}>{s.pct}%</span>
-                  </div>
-                  <div style={{ height: 10, background: T.borderLight, borderRadius: 5, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${s.pct}%`, background: s.color, borderRadius: 5, transition: 'width 0.4s' }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+            </>
+          );
+        })()}
 
         {/* Active Drilldown Container */}
         {activeDrilldown && (
@@ -3664,21 +3806,11 @@ Responde SOLO con JSON sin bloques de código:
                 {activeDrilldown.type === 'camilo_prospects' && '🤖 Prospectos Minados por Camilo'}
                 {activeDrilldown.type === 'sara_history' && '📧 Historial de Correos y Registros de Sara'}
               </h3>
-              <button type="button"
-                onClick={() => setActiveDrilldown(null)} 
-                style={{
-                  background: 'none', border: 'none', color: '#718096',
-                  fontSize: '1.25rem', cursor: 'pointer', padding: '4px',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  transition: 'color 0.2s',
-                }}
+              <button type="button" onClick={() => setActiveDrilldown(null)}
+                style={{ background: 'none', border: 'none', color: '#718096', fontSize: '1.25rem', cursor: 'pointer', padding: '4px' }}
                 onMouseEnter={e => e.currentTarget.style.color = '#FF6B6B'}
-                onMouseLeave={e => e.currentTarget.style.color = '#718096'}
-              >
-                ✕
-              </button>
+                onMouseLeave={e => e.currentTarget.style.color = '#718096'}>✕</button>
             </div>
-            
             {activeDrilldown.type === 'ticket' && renderTicketDrilldown()}
             {activeDrilldown.type === 'conversion' && renderConversionDrilldown()}
             {activeDrilldown.type === 'funnel' && renderFunnelDrilldown(activeDrilldown.stage || '')}
@@ -4098,7 +4230,6 @@ Responde SOLO con JSON sin bloques de código:
         html += `<div class="title-block">
           <div class="report-title">Liquidación de Comisiones</div>
           <div class="report-meta">
-            <div class="meta-item"><div class="meta-label">Entidad</div><div class="meta-value">${brokerEntityFilter === 'all' ? 'Consolidado General — 5% Total' : brokerEntityFilter}</div></div>
             <div class="meta-item"><div class="meta-label">Operaciones</div><div class="meta-value">${dataRows.length} cierres</div></div>
             <div class="meta-item"><div class="meta-label">Período</div><div class="meta-value">Acumulado al ${fecha}</div></div>
           </div>
@@ -5124,7 +5255,7 @@ Responde SOLO con JSON sin bloques de código:
                           );
                         })()}
                         <div style={{ fontWeight: 700, color: T.teal, cursor: 'pointer', fontSize: 13, marginBottom: 4 }}
-                          onClick={() => setProspectDetail(p.id)}>
+                          onClick={() => { setProspectDetail(p.id); setActiveProspect(p); }}>
                           {p.nombre} {p.apellido}
                         </div>
                         <div style={{ fontSize: 11, color: T.textSec, marginBottom: 6 }}>{p.ocupacion}</div>
@@ -5180,7 +5311,7 @@ Responde SOLO con JSON sin bloques de código:
                 {filtered.map(p => (
                   <tr key={p.id} style={{ borderBottom: `1px solid ${T.borderLight}` }}>
                     <td style={{ padding: '10px 12px' }}>
-                      <span style={{ fontWeight: 700, color: T.teal, cursor: 'pointer' }} onClick={() => setProspectDetail(p.id)}>
+                      <span style={{ fontWeight: 700, color: T.teal, cursor: 'pointer' }} onClick={() => { setProspectDetail(p.id); setActiveProspect(p); }}>
                         {p.nombre} {p.apellido}
                       </span>
                     </td>
@@ -5207,8 +5338,8 @@ Responde SOLO con JSON sin bloques de código:
                     <td style={{ padding: '10px 12px', fontSize: 11 }}>{p.forma_contacto}</td>
                     <td style={{ padding: '10px 12px' }}>
                       <div style={{ display: 'flex', gap: 4 }}>
-                        <button onClick={() => setProspectDetail(p.id)} style={btnSecondary({ padding: '3px 8px', fontSize: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' })} title="Ver detalles">{renderButtonIcon('eye', 13)}</button>
-                        <button onClick={() => { setProspectDetail(p.id); setProspectEdit(p.id); }} style={btnSecondary({ padding: '3px 8px', fontSize: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' })} title="Editar">{renderButtonIcon('pencil', 13)}</button>
+                        <button onClick={() => { setProspectDetail(p.id); setActiveProspect(p); }} style={btnSecondary({ padding: '3px 8px', fontSize: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' })} title="Ver detalles">{renderButtonIcon('eye', 13)}</button>
+                        <button onClick={() => { setProspectDetail(p.id); setProspectEdit(p.id); setActiveProspect(p); }} style={btnSecondary({ padding: '3px 8px', fontSize: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' })} title="Editar">{renderButtonIcon('pencil', 13)}</button>
                         {deleteConfirm === p.id ? (
                           <>
                             <button onClick={() => deleteProspect(p.id)} style={btnDanger({ padding: '3px 8px', fontSize: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' })} title="Confirmar">{renderButtonIcon('check', 13)}</button>
@@ -7601,8 +7732,9 @@ Responde SOLO con JSON sin bloques de código:
   // ══════════════════════════════════════════════════════════════
   // MODULE 8: CALCULADORA ROI
   // ══════════════════════════════════════════════════════════════
-  const renderCalculadora = () => {
+  const renderCalculadora = (inModal = false) => {
     const proj = calcProject ? PROJECTS.find(p => p.name === calcProject) : null;
+    const hideGrid = inModal && !!calcProject;
 
     const profileProjects = INVESTOR_PROFILES.find(x => x.id === calcPerfil)?.projects || [];
     const filteredProjects = PROJECTS.filter(pd => {
@@ -7779,8 +7911,8 @@ Responde SOLO con JSON sin bloques de código:
       <div>
         {sectionTitle('Calculadora Inmobiliaria · Análisis de Inversión')}
 
-        {/* Profile chips — barra liviana encima del grid */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+        {/* Profile chips + filtros + grilla — ocultos en modal cuando hay proyecto seleccionado */}
+        {!hideGrid && (<><div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
           <span style={{ fontSize: 12, color: T.textSec, fontWeight: 500 }}>Perfil rápido:</span>
           {INVESTOR_PROFILES.map(p => (
             <div key={p.id}
@@ -7871,7 +8003,17 @@ Responde SOLO con JSON sin bloques de código:
               </div>
             )}
           </div>
-        </div>
+        </div></>)}
+
+        {/* Si hay proyecto seleccionado en modal, mostrar encabezado con opción de cambiarlo */}
+        {hideGrid && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, padding: '8px 12px', background: `${T.teal}10`, borderRadius: 8, border: `1px solid ${T.teal}20` }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: T.teal }}>📊 {calcProject}</div>
+            <button onClick={() => setCalcProject(null)} style={{ fontSize: 11, color: T.coral, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+              ✕ Cambiar proyecto
+            </button>
+          </div>
+        )}
 
         {/* Step 3: Calculator */}
         {calcProject && proj && (
@@ -8335,6 +8477,26 @@ Responde SOLO con JSON sin bloques de código:
 
   useEffect(() => { loadGitHistorial(); }, []);
 
+  // ── Carga de proyectos desde Supabase ──────────────────────
+  const loadProjectsFromDB = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/api/projects', {
+        headers: { 'x-tenant-id': 'tenant-glp-001' }
+      });
+      const data = await res.json();
+      // El endpoint devuelve array directamente o { success, projects }
+      const projects: ProjectData[] = Array.isArray(data) ? data : (data.projects || []);
+      if (projects.length > 0) {
+        setEditableProjects(projects);
+        setCatalogProjects(projects);
+      }
+    } catch {
+      // Si el servidor no responde, mantiene los datos del const PROJECTS
+    }
+  };
+
+  useEffect(() => { loadProjectsFromDB(); }, []);
+
   const handleGitBackup = async () => {
     setGitStatus('loading');
     setGitMsg('');
@@ -8452,7 +8614,6 @@ Responde SOLO con JSON sin bloques de código:
   // ══════════════════════════════════════════════════════════════
   // CATÁLOGO DE PROYECTOS — CARGA Y EDICIÓN
   // ══════════════════════════════════════════════════════════════
-  const [catalogProjects, setCatalogProjects] = useState<ProjectData[]>([...PROJECTS]);
   const [catalogEditIdx, setCatalogEditIdx] = useState<number | null>(null);
   const [catalogFilter, setCatalogFilter] = useState('all');
   const [catalogTab, setCatalogTab] = useState<'tabla' | 'tarjetas'>('tabla');
@@ -8630,31 +8791,28 @@ Responde SOLO con JSON sin bloques de código:
                             <div style={{ fontSize: 10, color: T.textSec, marginBottom: 3 }}>Nota Valorización</div>
                             <textarea defaultValue={p.appreciationNote} onChange={e => { p.appreciationNote = e.target.value; }} style={{ width: '100%', padding: '5px 8px', border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 11, minHeight: 60 }} />
                           </div>
-                          <div>
-                            <div style={{ fontSize: 10, color: T.textSec, marginBottom: 3 }}>Imagen del proyecto</div>
-                            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', background: T.sky, color: '#fff', borderRadius: 6, cursor: 'pointer', fontSize: 11 }}>
-                              📷 Subir imagen
-                              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleImgUpload(realIdx, e)} />
-                            </label>
-                            {p.imagen && <img src={p.imagen} alt="" style={{ marginTop: 6, height: 50, borderRadius: 4, objectFit: 'cover' }} />}
-                          </div>
                         </div>
-                        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                          <button onClick={() => saveEdit(realIdx, p)} style={{ padding: '6px 16px', background: T.teal, color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Guardar</button>
-                          <button onClick={() => setCatalogEditIdx(null)} style={{ padding: '6px 16px', background: T.borderLight, color: T.text, border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>Cancelar</button>
+                        <div style={{ fontSize: 11, color: T.textSec, fontStyle: 'italic' as const, marginTop: 4 }}>
+                          💡 Imagen de portada y galería de fotos disponibles en el panel derecho
+                        </div>
+                        <div style={{ display: 'flex', gap: 10, marginTop: 14, alignItems: 'center' }}>
+                          <button onClick={() => saveEdit(realIdx, p)} style={{ padding: '9px 22px', background: T.teal, color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700, boxShadow: '0 2px 6px rgba(0,26,55,0.2)' }}>Guardar cambios</button>
+                          <button onClick={() => setCatalogEditIdx(null)} style={{ padding: '9px 18px', background: T.coral, color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 2px 6px rgba(0,0,0,0.15)' }}>‹ Volver a proyectos</button>
                         </div>
                       </td>
                     </tr>
                   ) : (
                     <tr key={p.name} style={{ borderBottom: `1px solid ${T.borderLight}`, background: realIdx % 2 === 0 ? T.card : T.bg }}>
                       <td style={{ padding: '8px 12px' }}>
-                        {p.imagen
-                          ? <img src={p.imagen} alt="" style={{ width: 48, height: 36, objectFit: 'cover', borderRadius: 4 }} />
-                          : <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: T.borderLight, borderRadius: 4, cursor: 'pointer', fontSize: 10, color: T.textSec }}>
-                              📷
-                              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleImgUpload(realIdx, e)} />
-                            </label>
-                        }
+                        {(() => {
+                          const src = p.imagen || PROJECT_IMAGES[p.name]?.main;
+                          return src
+                            ? <img src={src} alt="" style={{ width: 48, height: 36, objectFit: 'cover', borderRadius: 4 }} />
+                            : <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: T.borderLight, borderRadius: 4, cursor: 'pointer', fontSize: 10, color: T.textSec }}>
+                                📷
+                                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleImgUpload(realIdx, e)} />
+                              </label>;
+                        })()}
                       </td>
                       <td style={{ padding: '8px 12px', fontWeight: 700, color: T.text, whiteSpace: 'nowrap' }}>{p.name}</td>
                       <td style={{ padding: '8px 12px' }}><span style={{ background: `${catColors[p.category] || T.teal}22`, color: catColors[p.category] || T.teal, padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 600 }}>{p.category}</span></td>
@@ -8839,7 +8997,7 @@ Responde SOLO con JSON sin bloques de código:
       case 'faqs': return renderFAQs();
       case 'calculadora': return renderCalculadora();
       case 'configuracion': return renderConfiguracion();
-      default: return renderPortafolio();
+      default: return renderKPIs();
     }
   };
 
@@ -8848,79 +9006,759 @@ Responde SOLO con JSON sin bloques de código:
   }
 
   // ══════════════════════════════════════════════════════════════
+  // CONTEXTUAL RIGHT PANEL
+  // ══════════════════════════════════════════════════════════════
+  const renderRightPanel = () => {
+    const panelHeader = (label: string, sub?: string) => (
+      <div style={{ background: T.teal, padding: '14px 14px 12px', flexShrink: 0 }}>
+        <div style={{ fontSize: 9, letterSpacing: 2, color: T.coral, fontWeight: 700, textTransform: 'uppercase' as const, marginBottom: sub ? 6 : 0 }}>{label}</div>
+        {sub && <div style={{ fontSize: 12, color: '#fff', fontWeight: 700 }}>{sub}</div>}
+      </div>
+    );
+    const panelEmpty = (icon: string, msg: string, btnLabel?: string, btnAction?: () => void) => (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', padding: 20, gap: 10 }}>
+        <div style={{ fontSize: 28, opacity: 0.2 }}>{icon}</div>
+        <div style={{ fontSize: 11, color: T.textSec, textAlign: 'center' as const, lineHeight: 1.5 }}>{msg}</div>
+        {btnLabel && btnAction && (
+          <button onClick={btnAction} style={{ marginTop: 8, padding: '7px 14px', background: T.teal, color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>{btnLabel}</button>
+        )}
+      </div>
+    );
+
+    // ── CATÁLOGO: foto + galería del proyecto en edición ─────
+    if (activeModule === 'catalogo') {
+      const p = catalogEditIdx !== null ? catalogProjects[catalogEditIdx] : null;
+      if (!p) return (
+        <>
+          {panelHeader('Catálogo · Imágenes')}
+          {panelEmpty('🏢', 'Selecciona Editar en un proyecto para gestionar sus imágenes aquí')}
+        </>
+      );
+      return (
+        <>
+          {panelHeader('Imágenes del Proyecto', p.name)}
+          <div style={{ flex: 1, overflowY: 'auto' as const, padding: '14px 12px', display: 'flex', flexDirection: 'column' as const, gap: 14 }}>
+            {/* Imagen de portada */}
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 8 }}>Imagen de Portada</div>
+              {(p.imagen || PROJECT_IMAGES[p.name]?.main) && (
+                <img src={p.imagen || PROJECT_IMAGES[p.name]?.main} alt="" style={{ width: '100%', height: 140, objectFit: 'cover', borderRadius: 8, marginBottom: 8, border: `1px solid ${T.borderLight}` }} />
+              )}
+              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '9px 0', background: T.sky, color: '#fff', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 600, width: '100%' }}>
+                📷 {p.imagen ? 'Cambiar portada' : 'Subir imagen de portada'}
+                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleImgUpload(catalogEditIdx!, e)} />
+              </label>
+            </div>
+
+            {/* Galería hasta 4 fotos */}
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 8 }}>
+                Galería de Fotos ({(p.galeria || []).length}/4)
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                {(p.galeria || []).slice(0, 4).map((src, gi) => (
+                  <div key={gi} style={{ position: 'relative' as const, height: 90, borderRadius: 7, overflow: 'hidden', border: `1px solid ${T.border}` }}>
+                    <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <button onClick={() => {
+                      const g = [...(p.galeria || [])];
+                      g.splice(gi, 1);
+                      p.galeria = g;
+                      setCatalogProjects([...catalogProjects]);
+                    }} style={{ position: 'absolute' as const, top: 4, right: 4, background: 'rgba(185,28,28,0.9)', border: 'none', color: '#fff', borderRadius: 4, width: 20, height: 20, fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>✕</button>
+                  </div>
+                ))}
+                {(p.galeria || []).length < 4 && (
+                  <label style={{ height: 90, borderRadius: 7, border: `2px dashed ${T.border}`, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 11, color: T.textSec, gap: 4, background: T.bg }}>
+                    <span style={{ fontSize: 22 }}>+</span>
+                    <span>Agregar foto</span>
+                    <input type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={e => {
+                      const files = Array.from(e.target.files || []);
+                      const current = p.galeria || [];
+                      const slots = 4 - current.length;
+                      files.slice(0, slots).forEach(file => {
+                        const reader = new FileReader();
+                        reader.onload = ev => {
+                          p.galeria = [...(p.galeria || []), ev.target?.result as string];
+                          setCatalogProjects([...catalogProjects]);
+                        };
+                        reader.readAsDataURL(file);
+                      });
+                      e.target.value = '';
+                    }} />
+                  </label>
+                )}
+              </div>
+              <div style={{ fontSize: 10, color: T.textSec, fontStyle: 'italic' as const }}>Las fotos de galería aparecen en la ficha del catálogo y en la calculadora.</div>
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    // ── DASHBOARD: Pipeline + Leads ───────────────────────────
+    if (activeModule === 'kpis') {
+      const pFunnelStages = [
+        { label: 'Contacto', value: kpiFunnelContacto, color: T.sky },
+        { label: 'Calificación', value: kpiFunnelCalif, color: T.teal },
+        { label: 'Presentación', value: kpiFunnelPres, color: T.palm },
+        { label: 'Negociación', value: kpiFunnelNeg, color: T.warning },
+        { label: 'Cierre', value: kpiFunnelCierre, color: T.success },
+      ];
+      const totalLeads = prospects.length || 1;
+      const pCountSource = (lbl: string) => prospects.filter(p => {
+        const s = p.forma_contacto.toLowerCase().trim();
+        if (lbl === 'Redes Sociales') return ['redes','linkedin','tiktok','instagram','facebook','redes sociales'].includes(s);
+        if (lbl === 'Web') return s === 'web' || s === 'pagina web';
+        return s.includes(lbl.toLowerCase()) || lbl.toLowerCase().includes(s);
+      }).length;
+      const pLeadSources = [
+        { label: 'Redes Sociales', pct: Math.round((pCountSource('Redes Sociales') / totalLeads) * 100), color: T.sky },
+        { label: 'Referidos',      pct: Math.round((pCountSource('Referidos')      / totalLeads) * 100), color: T.teal },
+        { label: 'Eventos',        pct: Math.round((pCountSource('Eventos')        / totalLeads) * 100), color: T.palm },
+        { label: 'Web',            pct: Math.round((pCountSource('Web')            / totalLeads) * 100), color: T.coral },
+        { label: 'WhatsApp',       pct: Math.round((pCountSource('WhatsApp')       / totalLeads) * 100), color: T.success },
+      ];
+      const today2 = new Date();
+      const monthsElapsed2 = today2.getMonth() + 1;
+      const budgetAcum2 = monthsElapsed2 * budgetMonthlyRate;
+      const budgetExec2 = events.filter(e => new Date(e.fecha) <= today2).reduce((s, e) => s + (e.presupuesto_ejecutado || 0), 0);
+      const budgetDisp2 = Math.max(0, budgetAcum2 - budgetExec2);
+      const budgetPct2 = budgetAcum2 > 0 ? Math.min(100, (budgetExec2 / budgetAcum2) * 100) : 0;
+      return (
+        <>
+          {panelHeader('Pipeline · Leads')}
+          <div style={{ flex: 1, overflowY: 'auto' as const, padding: '12px 12px', display: 'flex', flexDirection: 'column' as const, gap: 16 }}>
+            {/* Pipeline de Ventas */}
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 8 }}>Pipeline de Ventas</div>
+              {pFunnelStages.map(s => {
+                const maxVal = pFunnelStages[0].value || 1;
+                const widthPct = Math.max(12, (s.value / maxVal) * 100);
+                const isSelected = activeDrilldown?.type === 'funnel' && activeDrilldown?.stage === s.label;
+                return (
+                  <div key={s.label} onClick={() => setActiveDrilldown(isSelected ? null : { type: 'funnel', stage: s.label })}
+                    style={{ marginBottom: 8, cursor: 'pointer', padding: '4px 6px', borderRadius: 6, border: `1px solid ${isSelected ? s.color : 'transparent'}`, background: isSelected ? `${s.color}08` : 'transparent' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 3 }}>
+                      <span style={{ color: T.text, fontWeight: isSelected ? 700 : 500 }}>{s.label}</span>
+                      <span style={{ fontWeight: 700, color: s.color }}>{s.value}</span>
+                    </div>
+                    <div style={{ height: 18, background: T.borderLight, borderRadius: 9, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${widthPct}%`, background: s.color, borderRadius: 9, display: 'flex', alignItems: 'center', paddingLeft: 6 }}>
+                        <span style={{ fontSize: 9, fontWeight: 700, color: '#fff' }}>{s.value}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Leads por Fuente */}
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 8 }}>Leads por Fuente</div>
+              {pLeadSources.map(s => {
+                const isSelected = activeDrilldown?.type === 'source' && activeDrilldown?.source === s.label;
+                return (
+                  <div key={s.label} onClick={() => setActiveDrilldown(isSelected ? null : { type: 'source', source: s.label })}
+                    style={{ marginBottom: 8, cursor: 'pointer', padding: '4px 6px', borderRadius: 6, border: `1px solid ${isSelected ? s.color : 'transparent'}`, background: isSelected ? `${s.color}08` : 'transparent' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 3 }}>
+                      <span style={{ color: T.text }}>{s.label}</span>
+                      <span style={{ fontWeight: 700, color: s.color }}>{s.pct}%</span>
+                    </div>
+                    <div style={{ height: 8, background: T.borderLight, borderRadius: 4, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${s.pct}%`, background: s.color, borderRadius: 4 }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Presupuesto de Marketing */}
+            <div style={{ borderTop: `1px solid ${T.borderLight}`, paddingTop: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1 }}>Presupuesto Marketing</div>
+                {kpiEditMode === 'budgetRate' ? (
+                  <input type="number" autoFocus value={budgetMonthlyRate}
+                    onChange={e => setBudgetMonthlyRate(Number(e.target.value))}
+                    onBlur={() => setKpiEditMode(null)}
+                    onKeyDown={e => { if (e.key === 'Enter') setKpiEditMode(null); }}
+                    style={{ width: 72, fontSize: 11, padding: '3px 6px', border: `1px solid ${T.border}`, borderRadius: 5, textAlign: 'center' as const }} />
+                ) : (
+                  <button onClick={() => setKpiEditMode('budgetRate')}
+                    style={{ fontSize: 10, color: T.teal, background: 'none', border: `1px solid ${T.teal}40`, borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontWeight: 600 }}>
+                    Editar tasa
+                  </button>
+                )}
+              </div>
+              <div style={{ fontSize: 10, color: T.textSec, marginBottom: 8 }}>
+                {usd(budgetMonthlyRate)}/mes · {monthsElapsed2} meses → {usd(budgetAcum2)} acumulado
+              </div>
+              <div style={{ marginBottom: 6 }}>
+                <div style={{ fontSize: 10, color: T.textSec, marginBottom: 3 }}>Ejecutado en eventos</div>
+                <div style={{ height: 20, background: T.borderLight, borderRadius: 10, overflow: 'hidden', position: 'relative' as const }}>
+                  <div style={{ height: '100%', width: `${budgetPct2}%`, background: budgetPct2 > 90 ? T.danger : budgetPct2 > 70 ? T.warning : T.success, borderRadius: 10, transition: 'width 0.5s' }} />
+                  <span style={{ position: 'absolute' as const, left: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, fontWeight: 700, color: '#fff' }}>
+                    {usd(budgetExec2)} · {budgetPct2.toFixed(0)}%
+                  </span>
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 10, color: T.textSec }}>Disponible</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: budgetDisp2 > 0 ? T.success : T.danger }}>{usd(budgetDisp2)}</span>
+              </div>
+              <button onClick={() => setShowBudgetDetail(v => !v)}
+                style={{ marginTop: 8, width: '100%', padding: '6px', background: showBudgetDetail ? T.teal : 'transparent', color: showBudgetDetail ? '#fff' : T.teal, border: `1px solid ${T.teal}50`, borderRadius: 5, cursor: 'pointer', fontSize: 10, fontWeight: 700 }}>
+                {showBudgetDetail ? '▲ Cerrar detalle' : '▼ Ver detalle por evento'}
+              </button>
+              {showBudgetDetail && (
+                <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+                  {events.map(ev => {
+                    const asignado = ev.presupuesto_asignado || 0;
+                    const ejecutado = ev.presupuesto_ejecutado || 0;
+                    const pctExec = asignado > 0 ? Math.min(100, (ejecutado / asignado) * 100) : 0;
+                    const col = pctExec > 90 ? T.coral : pctExec > 60 ? T.warning : T.palm;
+                    return (
+                      <div key={ev.id} style={{ padding: '8px 10px', background: T.bg, borderRadius: 8, border: `1px solid ${T.borderLight}` }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: T.text, marginBottom: 2 }}>{ev.titulo}</div>
+                        <div style={{ fontSize: 10, color: T.textSec, marginBottom: 5 }}>{ev.fecha}</div>
+                        <div style={{ height: 6, background: T.borderLight, borderRadius: 3, overflow: 'hidden', marginBottom: 4 }}>
+                          <div style={{ height: '100%', width: `${pctExec}%`, background: col, borderRadius: 3 }} />
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10 }}>
+                          <span style={{ color: col, fontWeight: 700 }}>{pctExec.toFixed(0)}%</span>
+                          <span style={{ color: T.textSec }}>{usd(ejecutado)} / {usd(asignado)}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {events.length === 0 && <div style={{ fontSize: 11, color: T.textSec, fontStyle: 'italic' as const }}>Sin eventos registrados</div>}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    // ── BROKERS: métricas del broker seleccionado ─────────────
+    if (activeModule === 'brokers') {
+      const drillB = brokerDrilldown ? brokers.find(b => b.id === brokerDrilldown) : null;
+      if (!drillB) return (
+        <>
+          {panelHeader('Desempeño Broker')}
+          {panelEmpty('🤝', 'Selecciona un broker en la tabla para ver sus métricas aquí')}
+        </>
+      );
+      const bClosed = closedSales.filter(s => s.broker === drillB.nombre);
+      const bLost   = lostSales.filter(l => l.broker === drillB.nombre);
+      const totalDeals = bClosed.length + bLost.length;
+      const closeRate  = totalDeals > 0 ? (bClosed.length / totalDeals) * 100 : 0;
+      const comEarned  = bClosed.reduce((sum, s) => sum + s.value * 0.02, 0);
+      const totalVentasBroker = bClosed.reduce((sum, s) => sum + s.value, 0);
+      const activeBrokerProspects = prospects.filter(p => p.broker_asignado === drillB.nombre && p.estado !== 'Cierre' && p.estado !== 'Post-venta');
+      const kpiCard = (label: string, val: string, color: string) => (
+        <div style={{ background: T.bg, padding: '8px 10px', borderRadius: 6, border: `1px solid ${T.borderLight}`, textAlign: 'center' as const }}>
+          <div style={{ fontSize: 9, color: T.textSec, marginBottom: 3 }}>{label}</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color }}>{val}</div>
+        </div>
+      );
+      return (
+        <>
+          <div style={{ background: T.teal, padding: '14px 14px 12px', flexShrink: 0 }}>
+            <div style={{ fontSize: 9, letterSpacing: 2, color: T.coral, fontWeight: 700, textTransform: 'uppercase' as const, marginBottom: 5 }}>Desempeño Broker</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', lineHeight: 1.3 }}>{drillB.nombre}</div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', marginTop: 2 }}>{drillB.empresa}</div>
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto' as const, padding: '12px 12px', display: 'flex', flexDirection: 'column' as const, gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {kpiCard('Tasa Cierre', totalDeals > 0 ? `${closeRate.toFixed(1)}%` : 'N/A', T.palm)}
+              {kpiCard('Comisiones', usd(comEarned), T.teal)}
+              {kpiCard('Cerrados', `${bClosed.length}`, T.success)}
+              {kpiCard('Caídos', `${bLost.length}`, T.danger)}
+            </div>
+            <div style={{ background: T.bg, padding: '8px 10px', borderRadius: 6, border: `1px solid ${T.borderLight}`, textAlign: 'center' as const }}>
+              <div style={{ fontSize: 9, color: T.textSec, marginBottom: 3 }}>Vol. Total Ventas</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: T.teal }}>{usd(totalVentasBroker)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 6 }}>
+                Prospectos activos ({activeBrokerProspects.length})
+              </div>
+              {activeBrokerProspects.length === 0 ? (
+                <div style={{ fontSize: 11, color: T.textSec, fontStyle: 'italic' }}>Sin prospectos activos</div>
+              ) : activeBrokerProspects.slice(0, 8).map(p => (
+                <div key={p.id} style={{ padding: '6px 0', borderBottom: `1px dashed ${T.borderLight}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <button onClick={() => { setActiveModule('prospectos'); setProspectDetail(p.id); }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, color: T.sky, fontSize: 11, padding: 0, textAlign: 'left' as const }}>
+                    {p.nombre} {p.apellido}
+                  </button>
+                  <span style={{ fontSize: 10, background: `${T.coral}20`, color: T.coral, padding: '2px 6px', borderRadius: 3, fontWeight: 700, flexShrink: 0 }}>{p.estado}</span>
+                </div>
+              ))}
+            </div>
+            {bClosed.length > 0 && (
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 6 }}>
+                  Cierres ({bClosed.length})
+                </div>
+                {bClosed.map(s => (
+                  <div key={s.id} style={{ padding: '5px 0', borderBottom: `1px dashed ${T.borderLight}`, fontSize: 11 }}>
+                    <div style={{ fontWeight: 600, color: T.text }}>{s.prospect}</div>
+                    <div style={{ color: T.textSec, marginTop: 2 }}>{s.project} · <span style={{ color: T.success, fontWeight: 700 }}>{usd(s.value)}</span></div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {bLost.length > 0 && (
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 6 }}>
+                  Caídos ({bLost.length})
+                </div>
+                {bLost.map(s => (
+                  <div key={s.id} style={{ padding: '5px 0', borderBottom: `1px dashed ${T.borderLight}`, fontSize: 11 }}>
+                    <div style={{ fontWeight: 600, color: T.text }}>{s.prospect}</div>
+                    <div style={{ color: T.danger, marginTop: 2, fontSize: 10 }}>⚠️ {s.reason}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button onClick={() => setBrokerDrilldown(null)}
+              style={{ marginTop: 'auto' as const, padding: '7px', background: 'transparent', color: T.textSec, border: `1px solid ${T.borderLight}`, borderRadius: 6, cursor: 'pointer', fontSize: 10 }}>
+              Deseleccionar broker
+            </button>
+          </div>
+        </>
+      );
+    }
+
+    // ── PORTAFOLIO: ficha del proyecto seleccionado ───────────
+    if (activeModule === 'portafolio') {
+      const selProj = expandedProject ? editableProjects.find(p => p.name === expandedProject) : null;
+
+      if (selProj) {
+        const isInterest = activeProspect?.proyectos_interes?.includes(selProj.name);
+        const row = (label: string, val: string) => (
+          <div key={label} style={{ display: 'flex', flexDirection: 'column' as const, gap: 2 }}>
+            <span style={{ fontSize: 9, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1 }}>{label}</span>
+            <span style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{val}</span>
+          </div>
+        );
+        return (
+          <>
+            <div style={{ background: T.teal, padding: '12px 14px', flexShrink: 0 }}>
+              <div style={{ fontSize: 9, letterSpacing: 2, color: T.coral, fontWeight: 700, textTransform: 'uppercase' as const, marginBottom: 5 }}>Proyecto Seleccionado</div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: '#fff', lineHeight: 1.3 }}>{selProj.name}</div>
+              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', marginTop: 2 }}>{selProj.category}</div>
+              {isInterest && (
+                <div style={{ marginTop: 5, fontSize: 9, background: `${T.coral}30`, color: T.coral, padding: '2px 8px', borderRadius: 3, fontWeight: 700, display: 'inline-block' }}>
+                  ★ Interés de {activeProspect?.nombre?.split(' ')[0]}
+                </div>
+              )}
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto' as const, padding: '12px 14px', display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                {row('Zona', selProj.zoneShort || selProj.zone)}
+                {row('Tipo', selProj.tipo)}
+                {row('Entrega', selProj.entrega)}
+                {row('Precio/m²', `${usd(selProj.priceM2Min)}–${usd(selProj.priceM2Max)}`)}
+                {row('Precio total', `${usd(selProj.minPrice)}–${usd(selProj.maxPrice)}`)}
+                {row('Área', `${selProj.areaMin}–${selProj.areaMax} m²`)}
+                {row('Habitaciones', selProj.bedrooms)}
+                {row('Renta sugerida', `${usd(selProj.rentSuggest)}/mes`)}
+                {row('Condominio', `${usd(selProj.condominioMes)}/mes`)}
+                {row('Vacancia', `${selProj.vacancyDef}%`)}
+                {row('Cap Rate', `${selProj.capRateMin}–${selProj.capRateMax}%`)}
+                {row('Valorización', `${selProj.appreciationDef}% anual`)}
+              </div>
+              {selProj.appreciationNote && (
+                <div style={{ fontSize: 11, color: T.textSec, lineHeight: 1.5, background: T.bg, padding: '8px 10px', borderRadius: 6, borderLeft: `3px solid ${T.coral}`, marginTop: 4 }}>
+                  {selProj.appreciationNote}
+                </div>
+              )}
+              {selProj.amenities && selProj.amenities.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 9, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 5 }}>Amenidades</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4 }}>
+                    {selProj.amenities.map(a => (
+                      <span key={a} style={{ fontSize: 10, background: `${T.teal}10`, color: T.teal, padding: '2px 7px', borderRadius: 4, fontWeight: 500 }}>{a}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 6, paddingTop: 8, borderTop: `1px solid ${T.borderLight}`, marginTop: 4 }}>
+                <button onClick={() => { selectCalcProject(selProj.name); setPreviousModule('portafolio'); setCalcDrawerOpen(true); }}
+                  style={{ padding: '8px', background: T.coral, color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>
+                  Calcular rentabilidad →
+                </button>
+                <button onClick={() => setExpandedProject(null)}
+                  style={{ padding: '6px', background: 'transparent', color: T.textSec, border: `1px solid ${T.borderLight}`, borderRadius: 6, cursor: 'pointer', fontSize: 10 }}>
+                  ‹ Volver a la grilla
+                </button>
+              </div>
+            </div>
+          </>
+        );
+      }
+
+      // Sin proyecto seleccionado → mostrar prospecto activo
+      if (!activeProspect) return (
+        <>
+          {panelHeader('Portafolio GLP')}
+          {panelEmpty('🏢', 'Selecciona un proyecto para ver su ficha, o un prospecto para filtrar por interés', 'Ir a Prospectos', () => setActiveModule('prospectos'))}
+        </>
+      );
+      return (
+        <>
+          <div style={{ background: T.teal, padding: '14px 14px 12px', flexShrink: 0 }}>
+            <div style={{ fontSize: 9, letterSpacing: 2, color: T.coral, fontWeight: 700, textTransform: 'uppercase' as const, marginBottom: 6 }}>Prospecto Activo</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 30, height: 30, borderRadius: '50%', background: `${T.coral}30`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: T.coral, flexShrink: 0 }}>
+                {activeProspect.nombre[0]}{activeProspect.apellido[0]}
+              </div>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>{activeProspect.nombre} {activeProspect.apellido}</div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)' }}>{usd(activeProspect.presupuesto_usd)} · {activeProspect.estado}</div>
+              </div>
+            </div>
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto' as const, padding: '12px 12px', display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1 }}>
+              Proyectos de interés ({activeProspect.proyectos_interes.length})
+            </div>
+            {activeProspect.proyectos_interes.length === 0
+              ? <div style={{ fontSize: 11, color: T.textSec, fontStyle: 'italic' }}>Sin proyectos asignados</div>
+              : activeProspect.proyectos_interes.map(pi => (
+                <div key={pi} style={{ background: `${T.teal}08`, border: `1px solid ${T.teal}20`, borderRadius: 6, padding: '8px 10px' }}>
+                  <div style={{ fontWeight: 700, color: T.teal, fontSize: 11, marginBottom: 6 }}>{pi}</div>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button onClick={() => setExpandedProject(pi)}
+                      style={{ flex: 1, padding: '4px', background: `${T.teal}15`, color: T.teal, border: `1px solid ${T.teal}30`, borderRadius: 4, cursor: 'pointer', fontSize: 10, fontWeight: 700 }}>
+                      Ver ficha
+                    </button>
+                    <button onClick={() => { selectCalcProject(pi); setPreviousModule('portafolio'); setCalcDrawerOpen(true); }}
+                      style={{ flex: 1, padding: '4px', background: T.coral, color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 10, fontWeight: 700 }}>
+                      Calcular →
+                    </button>
+                  </div>
+                </div>
+              ))
+            }
+            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column' as const, gap: 6, paddingTop: 8, borderTop: `1px solid ${T.borderLight}` }}>
+              <button onClick={() => { setActiveModule('prospectos'); setProspectDetail(activeProspect.id); }}
+                style={{ padding: '7px', background: T.teal, color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>
+                Ver ficha completa
+              </button>
+              <button onClick={() => setActiveProspect(null)}
+                style={{ padding: '6px', background: 'transparent', color: T.textSec, border: `1px solid ${T.borderLight}`, borderRadius: 6, cursor: 'pointer', fontSize: 10 }}>
+                Deseleccionar
+              </button>
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    // ── CALCULADORA: resumen del análisis activo ──────────────
+    if (activeModule === 'calculadora') {
+      const proj = calcProject ? editableProjects.find(p => p.name === calcProject) : null;
+      const rentaMensual = calcRentaM2 * calcArea;
+      const noi = rentaMensual * 12 - (proj?.condominioMes || 0) * 12;
+      const capRate = calcPrecio > 0 ? (noi / calcPrecio) * 100 : 0;
+      return (
+        <>
+          {panelHeader('Análisis Activo')}
+          <div style={{ flex: 1, overflowY: 'auto' as const, padding: '12px 12px', display: 'flex', flexDirection: 'column' as const, gap: 12 }}>
+            {!calcProject
+              ? panelEmpty('🔢', 'Selecciona un proyecto en la Calculadora para ver el resumen aquí')
+              : (
+                <>
+                  <div>
+                    <div style={{ fontSize: 9, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 3 }}>Proyecto</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: T.teal }}>{calcProject}</div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    {[
+                      { label: 'Precio',        val: usd(calcPrecio),          color: T.teal },
+                      { label: 'Área',           val: `${calcArea} m²`,         color: T.teal },
+                      { label: 'Cap Rate Neto',  val: `${capRate.toFixed(1)}%`, color: T.palm },
+                      { label: 'Renta/mes',      val: usd(rentaMensual),        color: T.success },
+                    ].map(item => (
+                      <div key={item.label} style={{ background: T.bg, padding: '8px 10px', borderRadius: 6, border: `1px solid ${T.borderLight}` }}>
+                        <div style={{ fontSize: 9, color: T.textSec, marginBottom: 2 }}>{item.label}</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: item.color }}>{item.val}</div>
+                      </div>
+                    ))}
+                    <div style={{ background: T.bg, padding: '8px 10px', borderRadius: 6, border: `1px solid ${T.borderLight}`, gridColumn: '1 / -1' }}>
+                      <div style={{ fontSize: 9, color: T.textSec, marginBottom: 2 }}>Valorización anual</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: T.coral }}>{calcValorizacion}%</div>
+                    </div>
+                  </div>
+                  {activeProspect && (
+                    <div style={{ fontSize: 11, background: `${T.teal}08`, padding: '6px 8px', borderRadius: 5, borderLeft: `2px solid ${T.coral}`, color: T.textSec }}>
+                      Prospecto: <strong style={{ color: T.teal }}>{activeProspect.nombre} {activeProspect.apellido}</strong>
+                    </div>
+                  )}
+                </>
+              )
+            }
+          </div>
+        </>
+      );
+    }
+
+    // ── AGENTES IA: estado de agentes ────────────────────────
+    if (activeModule === 'agentes') {
+      return (
+        <>
+          {panelHeader('Agentes IA', 'Sara · Camilo · Max')}
+          <div style={{ flex: 1, overflowY: 'auto' as const, padding: '12px 12px', display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
+            {activeProspect && (
+              <div style={{ background: `${T.teal}08`, border: `1px solid ${T.teal}20`, borderRadius: 6, padding: '8px 10px', fontSize: 11 }}>
+                <div style={{ fontSize: 9, color: T.textSec, marginBottom: 3, textTransform: 'uppercase' as const, letterSpacing: 1 }}>Prospecto activo</div>
+                <div style={{ fontWeight: 700, color: T.teal }}>{activeProspect.nombre} {activeProspect.apellido}</div>
+                <div style={{ color: T.textSec, marginTop: 2 }}>{activeProspect.estado} · {usd(activeProspect.presupuesto_usd)}</div>
+              </div>
+            )}
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1 }}>Estado de agentes</div>
+            {[
+              { name: 'Sara',   desc: 'Correos y seguimiento',    status: 'Activa', color: T.success },
+              { name: 'Camilo', desc: 'Minería de prospectos',    status: 'Activo', color: T.success },
+              { name: 'Max',    desc: 'Análisis de objeciones',   status: 'Activo', color: T.success },
+            ].map(a => (
+              <div key={a.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', background: T.bg, borderRadius: 6, border: `1px solid ${T.borderLight}` }}>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: T.text }}>{a.name}</div>
+                  <div style={{ fontSize: 10, color: T.textSec }}>{a.desc}</div>
+                </div>
+                <span style={{ fontSize: 9, background: `${a.color}20`, color: a.color, padding: '2px 6px', borderRadius: 3, fontWeight: 700 }}>● {a.status}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      );
+    }
+
+    // ── DEFAULT: prospecto activo (prospectos, eventos, faqs, config, catálogo) ──
+    return (
+      <>
+        <div style={{ background: T.teal, padding: '14px 14px 12px', flexShrink: 0 }}>
+          <div style={{ fontSize: 9, letterSpacing: 2, color: T.coral, fontWeight: 700, textTransform: 'uppercase' as const, marginBottom: 6 }}>Prospecto Activo</div>
+          {activeProspect ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+              <div style={{ width: 32, height: 32, borderRadius: '50%', background: `${T.coral}30`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: T.coral, flexShrink: 0 }}>
+                {activeProspect.nombre[0]}{activeProspect.apellido[0]}
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', lineHeight: 1.2 }}>{activeProspect.nombre} {activeProspect.apellido}</div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', marginTop: 1 }}>{activeProspect.ocupacion}</div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', fontStyle: 'italic' }}>Ninguno seleccionado</div>
+          )}
+        </div>
+        {activeProspect ? (
+          <div style={{ flex: 1, overflowY: 'auto' as const, padding: '12px 14px', display: 'flex', flexDirection: 'column' as const, gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 9, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 4 }}>Etapa</div>
+              <span style={{ background: `${T.coral}20`, color: T.coral, fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 4 }}>{activeProspect.estado}</span>
+            </div>
+            <div>
+              <div style={{ fontSize: 9, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 3 }}>Presupuesto</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: T.teal }}>{usd(activeProspect.presupuesto_usd)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 9, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 5 }}>Proyectos de interés</div>
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 4 }}>
+                {activeProspect.proyectos_interes.length > 0 ? activeProspect.proyectos_interes.map(pi => (
+                  <span key={pi} style={{ fontSize: 11, background: `${T.teal}10`, color: T.teal, padding: '3px 8px', borderRadius: 4, fontWeight: 500 }}>
+                    {pi.length > 22 ? pi.slice(0, 20) + '…' : pi}
+                  </span>
+                )) : <span style={{ fontSize: 11, color: T.textSec, fontStyle: 'italic' }}>Sin proyectos asignados</span>}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 9, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 3 }}>Broker</div>
+              <div style={{ fontSize: 12, color: T.text }}>{activeProspect.broker_asignado || '—'}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 9, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 3 }}>Contacto</div>
+              <div style={{ fontSize: 11, color: T.textSec }}>{activeProspect.correo}</div>
+              <div style={{ fontSize: 11, color: T.textSec, marginTop: 2 }}>{activeProspect.telefono}</div>
+            </div>
+            {activeProspect.notas && (
+              <div>
+                <div style={{ fontSize: 9, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 4 }}>Última nota</div>
+                <div style={{ fontSize: 11, color: T.textSec, lineHeight: 1.5, background: T.bg, padding: '6px 8px', borderLeft: `2px solid ${T.coral}` }}>
+                  "{activeProspect.notas.slice(0, 100)}{activeProspect.notas.length > 100 ? '…' : ''}"
+                </div>
+              </div>
+            )}
+            <div style={{ marginTop: 'auto' as const, display: 'flex', flexDirection: 'column' as const, gap: 6, paddingTop: 8, borderTop: `1px solid ${T.borderLight}` }}>
+              <button onClick={() => { setActiveModule('prospectos'); setProspectDetail(activeProspect.id); }}
+                style={{ width: '100%', padding: '8px', background: T.teal, color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>
+                Ver ficha completa
+              </button>
+              <button onClick={() => setActiveModule('portafolio')}
+                style={{ width: '100%', padding: '8px', background: `${T.coral}15`, color: T.coral, border: `1px solid ${T.coral}40`, borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>
+                Ver proyectos →
+              </button>
+              <button onClick={() => setActiveProspect(null)}
+                style={{ width: '100%', padding: '6px', background: 'transparent', color: T.textSec, border: `1px solid ${T.borderLight}`, borderRadius: 6, cursor: 'pointer', fontSize: 10 }}>
+                Deseleccionar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', padding: 20, gap: 10 }}>
+            <div style={{ fontSize: 28, opacity: 0.2 }}>👤</div>
+            <div style={{ fontSize: 11, color: T.textSec, textAlign: 'center' as const, lineHeight: 1.5 }}>
+              Selecciona un prospecto para ver su información aquí
+            </div>
+            <button onClick={() => setActiveModule('prospectos')} style={{ marginTop: 8, padding: '7px 14px', background: T.teal, color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
+              Ir a Prospectos
+            </button>
+          </div>
+        )}
+      </>
+    );
+  };
+
+  // ══════════════════════════════════════════════════════════════
   // MAIN LAYOUT
   // ══════════════════════════════════════════════════════════════
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: T.bg, fontFamily: 'Inter, sans-serif', color: T.text }}>
       {/* LEFT SIDEBAR */}
       <div style={{
-        width: 220, minHeight: '100vh', background: T.card, borderRight: `1px solid ${T.borderLight}`,
-        boxShadow: '2px 0 8px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column' as const,
+        width: 210, minHeight: '100vh', background: T.teal, borderRight: `1px solid ${T.tealDark}`,
+        display: 'flex', flexDirection: 'column' as const,
         position: 'fixed' as const, top: 0, left: 0, zIndex: 10,
       }}>
-        <div style={{ padding: '20px 16px 12px', borderBottom: `1px solid ${T.borderLight}` }}>
-          <div style={{ fontSize: 18, fontWeight: 800, color: T.teal }}>GLP</div>
-          <div style={{ fontSize: 11, color: T.textSec }}>Control Comercial</div>
+        {/* Logo */}
+        <div style={{ padding: '18px 16px 14px', borderBottom: `1px solid rgba(255,255,255,0.1)` }}>
+          <div style={{ fontSize: 20, fontWeight: 800, color: T.coral, letterSpacing: 1 }}>GLP</div>
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', letterSpacing: 2, textTransform: 'uppercase' as const }}>Control Comercial</div>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflowY: 'auto' }}>
-          {MODULES.map(m => (
+        {/* Primary nav */}
+        <div style={{ display: 'flex', flexDirection: 'column', padding: '8px 0' }}>
+          {MODULES_PRIMARY.map(m => (
             <button key={m.id} onClick={() => setActiveModule(m.id)} style={sidebarBtn(m.id)}>
-              {renderSidebarIcon(m.id, activeModule === m.id ? T.card : T.teal)}
+              {renderSidebarIcon(m.id, activeModule === m.id ? T.teal : T.coral)}
               <span>{m.label}</span>
             </button>
           ))}
         </div>
+        {/* Secondary nav */}
+        <div style={{ borderTop: `1px solid rgba(255,255,255,0.08)`, padding: '8px 0', marginTop: 4 }}>
+          <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', letterSpacing: 2, textTransform: 'uppercase' as const, padding: '4px 16px 6px' }}>Más</div>
+          {MODULES_SECONDARY.map(m => (
+            <button key={m.id} onClick={() => setActiveModule(m.id)} style={{ ...sidebarBtn(m.id), opacity: activeModule === m.id ? 1 : 0.65 }}>
+              {renderSidebarIcon(m.id, activeModule === m.id ? T.teal : 'rgba(255,255,255,0.7)')}
+              <span style={{ fontSize: 12 }}>{m.label}</span>
+            </button>
+          ))}
+        </div>
+        {/* Logout */}
         <button
-          onClick={() => {
-            if (confirm('¿Desea cerrar la sesión?')) {
-              sessionStorage.removeItem('glp_crm_logged_user');
-              setCurrentUser(null);
-            }
-          }}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 10, width: '100%',
-            padding: '12px 16px', border: 'none', background: 'transparent',
-            color: '#E02424', fontSize: '0.88rem', fontWeight: 600,
-            cursor: 'pointer', borderTop: `1px solid ${T.borderLight}`,
-            transition: 'background 0.2s', marginTop: 'auto'
-          }}
-          onMouseEnter={e => e.currentTarget.style.background = '#FDE8E8'}
+          onClick={() => { if (confirm('¿Desea cerrar la sesión?')) { sessionStorage.removeItem('glp_crm_logged_user'); setCurrentUser(null); } }}
+          style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '12px 16px', border: 'none', background: 'transparent', color: 'rgba(255,80,80,0.85)', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', borderTop: `1px solid rgba(255,255,255,0.08)`, marginTop: 'auto' }}
+          onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,50,50,0.1)'}
           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
         >
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Icon name="lock" size={14} color="#E02424" /> Cerrar Sesión</span>
+          <Icon name="lock" size={13} color="rgba(255,80,80,0.85)" /> Cerrar Sesión
         </button>
-        <div style={{ padding: '12px 16px', borderTop: `1px solid ${T.borderLight}`, fontSize: 10, color: T.textSec }}>
+        <div style={{ padding: '10px 16px', borderTop: `1px solid rgba(255,255,255,0.07)`, fontSize: 9, color: 'rgba(255,255,255,0.25)', letterSpacing: 1 }}>
           GLP CRM v1.0 · 2026
         </div>
       </div>
 
       {/* MAIN AREA */}
-      <div style={{ flex: 1, marginLeft: 220, display: 'flex', flexDirection: 'column' as const }}>
+      <div style={{ flex: 1, marginLeft: 210, marginRight: 280, display: 'flex', flexDirection: 'column' as const }}>
         {/* TOP HEADER */}
-        <div style={{
-          background: T.teal,
-          padding: '10px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          position: 'sticky' as const, top: 0, zIndex: 5,
-        }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: T.card }}>
-            GLP CRM · Control Comercial
+        <div style={{ background: T.teal, padding: '10px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky' as const, top: 0, zIndex: 5, borderBottom: `1px solid rgba(255,255,255,0.1)` }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', letterSpacing: 0.3 }}>
+            {MODULES.find(m => m.id === activeModule)?.label || 'GLP CRM'}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)', padding: '4px 12px', borderRadius: 20 }}>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#10B981', display: 'inline-block', boxShadow: '0 0 6px #10B981' }} />
-              <span style={{ fontSize: 12, fontWeight: 600, color: T.card }}>IA Activa</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', padding: '3px 10px', borderRadius: 20 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981', display: 'inline-block' }} />
+              <span style={{ fontSize: 11, fontWeight: 600, color: '#fff' }}>IA Activa</span>
             </div>
-            <a href="/" style={{ fontSize: 13, color: T.card, textDecoration: 'none', fontWeight: 600, opacity: 0.9 }}>
-              Volver a Landing →
-            </a>
+            <a href="/" style={{ fontSize: 12, color: T.coral, textDecoration: 'none', fontWeight: 600 }}>← Landing</a>
           </div>
         </div>
-
         {/* CONTENT */}
-        <div style={{ padding: '24px 32px', overflowY: 'auto' as const, flex: 1 }}>
+        <div style={{ padding: '24px 28px', overflowY: 'auto' as const, flex: 1 }}>
           {renderModule()}
         </div>
       </div>
+
+      {/* RIGHT PANEL — Contextual */}
+      <div style={{ width: 280, position: 'fixed' as const, top: 0, right: 0, bottom: 0, zIndex: 9, background: '#fff', borderLeft: `1px solid ${T.borderLight}`, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' }}>
+        {renderRightPanel()}
+      </div>
+
+      {/* FLOATING CALCULATOR BUTTON */}
+      {!calcDrawerOpen && activeModule !== 'calculadora' && (
+        <button
+          onClick={() => {
+            setPreviousModule(activeModule);
+            setCalcDrawerOpen(true);
+            const preselect = expandedProject || activeProspect?.proyectos_interes?.[0] || null;
+            if (preselect) selectCalcProject(preselect);
+            else setCalcProject(null);
+          }}
+          style={{ position: 'fixed' as const, bottom: 24, right: 292, zIndex: 50, background: T.coral, color: '#fff', border: 'none', borderRadius: 12, padding: '12px 18px', fontSize: 13, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, boxShadow: '0 4px 14px rgba(0,26,55,0.25)' }}
+        >
+          <Icon name="calculator" size={16} color="#fff" /> Calculadora
+        </button>
+      )}
+
+      {/* CALCULATOR MODAL */}
+      {calcDrawerOpen && (() => {
+        const closeCalc = () => { setCalcDrawerOpen(false); setCalcModalExpanded(false); if (previousModule) { setActiveModule(previousModule); setPreviousModule(null); } };
+        const modalW = calcModalExpanded ? '98vw' : '900px';
+        const modalH = calcModalExpanded ? '98vh' : '88vh';
+        return (
+          <div
+            onClick={closeCalc}
+            style={{ position: 'fixed' as const, inset: 0, zIndex: 200, background: 'rgba(0,26,55,0.6)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{ width: modalW, height: modalH, maxWidth: '99vw', maxHeight: '99vh', background: T.bg, borderRadius: calcModalExpanded ? 0 : 14, boxShadow: '0 24px 64px rgba(0,26,55,0.45)', border: `2px solid ${T.coral}`, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden', transition: 'width 0.25s, height 0.25s, border-radius 0.25s' }}
+            >
+              {/* Modal header */}
+              <div style={{ background: T.teal, padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: T.coral, letterSpacing: 0.5 }}>Calculadora Inmobiliaria</div>
+                  {activeProspect && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', marginTop: 2 }}>Prospecto: {activeProspect.nombre} {activeProspect.apellido}</div>}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {/* Expand/collapse toggle */}
+                  <button
+                    onClick={() => setCalcModalExpanded(x => !x)}
+                    title={calcModalExpanded ? 'Reducir' : 'Ampliar'}
+                    style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: 6, width: 32, height: 32, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    {calcModalExpanded ? '⊡' : '⊞'}
+                  </button>
+                  {/* Close */}
+                  <button
+                    onClick={closeCalc}
+                    title="Cerrar calculadora"
+                    style={{ background: `${T.coral}30`, border: `1px solid ${T.coral}60`, color: '#fff', borderRadius: 6, width: 32, height: 32, cursor: 'pointer', fontSize: 18, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  >✕</button>
+                </div>
+              </div>
+              {/* Modal body */}
+              <div style={{ overflowY: 'auto' as const, flex: 1, padding: '0 4px' }}>
+                {renderCalculadora(true)}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {crmLightboxImg && (
         <div

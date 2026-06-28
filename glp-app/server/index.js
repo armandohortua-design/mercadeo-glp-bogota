@@ -235,8 +235,11 @@ app.get('/api/drafts', async (req, res) => {
 app.get('/api/projects', async (req, res) => {
   try {
     const tenant = await resolveTenant(req);
-    const { rows } = await pool.query('SELECT data FROM projects WHERE tenant_id = $1', [tenant.id]);
-    res.json(rows.map(r => r.data));
+    const { rows } = await pool.query(
+      "SELECT id, data, imagen_url FROM projects WHERE tenant_id = $1 ORDER BY data->>'category', data->>'name'",
+      [tenant.id]
+    );
+    res.json(rows.map(r => ({ id: r.id, ...r.data, imagen: r.imagen_url || r.data?.imagen })));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -956,6 +959,61 @@ app.get('/api/backup/historial', (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+// ==========================================
+// PROJECTS — endpoints adicionales (GET /:id y PUT /:id)
+// El GET /api/projects ya existe arriba (línea ~235)
+// ==========================================
+
+// GET /api/projects/:id
+app.get('/api/projects/:id', async (req, res) => {
+  try {
+    const tenantId = req.headers['x-tenant-id'] || 'tenant-glp-001';
+    const { rows } = await pool.query(
+      'SELECT * FROM projects WHERE id = $1 AND tenant_id = $2',
+      [req.params.id, tenantId]
+    );
+    if (!rows.length) return res.status(404).json({ success: false, error: 'No encontrado' });
+    res.json({ success: true, project: mapProjectRow(rows[0]) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PUT /api/projects/:id — merge del campo data JSONB con los campos enviados
+app.put('/api/projects/:id', async (req, res) => {
+  try {
+    const tenantId = req.headers['x-tenant-id'] || 'tenant-glp-001';
+    const b = req.body;
+    // Construimos el objeto de datos a guardar (solo los campos presentes en el body)
+    const { id, tenantId: _tid, createdAt, updatedAt, ...dataFields } = b;
+    const { rows } = await pool.query(
+      `UPDATE projects
+       SET data = data || $3::jsonb,
+           imagen_url = COALESCE($4, imagen_url),
+           updated_at = NOW()
+       WHERE id = $1 AND tenant_id = $2
+       RETURNING *`,
+      [req.params.id, tenantId, JSON.stringify(dataFields), b.imagen || null]
+    );
+    if (!rows.length) return res.status(404).json({ success: false, error: 'No encontrado' });
+    res.json({ success: true, project: mapProjectRow(rows[0]) });
+  } catch (err) {
+    console.error('[Projects] Error PUT:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Helper: fila de Supabase → objeto ProjectData para el frontend
+function mapProjectRow(r) {
+  const d = r.data || {};
+  return {
+    id: r.id,
+    ...d,
+    imagen: r.imagen_url || d.imagen,
+    updatedAt: r.updated_at,
+  };
+}
 
 app.listen(PORT, () => {
   console.log(`=================================================`);

@@ -2279,16 +2279,9 @@ const LandingPage: React.FC = () => {
   const [contactProject, setContactProject] = React.useState<string>('General')
   const [projectsList, setProjectsList] = React.useState<Project[]>(PROJECTS)
 
-  React.useEffect(() => {
-    fetch('http://localhost:3001/api/projects')
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
-          setProjectsList(data);
-        }
-      })
-      .catch(err => console.error('Error fetching projects from backend, using fallback static data:', err));
-  }, []);
+  // main.tsx usa projectsData.ts (tipo Project con campo 'beds', 'area', etc.)
+  // El endpoint /api/projects sirve ProjectData del CRM (campo 'bedrooms') — estructuras distintas
+  // La landing mantiene su propio catálogo estático en projectsData.ts
 
   const handleTriggerContact = (projectName: string) => {
     setContactProject(projectName);
