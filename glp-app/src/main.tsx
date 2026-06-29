@@ -3,6 +3,11 @@ import ReactDOM from 'react-dom/client'
 import { MARKET_STUDY_DB } from './marketStudyDb'
 import { C, PROJECTS, PROJECT_IMG, Project } from './projectsData'
 import { ProjectDetailView } from './projectDetail'
+import { supabase } from './lib/supabase'
+
+const trackFaqClick = (question: string, category: string) => {
+  supabase.from('faq_clicks').insert({ question, category, source: 'landing' }).then(() => {});
+};
 
 /* """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
    GLP  Grupo Los Pueblos · Landing Page
@@ -1416,7 +1421,11 @@ const FAQSection: React.FC = () => {
   const [faqSearch, setFaqSearch] = React.useState('')
   const [openItems, setOpenItems] = React.useState<Record<string, boolean>>({})
 
-  const toggle = (key: string) => setOpenItems(prev => ({ ...prev, [key]: !prev[key] }))
+  const toggle = (key: string, question: string, category: string) =>
+    setOpenItems(prev => {
+      if (!prev[key]) trackFaqClick(question, category); // solo al abrir
+      return { ...prev, [key]: !prev[key] };
+    });
 
   const searchedFaqs = React.useMemo(() => {
     if (!faqSearch.trim()) return null;
@@ -1510,7 +1519,7 @@ const FAQSection: React.FC = () => {
                   <FAQItem
                     faq={item.faq}
                     isOpen={!!openItems[item.key]}
-                    toggle={() => toggle(item.key)}
+                    toggle={() => toggle(item.key, item.faq.q, item.categoryTitle)}
                   />
                 </div>
               ))
@@ -1525,7 +1534,7 @@ const FAQSection: React.FC = () => {
                 key={`${activeCategory}-${i}`}
                 faq={faq}
                 isOpen={!!openItems[`${activeCategory}-${i}`]}
-                toggle={() => toggle(`${activeCategory}-${i}`)}
+                toggle={() => toggle(`${activeCategory}-${i}`, faq.q, FAQ_DATA[activeCategory].title)}
               />
             ))
           )}
@@ -2045,7 +2054,7 @@ const ContactSection: React.FC<{
 const ChatbotWidget: React.FC = () => {
   const [isOpen, setIsOpen] = React.useState(false);
   const [messages, setMessages] = React.useState<{id: number, text: string, sender: 'bot' | 'user'}[]>([
-    { id: 1, text: '¡Hola! Soy S.A.R.A, tu asistente virtual de Grupo Los Pueblos. ¿En qué te puedo ayudar hoy?', sender: 'bot' }
+    { id: 1, text: '¡Hola! Soy Sara, del equipo de atención al cliente de Grupo Los Pueblos. Cuéntame, ¿qué te trajo por aquí hoy?', sender: 'bot' }
   ]);
   const [inputValue, setInputValue] = React.useState('');
   const [isTyping, setIsTyping] = React.useState(false);
@@ -2069,18 +2078,24 @@ const ChatbotWidget: React.FC = () => {
 
     // ────────────────────────────────────────────────────────
     const lower = text.toLowerCase();
-    const hasContactInfo = lower.includes('@') || lower.match(/\\d{7,}/);
+    const emailMatch = text.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
+    // Teléfono: mínimo 10 dígitos seguidos (evita capturar presupuestos como 250000)
+    const phoneMatch = text.match(/[\+]?[\d][\d\s\-\(\)]{9,}/);
+    const hasContactInfo = !!(emailMatch || phoneMatch);
     if (hasContactInfo) {
-      const isEmail = text.includes('@');
+      const extractedEmail = emailMatch ? emailMatch[0].trim() : '';
+      const extractedPhone = phoneMatch ? phoneMatch[0].replace(/\s+/g, '').trim() : '';
+      if (!extractedEmail && !extractedPhone) return; // nada útil que registrar
       fetch('http://localhost:3001/api/contact', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          name: 'Lead Chatbot SARA', 
-          email: isEmail ? text.trim() : `whatsapp-${Date.now()}@chatbot.com`, 
-          phone: isEmail ? '' : text.trim(), 
+        body: JSON.stringify({
+          name: 'Lead Chatbot SARA',
+          email: extractedEmail || `sin-correo-${Date.now()}@chatbot.glp`,
+          phone: extractedPhone,
           project: 'Asesora Personalizada - GLP',
-          message: `Conversacin Capturada SARA:\nDatos: ${text}`,
-          channel: 'Chatbot SARA'
+          message: `Datos de contacto: ${text}`,
+          channel: 'Chatbot SARA',
+          conversationHistory: currentMessages.map(m => `${m.sender === 'user' ? 'Cliente' : 'SARA'}: ${m.text}`).join('\n')
         })
       }).catch(()=>null);
     }
@@ -2149,8 +2164,8 @@ const ChatbotWidget: React.FC = () => {
                   <img src="/img/agent_sara_customer.png" alt="SARA" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e)=> e.currentTarget.style.display = 'none'} />
                 </div>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>S.A.R.A</div>
-                  <div style={{ fontSize: '0.7rem', opacity: 0.9 }}>Asistente Inteligente GLP</div>
+                  <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>Sara Valenzuela</div>
+                  <div style={{ fontSize: '0.7rem', opacity: 0.9 }}>Atención al Cliente · GLP</div>
                 </div>
               </div>
               <button onClick={() => setIsOpen(false)} style={{

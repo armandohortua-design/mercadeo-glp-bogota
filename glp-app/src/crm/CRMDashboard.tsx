@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { MARKET_STUDY_DB } from '../marketStudyDb';
-import { uploadProjectImage, saveProjectImageUrl } from '../lib/supabase';
+import { supabase, uploadProjectImage, saveProjectImageUrl } from '../lib/supabase';
 
 // ═══════════════════════════════════════════════════════════════
 // GLP CRM DASHBOARD — Complete Production CRM
@@ -721,13 +721,14 @@ type EventCost = { concepto: string; valor: number };
 type EventData = {
   id: number; titulo: string; venue: string; fecha: string;
   proyectos_presentados: string[]; asistentes: string[];
+  prospect_ids: number[];
   proyectos_interes: string[]; presupuesto_asignado: number;
   presupuesto_ejecutado: number; items_costo: EventCost[];
 };
 
 const INITIAL_EVENTS: EventData[] = [
-  { id: 1, titulo: 'GLP Investment Evening #1', venue: 'Club El Nogal, Bogotáá', fecha: '2026-05-10', proyectos_presentados: ['Ocean Reef Park', 'The Palms', 'Panamáa Viejo Residences', 'The Tides – Playa Caracol'], asistentes: ['Carlos Gutiérrez', 'María Isabel Rodríguez', 'Andrés Felipe Martínez'], proyectos_interes: ['Ocean Reef Park', 'The Palms', 'Panamáa Viejo Residences'], presupuesto_asignado: 15000, presupuesto_ejecutado: 12800, items_costo: [{ concepto: 'Salón y montaje', valor: 4500 }, { concepto: 'Catering premium (60 pax)', valor: 3600 }, { concepto: 'Audiovisual y pantallas', valor: 1800 }, { concepto: 'Material impreso y brochures', valor: 1200 }, { concepto: 'Vinos y bebidas premium', valor: 1200 }, { concepto: 'Fotografía y video', valor: 500 }] },
-  { id: 2, titulo: 'Seminario Inversión Dolarizada', venue: 'Hotel JW Marriott Bogotáá', fecha: '2026-07-15', proyectos_presentados: ['Oceana Residences & Skyhomes', 'Bosco di Santa María', 'Ipanema Panamáá', 'Surfside'], asistentes: ['Laura Sánchez', 'Roberto Castaño'], proyectos_interes: ['Oceana Residences & Skyhomes', 'Surfside'], presupuesto_asignado: 20000, presupuesto_ejecutado: 8500, items_costo: [{ concepto: 'Salón conferencias (100 pax)', valor: 5500 }, { concepto: 'Coffee break y almuerzo', valor: 4200 }, { concepto: 'Speaker internacional (viáticos)', valor: 3500 }, { concepto: 'Material técnico impreso', valor: 1500 }, { concepto: 'Publicidad digital pre-evento', valor: 2800 }, { concepto: 'Señalización y decoración', valor: 1000 }, { concepto: 'Registro y tecnología', valor: 1500 }] },
+  { id: 1, titulo: 'GLP Investment Evening #1', venue: 'Club El Nogal, Bogotáá', fecha: '2026-05-10', proyectos_presentados: ['Ocean Reef Park', 'The Palms', 'Panamáa Viejo Residences', 'The Tides – Playa Caracol'], asistentes: ['Carlos Gutiérrez', 'María Isabel Rodríguez', 'Andrés Felipe Martínez'], prospect_ids: [], proyectos_interes: ['Ocean Reef Park', 'The Palms', 'Panamáa Viejo Residences'], presupuesto_asignado: 15000, presupuesto_ejecutado: 12800, items_costo: [{ concepto: 'Salón y montaje', valor: 4500 }, { concepto: 'Catering premium (60 pax)', valor: 3600 }, { concepto: 'Audiovisual y pantallas', valor: 1800 }, { concepto: 'Material impreso y brochures', valor: 1200 }, { concepto: 'Vinos y bebidas premium', valor: 1200 }, { concepto: 'Fotografía y video', valor: 500 }] },
+  { id: 2, titulo: 'Seminario Inversión Dolarizada', venue: 'Hotel JW Marriott Bogotáá', fecha: '2026-07-15', proyectos_presentados: ['Oceana Residences & Skyhomes', 'Bosco di Santa María', 'Ipanema Panamáá', 'Surfside'], asistentes: ['Laura Sánchez', 'Roberto Castaño'], prospect_ids: [], proyectos_interes: ['Oceana Residences & Skyhomes', 'Surfside'], presupuesto_asignado: 20000, presupuesto_ejecutado: 8500, items_costo: [{ concepto: 'Salón conferencias (100 pax)', valor: 5500 }, { concepto: 'Coffee break y almuerzo', valor: 4200 }, { concepto: 'Speaker internacional (viáticos)', valor: 3500 }, { concepto: 'Material técnico impreso', valor: 1500 }, { concepto: 'Publicidad digital pre-evento', valor: 2800 }, { concepto: 'Señalización y decoración', valor: 1000 }, { concepto: 'Registro y tecnología', valor: 1500 }] },
 ];
 
 // ── FAQ DATA ──────────────────────────────────────────────────
@@ -784,10 +785,10 @@ const MODULES_PRIMARY = [
   { id: 'portafolio',   label: 'Portafolio GLP' },
   { id: 'calculadora',  label: 'Calculadora' },
   { id: 'agentes',      label: 'Agentes IA' },
+  { id: 'eventos',      label: 'Eventos' },
 ];
 const MODULES_SECONDARY = [
   { id: 'brokers',      label: 'Brokers' },
-  { id: 'eventos',      label: 'Presupuesto' },
   { id: 'faqs',         label: 'FAQs' },
   { id: 'catalogo',     label: 'Catálogo' },
   { id: 'configuracion',label: 'Configuración' },
@@ -884,8 +885,6 @@ const labelStyle = {
 export default function CRMDashboard() {
   const [activeModule, setActiveModule] = useState('kpis');
   const [activeProspect, setActiveProspect] = useState<Prospect | null>(null);
-  const [calcDrawerOpen, setCalcDrawerOpen] = useState(false);
-  const [calcModalExpanded, setCalcModalExpanded] = useState(false);
 
   // ── Authentication States ──
   const [currentUser, setCurrentUser] = useState<string | null>(() => {
@@ -896,7 +895,7 @@ export default function CRMDashboard() {
   const [closedSales, setClosedSales] = useState<Sale[]>(INITIAL_CLOSED_SALES);
   const [lostSales, setLostSales] = useState<LostSale[]>(INITIAL_LOST_SALES);
   const [activeDrilldown, setActiveDrilldown] = useState<{
-    type: 'ticket' | 'conversion' | 'funnel' | 'source' | 'prospect' | 'broker' | 'prospects_total' | 'brokers_active' | 'camilo_prospects' | 'sara_history';
+    type: 'ticket' | 'conversion' | 'funnel' | 'source' | 'prospect' | 'broker' | 'prospects_total' | 'brokers_active' | 'camilo_prospects' | 'sara_history' | 'next_event';
     stage?: string;
     source?: string;
     id?: number;
@@ -942,7 +941,7 @@ export default function CRMDashboard() {
   // KPIs
   const [kpiPresupuestoEjecutado, setKpiPresupuestoEjecutado] = useState(68000);
   const [kpiPresupuestoPlaneado, setKpiPresupuestoPlaneado] = useState(95000);
-  const [budgetMonthlyRate, setBudgetMonthlyRate] = useState(2500);
+  const [budgetMonthlyRate, setBudgetMonthlyRate] = useState(2500); // $2,500 USD/mes presupuesto eventos
   
   const [overrideFunnelContacto, setOverrideFunnelContacto] = useState<number | null>(null);
   const [overrideFunnelCalif, setOverrideFunnelCalif] = useState<number | null>(null);
@@ -1186,6 +1185,7 @@ export default function CRMDashboard() {
   const [events, setEvents] = useState<EventData[]>(INITIAL_EVENTS);
   const [expandedEvent, setExpandedEvent] = useState<number | null>(null);
   const [showEventForm, setShowEventForm] = useState(false);
+  const [eventProspectSearch, setEventProspectSearch] = useState<Record<number, string>>({});
   const [newEvent, setNewEvent] = useState<Partial<EventData>>({
     titulo: '', venue: '', fecha: '', proyectos_presentados: [], asistentes: [],
     proyectos_interes: [], presupuesto_asignado: 0, presupuesto_ejecutado: 0, items_costo: [],
@@ -1195,6 +1195,16 @@ export default function CRMDashboard() {
   const [faqs, setFaqs] = useState<FAQ[]>(INITIAL_FAQS);
   const [faqSearch, setFaqSearch] = useState('');
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
+  const [faqStats, setFaqStats] = useState<{ question: string; category: string; source: string; clicked_at: string }[]>([]);
+
+  // Fetch FAQ analytics from Supabase
+  useEffect(() => {
+    if (activeModule !== 'faqs') return;
+    supabase.from('faq_clicks').select('question, category, source, clicked_at')
+      .order('clicked_at', { ascending: false })
+      .limit(500)
+      .then(({ data }) => { if (data) setFaqStats(data); });
+  }, [activeModule]);
   const [faqEditId, setFaqEditId] = useState<number | null>(null);
   const [showFaqForm, setShowFaqForm] = useState(false);
   const [newFaq, setNewFaq] = useState({ categoria: FAQ_CATEGORIES[0], pregunta: '', respuesta: '' });
@@ -3738,7 +3748,7 @@ Responde SOLO con JSON sin bloques de código:
     };
 
     return (
-      <div>
+      <div style={{ width: '100%' }}>
         {sectionTitle('Dashboard KPIs · Control Comercial')}
         
         {/* Top metric cards */}
@@ -3765,13 +3775,44 @@ Responde SOLO con JSON sin bloques de código:
           );
           return (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12, marginBottom: 16, width: '100%' }}>
                 {kpiCard('ticket',         'chart-bar',  <>{usd(ventasTotales)}</>,                                                                 'Ventas Totales',     `${closedSales.length} cierres`, T.success)}
-                {kpiCard('ticket',         'currency',   <>{editableValue('ticket', kpiTicketPromedio, setOverrideTicketPromedio, '$')}</>,         'Ticket Promedio',    'Ver Detalle (Drilldown)', T.teal)}
+                {(() => {
+                  // Ranking: proyectos_interes (prospectos) + ventas cerradas + ventas perdidas
+                  const count: Record<string, number> = {};
+                  prospects.forEach(p => (p.proyectos_interes || []).forEach((pr: string) => { count[pr] = (count[pr] || 0) + 2; }));
+                  closedSales.forEach(s => { count[s.project] = (count[s.project] || 0) + 3; });
+                  lostSales.forEach(s => { count[s.project] = (count[s.project] || 0) + 1; });
+                  const top3 = Object.entries(count).sort((a, b) => b[1] - a[1]).slice(0, 3);
+                  const maxVal = top3[0]?.[1] || 1;
+                  return (
+                    <div style={cardStyle({ cursor: 'default', border: `1.5px solid ${T.borderLight}` })}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 10, textAlign: 'center' as const }}>Top Proyectos</div>
+                      <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 7 }}>
+                        {top3.map(([name, score], i) => {
+                          const colors = [T.teal, T.palm, T.sky];
+                          const pct = Math.round((score / maxVal) * 100);
+                          return (
+                            <div key={name}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, marginBottom: 3 }}>
+                                <span style={{ fontWeight: 700, color: colors[i] }}>#{i + 1} {name.length > 18 ? name.slice(0, 18) + '…' : name}</span>
+                                <span style={{ color: T.textSec, fontWeight: 600 }}>{score}pts</span>
+                              </div>
+                              <div style={{ height: 4, background: T.borderLight, borderRadius: 2 }}>
+                                <div style={{ height: '100%', width: `${pct}%`, background: colors[i], borderRadius: 2 }} />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
                 {kpiCard('conversion',     'trend-up',   <>{editableValue('conversion', kpiConversion, setOverrideConversion, '', '%')}</>,         'Conversión Global',  'Ver Detalle (Objeciones)', T.palm)}
                 {kpiCard('prospects_total','users',       <>{prospects.length}</>,                                                                   'Prospectos Totales', 'Ver Detalle (Drilldown)', T.sky)}
                 {kpiCard('brokers_active', 'handshake',  <>{brokers.filter(b => b.estado === 'activo').length}</>,                                  'Brokers Activos',    'Ver Detalle (Drilldown)', T.coral)}
-                <div style={cardStyle({ textAlign: 'center' as const })}>
+                <div onClick={() => setActiveDrilldown(activeDrilldown?.type === 'next_event' ? null : { type: 'next_event' })}
+                  style={cardStyle({ textAlign: 'center' as const, cursor: nextEvent ? 'pointer' : 'default', border: activeDrilldown?.type === 'next_event' ? `2px solid ${T.coral}` : `1.5px solid ${T.borderLight}`, transition: 'all 0.2s' })}>
                   <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}><Icon name="calendar" size={24} color={T.coral} /></div>
                   <div style={{ fontSize: 20, fontWeight: 700, color: T.coral, lineHeight: 1.2 }}>
                     {diasNextEvent !== null ? `${diasNextEvent}d` : '—'}
@@ -3780,12 +3821,6 @@ Responde SOLO con JSON sin bloques de código:
                   <div style={{ fontSize: 10, color: T.coral, marginTop: 5, fontWeight: 600, lineHeight: 1.3 }}>
                     {nextEvent ? nextEvent.titulo.slice(0, 22) + (nextEvent.titulo.length > 22 ? '…' : '') : 'Sin eventos'}
                   </div>
-                </div>
-                <div onClick={() => setActiveModule('eventos')} style={cardStyle({ textAlign: 'center' as const, cursor: 'pointer' })}>
-                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}><Icon name="events" size={24} color={T.palm} /></div>
-                  <div style={{ fontSize: 20, fontWeight: 700, color: T.palm, lineHeight: 1.2 }}>{eventosProximos}</div>
-                  <div style={{ fontSize: 11, color: T.textSec, marginTop: 4 }}>Eventos Programados</div>
-                  <div style={{ fontSize: 10, color: T.palm, marginTop: 5, fontWeight: 600 }}>Ver Presupuesto →</div>
                 </div>
               </div>
             </>
@@ -3805,6 +3840,7 @@ Responde SOLO con JSON sin bloques de código:
                 {activeDrilldown.type === 'brokers_active' && '🤝 Detalle de Red de Brokers Activos'}
                 {activeDrilldown.type === 'camilo_prospects' && '🤖 Prospectos Minados por Camilo'}
                 {activeDrilldown.type === 'sara_history' && '📧 Historial de Correos y Registros de Sara'}
+                {activeDrilldown.type === 'next_event' && '📅 Detalle del Próximo Evento'}
               </h3>
               <button type="button" onClick={() => setActiveDrilldown(null)}
                 style={{ background: 'none', border: 'none', color: '#718096', fontSize: '1.25rem', cursor: 'pointer', padding: '4px' }}
@@ -3819,6 +3855,64 @@ Responde SOLO con JSON sin bloques de código:
             {activeDrilldown.type === 'brokers_active' && renderBrokersActiveDrilldown()}
             {activeDrilldown.type === 'camilo_prospects' && renderCamiloProspectsDrilldown()}
             {activeDrilldown.type === 'sara_history' && renderSaraHistoryDrilldown()}
+            {activeDrilldown.type === 'next_event' && (() => {
+              const ev = events.filter(e => new Date(e.fecha) > new Date()).sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())[0] || null;
+              if (!ev) return <div style={{ fontSize: 13, color: T.textSec, padding: 12 }}>No hay eventos próximos registrados.</div>;
+              const linkedIds = ev.prospect_ids || [];
+              const linkedProspects = linkedIds.map((pid: number) => prospects.find(p => p.id === pid)).filter(Boolean) as typeof prospects;
+              const totalInvitados = linkedProspects.length + ev.asistentes.length;
+              const diasRestantes = Math.ceil((new Date(ev.fecha).getTime() - new Date().getTime()) / 86400000);
+              const budgetPctEv = ev.presupuesto_asignado > 0 ? Math.min(100, (ev.presupuesto_ejecutado / ev.presupuesto_asignado) * 100) : 0;
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 16 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+                    {[
+                      { label: 'Fecha', value: ev.fecha, color: T.teal },
+                      { label: 'Días restantes', value: `${diasRestantes}d`, color: T.coral },
+                      { label: 'Invitados', value: String(totalInvitados), color: T.sky },
+                      { label: 'Presupuesto asignado', value: usd(ev.presupuesto_asignado), color: T.palm },
+                    ].map(item => (
+                      <div key={item.label} style={{ background: T.bg, padding: 12, borderRadius: 8, border: `1px solid ${T.borderLight}`, textAlign: 'center' as const }}>
+                        <div style={{ fontSize: 10, color: T.textSec, marginBottom: 4 }}>{item.label}</div>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: item.color }}>{item.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                    <div style={{ background: T.bg, padding: 14, borderRadius: 8, border: `1px solid ${T.borderLight}` }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 8 }}>Venue</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: T.text }}>{ev.venue}</div>
+                      <div style={{ fontSize: 11, color: T.textSec, marginTop: 4 }}>Proyectos: {ev.proyectos_presentados.join(', ') || '—'}</div>
+                      <div style={{ marginTop: 12 }}>
+                        <div style={{ fontSize: 10, color: T.textSec, marginBottom: 4 }}>Presupuesto ejecutado {Math.round(budgetPctEv)}%</div>
+                        <div style={{ height: 6, background: T.borderLight, borderRadius: 3 }}>
+                          <div style={{ height: '100%', width: `${budgetPctEv}%`, background: budgetPctEv > 90 ? T.coral : T.teal, borderRadius: 3 }} />
+                        </div>
+                        <div style={{ fontSize: 11, color: T.textSec, marginTop: 4 }}>{usd(ev.presupuesto_ejecutado)} de {usd(ev.presupuesto_asignado)}</div>
+                      </div>
+                    </div>
+                    <div style={{ background: T.bg, padding: 14, borderRadius: 8, border: `1px solid ${T.borderLight}` }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 8 }}>Invitados ({totalInvitados})</div>
+                      <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 6, maxHeight: 140, overflowY: 'auto' as const }}>
+                        {linkedProspects.map(p => (
+                          <div key={p.id} onClick={() => { setProspectDetail(p.id); setActiveProspect(p); setActiveModule('prospectos'); }}
+                            style={{ fontSize: 12, color: T.teal, cursor: 'pointer', textDecoration: 'underline', padding: '2px 0' }}>
+                            {p.nombre} {p.apellido} <span style={{ fontSize: 10, color: T.textSec, textDecoration: 'none' }}>· {p.estado}</span>
+                          </div>
+                        ))}
+                        {ev.asistentes.map((a: string, i: number) => (
+                          <div key={i} style={{ fontSize: 12, color: T.textSec, padding: '2px 0' }}>{a}</div>
+                        ))}
+                        {totalInvitados === 0 && <div style={{ fontSize: 11, color: T.textSec, fontStyle: 'italic' }}>Sin invitados registrados</div>}
+                      </div>
+                      <button onClick={() => { setActiveModule('eventos'); setExpandedEvent(ev.id); }} style={{ marginTop: 10, fontSize: 11, color: T.teal, background: 'none', border: `1px solid ${T.teal}40`, borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontWeight: 600 }}>
+                        Ver evento completo →
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
@@ -4557,18 +4651,6 @@ Responde SOLO con JSON sin bloques de código:
           );
         })()}
 
-        {/* Commission structure - Middle */}
-        <div style={{ ...cardStyle(), marginBottom: 20, marginTop: 20 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 12 }}>Estructura de Distribución de Comisión — 5% Total</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-            {commissionEntities.map(e => (
-              <div key={e.name} style={{ background: T.bg, borderRadius: 10, padding: 14, textAlign: 'center' as const, border: `1px solid ${T.borderLight}` }}>
-                <div style={{ fontSize: 24, fontWeight: 700, color: T.teal }}>{e.pct}%</div>
-                <div style={{ fontSize: 11, color: T.textSec, marginTop: 4 }}>{e.name}</div>
-              </div>
-            ))}
-          </div>
-        </div>
 
         {/* Report Generation Center - BOTTOM */}
         <div style={{ ...cardStyle({ marginTop: 24, background: `${T.teal}05`, border: `1px solid ${T.teal}30` }) }}>
@@ -4937,7 +5019,26 @@ Responde SOLO con JSON sin bloques de código:
               {isEditing ? (
                 <textarea value={dp.notas} onChange={e => setProspects(prospects.map(p => p.id === dp.id ? { ...p, notas: e.target.value } : p))}
                   style={{ ...inputStyle(), minHeight: 80, resize: 'vertical' as const }} />
-              ) : <div style={{ fontSize: 13, color: T.textSec }}>{dp.notas}</div>}
+              ) : (
+                <div style={{ fontSize: 13, color: T.text, lineHeight: 1.7 }}>
+                  {(dp.notas || '').split('\n').map((line, i) => {
+                    const isSeparator = /^---/.test(line.trim());
+                    if (isSeparator) return <hr key={i} style={{ border: 'none', borderTop: `1px solid ${T.borderLight}`, margin: '10px 0' }} />;
+                    // Renderizar **negrita**
+                    const parts = line.split(/(\*\*[^*]+\*\*)/g).map((part, j) => {
+                      if (/^\*\*[^*]+\*\*$/.test(part)) return <strong key={j}>{part.slice(2, -2)}</strong>;
+                      return <span key={j}>{part}</span>;
+                    });
+                    // Líneas de resumen (emoji al inicio) → fondo suave
+                    const isHighlight = /^[📋🏠🔍👤🎯✅💬💰]/.test(line.trim());
+                    return (
+                      <div key={i} style={isHighlight ? { background: T.sand, borderRadius: 6, padding: '3px 8px', marginBottom: 4, fontWeight: 500, color: T.text } : { marginBottom: 2, color: T.textSec }}>
+                        {parts}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Hilo de Correos SARA */}
@@ -5222,14 +5323,14 @@ Responde SOLO con JSON sin bloques de código:
         {/* View render */}
         {prospectViewMode === 'embudo' ? (
           /* KANBAN BOARD */
-          <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${FUNNEL_STAGES.length}, 1fr)`, gap: 10, paddingBottom: 16 }}>
             {FUNNEL_STAGES.map(stage => {
               const stageProspects = filtered.filter(p => p.estado === stage);
               const ALERT_COLORS: Record<string,string> = { critico: '#DC2626', frio: '#EA580C', tibio: '#CA8A04', oportunidad: '#0284C7' };
               const ALERT_ICONS: Record<string,string> = { critico: '🔴', frio: '🟠', tibio: '🟡', oportunidad: '🔵' };
               return (
                 <div key={stage} style={{
-                  flex: '1 0 260px', background: `${T.sand}40`, borderRadius: 12,
+                  background: `${T.sand}40`, borderRadius: 12, minWidth: 0,
                   padding: 12, border: `1px solid ${T.border}`, minHeight: 400, display: 'flex', flexDirection: 'column'
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: `2px solid ${T.teal}20`, paddingBottom: 6 }}>
@@ -5372,6 +5473,7 @@ Responde SOLO con JSON sin bloques de código:
       setEvents([...events, ne]);
       setNewEvent({
         titulo: '', venue: '', fecha: '', proyectos_presentados: [], asistentes: [],
+        prospect_ids: [],
         proyectos_interes: [], presupuesto_asignado: 0, presupuesto_ejecutado: 0, items_costo: [],
       });
       setShowEventForm(false);
@@ -5390,7 +5492,15 @@ Responde SOLO con JSON sin bloques de código:
     const addCostItem = (eventId: number) => {
       setEvents(events.map(ev => {
         if (ev.id !== eventId) return ev;
-        return { ...ev, items_costo: [...ev.items_costo, { concepto: 'Nuevo Ítem', valor: 0 }] };
+        return { ...ev, items_costo: [...ev.items_costo, { concepto: '', valor: 0 }] };
+      }));
+    };
+
+    const deleteCostItem = (eventId: number, idx: number) => {
+      setEvents(events.map(ev => {
+        if (ev.id !== eventId) return ev;
+        const items = ev.items_costo.filter((_, i) => i !== idx);
+        return { ...ev, items_costo: items, presupuesto_ejecutado: items.reduce((s, i) => s + i.valor, 0) };
       }));
     };
 
@@ -5405,7 +5515,7 @@ Responde SOLO con JSON sin bloques de código:
     };
 
     return (
-      <div style={{ fontFamily: sStyle.fontFamily, color: sStyle.text, maxWidth: 1000, margin: '0 auto', paddingBottom: 40 }}>
+      <div style={{ fontFamily: sStyle.fontFamily, color: sStyle.text, paddingBottom: 40 }}>
         <div style={{ borderBottom: `1px solid ${sStyle.border}`, paddingBottom: 20, marginBottom: 30, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
           <div>
             <h2 style={{ fontFamily: sStyle.headingFont, fontSize: 28, fontWeight: 400, margin: '0 0 8px 0', letterSpacing: '0.5px' }}>
@@ -5465,25 +5575,60 @@ Responde SOLO con JSON sin bloques de código:
           {events.map(ev => {
             const expanded = expandedEvent === ev.id;
             
+            const linkedIds = ev.prospect_ids || [];
+            // Build unified attendee list: linked prospects by ID + legacy text attendees not already covered
+            const linkedProspects = linkedIds.map(pid => prospects.find(p => p.id === pid)).filter(Boolean) as typeof prospects;
+            const cleanStr = (str: string): string => {
+              if (!str) return '';
+              return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9\s]/g, "").toLowerCase().trim().replace(/\s+/g, ' ');
+            };
+            const linkedNames = new Set(linkedProspects.map(p => cleanStr(p.nombre + ' ' + p.apellido)));
+            const legacyAttendees = ev.asistentes
+              .filter(a => !linkedNames.has(cleanStr(a)))
+              .map(a => {
+                const found = prospects.find(p => cleanStr(p.nombre + ' ' + p.apellido) === cleanStr(a));
+                return { prospect: found ?? null, name: a, isLinked: false };
+              });
+            const allAttendees = [
+              ...linkedProspects.map(p => ({ prospect: p, name: p.nombre + ' ' + p.apellido, isLinked: true })),
+              ...legacyAttendees,
+            ];
+
             let closedCount = 0;
-            const processedAttendees = ev.asistentes.map(a => {
-              const cleanStr = (str: string): string => {
-                if (!str) return '';
-                return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9\s]/g, "").toLowerCase().trim().replace(/\s+/g, ' ');
-              };
-              const found = prospects.find(p => cleanStr(p.nombre + ' ' + p.apellido) === cleanStr(a));
-              let isClosed = false;
-              if (found) {
-                const st = found.estado.toLowerCase();
-                if (st.includes('cierre') || st.includes('cerrado') || st.includes('post-venta')) {
-                  isClosed = true;
-                  closedCount++;
-                }
+            allAttendees.forEach(att => {
+              if (att.prospect) {
+                const st = att.prospect.estado.toLowerCase();
+                if (st.includes('cierre') || st.includes('cerrado') || st.includes('post-venta')) closedCount++;
               }
-              return { name: a, found, isClosed };
             });
 
             const cac = closedCount > 0 ? (ev.presupuesto_ejecutado / closedCount) : 0;
+
+            // Prospect picker helpers
+            const searchVal = eventProspectSearch[ev.id] ?? '';
+            const addProspectToEvent = (pid: number) => {
+              const p = prospects.find(x => x.id === pid);
+              if (!p) return;
+              setEvents(prev => prev.map(e => {
+                if (e.id !== ev.id) return e;
+                if ((e.prospect_ids || []).includes(pid)) return e;
+                return { ...e, prospect_ids: [...(e.prospect_ids || []), pid] };
+              }));
+              setEventProspectSearch(prev => ({ ...prev, [ev.id]: '' }));
+            };
+            const removeProspectFromEvent = (pid: number) => {
+              setEvents(prev => prev.map(e => {
+                if (e.id !== ev.id) return e;
+                return { ...e, prospect_ids: (e.prospect_ids || []).filter(id => id !== pid) };
+              }));
+            };
+            const pickerResults = searchVal.length >= 2
+              ? prospects.filter(p => {
+                  if ((ev.prospect_ids || []).includes(p.id)) return false;
+                  return cleanStr(p.nombre + ' ' + p.apellido).includes(cleanStr(searchVal))
+                    || p.correo.toLowerCase().includes(searchVal.toLowerCase());
+                }).slice(0, 6)
+              : [];
 
             return (
               <div key={ev.id} style={{ border: `1px solid ${sStyle.border}`, background: sStyle.bg, cursor: 'pointer', transition: 'box-shadow 0.3s ease' }}
@@ -5504,6 +5649,16 @@ Responde SOLO con JSON sin bloques de código:
 
                 {expanded && (
                   <div style={{ borderTop: `1px solid ${sStyle.border}`, padding: '30px', background: '#FAFAFA' }} onClick={e => e.stopPropagation()}>
+                    {/* Botón cerrar */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 20 }}>
+                      <button type="button" onClick={() => setExpandedEvent(null)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', border: `1px solid ${sStyle.border}`, borderRadius: 6, padding: '7px 16px', fontSize: 12, fontWeight: 600, color: sStyle.textMuted, cursor: 'pointer' }}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#f3f4f6'; e.currentTarget.style.color = sStyle.text; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = sStyle.textMuted; }}
+                      >
+                        ← Volver al presupuesto general
+                      </button>
+                    </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40, marginBottom: 40 }}>
                       
                       <div>
@@ -5521,63 +5676,118 @@ Responde SOLO con JSON sin bloques de código:
                         </div>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          {processedAttendees.map((att, idx) => (
-                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, padding: '8px 12px', background: '#FFF', border: `1px solid ${sStyle.border}` }}>
-                              <span 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (att.found) {
-                                    setProspectDetail(att.found.id);
-                                    setActiveModule('prospectos');
-                                  }
-                                }}
-                                style={{ 
-                                  color: att.found ? sStyle.text : sStyle.textMuted,
-                                  cursor: att.found ? 'pointer' : 'default',
-                                  textDecoration: att.found ? 'underline' : 'none'
-                                }}
-                                title={att.found ? "Ver perfil de cliente" : "Cliente no registrado"}
-                              >
-                                {att.name}
-                              </span>
-                              {att.isClosed && (
-                                <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '1px', border: `1px solid ${sStyle.text}`, padding: '2px 6px', borderRadius: 2 }}>Cerrado</span>
-                              )}
+                          {allAttendees.length === 0 && (
+                            <div style={{ fontSize: 12, color: sStyle.textMuted, fontStyle: 'italic', padding: '8px 0' }}>Sin invitados registrados</div>
+                          )}
+                          {allAttendees.map((att, idx) => {
+                            const isClosed = att.prospect ? (() => { const st = att.prospect!.estado.toLowerCase(); return st.includes('cierre') || st.includes('cerrado') || st.includes('post-venta'); })() : false;
+                            return (
+                              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, padding: '8px 12px', background: '#FFF', border: `1px solid ${sStyle.border}` }}>
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (att.prospect) { setProspectDetail(att.prospect.id); setActiveModule('prospectos'); }
+                                  }}
+                                  style={{ color: att.prospect ? sStyle.text : sStyle.textMuted, cursor: att.prospect ? 'pointer' : 'default', textDecoration: att.prospect ? 'underline' : 'none', flex: 1 }}
+                                  title={att.prospect ? 'Ver perfil de cliente' : 'Sin perfil en CRM'}
+                                >
+                                  {att.name}
+                                  {att.isLinked && <span style={{ marginLeft: 6, fontSize: 9, background: '#E5E7EB', color: '#374151', padding: '1px 5px', borderRadius: 3, verticalAlign: 'middle', textTransform: 'uppercase', letterSpacing: '0.5px' }}>CRM</span>}
+                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  {isClosed && <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '1px', border: `1px solid ${sStyle.text}`, padding: '2px 6px', borderRadius: 2 }}>Cerrado</span>}
+                                  {att.isLinked && (
+                                    <button type="button" onClick={e => { e.stopPropagation(); removeProspectFromEvent(att.prospect!.id); }}
+                                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 14, lineHeight: 1, padding: '0 2px' }} title="Quitar invitado">×</button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Prospect picker */}
+                        <div style={{ marginTop: 16, position: 'relative' }}>
+                          <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '1px', color: sStyle.textMuted, marginBottom: 6 }}>Agregar Prospecto del CRM</div>
+                          <input
+                            value={searchVal}
+                            onChange={e => setEventProspectSearch(prev => ({ ...prev, [ev.id]: e.target.value }))}
+                            onClick={e => e.stopPropagation()}
+                            placeholder="Buscar por nombre o correo…"
+                            style={{ width: '100%', padding: '8px 0', border: 'none', borderBottom: `1px solid ${sStyle.border}`, background: 'transparent', outline: 'none', fontSize: 13, fontFamily: sStyle.fontFamily, boxSizing: 'border-box' as const }}
+                          />
+                          {pickerResults.length > 0 && (
+                            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#FFF', border: `1px solid ${sStyle.border}`, zIndex: 99, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
+                              {pickerResults.map(p => (
+                                <div key={p.id}
+                                  onClick={e => { e.stopPropagation(); addProspectToEvent(p.id); }}
+                                  style={{ padding: '10px 14px', cursor: 'pointer', fontSize: 13, borderBottom: `1px solid ${sStyle.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                                  onMouseEnter={e => (e.currentTarget.style.background = '#F3F4F6')}
+                                  onMouseLeave={e => (e.currentTarget.style.background = '#FFF')}
+                                >
+                                  <span>{p.nombre} {p.apellido}</span>
+                                  <span style={{ fontSize: 11, color: sStyle.textMuted }}>{p.estado}</span>
+                                </div>
+                              ))}
                             </div>
-                          ))}
+                          )}
                         </div>
                       </div>
 
                       <div>
                         <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '1px', color: sStyle.textMuted, borderBottom: `1px solid ${sStyle.border}`, paddingBottom: 8, marginBottom: 16 }}>Desglose de Costos</div>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                          <thead>
-                            <tr>
-                              <th style={{ padding: '0 0 12px 0', textAlign: 'left', fontSize: 11, color: sStyle.textMuted, fontWeight: 400, textTransform: 'uppercase', letterSpacing: '1px' }}>Concepto</th>
-                              <th style={{ padding: '0 0 12px 0', textAlign: 'right', fontSize: 11, color: sStyle.textMuted, fontWeight: 400, textTransform: 'uppercase', letterSpacing: '1px' }}>Valor USD</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {ev.items_costo.map((item, idx) => (
-                              <tr key={idx} style={{ borderBottom: `1px solid ${sStyle.border}` }}>
-                                <td style={{ padding: '12px 0' }}>
-                                  <input value={item.concepto} onChange={e => updateCostItem(ev.id, idx, 'concepto', e.target.value)}
-                                    style={{ width: '100%', border: 'none', background: 'transparent', outline: 'none', fontSize: 13, fontFamily: sStyle.fontFamily }} />
-                                </td>
-                                <td style={{ padding: '12px 0', textAlign: 'right' }}>
-                                  <input type="number" value={item.valor} onChange={e => updateCostItem(ev.id, idx, 'valor', Number(e.target.value))}
-                                    style={{ border: 'none', background: 'transparent', outline: 'none', textAlign: 'right', width: 100, fontSize: 13, fontFamily: sStyle.fontFamily }} />
-                                </td>
+                        {ev.items_costo.length === 0 && (
+                          <div style={{ fontSize: 12, color: sStyle.textMuted, fontStyle: 'italic', marginBottom: 12 }}>
+                            Sin rubros. Haz clic en "Agregar Ítem" para registrar un gasto.
+                          </div>
+                        )}
+                        {ev.items_costo.length > 0 && (
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                            <thead>
+                              <tr>
+                                <th style={{ padding: '0 0 10px 0', textAlign: 'left', fontSize: 11, color: sStyle.textMuted, fontWeight: 400, textTransform: 'uppercase', letterSpacing: '1px' }}>Concepto</th>
+                                <th style={{ padding: '0 0 10px 0', textAlign: 'right', fontSize: 11, color: sStyle.textMuted, fontWeight: 400, textTransform: 'uppercase', letterSpacing: '1px' }}>Valor USD</th>
+                                <th style={{ width: 28 }} />
                               </tr>
-                            ))}
-                            <tr>
-                              <td style={{ padding: '16px 0 0 0', textTransform: 'uppercase', letterSpacing: '1px', fontSize: 11 }}>Total Ejecutado</td>
-                              <td style={{ padding: '16px 0 0 0', textAlign: 'right', fontFamily: sStyle.headingFont, fontSize: 16 }}>{usd(ev.items_costo.reduce((s, i) => s + i.valor, 0))}</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                        <button type="button" onClick={() => addCostItem(ev.id)} style={{ marginTop: 20, background: 'transparent', color: sStyle.text, border: `1px solid ${sStyle.border}`, padding: '8px 16px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '1px', cursor: 'pointer' }}>
-                          Agregar Ítem
+                            </thead>
+                            <tbody>
+                              {ev.items_costo.map((item, idx) => (
+                                <tr key={idx} style={{ borderBottom: `1px solid ${sStyle.border}` }}>
+                                  <td style={{ padding: '8px 0' }}>
+                                    <input
+                                      value={item.concepto}
+                                      placeholder="Ej: Catering, Audiovisual…"
+                                      onChange={e => updateCostItem(ev.id, idx, 'concepto', e.target.value)}
+                                      style={{ width: '100%', border: `1px solid ${sStyle.border}`, borderRadius: 5, padding: '5px 8px', fontSize: 12, fontFamily: sStyle.fontFamily, outline: 'none', background: '#fafafa' }}
+                                    />
+                                  </td>
+                                  <td style={{ padding: '8px 0 8px 8px', textAlign: 'right' }}>
+                                    <input
+                                      type="number"
+                                      value={item.valor || ''}
+                                      placeholder="0"
+                                      onChange={e => updateCostItem(ev.id, idx, 'valor', Number(e.target.value))}
+                                      style={{ border: `1px solid ${sStyle.border}`, borderRadius: 5, padding: '5px 8px', textAlign: 'right', width: 100, fontSize: 12, fontFamily: sStyle.fontFamily, outline: 'none', background: '#fafafa' }}
+                                    />
+                                  </td>
+                                  <td style={{ padding: '8px 0 8px 8px', textAlign: 'center' }}>
+                                    <button type="button" onClick={() => deleteCostItem(ev.id, idx)}
+                                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: 14, lineHeight: 1, padding: '2px 4px' }}
+                                      title="Eliminar rubro">×</button>
+                                  </td>
+                                </tr>
+                              ))}
+                              <tr>
+                                <td style={{ padding: '14px 0 0 0', textTransform: 'uppercase', letterSpacing: '1px', fontSize: 11, fontWeight: 700 }}>Total Ejecutado</td>
+                                <td style={{ padding: '14px 0 0 0', textAlign: 'right', fontFamily: sStyle.headingFont, fontSize: 16, fontWeight: 700 }}>{usd(ev.items_costo.reduce((s, i) => s + i.valor, 0))}</td>
+                                <td />
+                              </tr>
+                            </tbody>
+                          </table>
+                        )}
+                        <button type="button" onClick={() => addCostItem(ev.id)}
+                          style={{ marginTop: 16, background: T.teal, color: '#fff', border: 'none', borderRadius: 6, padding: '8px 18px', fontSize: 12, fontWeight: 600, cursor: 'pointer', letterSpacing: '0.03em' }}>
+                          + Agregar Rubro
                         </button>
                       </div>
 
@@ -7676,7 +7886,10 @@ Responde SOLO con JSON sin bloques de código:
                 return (
                   <div key={faq.id} style={{ ...cardStyle({ marginBottom: 8, padding: '14px 20px', cursor: 'pointer' }) }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                      onClick={() => setExpandedFaq(expanded ? null : faq.id)}>
+                      onClick={() => {
+                        if (!expanded) supabase.from('faq_clicks').insert({ question: faq.pregunta, category: cat, source: 'crm' }).then(() => {});
+                        setExpandedFaq(expanded ? null : faq.id);
+                      }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: T.text, flex: 1 }}>
                         {editing ? (
                           <input value={faq.pregunta} onClick={e => e.stopPropagation()}
@@ -7908,7 +8121,7 @@ Responde SOLO con JSON sin bloques de código:
     );
 
     return (
-      <div>
+      <div id="calc-top">
         {sectionTitle('Calculadora Inmobiliaria · Análisis de Inversión')}
 
         {/* Profile chips + filtros + grilla — ocultos en modal cuando hay proyecto seleccionado */}
@@ -7972,6 +8185,7 @@ Responde SOLO con JSON sin bloques de código:
               const imgs = PROJECT_IMAGES[pn];
               return (
                 <div key={pn} onClick={() => selectCalcProject(pn)}
+                  onDoubleClick={() => { selectCalcProject(pn); setTimeout(() => { document.getElementById('calc-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80); }}
                   style={{
                     borderRadius: 12, overflow: 'hidden', cursor: 'pointer',
                     border: `2px solid ${sel ? T.teal : T.border}`,
@@ -8019,7 +8233,7 @@ Responde SOLO con JSON sin bloques de código:
         {calcProject && proj && (
 
           <>
-            <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 16 }}>
+            <div id="calc-results" style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 16 }}>
               {/* Left: Parameters */}
               <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 16 }}>
 
@@ -9025,6 +9239,108 @@ Responde SOLO con JSON sin bloques de código:
       </div>
     );
 
+    if (activeModule === 'configuracion') return null;
+
+    // ── FAQs: analytics de consultas ─────────────────────────
+    if (activeModule === 'faqs') {
+      const total = faqStats.length;
+      const fromLanding = faqStats.filter(s => s.source === 'landing').length;
+      const fromCrm = faqStats.filter(s => s.source === 'crm').length;
+
+      // Top preguntas
+      const qCount: Record<string, { total: number; landing: number; crm: number; category: string }> = {};
+      faqStats.forEach(s => {
+        if (!qCount[s.question]) qCount[s.question] = { total: 0, landing: 0, crm: 0, category: s.category };
+        qCount[s.question].total++;
+        qCount[s.question][s.source as 'landing' | 'crm']++;
+      });
+      const topQ = Object.entries(qCount).sort((a, b) => b[1].total - a[1].total).slice(0, 6);
+
+      // Top categorías
+      const catCount: Record<string, number> = {};
+      faqStats.forEach(s => { catCount[s.category] = (catCount[s.category] || 0) + 1; });
+      const topCat = Object.entries(catCount).sort((a, b) => b[1] - a[1]);
+
+      // Últimas 5 consultas CRM (= conversación real con cliente)
+      const lastCrm = faqStats.filter(s => s.source === 'crm').slice(0, 5);
+
+      return (
+        <>
+          {panelHeader('FAQ Analytics', 'Consultas de Inversionistas')}
+          <div style={{ flex: 1, overflowY: 'auto' as const, padding: '12px 12px', display: 'flex', flexDirection: 'column' as const, gap: 14 }}>
+            {total === 0 ? panelEmpty('📊', 'Aún sin datos. Los clics en landing y CRM aparecerán aquí.') : (
+              <>
+                {/* Totales */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
+                  {[
+                    { label: 'Total consultas', val: total, color: T.teal },
+                    { label: 'Landing page', val: fromLanding, color: T.palm },
+                    { label: 'Consultas CRM', val: fromCrm, color: T.coral },
+                    { label: 'Temas únicos', val: Object.keys(qCount).length, color: T.sky },
+                  ].map(item => (
+                    <div key={item.label} style={{ background: T.bg, padding: '8px 9px', borderRadius: 7, border: `1px solid ${T.borderLight}`, textAlign: 'center' as const }}>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: item.color }}>{item.val}</div>
+                      <div style={{ fontSize: 9, color: T.textSec, marginTop: 2 }}>{item.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Top preguntas */}
+                <div>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 7 }}>Top Preguntas</div>
+                  {topQ.map(([q, s], i) => (
+                    <div key={i} style={{ marginBottom: 7, padding: '7px 9px', background: T.bg, borderRadius: 7, border: `1px solid ${T.borderLight}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
+                        <div style={{ fontSize: 10, color: T.text, fontWeight: 600, lineHeight: 1.3, flex: 1 }}>{q.length > 55 ? q.slice(0, 55) + '…' : q}</div>
+                        <span style={{ fontSize: 13, fontWeight: 800, color: T.teal, flexShrink: 0 }}>{s.total}</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                        <span style={{ fontSize: 9, color: T.palm }}>🌐 {s.landing}</span>
+                        <span style={{ fontSize: 9, color: T.coral }}>👤 {s.crm}</span>
+                        <span style={{ fontSize: 9, color: T.textSec, marginLeft: 'auto' as const }}>{s.category}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Categorías */}
+                <div>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 7 }}>Por Categoría</div>
+                  {topCat.map(([cat, n]) => {
+                    const pct = Math.round((n / total) * 100);
+                    return (
+                      <div key={cat} style={{ marginBottom: 6 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, marginBottom: 3 }}>
+                          <span style={{ color: T.text, fontWeight: 600 }}>{cat}</span>
+                          <span style={{ color: T.teal, fontWeight: 700 }}>{n} · {pct}%</span>
+                        </div>
+                        <div style={{ height: 4, background: T.borderLight, borderRadius: 2 }}>
+                          <div style={{ height: '100%', width: `${pct}%`, background: T.teal, borderRadius: 2 }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Últimas consultas CRM */}
+                {lastCrm.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 7 }}>Últimas · Con Clientes</div>
+                    {lastCrm.map((s, i) => (
+                      <div key={i} style={{ fontSize: 10, padding: '6px 9px', background: `${T.coral}08`, border: `1px solid ${T.coral}25`, borderRadius: 6, marginBottom: 5 }}>
+                        <div style={{ color: T.text, fontWeight: 600, lineHeight: 1.3 }}>{s.question.length > 50 ? s.question.slice(0, 50) + '…' : s.question}</div>
+                        <div style={{ color: T.textSec, marginTop: 3 }}>{new Date(s.clicked_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </>
+      );
+    }
+
     // ── CATÁLOGO: foto + galería del proyecto en edición ─────
     if (activeModule === 'catalogo') {
       const p = catalogEditIdx !== null ? catalogProjects[catalogEditIdx] : null;
@@ -9385,7 +9701,7 @@ Responde SOLO con JSON sin bloques de código:
                 </div>
               )}
               <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 6, paddingTop: 8, borderTop: `1px solid ${T.borderLight}`, marginTop: 4 }}>
-                <button onClick={() => { selectCalcProject(selProj.name); setPreviousModule('portafolio'); setCalcDrawerOpen(true); }}
+                <button onClick={() => { selectCalcProject(selProj.name); setPreviousModule('portafolio'); setActiveModule('calculadora'); }}
                   style={{ padding: '8px', background: T.coral, color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>
                   Calcular rentabilidad →
                 </button>
@@ -9434,7 +9750,7 @@ Responde SOLO con JSON sin bloques de código:
                       style={{ flex: 1, padding: '4px', background: `${T.teal}15`, color: T.teal, border: `1px solid ${T.teal}30`, borderRadius: 4, cursor: 'pointer', fontSize: 10, fontWeight: 700 }}>
                       Ver ficha
                     </button>
-                    <button onClick={() => { selectCalcProject(pi); setPreviousModule('portafolio'); setCalcDrawerOpen(true); }}
+                    <button onClick={() => { selectCalcProject(pi); setPreviousModule('portafolio'); setActiveModule('calculadora'); }}
                       style={{ flex: 1, padding: '4px', background: T.coral, color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 10, fontWeight: 700 }}>
                       Calcular →
                     </button>
@@ -9457,46 +9773,84 @@ Responde SOLO con JSON sin bloques de código:
       );
     }
 
-    // ── CALCULADORA: resumen del análisis activo ──────────────
+    // ── CALCULADORA: panorama completo del activo ────────────
     if (activeModule === 'calculadora') {
-      const proj = calcProject ? editableProjects.find(p => p.name === calcProject) : null;
-      const rentaMensual = calcRentaM2 * calcArea;
-      const noi = rentaMensual * 12 - (proj?.condominioMes || 0) * 12;
-      const capRate = calcPrecio > 0 ? (noi / calcPrecio) * 100 : 0;
+      const montoFin = calcPrecio * (1 - calcCuotaInicial / 100);
+      const cuotaMesP = calcMortgage(montoFin, calcTasaHip, calcPlazo);
+      const cuotaInicialUSD = calcPrecio * (calcCuotaInicial / 100);
+      const rentaMens = calcRentaM2 * calcArea;
+      const rentaEfec = rentaMens * (1 - calcVacancia / 100);
+      const rentaBrutaAnual = rentaMens * 12;
+      const yieldBruto = cuotaInicialUSD > 0 ? (rentaBrutaAnual / cuotaInicialUSD) * 100 : 0;
+      const roiEquity = cuotaInicialUSD > 0 ? ((rentaEfec * 12) / cuotaInicialUSD) * 100 : 0;
+      const flujoLibre = rentaEfec - cuotaMesP;
+      const hayFinanciacion = calcCuotaInicial < 100;
       return (
         <>
-          {panelHeader('Análisis Activo')}
-          <div style={{ flex: 1, overflowY: 'auto' as const, padding: '12px 12px', display: 'flex', flexDirection: 'column' as const, gap: 12 }}>
+          {panelHeader('Panorama del Activo')}
+          <div style={{ flex: 1, overflowY: 'auto' as const, padding: '14px 12px', display: 'flex', flexDirection: 'column' as const, gap: 12 }}>
             {!calcProject
-              ? panelEmpty('🔢', 'Selecciona un proyecto en la Calculadora para ver el resumen aquí')
+              ? panelEmpty('🔢', 'Selecciona un proyecto en la Calculadora para ver el panorama completo')
               : (
                 <>
-                  <div>
-                    <div style={{ fontSize: 9, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 3 }}>Proyecto</div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: T.teal }}>{calcProject}</div>
+                  {/* Nombre + zona */}
+                  <div style={{ paddingBottom: 8, borderBottom: `1px solid ${T.borderLight}` }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: T.teal }}>{calcProject}</div>
+                    {(() => { const pd = editableProjects.find(p => p.name === calcProject); return pd ? <div style={{ fontSize: 10, color: T.textSec, marginTop: 2 }}>{pd.zone}</div> : null; })()}
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    {[
-                      { label: 'Precio',        val: usd(calcPrecio),          color: T.teal },
-                      { label: 'Área',           val: `${calcArea} m²`,         color: T.teal },
-                      { label: 'Cap Rate Neto',  val: `${capRate.toFixed(1)}%`, color: T.palm },
-                      { label: 'Renta/mes',      val: usd(rentaMensual),        color: T.success },
-                    ].map(item => (
-                      <div key={item.label} style={{ background: T.bg, padding: '8px 10px', borderRadius: 6, border: `1px solid ${T.borderLight}` }}>
-                        <div style={{ fontSize: 9, color: T.textSec, marginBottom: 2 }}>{item.label}</div>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: item.color }}>{item.val}</div>
-                      </div>
-                    ))}
-                    <div style={{ background: T.bg, padding: '8px 10px', borderRadius: 6, border: `1px solid ${T.borderLight}`, gridColumn: '1 / -1' }}>
-                      <div style={{ fontSize: 9, color: T.textSec, marginBottom: 2 }}>Valorización anual</div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: T.coral }}>{calcValorizacion}%</div>
-                    </div>
+
+                  {/* Specs del activo — grid 2 col */}
+                  <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1 }}>Especificaciones</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
+                    {(() => {
+                      const pd = editableProjects.find(p => p.name === calcProject);
+                      return [
+                        { label: 'Precio',         val: usd(calcPrecio),                                         color: T.text },
+                        { label: 'Área',            val: `${calcArea} m²`,                                        color: T.text },
+                        { label: 'Renta bruta/mes', val: usd(Math.round(rentaMens)),                              color: T.success },
+                        { label: 'Vacancia',        val: `${calcVacancia}%`,                                      color: T.textSec },
+                        { label: 'Cap Rate rango',  val: pd ? `${pd.capRateMin}–${pd.capRateMax}%` : '—',         color: T.palm },
+                        { label: 'Habitaciones',    val: pd?.bedrooms || '—',                                     color: T.text },
+                        { label: 'Tipo',            val: pd?.tipo || '—',                                         color: T.text },
+                        { label: 'Entrega',         val: pd?.entrega || '—',                                      color: T.coral },
+                        { label: 'Precio/m²',       val: pd ? `${usd(pd.priceM2Min)}–${usd(pd.priceM2Max)}` : '—', color: T.text },
+                        { label: 'Condominio/m²',   val: pd ? `${usd(pd.condominioMes)}/m²·mes` : '—',           color: T.textSec },
+                      ].map(item => (
+                        <div key={item.label} style={{ background: T.bg, padding: '7px 9px', borderRadius: 6, border: `1px solid ${T.borderLight}` }}>
+                          <div style={{ fontSize: 9, color: T.textSec, marginBottom: 2 }}>{item.label}</div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: item.color }}>{item.val}</div>
+                        </div>
+                      ));
+                    })()}
                   </div>
-                  {activeProspect && (
-                    <div style={{ fontSize: 11, background: `${T.teal}08`, padding: '6px 8px', borderRadius: 5, borderLeft: `2px solid ${T.coral}`, color: T.textSec }}>
-                      Prospecto: <strong style={{ color: T.teal }}>{activeProspect.nombre} {activeProspect.apellido}</strong>
+
+                  {/* Yield Bruto — grande */}
+                  <div style={{ background: `${T.palm}12`, border: `1.5px solid ${T.palm}40`, borderRadius: 10, padding: '14px 12px', textAlign: 'center' as const }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: T.palm, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 4 }}>Yield Bruto sobre Inversión</div>
+                    <div style={{ fontSize: 34, fontWeight: 800, color: T.palm, lineHeight: 1 }}>{yieldBruto.toFixed(1)}%</div>
+                    <div style={{ fontSize: 10, color: T.textSec, marginTop: 5 }}>{usd(Math.round(rentaBrutaAnual))} / año · sobre {usd(Math.round(cuotaInicialUSD))}</div>
+                  </div>
+
+                  {/* Cuota inicial + ROI equity — solo si hay financiación */}
+                  {hayFinanciacion && (
+                    <div style={{ background: `${T.teal}10`, border: `1.5px solid ${T.teal}40`, borderRadius: 10, padding: '14px 12px', textAlign: 'center' as const }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: T.teal, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 4 }}>Cuota Inicial ({calcCuotaInicial}%)</div>
+                      <div style={{ fontSize: 28, fontWeight: 800, color: T.teal, lineHeight: 1 }}>{usd(Math.round(cuotaInicialUSD))}</div>
+                      <div style={{ fontSize: 10, color: T.textSec, marginTop: 5 }}>Sobre {usd(calcPrecio)}</div>
                     </div>
                   )}
+
+                  {/* Flujo libre mensual */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
+                    <div style={{ background: T.bg, padding: '7px 9px', borderRadius: 6, border: `1px solid ${T.borderLight}` }}>
+                      <div style={{ fontSize: 9, color: T.textSec, marginBottom: 2 }}>Flujo libre/mes</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: flujoLibre >= 0 ? T.success : T.coral }}>{usd(Math.round(flujoLibre))}</div>
+                    </div>
+                    <div style={{ background: T.bg, padding: '7px 9px', borderRadius: 6, border: `1px solid ${T.borderLight}` }}>
+                      <div style={{ fontSize: 9, color: T.textSec, marginBottom: 2 }}>Cuota hipoteca/mes</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: T.text }}>{hayFinanciacion ? usd(Math.round(cuotaMesP)) : '—'}</div>
+                    </div>
+                  </div>
                 </>
               )
             }
@@ -9537,7 +9891,61 @@ Responde SOLO con JSON sin bloques de código:
       );
     }
 
-    // ── DEFAULT: prospecto activo (prospectos, eventos, faqs, config, catálogo) ──
+    // ── EVENTOS: lista de asistentes del evento expandido ────────
+    if (activeModule === 'eventos') {
+      const ev = expandedEvent !== null ? events.find(e => e.id === expandedEvent) : null;
+      if (!ev) return (
+        <>
+          {panelHeader('Eventos · Invitados')}
+          {panelEmpty('📋', 'Abre un evento para ver su lista de asistentes aquí')}
+        </>
+      );
+      const linkedIds = ev.prospect_ids || [];
+      const linkedProspects = linkedIds.map(pid => prospects.find(p => p.id === pid)).filter(Boolean) as typeof prospects;
+      const cleanStr2 = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9\s]/g, '').toLowerCase().trim().replace(/\s+/g, ' ');
+      const linkedNames = new Set(linkedProspects.map(p => cleanStr2(p.nombre + ' ' + p.apellido)));
+      const legacyNames = ev.asistentes.filter(a => !linkedNames.has(cleanStr2(a)));
+      const totalCount = linkedProspects.length + legacyNames.length;
+      return (
+        <>
+          {panelHeader('Asistentes', ev.titulo.slice(0, 28) + (ev.titulo.length > 28 ? '…' : ''))}
+          <div style={{ flex: 1, overflowY: 'auto' as const, padding: '12px 12px', display: 'flex', flexDirection: 'column' as const, gap: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1 }}>Total invitados</div>
+              <span style={{ fontSize: 13, fontWeight: 700, color: T.teal }}>{totalCount}</span>
+            </div>
+            {linkedProspects.map(p => {
+              const isClosed = ['cierre','cerrado','post-venta'].some(s => p.estado.toLowerCase().includes(s));
+              return (
+                <div key={p.id}
+                  onClick={() => { setProspectDetail(p.id); setActiveProspect(p); setActiveModule('prospectos'); }}
+                  style={{ padding: '8px 10px', background: T.bg, borderRadius: 6, border: `1px solid ${T.borderLight}`, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                  onMouseEnter={e => (e.currentTarget.style.borderColor = T.teal)}
+                  onMouseLeave={e => (e.currentTarget.style.borderColor = T.borderLight)}
+                >
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: T.text }}>{p.nombre} {p.apellido}</div>
+                    <div style={{ fontSize: 9, color: T.textSec, marginTop: 1 }}>{p.estado} · {usd(p.presupuesto_usd)}</div>
+                  </div>
+                  {isClosed && <span style={{ fontSize: 9, background: `${T.success}20`, color: T.success, padding: '2px 5px', borderRadius: 3, fontWeight: 700, whiteSpace: 'nowrap' as const }}>Cerrado</span>}
+                </div>
+              );
+            })}
+            {legacyNames.map((name, i) => (
+              <div key={i} style={{ padding: '8px 10px', background: T.bg, borderRadius: 6, border: `1px solid ${T.borderLight}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: 11, color: T.textSec }}>{name}</div>
+                <span style={{ fontSize: 9, color: T.textSec, opacity: 0.6 }}>sin CRM</span>
+              </div>
+            ))}
+            {totalCount === 0 && (
+              <div style={{ fontSize: 11, color: T.textSec, fontStyle: 'italic', textAlign: 'center' as const, marginTop: 20 }}>Sin invitados registrados</div>
+            )}
+          </div>
+        </>
+      );
+    }
+
+    // ── DEFAULT: prospecto activo (prospectos, faqs, config, etc.) ──
     return (
       <>
         <div style={{ background: T.teal, padding: '14px 14px 12px', flexShrink: 0 }}>
@@ -9627,7 +10035,7 @@ Responde SOLO con JSON sin bloques de código:
   // MAIN LAYOUT
   // ══════════════════════════════════════════════════════════════
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: T.bg, fontFamily: 'Inter, sans-serif', color: T.text }}>
+    <div style={{ display: 'flex', minHeight: '100vh', width: '100%', background: T.bg, fontFamily: 'Inter, sans-serif', color: T.text }}>
       {/* LEFT SIDEBAR */}
       <div style={{
         width: 210, minHeight: '100vh', background: T.teal, borderRight: `1px solid ${T.tealDark}`,
@@ -9673,7 +10081,7 @@ Responde SOLO con JSON sin bloques de código:
       </div>
 
       {/* MAIN AREA */}
-      <div style={{ flex: 1, marginLeft: 210, marginRight: 280, display: 'flex', flexDirection: 'column' as const }}>
+      <div style={{ flex: 1, marginLeft: 210, marginRight: activeModule === 'configuracion' ? 0 : 280, display: 'flex', flexDirection: 'column' as const }}>
         {/* TOP HEADER */}
         <div style={{ background: T.teal, padding: '10px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky' as const, top: 0, zIndex: 5, borderBottom: `1px solid rgba(255,255,255,0.1)` }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', letterSpacing: 0.3 }}>
@@ -9688,77 +10096,18 @@ Responde SOLO con JSON sin bloques de código:
           </div>
         </div>
         {/* CONTENT */}
-        <div style={{ padding: '24px 28px', overflowY: 'auto' as const, flex: 1 }}>
+        <div id="crm-content" style={{ padding: '24px 28px', overflowY: 'auto' as const, flex: 1 }}>
           {renderModule()}
         </div>
       </div>
 
       {/* RIGHT PANEL — Contextual */}
-      <div style={{ width: 280, position: 'fixed' as const, top: 0, right: 0, bottom: 0, zIndex: 9, background: '#fff', borderLeft: `1px solid ${T.borderLight}`, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' }}>
-        {renderRightPanel()}
-      </div>
-
-      {/* FLOATING CALCULATOR BUTTON */}
-      {!calcDrawerOpen && activeModule !== 'calculadora' && (
-        <button
-          onClick={() => {
-            setPreviousModule(activeModule);
-            setCalcDrawerOpen(true);
-            const preselect = expandedProject || activeProspect?.proyectos_interes?.[0] || null;
-            if (preselect) selectCalcProject(preselect);
-            else setCalcProject(null);
-          }}
-          style={{ position: 'fixed' as const, bottom: 24, right: 292, zIndex: 50, background: T.coral, color: '#fff', border: 'none', borderRadius: 12, padding: '12px 18px', fontSize: 13, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, boxShadow: '0 4px 14px rgba(0,26,55,0.25)' }}
-        >
-          <Icon name="calculator" size={16} color="#fff" /> Calculadora
-        </button>
+      {activeModule !== 'configuracion' && (
+        <div style={{ width: 280, position: 'fixed' as const, top: 0, right: 0, bottom: 0, zIndex: 9, background: '#fff', borderLeft: `1px solid ${T.borderLight}`, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' }}>
+          {renderRightPanel()}
+        </div>
       )}
 
-      {/* CALCULATOR MODAL */}
-      {calcDrawerOpen && (() => {
-        const closeCalc = () => { setCalcDrawerOpen(false); setCalcModalExpanded(false); if (previousModule) { setActiveModule(previousModule); setPreviousModule(null); } };
-        const modalW = calcModalExpanded ? '98vw' : '900px';
-        const modalH = calcModalExpanded ? '98vh' : '88vh';
-        return (
-          <div
-            onClick={closeCalc}
-            style={{ position: 'fixed' as const, inset: 0, zIndex: 200, background: 'rgba(0,26,55,0.6)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          >
-            <div
-              onClick={e => e.stopPropagation()}
-              style={{ width: modalW, height: modalH, maxWidth: '99vw', maxHeight: '99vh', background: T.bg, borderRadius: calcModalExpanded ? 0 : 14, boxShadow: '0 24px 64px rgba(0,26,55,0.45)', border: `2px solid ${T.coral}`, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden', transition: 'width 0.25s, height 0.25s, border-radius 0.25s' }}
-            >
-              {/* Modal header */}
-              <div style={{ background: T.teal, padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-                <div>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: T.coral, letterSpacing: 0.5 }}>Calculadora Inmobiliaria</div>
-                  {activeProspect && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', marginTop: 2 }}>Prospecto: {activeProspect.nombre} {activeProspect.apellido}</div>}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {/* Expand/collapse toggle */}
-                  <button
-                    onClick={() => setCalcModalExpanded(x => !x)}
-                    title={calcModalExpanded ? 'Reducir' : 'Ampliar'}
-                    style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: 6, width: 32, height: 32, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    {calcModalExpanded ? '⊡' : '⊞'}
-                  </button>
-                  {/* Close */}
-                  <button
-                    onClick={closeCalc}
-                    title="Cerrar calculadora"
-                    style={{ background: `${T.coral}30`, border: `1px solid ${T.coral}60`, color: '#fff', borderRadius: 6, width: 32, height: 32, cursor: 'pointer', fontSize: 18, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  >✕</button>
-                </div>
-              </div>
-              {/* Modal body */}
-              <div style={{ overflowY: 'auto' as const, flex: 1, padding: '0 4px' }}>
-                {renderCalculadora(true)}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
 
       {crmLightboxImg && (
         <div

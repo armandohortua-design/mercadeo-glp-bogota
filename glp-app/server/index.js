@@ -268,7 +268,7 @@ app.post('/api/projects', async (req, res) => {
 // ==========================================
 app.post('/api/contact', async (req, res) => {
   try {
-    const { name, email, phone, project, message, channel } = req.body;
+    const { name, email, phone, project, message, channel, conversationHistory } = req.body;
     if (!name || !email) return res.status(400).json({ error: 'Nombre y Correo son obligatorios.' });
 
     const firstName = name.trim().split(/\s+/)[0] || 'Cliente';
@@ -341,12 +341,97 @@ app.post('/api/contact', async (req, res) => {
       }
     }
 
-    // Generar borrador con OpenAI o plantilla
+    // Analizar conversación con IA para extraer proyecto e intereses
     const apiKey = tenant?.openai?.apiKey || process.env.OPENAI_API_KEY;
+    let detectedProject = project;
+    let enrichedNotes = message || '';
+    let analysis = null;
     let draftSubject = `Información - ${project} | GLP`;
     let draftBody = `Estimado/a ${firstName},\n\nGracias por contactarnos sobre ${project}.\n\nQuedo a tu disposición.\n\nSara Valenzuela\n${tenant.name}`;
 
-    if (apiKey) {
+    if (apiKey && conversationHistory) {
+      try {
+        const OpenAI = require('openai');
+        const openai = new OpenAI({ apiKey });
+
+        // Extraer proyecto, temas e intereses de la conversación
+        const analysisResponse = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [{
+            role: 'user',
+            content: `Analiza esta conversación de un chatbot inmobiliario y extrae la información clave del cliente. Responde SOLO con JSON válido, sin markdown.
+
+CONVERSACIÓN:
+${conversationHistory}
+
+JSON esperado:
+{
+  "proyecto_principal": "nombre exacto del proyecto más mencionado, o 'Portafolio GLP' si no se especificó uno",
+  "proyectos_mencionados": ["lista de proyectos mencionados"],
+  "temas_interes": ["precio", "zona", "entrega", "financiamiento", "rentabilidad", "habitaciones", "uso propio", "inversión — solo los que apliquen"],
+  "resumen_consulta": "resumen en 2-3 oraciones de qué busca el cliente y cuáles son sus inquietudes principales",
+  "perfil_inversor": "renta|patrimonial|disfrute|mixto|desconocido",
+  "presupuesto_usd": 0,
+  "señales_calificacion": {
+    "menciona_inversion": false,
+    "menciona_panama": false,
+    "menciona_presupuesto": false,
+    "menciona_entrega_o_disponibilidad": false,
+    "menciona_financiamiento": false,
+    "menciona_fecha_decision": false,
+    "menciona_habitaciones": false,
+    "menciona_rentabilidad": false,
+    "menciona_uso_propio": false,
+    "tono_general": "curioso|interesado|listo_para_decidir|solo_cotizando|desconocido"
+  },
+  "score_calificacion": 0
+}
+
+Para calcular score_calificacion suma: menciona_inversion(+20) + menciona_presupuesto(+20) + menciona_panama(+10) + menciona_entrega_o_disponibilidad(+15) + menciona_fecha_decision(+20) + menciona_financiamiento(+10) + menciona_habitaciones(+10) + menciona_rentabilidad(+10) + menciona_uso_propio(+5). Ajusta según tono: listo_para_decidir(+10), solo_cotizando(-10). Máximo 100.`
+          }],
+          temperature: 0.2, max_tokens: 400
+        });
+
+        analysis = JSON.parse(analysisResponse.choices[0].message.content.trim());
+        if (analysis.proyecto_principal) detectedProject = analysis.proyecto_principal;
+        const formattedConversation = conversationHistory.split('\n').map(line => {
+          if (line.startsWith('Cliente:')) return `**${line}**`;
+          return line;
+        }).join('\n');
+
+        const señales = analysis.señales_calificacion || {};
+        const señalesActivas = Object.entries(señales)
+          .filter(([k, v]) => v === true)
+          .map(([k]) => k.replace('menciona_', '').replace(/_/g, ' '));
+
+        enrichedNotes = [
+          `📋 Resumen: ${analysis.resumen_consulta || '—'}`,
+          `🏠 Proyecto: ${analysis.proyecto_principal || '—'}`,
+          `🔍 Temas de interés: ${(analysis.temas_interes || []).join(', ')}`,
+          `👤 Perfil inversor: ${analysis.perfil_inversor || '—'}`,
+          `🎯 Score de calificación: ${analysis.score_calificacion || 0}/100`,
+          señalesActivas.length ? `✅ Señales detectadas: ${señalesActivas.join(', ')}` : '',
+          señales.tono_general ? `💬 Tono: ${señales.tono_general.replace(/_/g, ' ')}` : '',
+          analysis.presupuesto_usd > 0 ? `💰 Presupuesto mencionado: $${analysis.presupuesto_usd.toLocaleString()} USD` : '',
+          '',
+          '--- Conversación ---',
+          formattedConversation
+        ].filter(Boolean).join('\n');
+
+        // Generar borrador personalizado con contexto real
+        const draftResponse = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: `Eres Sara Valenzuela de ${tenant.name}. Redacta un correo comercial sofisticado para ${firstName}, quien conversó con nuestro chatbot sobre: ${analysis.resumen_consulta || project}. Sus temas de interés son: ${(analysis.temas_interes || []).join(', ')}. Proyecto de interés: ${detectedProject}. JSON: {"subject":"...","body":"..."}` }],
+          temperature: 0.7, max_tokens: 500
+        });
+        const parsed = JSON.parse(draftResponse.choices[0].message.content.replace(/```json|```/g, '').trim());
+        if (parsed.subject) draftSubject = parsed.subject;
+        if (parsed.body) draftBody = parsed.body;
+      } catch (aiErr) {
+        console.warn('⚠️ Análisis IA falló, usando datos básicos:', aiErr.message);
+        enrichedNotes = conversationHistory ? `${message || ''}\n\n--- Conversación ---\n${conversationHistory}` : (message || '');
+      }
+    } else if (apiKey) {
       try {
         const OpenAI = require('openai');
         const openai = new OpenAI({ apiKey });
@@ -364,12 +449,16 @@ app.post('/api/contact', async (req, res) => {
     }
 
     // Guardar prospecto en la base de datos
+    const budgetUSD = (typeof analysis?.presupuesto_usd === 'number' && analysis.presupuesto_usd > 0)
+      ? analysis.presupuesto_usd : null;
+    const score = analysis?.score_calificacion || 0;
+    const estadoLead = score >= 60 ? 'Calificado' : score >= 30 ? 'Contacto Inicial' : 'Lead Frío';
     await pool.query(
-      `INSERT INTO prospectos (tenant_id, nombre, apellido, correo, telefono, proyectos_interes, forma_contacto, estado, canal, notas, fecha_registro, fecha_ultima_actividad)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW(),NOW())`,
+      `INSERT INTO prospectos (tenant_id, nombre, apellido, correo, telefono, proyectos_interes, forma_contacto, estado, canal, notas, presupuesto_usd, fecha_registro, fecha_ultima_actividad)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW())`,
       [tenant.id, firstName, '', email, phone || '',
-       JSON.stringify([project]), channel || 'Web', 'Contacto Inicial', channel || 'Web',
-       message || '']
+       JSON.stringify([detectedProject]), channel || 'Web', estadoLead, channel || 'Web',
+       enrichedNotes, budgetUSD]
     );
 
     const draftId = `draft-${Date.now()}`;
@@ -464,6 +553,29 @@ app.post('/api/send-draft', async (req, res) => {
 });
 
 // ==========================================
+// CATÁLOGO GLP — fallback para SARA
+// ==========================================
+const GLP_CATALOG = [
+  { name: 'Armonía', zone: 'Bella Vista — Ciudad de Panamá', tipo: 'Residencia', entrega: 'F1 Inmediata · F2 Q2 2026 · F3 Q2 2028', minPrice: 181000, maxPrice: 235000, areaMin: 45, areaMax: 71, bedrooms: '1, 2 y 3 rec.', capRateMin: 6.0, capRateMax: 7.5, amenities: ['Piscina', 'Gimnasio', 'Lobby diseño', 'Seguridad 24/7', 'Parqueo'] },
+  { name: 'Ventu', zone: 'Bella Vista — Ciudad de Panamá', tipo: 'Hotelero (Airbnb)', entrega: 'Q2 2028', minPrice: 136000, maxPrice: 259000, areaMin: 40, areaMax: 63, bedrooms: '1 y 2 rec.', capRateMin: 8.0, capRateMax: 12.0, amenities: ['Administración hotelera', 'Pool deck', 'Coworking', 'Check-in automático'] },
+  { name: 'Ocena', zone: 'Santa María — Ciudad de Panamá', tipo: 'Residencia', entrega: 'Q4 2027', minPrice: 446000, maxPrice: 1200000, areaMin: 100, areaMax: 270, bedrooms: '2 y 3 rec.', capRateMin: 4.7, capRateMax: 6.0, amenities: ['Golf 18 hoyos Jack Nicklaus', 'Club House', 'Piscinas resort', 'Wellness center'] },
+  { name: 'Ipanema', zone: 'Costa Sur — Ciudad de Panamá', tipo: 'Residencia', entrega: 'F1 Q1 2028 · F2 Q4 2028', minPrice: 283000, maxPrice: 519000, areaMin: 72, areaMax: 163, bedrooms: '1, 2 y 3 rec.', capRateMin: 6.0, capRateMax: 7.5, amenities: ['Piscina vista al mar', 'Gimnasio', 'Co-working', 'BBQ'] },
+  { name: 'Bosco', zone: 'Santa María — Ciudad de Panamá', tipo: 'Residencia', entrega: '2030', minPrice: 474000, maxPrice: 1100000, areaMin: 100, areaMax: 296, bedrooms: '2, 3 y 4 rec.', capRateMin: 5.5, capRateMax: 7.2, amenities: ['Jardines botánicos', 'Piscina natural', 'Senderos de meditación'] },
+  { name: 'Panama Viejo Residence', zone: 'Panamá Viejo — Ciudad de Panamá', tipo: 'Residencia', entrega: 'ENTREGA INMEDIATA', minPrice: 160000, maxPrice: 182000, areaMin: 58, areaMax: 58, bedrooms: '2 rec.', capRateMin: 6.5, capRateMax: 8.0, amenities: ['Piscina', 'Gimnasio', 'Coworking', 'Seguridad 24/7'] },
+  { name: 'The Palms', zone: 'Punta Pacífica — Isla privada', tipo: 'Residencia premium', entrega: 'ENTREGA INMEDIATA', minPrice: 1200000, maxPrice: 1400000, areaMin: 169, areaMax: 239, bedrooms: '2 rec.', capRateMin: 5.5, capRateMax: 7.0, amenities: ['Marina privada 180+ muelles', 'Yacht club', 'Piscinas infinity', 'Spa'] },
+  { name: 'Ocean Reef Park', zone: 'Punta Pacífica — Isla privada', tipo: 'Residencia ultra-premium', entrega: 'Q2 2028', minPrice: 1700000, maxPrice: 2100000, areaMin: 491, areaMax: 569, bedrooms: '3 y 4 rec.', capRateMin: 5.0, capRateMax: 6.5, amenities: ['Marina privada', 'Helipuerto', 'Yacht club', 'Club privado'] },
+  { name: 'O Club Residences', zone: 'Punta Pacífica — Isla privada', tipo: 'Residencia premium', entrega: 'Q4 2027', minPrice: 1000000, maxPrice: 1400000, areaMin: 183, areaMax: 236, bedrooms: '2 rec.', capRateMin: 5.0, capRateMax: 6.5, amenities: ['Club privado O Club', 'Marina', 'Spa', 'Restaurantes'] },
+  { name: 'Aires del Mar', zone: 'Playa Caracol, Chame — Pacífico', tipo: 'Residencia playa', entrega: 'INMEDIATA · Q4 2026', minPrice: 143000, maxPrice: 207000, areaMin: 42, areaMax: 71, bedrooms: '2 y 3 rec.', capRateMin: 5.8, capRateMax: 8.0, amenities: ['Vista al océano Pacífico', 'Piscinas', 'Jardines', 'Seguridad 24/7'] },
+  { name: 'The Tides', zone: 'Playa Caracol, Chame — Pacífico', tipo: 'Residencia playa', entrega: 'ENTREGA INMEDIATA', minPrice: 278000, maxPrice: 308000, areaMin: 99, areaMax: 99, bedrooms: '2 y 3 rec.', capRateMin: 5.5, capRateMax: 7.5, amenities: ['1.2 km playa privada', 'Surf club', '3 piscinas', 'Restaurante y beach bar'] },
+  { name: 'Brisas del Mar', zone: 'Playa Caracol, Chame — Pacífico', tipo: 'Residencia playa', entrega: 'ENTREGA INMEDIATA', minPrice: 276000, maxPrice: 332000, areaMin: 93, areaMax: 108, bedrooms: '2 y 3 rec.', capRateMin: 5.8, capRateMax: 7.5, amenities: ['Frente al mar', 'Piscina', 'BBQ', 'Seguridad 24/7'] },
+  { name: 'Olas del Mar', zone: 'Playa Caracol, Chame — Pacífico', tipo: 'Residencia playa', entrega: 'ENTREGA INMEDIATA', minPrice: 267000, maxPrice: 398000, areaMin: 69, areaMax: 97, bedrooms: '2 y 3 rec.', capRateMin: 6.0, capRateMax: 8.0, amenities: ['Piscina con vista al mar', 'BBQ', 'Seguridad 24/7'] },
+  { name: 'Surfside', zone: 'Playa Caracol, Chame — Pacífico', tipo: 'Residencia playa / aparthotel', entrega: 'ENTREGA INMEDIATA', minPrice: 314000, maxPrice: 413000, areaMin: 81, areaMax: 107, bedrooms: '2 y 3 rec.', capRateMin: 5.8, capRateMax: 7.5, amenities: ['Playa privada', 'Piscinas y jacuzzi', 'Restaurante y bar', 'Surf lounge'] },
+  { name: 'Beachwalk', zone: 'Playa Caracol, Chame — Pacífico', tipo: 'Residencia playa wellness', entrega: 'Q1 2027', minPrice: 297000, maxPrice: 386000, areaMin: 85, areaMax: 97, bedrooms: '2 y 3 rec.', capRateMin: 5.5, capRateMax: 7.5, amenities: ['Frente al océano', 'Wellness spa', 'Yoga deck', 'Gimnasio exterior'] },
+  { name: 'Seashore', zone: 'Playa Caracol, Chame — Pacífico', tipo: 'Residencia playa', entrega: 'Q4 2027', minPrice: 290000, maxPrice: 490000, areaMin: 84, areaMax: 150, bedrooms: '2 y 3 rec.', capRateMin: 5.8, capRateMax: 7.5, amenities: ['Vista al Pacífico', 'Piscina', 'Área social y BBQ', 'Gimnasio'] },
+  { name: 'Seashore Reserve', zone: 'Playa Caracol, Chame — Pacífico', tipo: 'Residencia playa', entrega: 'Q4 2028', minPrice: 290000, maxPrice: 490000, areaMin: 84, areaMax: 150, bedrooms: '2 y 3 rec.', capRateMin: 5.5, capRateMax: 7.5, amenities: ['Vista al Pacífico', 'Piscina', 'Área social y BBQ', 'Gimnasio'] },
+];
+
+// ==========================================
 // CHATBOT SARA
 // ==========================================
 app.post('/api/chat', async (req, res) => {
@@ -475,11 +587,36 @@ app.post('/api/chat', async (req, res) => {
     const apiKey = tenant?.openai?.apiKey || process.env.OPENAI_API_KEY;
     if (!apiKey) return res.status(503).json({ error: 'OpenAI no configurado.' });
 
+    // Cargar proyectos desde la BD; si está vacía usar catálogo hardcodeado
     const { rows: projectRows } = await pool.query('SELECT data FROM projects WHERE tenant_id = $1', [tenant.id]);
-    const projects = projectRows.map(r => r.data);
+    const projects = projectRows.length > 0 ? projectRows.map(r => r.data) : GLP_CATALOG;
     const catalogSummary = projects.map(p =>
-      `- ${p.name}: ${p.zone}. Tipo: ${p.type}. Desde $${p.price} USD. ${p.amenities?.join(', ') || ''}`
-    ).join('\n') || 'Portafolio disponible en consulta directa.';
+      `- ${p.name} | ${p.zone} | ${p.tipo || p.type || 'Residencia'} | Precio: $${(p.minPrice || 0).toLocaleString()}–$${(p.maxPrice || 0).toLocaleString()} USD | Áreas: ${p.areaMin || '?'}–${p.areaMax || '?'} m² | ${p.bedrooms || ''} | Entrega: ${p.entrega || 'consultar'} | Amenidades: ${(p.amenities || []).join(', ')}`
+    ).join('\n');
+
+    const systemPrompt = `Eres Sara, asesora de inversiones inmobiliarias de ${tenant.name}. Llevas años en este mundo y te apasiona conectar a las personas con la inversión correcta para su momento de vida.
+
+Tu estilo: conversacional, cálido, directo. Usas frases cortas. A veces compartes una opinión personal o haces una observación sobre lo que el cliente menciona. No suenas a call center ni a guión.
+
+A lo largo de la conversación, de forma natural (nunca en forma de cuestionario), trata de entender:
+- Qué lo motiva: ¿es para vivir, para rentar, para tener algo a largo plazo?
+- En qué rango de tiempo piensa tomar la decisión
+- Si ya tiene un presupuesto claro en mente o está explorando
+- Cuántas habitaciones necesita o prefiere
+- Si va a financiar o tiene capital disponible
+- Si ya conoce Panamá o es su primera vez mirando este mercado
+
+No preguntes todo junto. Ve hilando la conversación. Si te cuenta algo, reacciona a eso antes de preguntar lo siguiente.
+
+FORMATO DE RESPUESTA — siempre:
+- Separa por bloques temáticos con línea en blanco entre cada uno
+- Usa emojis como ancla visual: 🏠 📍 💰 🗓️ ✨ — pero sin abusar
+- Máximo 2–3 líneas por bloque
+- Nunca uses "Cap Rate", "tasa de capitalización" ni jerga técnica — di "retorno estimado" o "lo que puedes esperar recibir mensualmente"
+- Termina con una pregunta o comentario que invite a seguir
+
+CATÁLOGO GLP:
+${catalogSummary}`;
 
     const OpenAI = require('openai');
     const openai = new OpenAI({ apiKey });
@@ -487,7 +624,7 @@ app.post('/api/chat', async (req, res) => {
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
-        { role: 'system', content: `Eres S.A.R.A, asesora elite de inversiones inmobiliarias de ${tenant.name}. Responde de forma cálida, profesional y persuasiva. Catálogo:\n${catalogSummary}` },
+        { role: 'system', content: systemPrompt },
         ...messages.map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.text }))
       ],
       temperature: 0.7, max_tokens: 350
@@ -880,7 +1017,7 @@ app.post('/api/crisis/detect', async (req, res) => {
 app.get('/api/backup/export-db', async (req, res) => {
   const TENANT = 'tenant-glp-001';
   try {
-    const tablas = ['prospectos', 'drafts', 'prospect_alerts', 'crisis_alerts', 'projects', 'brokers', 'tenants'];
+    const tablas = ['prospectos', 'drafts', 'prospect_alerts', 'crisis_alerts', 'projects', 'brokers', 'tenants', 'eventos', 'faq_clicks'];
     const snapshot = { exportado_en: new Date().toISOString(), tenant_id: TENANT, tablas: {} };
 
     for (const tabla of tablas) {
