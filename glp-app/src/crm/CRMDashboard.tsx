@@ -1406,6 +1406,7 @@ export default function CRMDashboard() {
   // Aprobar insight → disparo agéntico automático de Valeria + Isabella + Sara
   const approveInsight = async (ins: typeof camiloInsights[0]) => {
     setCamiloInsights(prev => prev.map(i => i.id === ins.id ? { ...i, status: 'revisado' as const } : i));
+    dbPatch(`${API}/camilo/insights/${ins.id}`, { status: 'revisado' });
     const logTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const logA = (agent: string, msg: string) => setSwarmLogs(prev => [...prev, { time: logTime, agent, msg }]);
     const label = `Camilo › ${ins.titulo}`;
@@ -1609,6 +1610,20 @@ Sin markdown, solo el JSON array.`;
       });
   }, []);
 
+  // ── Helpers DB fire-and-forget ────────────────────────────────────────────
+  const API = 'http://localhost:3001/api';
+  const dbPost  = (url: string, data: object) => fetch(url, { method:'POST',  headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) }).catch(()=>{});
+  const dbPatch = (url: string, data: object) => fetch(url, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) }).catch(()=>{});
+  const dbDel   = (url: string)               => fetch(url, { method:'DELETE' }).catch(()=>{});
+
+  // ── Cargar estado de agentes desde DB al entrar al módulo ────────────────
+  useEffect(() => {
+    if (activeModule !== 'agentes') return;
+    fetch(`${API}/camilo/insights`).then(r=>r.json()).then(d=>{ if(Array.isArray(d) && d.length) setCamiloInsights(d as any); }).catch(()=>{});
+    fetch(`${API}/valeria/drafts`).then(r=>r.json()).then(d=>{ if(Array.isArray(d) && d.length) setValeriaDrafts(d as any); }).catch(()=>{});
+    fetch(`${API}/isabella/scripts`).then(r=>r.json()).then(d=>{ if(Array.isArray(d) && d.length) setIsabellaScripts(d as any); }).catch(()=>{});
+  }, [activeModule]);
+
   const updateProfile = (field: keyof GlpBrandProfile, value: any) => {
     setBrandProfile(prev => ({ ...prev, [field]: value }));
     setProfileDirty(true);
@@ -1752,6 +1767,7 @@ Diferenciadores: ${brandProfile.diferenciadores.slice(0,3).join(' · ')}`;
         }));
 
         setCamiloInsights(prev => [...nuevosInsights, ...prev]);
+        nuevosInsights.forEach((ins: any) => dbPost(`${API}/camilo/insights`, ins));
 
         // Actualizar reporte SARA con el contexto de Camilo
         setSaraReportText(
@@ -2212,6 +2228,7 @@ Responde SOLO con JSON sin bloques de código markdown:
       };
 
       setValeriaDrafts(prev => [newDraft, ...prev]);
+      dbPost(`${API}/valeria/drafts`, newDraft);
       setAgentValeriaContent(c => c + 1);
       logMsg(`✅ ${canal} generado: "${parsed.asunto}" — listo para revisión del administrador.`);
     } catch (e: any) {
@@ -2233,6 +2250,7 @@ Responde SOLO con JSON sin bloques de código markdown:
         notas_admin: ''
       };
       setValeriaDrafts(prev => [fallback, ...prev]);
+      dbPost(`${API}/valeria/drafts`, fallback);
     } finally {
       setAgentValeriaActive(false);
       setValeriaGenerating(false);
@@ -2290,6 +2308,7 @@ Responde SOLO con JSON sin bloques de código:
         status: 'pending', notas_admin: ''
       };
       setIsabellaScripts(prev => [newScript, ...prev]);
+      dbPost(`${API}/isabella/scripts`, newScript);
 
       // Marcar la tarea de workflow como completada si existía
       setWorkflowTasks(prev => prev.map(t =>
@@ -2461,6 +2480,7 @@ Responde SOLO con JSON sin bloques de código:
       };
 
       setIsabellaScripts(prev => [newScript, ...prev]);
+      dbPost(`${API}/isabella/scripts`, newScript);
 
       // Coordinación cross-agent Isabella → Valeria (caption del video)
       if (tipoVideo === 'Reel 45s' || tipoVideo === 'Video Educativo 90s') {
@@ -2478,6 +2498,7 @@ Responde SOLO con JSON sin bloques de código:
           origen_agentivo: insightOrigin
         };
         setValeriaDrafts(prev => [coordinationNote, ...prev]);
+        dbPost(`${API}/valeria/drafts`, coordinationNote);
         logMsg(`✅ Coordinación activada: Valeria recibió tarea de caption para "${parsed.titulo}"`);
       }
 
@@ -2486,14 +2507,16 @@ Responde SOLO con JSON sin bloques de código:
     } catch (e: any) {
       logMsg(`Error en Isabella: ${e.message}`);
       // Fallback
-      setIsabellaScripts(prev => [{
+      const isabellaFallback = {
         id: 'is_' + Date.now(), date: today(), type: tipoVideo, canal: tipoVideo,
         asunto: `Reel GLP — ${PROJECTS[0]?.name || 'Inversión en Panamá'}`,
         content: `SECCIÓN 1 — GANCHO (0-5s)\nAUDIO: "¿Sabías que en Panamá llevas 20 años sin pagar impuesto predial?"\nTEXTO PANTALLA: $0 PREDIAL · 20 AÑOS\nPLANO: Plano medio Isabella, cámara directa, fondo neutro o proyecto\n\nSECCIÓN 2 — DATO (5-25s)\nAUDIO: "Mientras en Colombia el predial sube cada año, en ${PROJECTS[0]?.name || 'nuestros proyectos'} desde $${PROJECTS[0]?.minPrice?.toLocaleString() || '150,000'} USD, tu rentabilidad en dólares supera el 8% anual sin ese costo."\nTEXTO PANTALLA: +8% USD · SIN PREDIAL\nPLANO: B-roll del proyecto o render\n\nSECCIÓN 3 — CTA (25-45s)\nAUDIO: "${brandProfile.cta_principal}"\nTEXTO PANTALLA: ESCRÍBENOS "PANAMÁ"\nPLANO: Isabella de frente, sonríe, gesto hacia cámara`,
         tags: ['Isabella', 'Video', 'Fallback'],
         contexto: 'Generado sin IA — editar antes de producción',
-        status: 'pending', notas_admin: ''
-      }, ...prev]);
+        status: 'pending' as const, notas_admin: ''
+      };
+      setIsabellaScripts(prev => [isabellaFallback, ...prev]);
+      dbPost(`${API}/isabella/scripts`, isabellaFallback);
     } finally {
       setAgentIsabellaActive(false);
     }
@@ -2616,11 +2639,11 @@ Responde SOLO con JSON sin bloques de código:
     
     setCrisisValeriaDrafts([emailDraft, postDraft]);
     // INTEGRATION: Push to Valeria's queue
-    setValeriaDrafts(prev => [
-      { id: 'vd_c_' + Date.now(), date: today(), type: 'Email Masivo (Crisis)', status: 'pending', content: emailDraft },
-      { id: 'vd_c_' + (Date.now() + 1), date: today(), type: 'LinkedIn Post (Crisis)', status: 'pending', content: postDraft },
-      ...prev
-    ]);
+    const crisisDraft1 = { id: 'vd_c_' + Date.now(), date: today(), type: 'Email Masivo (Crisis)', status: 'pending' as const, content: emailDraft };
+    const crisisDraft2 = { id: 'vd_c_' + (Date.now() + 1), date: today(), type: 'LinkedIn Post (Crisis)', status: 'pending' as const, content: postDraft };
+    setValeriaDrafts(prev => [crisisDraft1, crisisDraft2, ...prev]);
+    dbPost(`${API}/valeria/drafts`, crisisDraft1);
+    dbPost(`${API}/valeria/drafts`, crisisDraft2);
     
     setCrisisSwarmLogs(prev => [...prev, { time: timeStr(), agent: 'VALERIA', msg: 'Copys generados en el historial de Valeria: 1 Email Masivo y 1 Post de LinkedIn.' }]);
 
@@ -2635,11 +2658,11 @@ Responde SOLO con JSON sin bloques de código:
     
     setCrisisIsabellaScripts([scriptText, calendarText]);
     // INTEGRATION: Push to Isabella's queue
-    setIsabellaScripts(prev => [
-      { id: 'is_c_' + Date.now(), date: today(), type: 'Video Script (Crisis)', status: 'pending', content: scriptText },
-      { id: 'is_c_' + (Date.now() + 1), date: today(), type: 'Campaña Semanal (Crisis)', status: 'pending', content: calendarText },
-      ...prev
-    ]);
+    const crisisScript1 = { id: 'is_c_' + Date.now(), date: today(), type: 'Video Script (Crisis)', status: 'pending' as const, content: scriptText };
+    const crisisScript2 = { id: 'is_c_' + (Date.now() + 1), date: today(), type: 'Campaña Semanal (Crisis)', status: 'pending' as const, content: calendarText };
+    setIsabellaScripts(prev => [crisisScript1, crisisScript2, ...prev]);
+    dbPost(`${API}/isabella/scripts`, crisisScript1);
+    dbPost(`${API}/isabella/scripts`, crisisScript2);
     
     setCrisisSwarmLogs(prev => [...prev, { time: timeStr(), agent: 'ISABELLA', msg: 'Script de video y Campaña de Crisis añadidos al historial de Isabella.' }]);
 
@@ -6259,7 +6282,7 @@ Responde SOLO con JSON sin bloques de código:
                           <span style={{ fontSize:9, color:'#C4BFB5', letterSpacing:1 }}>{ins.fecha}</span>
                           {!isNew && ins.status === 'revisado' && <span style={{ fontSize:9, letterSpacing:2, color:'#10B981', textTransform:'uppercase', fontWeight:700 }}>✓ Ejecutado</span>}
                           {!isNew && ins.status === 'aplicado' && <span style={{ fontSize:9, letterSpacing:2, color:'#9CA3AF', textTransform:'uppercase', fontWeight:700 }}>Rechazado</span>}
-                          <button onClick={() => setCamiloInsights(prev => prev.filter(i => i.id !== ins.id))}
+                          <button onClick={() => { setCamiloInsights(prev => prev.filter(i => i.id !== ins.id)); dbDel(`${API}/camilo/insights/${ins.id}`); }}
                             style={{ marginLeft:'auto', background:'transparent', border:'1px solid #FECACA', color:'#DC2626', padding:'3px 10px', fontSize:8, fontWeight:700, letterSpacing:1, textTransform:'uppercase' as const, cursor:'pointer' }}>
                             × Eliminar
                           </button>
@@ -7118,26 +7141,26 @@ Responde SOLO con JSON sin bloques de código:
                               Aprobado por {item.aprobado_por} · {item.fecha_aprobacion}
                             </span>
                           )}
-                          <button onClick={() => setValeriaDrafts(prev => prev.filter(x => x.id !== item.id))}
+                          <button onClick={() => { setValeriaDrafts(prev => prev.filter(x => x.id !== item.id)); dbDel(`${API}/valeria/drafts/${item.id}`); }}
                             style={{ background:'transparent', border:'1px solid #FECACA', color:'#DC2626', padding:'6px 12px', fontSize:9, fontWeight:700, letterSpacing:1, textTransform:'uppercase', cursor:'pointer' }}>
                             Eliminar
                           </button>
                           {item.status === 'pending' && (
-                            <button onClick={() => setValeriaDrafts(prev => prev.map(x => x.id === item.id
-                              ? { ...x, status:'approved', aprobado_por:'Admin', fecha_aprobacion:today() } : x))}
+                            <button onClick={() => { setValeriaDrafts(prev => prev.map(x => x.id === item.id
+                              ? { ...x, status:'approved', aprobado_por:'Admin', fecha_aprobacion:today() } : x)); dbPatch(`${API}/valeria/drafts/${item.id}`, { status:'approved', aprobado_por:'Admin', fecha_aprobacion:today() }); }}
                               style={{ background:V_NAVY, color:V_GOLD_L, border:'none', padding:'6px 16px', fontSize:9, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', cursor:'pointer' }}>
                               Aprobar
                             </button>
                           )}
                           {item.status === 'approved' && (
-                            <button onClick={() => setValeriaDrafts(prev => prev.map(x => x.id === item.id ? { ...x, status:'pending' } : x))}
+                            <button onClick={() => { setValeriaDrafts(prev => prev.map(x => x.id === item.id ? { ...x, status:'pending' } : x)); dbPatch(`${API}/valeria/drafts/${item.id}`, { status:'pending' }); }}
                               style={{ background:'transparent', border:`1px solid #D6CEBC`, color:'#6B7280', padding:'6px 12px', fontSize:9, fontWeight:700, letterSpacing:1, textTransform:'uppercase', cursor:'pointer' }}>
                               Devolver
                             </button>
                           )}
                           {(item.status === 'approved' || item.status === 'pending') && (
-                            <button onClick={() => setValeriaDrafts(prev => prev.map(x => x.id === item.id
-                              ? { ...x, status:'active', aprobado_por: x.aprobado_por||'Admin', fecha_aprobacion: x.fecha_aprobacion||today() } : x))}
+                            <button onClick={() => { setValeriaDrafts(prev => prev.map(x => x.id === item.id
+                              ? { ...x, status:'active', aprobado_por: x.aprobado_por||'Admin', fecha_aprobacion: x.fecha_aprobacion||today() } : x)); dbPatch(`${API}/valeria/drafts/${item.id}`, { status:'active' }); }}
                               style={{ background:'#10B981', color:'#fff', border:'none', padding:'6px 16px', fontSize:9, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', cursor:'pointer' }}>
                               Publicar
                             </button>
@@ -8118,7 +8141,7 @@ Responde SOLO con JSON sin bloques de código:
                       <div key={draft.id} style={{ background: CREAM, border: `1px solid #D6CEBC`, borderLeft: `3px solid ${GOLD}`, padding: '10px 12px', marginBottom: 6 }}>
                         <div style={{ fontSize: 9, color: GOLD, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 }}>Borrador {idx + 1} · {draft.type}</div>
                         <div style={{ fontSize: 11, color: '#374151', lineHeight: 1.5, maxHeight: 50, overflow: 'hidden' }}>{draft.content}</div>
-                        <button onClick={() => setValeriaDrafts(prev => prev.map(x => x.id === draft.id ? { ...x, status: 'active' } : x))}
+                        <button onClick={() => { setValeriaDrafts(prev => prev.map(x => x.id === draft.id ? { ...x, status: 'active' } : x)); dbPatch(`${API}/valeria/drafts/${draft.id}`, { status: 'active' }); }}
                           style={{ marginTop: 8, background: 'transparent', border: `1px solid ${GOLD}`, color: GOLD, fontSize: 9, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', padding: '4px 10px', cursor: 'pointer', borderRadius: 2 }}>
                           Aprobar
                         </button>
@@ -8170,11 +8193,11 @@ Responde SOLO con JSON sin bloques de código:
 
                           {/* Acciones */}
                           <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                            <button onClick={() => setIsabellaScripts(prev => prev.filter(x => x.id !== script.id))}
+                            <button onClick={() => { setIsabellaScripts(prev => prev.filter(x => x.id !== script.id)); dbDel(`${API}/isabella/scripts/${script.id}`); }}
                               style={{ background: 'transparent', border: '1px solid #FECACA', color: '#DC2626', fontSize: 8, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', padding: '5px 10px', cursor: 'pointer' }}>
                               Descartar
                             </button>
-                            <button onClick={() => setIsabellaScripts(prev => prev.map(x => x.id === script.id ? { ...x, status: 'approved' } : x))}
+                            <button onClick={() => { setIsabellaScripts(prev => prev.map(x => x.id === script.id ? { ...x, status: 'approved' } : x)); dbPatch(`${API}/isabella/scripts/${script.id}`, { status: 'approved' }); }}
                               style={{ flex: 1, background: NAVY, color: GOLD_LIGHT, border: 'none', fontSize: 8, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', padding: '5px 10px', cursor: 'pointer' }}>
                               Aprobar Guion
                             </button>
@@ -8191,6 +8214,7 @@ Responde SOLO con JSON sin bloques de código:
                                   .then(() => alert('✅ Guion copiado al clipboard en formato JSON.\n\nPega este contenido en HeyGen → Script → Custom para generar el avatar de Isabella.'))
                                   .catch(() => alert('Error al copiar. Usa "Ver Historial" para acceder al guion completo.'));
                                 setIsabellaScripts(prev => prev.map(x => x.id === script.id ? { ...x, status: 'active', notas_admin: 'Migrado a HeyGen' } : x));
+                                dbPatch(`${API}/isabella/scripts/${script.id}`, { status: 'active', notas_admin: 'Migrado a HeyGen' });
                               }}
                               style={{ flex: 1, background: GOLD, color: NAVY, border: 'none', fontSize: 8, fontWeight: 800, letterSpacing: 1.5, textTransform: 'uppercase', padding: '5px 10px', cursor: 'pointer' }}>
                               → HeyGen
