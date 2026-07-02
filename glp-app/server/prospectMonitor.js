@@ -187,11 +187,139 @@ async function monitorProspects() {
   }
 }
 
+// ── B.1: Trigger autónomo Sara — inactividad 72h ─────────────────────────────
+// Por cada prospecto inactivo ≥72h donde sara_auto_email_sent IS NULL:
+// genera un borrador personalizado, marca el timestamp y notifica al admin.
+async function saraAutoTrigger72h() {
+  const HOURS_72 = 72;
+  console.log('[Sara·72h] Revisando prospectos inactivos ≥72h...');
+  try {
+    const { rows: inactivos } = await pool.query(
+      `SELECT * FROM prospectos
+       WHERE tenant_id = $1
+         AND estado NOT IN ('Post-venta', 'Perdido')
+         AND sara_auto_email_sent IS NULL
+         AND COALESCE(fecha_ultima_actividad, fecha_registro) < NOW() - INTERVAL '${HOURS_72} hours'`,
+      [TENANT_ID]
+    );
+
+    if (inactivos.length === 0) {
+      console.log('[Sara·72h] Sin prospectos nuevos que atender.');
+      return 0;
+    }
+
+    console.log(`[Sara·72h] ${inactivos.length} prospecto(s) para atender.`);
+    const nodemailer = require('nodemailer');
+    const adminEmail = process.env.ADMIN_EMAIL;
+    let resumen = [];
+
+    for (const p of inactivos) {
+      const ultimaActividad = new Date(p.fecha_ultima_actividad || p.fecha_registro);
+      const diasSinActividad = Math.floor((Date.now() - ultimaActividad) / 86400000);
+      const etapa = p.estado || 'Contacto Inicial';
+      const proyectos = Array.isArray(p.proyectos_interes)
+        ? p.proyectos_interes
+        : JSON.parse(p.proyectos_interes || '[]');
+
+      // Nivel basado en días: ≥7d = frio, ≥14d = critico, resto = tibio
+      const nivel = diasSinActividad >= 14 ? 'critico' : diasSinActividad >= 7 ? 'frio' : 'tibio';
+      const draft = await generateRecoveryDraft(p.nombre, p.correo, etapa, nivel, proyectos, diasSinActividad);
+
+      // Marcar en la tabla de prospectos
+      await pool.query(
+        `UPDATE prospectos SET sara_auto_email_sent = NOW() WHERE id = $1`,
+        [p.id]
+      );
+
+      // Guardar alerta con tipo 'sara_auto'
+      const alertId = `sara72h-${p.id}-${Date.now()}`;
+      await pool.query(
+        `INSERT INTO prospect_alerts
+           (id, tenant_id, prospecto_id, nivel, motivo, dias_sin_actividad,
+            tareas, borrador_asunto, borrador_cuerpo, status, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'activa',NOW(),NOW())
+         ON CONFLICT (id) DO NOTHING`,
+        [alertId, TENANT_ID, p.id, nivel,
+         `Sara·72h — ${diasSinActividad} días sin actividad en ${etapa}`,
+         diasSinActividad, JSON.stringify([]), draft.asunto, draft.cuerpo]
+      );
+
+      resumen.push({ nombre: p.nombre, correo: p.correo, etapa, diasSinActividad, nivel, draft });
+      console.log(`[Sara·72h] ✅ Borrador generado para ${p.nombre} (${diasSinActividad}d, ${nivel})`);
+    }
+
+    // Notificar al admin por email si hay SMTP configurado
+    if (adminEmail && process.env.SMTP_USER && process.env.SMTP_PASS && resumen.length > 0) {
+      try {
+        const transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+        });
+        const listaHtml = resumen.map(r =>
+          `<tr>
+            <td style="padding:8px;border-bottom:1px solid #eee">${r.nombre}</td>
+            <td style="padding:8px;border-bottom:1px solid #eee">${r.correo}</td>
+            <td style="padding:8px;border-bottom:1px solid #eee">${r.etapa}</td>
+            <td style="padding:8px;border-bottom:1px solid #eee;color:${r.nivel==='critico'?'#dc2626':r.nivel==='frio'?'#f59e0b':'#6b7280'}">${r.diasSinActividad}d · ${r.nivel}</td>
+            <td style="padding:8px;border-bottom:1px solid #eee;font-size:12px">${r.draft.asunto}</td>
+          </tr>`
+        ).join('');
+
+        const borradoresHtml = resumen.map(r =>
+          `<div style="margin:16px 0;padding:12px;border-left:3px solid #b89047;background:#fafaf7">
+            <b>${r.nombre} — ${r.draft.asunto}</b><br/><br/>
+            <pre style="white-space:pre-wrap;font-family:sans-serif;font-size:13px">${r.draft.cuerpo}</pre>
+          </div>`
+        ).join('');
+
+        await transporter.sendMail({
+          from: `"Sara · GLP CRM" <${process.env.SMTP_USER}>`,
+          to: adminEmail,
+          subject: `🤖 Sara Auto·72h — ${resumen.length} borrador(es) generado(s)`,
+          html: `
+            <div style="font-family:sans-serif;max-width:700px;margin:0 auto">
+              <div style="background:#001A37;color:#D4AF6A;padding:20px;text-align:center">
+                <h2 style="margin:0;letter-spacing:2px">SARA · TRIGGER AUTÓNOMO 72H</h2>
+                <p style="margin:4px 0;font-size:13px;color:#fff;opacity:.8">GLP Wealth Management · ${new Date().toLocaleDateString('es-CO')}</p>
+              </div>
+              <div style="padding:24px;background:#fff">
+                <p>Sara detectó <strong>${resumen.length} prospecto(s)</strong> sin actividad ≥72h y generó borradores personalizados listos para revisar y enviar.</p>
+                <table style="width:100%;border-collapse:collapse;font-size:13px">
+                  <tr style="background:#f3f4f6">
+                    <th style="padding:8px;text-align:left">Prospecto</th>
+                    <th style="padding:8px;text-align:left">Correo</th>
+                    <th style="padding:8px;text-align:left">Etapa</th>
+                    <th style="padding:8px;text-align:left">Estado</th>
+                    <th style="padding:8px;text-align:left">Asunto borrador</th>
+                  </tr>
+                  ${listaHtml}
+                </table>
+                <h3 style="color:#001A37;margin-top:28px">Borradores generados</h3>
+                ${borradoresHtml}
+                <p style="color:#9ca3af;font-size:11px;margin-top:24px">Estos borradores están guardados en el CRM bajo Alertas de Prospectos. Revisa y aprueba antes de enviar.</p>
+              </div>
+            </div>`
+        });
+        console.log(`[Sara·72h] 📧 Notificación enviada a ${adminEmail}`);
+      } catch (emailErr) {
+        console.error('[Sara·72h] Error enviando email al admin:', emailErr.message);
+      }
+    }
+
+    return resumen.length;
+  } catch (err) {
+    console.error('[Sara·72h] Error:', err.message);
+    return 0;
+  }
+}
+
 function startProspectMonitor() {
   const INTERVAL = 60 * 60 * 1000; // cada hora
   console.log('[Monitor] Motor de monitoreo SARA iniciado — análisis cada 60 min.');
   monitorProspects();
+  saraAutoTrigger72h();
   setInterval(monitorProspects, INTERVAL);
+  setInterval(saraAutoTrigger72h, INTERVAL);
 }
 
-module.exports = { startProspectMonitor, monitorProspects };
+module.exports = { startProspectMonitor, monitorProspects, saraAutoTrigger72h };

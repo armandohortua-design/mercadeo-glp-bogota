@@ -4,7 +4,7 @@ const nodemailer = require('nodemailer');
 require('dotenv').config();
 const pool = require('./db');
 const { startEmailPoller, pollInbox } = require('./emailPoller');
-const { startProspectMonitor, monitorProspects } = require('./prospectMonitor');
+const { startProspectMonitor, monitorProspects, saraAutoTrigger72h } = require('./prospectMonitor');
 const { startCrisisDetector, detectCrisis } = require('./crisisDetector');
 
 const app = express();
@@ -957,6 +957,16 @@ app.post('/api/sara/monitor', async (req, res) => {
   }
 });
 
+// B.1: Trigger manual Sara·72h (también corre automático cada hora)
+app.post('/api/sara/trigger-72h', async (req, res) => {
+  try {
+    const count = await saraAutoTrigger72h();
+    res.json({ success: true, borradoresGenerados: count });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ==========================================
 // IMAP – REVISIÓN MANUAL DE BANDEJA
 // ==========================================
@@ -1258,6 +1268,182 @@ function mapProjectRow(r) {
   };
 }
 
+// ==========================================
+// AGENTES — RUTAS SEPARADAS POR AGENTE
+// ==========================================
+
+const TENANT = 'tenant-glp-001';
+
+// ── CAMILO: insights de inteligencia de mercado ──────────────
+
+app.get('/api/camilo/insights', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM camilo_insights WHERE tenant_id = $1 ORDER BY created_at DESC',
+      [TENANT]
+    );
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/camilo/insights', async (req, res) => {
+  try {
+    const d = req.body;
+    await pool.query(
+      `INSERT INTO camilo_insights
+        (id, tenant_id, titulo, resumen, datos, tipo, impacto, fuentes, status,
+         acciones_sara, acciones_valeria, acciones_isabella, fecha)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       ON CONFLICT (id) DO UPDATE SET
+         status = EXCLUDED.status, updated_at = NOW()`,
+      [d.id, TENANT, d.titulo, d.resumen, d.datos, d.tipo, d.impacto,
+       d.fuentes || [], d.status || 'nuevo',
+       d.acciones_sara, d.acciones_valeria, d.acciones_isabella, d.fecha]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch('/api/camilo/insights/:id', async (req, res) => {
+  try {
+    const { status } = req.body;
+    await pool.query(
+      'UPDATE camilo_insights SET status = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3',
+      [status, req.params.id, TENANT]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/camilo/insights/:id', async (req, res) => {
+  try {
+    await pool.query(
+      'DELETE FROM camilo_insights WHERE id = $1 AND tenant_id = $2',
+      [req.params.id, TENANT]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── VALERIA: borradores de contenido ─────────────────────────
+
+app.get('/api/valeria/drafts', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM valeria_drafts WHERE tenant_id = $1 ORDER BY created_at DESC',
+      [TENANT]
+    );
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/valeria/drafts', async (req, res) => {
+  try {
+    const d = req.body;
+    await pool.query(
+      `INSERT INTO valeria_drafts
+        (id, tenant_id, content, type, status, canal, asunto, contexto,
+         tags, aprobado_por, fecha_aprobacion, notas_admin, origen_agentivo, date)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       ON CONFLICT (id) DO UPDATE SET
+         content = EXCLUDED.content, status = EXCLUDED.status,
+         notas_admin = EXCLUDED.notas_admin, aprobado_por = EXCLUDED.aprobado_por,
+         fecha_aprobacion = EXCLUDED.fecha_aprobacion, updated_at = NOW()`,
+      [d.id, TENANT, d.content, d.type, d.status || 'pending',
+       d.canal, d.asunto, d.contexto, d.tags || [],
+       d.aprobado_por, d.fecha_aprobacion, d.notas_admin, d.origen_agentivo, d.date]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch('/api/valeria/drafts/:id', async (req, res) => {
+  try {
+    const d = req.body;
+    await pool.query(
+      `UPDATE valeria_drafts SET
+         status = COALESCE($1, status),
+         aprobado_por = COALESCE($2, aprobado_por),
+         fecha_aprobacion = COALESCE($3, fecha_aprobacion),
+         notas_admin = COALESCE($4, notas_admin),
+         content = COALESCE($5, content),
+         updated_at = NOW()
+       WHERE id = $6 AND tenant_id = $7`,
+      [d.status, d.aprobado_por, d.fecha_aprobacion, d.notas_admin, d.content,
+       req.params.id, TENANT]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/valeria/drafts/:id', async (req, res) => {
+  try {
+    await pool.query(
+      'DELETE FROM valeria_drafts WHERE id = $1 AND tenant_id = $2',
+      [req.params.id, TENANT]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── ISABELLA: guiones de video ────────────────────────────────
+
+app.get('/api/isabella/scripts', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM isabella_scripts WHERE tenant_id = $1 ORDER BY created_at DESC',
+      [TENANT]
+    );
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/isabella/scripts', async (req, res) => {
+  try {
+    const d = req.body;
+    await pool.query(
+      `INSERT INTO isabella_scripts
+        (id, tenant_id, content, type, status, canal, asunto, contexto,
+         tags, origen_agentivo, notas_admin, date)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       ON CONFLICT (id) DO UPDATE SET
+         content = EXCLUDED.content, status = EXCLUDED.status,
+         notas_admin = EXCLUDED.notas_admin, updated_at = NOW()`,
+      [d.id, TENANT, d.content, d.type, d.status || 'pending',
+       d.canal, d.asunto, d.contexto, d.tags || [],
+       d.origen_agentivo, d.notas_admin, d.date]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch('/api/isabella/scripts/:id', async (req, res) => {
+  try {
+    const d = req.body;
+    await pool.query(
+      `UPDATE isabella_scripts SET
+         status = COALESCE($1, status),
+         notas_admin = COALESCE($2, notas_admin),
+         content = COALESCE($3, content),
+         updated_at = NOW()
+       WHERE id = $4 AND tenant_id = $5`,
+      [d.status, d.notas_admin, d.content, req.params.id, TENANT]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/isabella/scripts/:id', async (req, res) => {
+  try {
+    await pool.query(
+      'DELETE FROM isabella_scripts WHERE id = $1 AND tenant_id = $2',
+      [req.params.id, TENANT]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ==========================================
 app.listen(PORT, () => {
   console.log(`=================================================`);
   console.log(`🚀 Servidor GLP CRM en http://localhost:${PORT}`);
