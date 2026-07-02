@@ -1268,6 +1268,8 @@ export default function CRMDashboard() {
   });
   const [showOpenaiConfig, setShowOpenaiConfig] = useState(false);
   const [apiDrafts, setApiDrafts] = useState<Array<{id:string;destinatario:string;project:string;subject:string;body:string;status:string;created_at:string;prioridad?:string}>>([]);
+  // Adjuntos pendientes por borrador: { [msgId]: [{filename, content (base64), contentType}] }
+  const [draftAttachments, setDraftAttachments] = useState<Record<string, Array<{filename:string;content:string;contentType:string}>>>({});
   const [prospectAlerts, setProspectAlerts] = useState<Array<{
     id:string; prospecto_id:number; nivel:string; motivo:string;
     dias_sin_actividad:number; tareas:any[]; borrador_asunto:string;
@@ -6055,13 +6057,11 @@ Responde SOLO con JSON sin bloques de código:
       return null;
     };
 
-    const handleApproveDraft = (draftId: string, prospectId: number, project: string) => {
-      // Buscar el borrador y el correo del prospecto antes de actualizar estado
+    const handleApproveDraft = (draftId: string, prospectId: number, project: string, attachments?: Array<{filename:string;content:string;contentType:string}>) => {
       const prospect = prospects.find(p => p.id === prospectId);
       const draft = prospect?.emailHistory?.find(eh => eh.id === draftId);
 
       if (prospect && draft) {
-        // Llamar al SMTP — envío real al cliente
         fetch('http://localhost:3001/api/sara/send-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -6069,10 +6069,12 @@ Responde SOLO con JSON sin bloques de código:
             to: prospect.correo,
             subject: draft.subject,
             body: draft.body,
-            prospectId: prospect.id
+            prospectId: prospect.id,
+            attachments: attachments || []
           })
         }).then(r => r.json()).then(data => {
           if (!data.success) console.error('[Sara] Error enviando correo:', data.error);
+          else setDraftAttachments(prev => { const n={...prev}; delete n[draftId]; return n; });
         }).catch(e => console.error('[Sara] Error SMTP:', e));
       }
 
@@ -6763,23 +6765,62 @@ Responde SOLO con JSON sin bloques de código:
                             {msg.project && <div style={{ fontSize:10, color:'#9CA3AF' }}>Proyecto: <span style={{ color:'#374151', fontWeight:600 }}>{msg.project}</span></div>}
                           </div>
 
-                          <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                          <div style={{ display:'flex', flexDirection:'column', gap:6, alignItems:'flex-end' }}>
+                            {/* Adjuntos seleccionados */}
+                            {(draftAttachments[msg.id] || []).length > 0 && (
+                              <div style={{ display:'flex', flexWrap:'wrap', gap:4, justifyContent:'flex-end' }}>
+                                {(draftAttachments[msg.id] || []).map((att, ai) => (
+                                  <div key={ai} style={{ display:'flex', alignItems:'center', gap:4, background:`${S_GOLD}15`, border:`1px solid ${S_GOLD}`, padding:'2px 8px', fontSize:9 }}>
+                                    <span>📎</span>
+                                    <span style={{ color:S_NAVY, fontWeight:600 }}>{att.filename}</span>
+                                    <button onClick={() => setDraftAttachments(prev => ({ ...prev, [msg.id]: (prev[msg.id]||[]).filter((_,i)=>i!==ai) }))}
+                                      style={{ background:'none', border:'none', color:'#DC2626', cursor:'pointer', fontSize:11, padding:0, lineHeight:1 }}>×</button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <div style={{ display:'flex', gap:8, alignItems:'center' }}>
                             {isSent && <span style={{ fontSize:10, color:'#10B981', fontWeight:600, letterSpacing:0.5 }}>✓ Aprobado y enviado</span>}
                             {isIncoming && <span style={{ fontSize:10, color:S_NAVY, fontWeight:500 }}>Recibido</span>}
-                            {isDraft && !(msg as any).isApi && (
-                              <button onClick={() => handleApproveDraft(msg.id, msg.prospectId, msg.project)}
-                                style={{ background:S_NAVY, color:S_GOLD_L, border:'none', padding:'7px 18px', fontSize:9, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', cursor:'pointer' }}>
-                                Aprobar y Enviar
-                              </button>
-                            )}
-                            {isDraft && (msg as any).isApi && (
-                              <button onClick={() => {
-                                fetch('http://localhost:3001/api/send-draft',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:msg.id})})
-                                  .then(()=>setApiDrafts(prev=>prev.map(d=>d.id===msg.id?{...d,status:'sent'}:d)))
-                                  .catch(e=>console.error('Error enviando draft:',e));
-                              }} style={{ background:S_NAVY, color:S_GOLD_L, border:'none', padding:'7px 18px', fontSize:9, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', cursor:'pointer' }}>
-                                Aprobar y Enviar
-                              </button>
+                            {isDraft && (
+                              <>
+                                {/* Botón adjuntar */}
+                                <label style={{ background:'transparent', border:`1px solid ${S_GOLD}`, color:S_GOLD, padding:'6px 10px', fontSize:9, fontWeight:700, letterSpacing:1, textTransform:'uppercase', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:4 }}>
+                                  📎 Adjuntar
+                                  <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" multiple style={{ display:'none' }}
+                                    onChange={e => {
+                                      const files = Array.from(e.target.files || []);
+                                      files.forEach(file => {
+                                        const reader = new FileReader();
+                                        reader.onload = ev => {
+                                          const base64 = (ev.target?.result as string).split(',')[1];
+                                          setDraftAttachments(prev => ({
+                                            ...prev,
+                                            [msg.id]: [...(prev[msg.id] || []), { filename: file.name, content: base64, contentType: file.type }]
+                                          }));
+                                        };
+                                        reader.readAsDataURL(file);
+                                      });
+                                      e.target.value = '';
+                                    }} />
+                                </label>
+                                {/* Botón enviar */}
+                                {!(msg as any).isApi && (
+                                  <button onClick={() => handleApproveDraft(msg.id, msg.prospectId, msg.project, draftAttachments[msg.id])}
+                                    style={{ background:S_NAVY, color:S_GOLD_L, border:'none', padding:'7px 18px', fontSize:9, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', cursor:'pointer' }}>
+                                    Aprobar y Enviar
+                                  </button>
+                                )}
+                                {(msg as any).isApi && (
+                                  <button onClick={() => {
+                                    fetch('http://localhost:3001/api/send-draft', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id: msg.id, attachments: draftAttachments[msg.id] || [] }) })
+                                      .then(() => { setApiDrafts(prev => prev.map(d => d.id===msg.id ? {...d,status:'sent'} : d)); setDraftAttachments(prev => { const n={...prev}; delete n[msg.id]; return n; }); })
+                                      .catch(e => console.error('Error enviando draft:', e));
+                                  }} style={{ background:S_NAVY, color:S_GOLD_L, border:'none', padding:'7px 18px', fontSize:9, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', cursor:'pointer' }}>
+                                    Aprobar y Enviar
+                                  </button>
+                                )}
+                              </>
                             )}
                             <button onClick={() => {
                               if (!window.confirm('¿Eliminar este correo de la bandeja?')) return;
@@ -6795,6 +6836,7 @@ Responde SOLO con JSON sin bloques de código:
                               title="Eliminar correo">
                               🗑 Eliminar
                             </button>
+                            </div>
                           </div>
                         </div>
                       </div>

@@ -500,7 +500,7 @@ Para calcular score_calificacion suma: menciona_inversion(+20) + menciona_presup
 app.post('/api/send-draft', async (req, res) => {
   try {
     const tenant = await resolveTenant(req);
-    const { id } = req.body;
+    const { id, attachments = [] } = req.body;
     if (!id) return res.status(400).json({ error: 'ID del borrador requerido.' });
 
     const { rows } = await pool.query('SELECT * FROM drafts WHERE id = $1 AND tenant_id = $2', [id, tenant.id]);
@@ -513,11 +513,18 @@ app.post('/api/send-draft', async (req, res) => {
     const toEmailMatch = draft.destinatario?.match(/\(([^)]+)\)/);
     const toEmail = toEmailMatch ? toEmailMatch[1] : draft.destinatario;
 
+    const mailAttachments = attachments.map(a => ({
+      filename: a.filename,
+      content: Buffer.from(a.content, 'base64'),
+      contentType: a.contentType
+    }));
+
     await transporter.sendMail({
       from: `"Sara Valenzuela · ${tenant.name}" <${tenant.smtp?.user || process.env.SMTP_USER}>`,
       to: toEmail,
       subject: draft.subject,
-      html: draft.body.replace(/\n/g, '<br>')
+      html: draft.body.replace(/\n/g, '<br>'),
+      attachments: mailAttachments
     });
 
     await pool.query('UPDATE drafts SET status = $1 WHERE id = $2', ['sent', id]);
@@ -960,18 +967,25 @@ app.post('/api/sara/monitor', async (req, res) => {
 // Envío directo de correo desde borradores locales del historial de prospectos
 app.post('/api/sara/send-email', async (req, res) => {
   try {
-    const { to, subject, body, prospectId } = req.body;
+    const { to, subject, body, prospectId, attachments = [] } = req.body;
     if (!to || !subject || !body) return res.status(400).json({ error: 'Faltan campos: to, subject, body.' });
 
     const tenant = await resolveTenant(req);
     const transporter = getTransporter(tenant);
     if (!transporter) return res.status(500).json({ error: 'SMTP no configurado. Verifica SMTP_USER y SMTP_PASS en .env' });
 
+    const mailAttachments = attachments.map(a => ({
+      filename: a.filename,
+      content: Buffer.from(a.content, 'base64'),
+      contentType: a.contentType
+    }));
+
     await transporter.sendMail({
       from: `"Sara Valenzuela · GLP Wealth Management" <${process.env.SMTP_USER}>`,
       to,
       subject,
-      html: body.replace(/\n/g, '<br>')
+      html: body.replace(/\n/g, '<br>'),
+      attachments: mailAttachments
     });
 
     // Registrar actividad en el prospecto si se proporcionó ID
