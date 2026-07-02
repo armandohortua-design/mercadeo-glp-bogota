@@ -229,6 +229,16 @@ app.get('/api/drafts', async (req, res) => {
   }
 });
 
+app.delete('/api/drafts/:id', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    await pool.query('DELETE FROM drafts WHERE id = $1 AND tenant_id = $2', [req.params.id, tenant.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ==========================================
 // PROYECTOS / CATÁLOGO
 // ==========================================
@@ -421,7 +431,7 @@ Para calcular score_calificacion suma: menciona_inversion(+20) + menciona_presup
         // Generar borrador personalizado con contexto real
         const draftResponse = await openai.chat.completions.create({
           model: 'gpt-4o-mini',
-          messages: [{ role: 'user', content: `Eres Sara Valenzuela de ${tenant.name}. Redacta un correo comercial sofisticado para ${firstName}, quien conversó con nuestro chatbot sobre: ${analysis.resumen_consulta || project}. Sus temas de interés son: ${(analysis.temas_interes || []).join(', ')}. Proyecto de interés: ${detectedProject}. JSON: {"subject":"...","body":"..."}` }],
+          messages: [{ role: 'user', content: `Eres Sara Valenzuela, Directora de Customer Success & Back-Office Comercial de ${tenant.name}. Redacta un correo de seguimiento cálido y profesional para ${firstName}, quien se comunicó con nosotros y mostró interés en: ${analysis.resumen_consulta || project}. Sus temas de interés son: ${(analysis.temas_interes || []).join(', ')}. Proyecto de interés: ${detectedProject}. IMPORTANTE: nunca menciones "chatbot", "asistente virtual" ni "IA" — di simplemente que "nos contactó" o "tuvo la oportunidad de conversar con nuestro equipo". Firma siempre como Sara Valenzuela, Directora de Customer Success & Back-Office Comercial. JSON: {"subject":"...","body":"..."}` }],
           temperature: 0.7, max_tokens: 500
         });
         const parsed = JSON.parse(draftResponse.choices[0].message.content.replace(/```json|```/g, '').trim());
@@ -657,6 +667,102 @@ app.post('/api/ai', async (req, res) => {
     res.json({ choices: [{ message: { content: response.choices[0].message.content } }] });
   } catch (err) {
     console.error('❌ Error en /api/ai:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// CAMILO — DEEP RESEARCH (web search + síntesis)
+// ==========================================
+app.post('/api/camilo/research', async (req, res) => {
+  try {
+    const { kpiCtx, brandCtx, projectsList } = req.body;
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) return res.status(503).json({ error: 'OpenAI no configurado.' });
+
+    // ── Paso 1: búsquedas web en paralelo ──
+    const searches = [
+      'Panama luxury real estate market prices trends sales volume 2025',
+      'Colombian investors Panama real estate 2025 investment dollar exchange rate',
+      'Panama City Bella Vista Santa Maria Ocean Reef luxury apartments new projects 2025'
+    ];
+
+    let webContext = '';
+    try {
+      const results = await Promise.all(searches.map(async (query) => {
+        const r = await fetch('https://api.openai.com/v1/responses', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'gpt-4o-search-preview',
+            tools: [{ type: 'web_search_preview' }],
+            input: query
+          })
+        });
+        if (!r.ok) throw new Error(`search_error_${r.status}`);
+        const data = await r.json();
+        const text = data.output
+          ?.find(o => o.type === 'message')
+          ?.content?.find(c => c.type === 'output_text')
+          ?.text || '';
+        // Extraer fuentes de las anotaciones si existen
+        const annotations = data.output
+          ?.find(o => o.type === 'message')
+          ?.content?.find(c => c.type === 'output_text')
+          ?.annotations || [];
+        const sources = [...new Set(annotations.filter(a => a.url).map(a => a.url))].slice(0, 3);
+        return { query, text, sources };
+      }));
+      webContext = results.map(r =>
+        `### Búsqueda: "${r.query}"\n${r.text}${r.sources.length ? '\nFuentes: ' + r.sources.join(' · ') : ''}`
+      ).join('\n\n---\n\n');
+    } catch (searchErr) {
+      console.warn('⚠️ Web search no disponible, usando base de conocimiento:', searchErr.message);
+      webContext = '(Búsqueda web no disponible en este momento — usando datos de entrenamiento 2025)';
+    }
+
+    // ── Paso 2: síntesis → documento de inteligencia estructurado ──
+    const OpenAI = require('openai');
+    const openai = new OpenAI({ apiKey });
+
+    const synthesisPrompt = `${kpiCtx ? `CONTEXTO OPERATIVO GLP:\n${kpiCtx}\n\n` : ''}${brandCtx ? `PERFIL DE MARCA Y AUDIENCIA:\n${brandCtx}\n\n` : ''}${projectsList ? `PORTAFOLIO ACTUAL GLP:\n${projectsList}\n\n` : ''}
+INVESTIGACIÓN WEB EN TIEMPO REAL (deep search):
+${webContext}
+
+Con base en los datos reales de búsqueda anteriores, genera un reporte de inteligencia con EXACTAMENTE esta estructura JSON (sin markdown, sin bloques de código):
+{
+  "resumen_ejecutivo": "párrafo de 3-4 líneas con el estado actual del mercado basado en los datos encontrados — cita cifras concretas",
+  "insights": [
+    {
+      "tipo": "mercado|crisis|oportunidad|audiencia",
+      "titulo": "título del insight (máx 10 palabras)",
+      "datos": "análisis con cifras y tendencias reales encontradas en la búsqueda — mínimo 150 palabras con datos concretos de Panamá y Colombia 2025",
+      "impacto": "alto|medio|bajo",
+      "acciones_sara": "qué debe hacer SARA con este insight (respuestas, FAQs a actualizar)",
+      "acciones_valeria": "qué contenido debe crear Valeria con este insight",
+      "acciones_isabella": "qué video debe crear Isabella con este insight",
+      "fuentes": ["fuente concreta 1", "fuente concreta 2"]
+    }
+  ],
+  "señales_crisis": "descripción de riesgos actuales para ventas GLP basados en los datos reales (tasa de cambio, competencia, mercado)",
+  "oportunidades_inmediatas": "top 3 oportunidades concretas para cerrar más negocios esta semana basadas en los datos reales encontrados"
+}
+
+Genera 4-5 insights variados y accionables (mercado macro, oportunidad de proyecto específico, audiencia colombiana, señal de crisis o riesgo). TODOS los datos deben estar respaldados en la investigación web de arriba.`;
+
+    const synthesis = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'Eres Camilo, Científico de Datos y Estratega de Inteligencia de Mercado de GLP Wealth Management. Recibes datos reales de búsqueda web y los transformas en inteligencia accionable para el equipo comercial.' },
+        { role: 'user', content: synthesisPrompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 4000
+    });
+
+    res.json({ choices: [{ message: { content: synthesis.choices[0].message.content } }] });
+  } catch (err) {
+    console.error('❌ Error en /api/camilo/research:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

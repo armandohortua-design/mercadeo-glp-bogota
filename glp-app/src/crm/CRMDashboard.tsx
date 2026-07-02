@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+﻿import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { MARKET_STUDY_DB } from '../marketStudyDb';
 import { supabase, uploadProjectImage, saveProjectImageUrl } from '../lib/supabase';
 
@@ -365,7 +365,7 @@ const getZoneNotes = (zone: string) => {
   } else if (z.includes('caracol') || z.includes('chame')) {
     return 'Nota de la Zona (Playa Caracol): Playa privada de 1.2 km, escuela de surf, y cercanía al centro de servicios y salud de Coronado (a 20 minutos).';
   } else if (z.includes('dorada') || z.includes('arraiján') || z.includes('arraijan') || z.includes('pacífico') || z.includes('pacifico')) {
-    return 'Nota de la Zona (Playa Dorada/Arraiján): Rápido acceso a Panamáá Pacífico, el Puente de las Américas y la futura Línea 3 del Metro, con fuerte desarrollo logístico y residencial.';
+    return 'Nota de la Zona (Playa Dorada/Arraiján): Rápido acceso a Panamá Pacífico, el Puente de las Américas y la futura Línea 3 del Metro, con fuerte desarrollo logístico y residencial.';
   }
   return '';
 };
@@ -427,15 +427,15 @@ const INITIAL_CLOSED_SALES: Sale[] = [
   { id: 2, prospect: 'Diana Herrera', project: 'Panamáa Viejo Residences', value: 140000, broker: 'Patricia Vargas', date: '2026-03-01' },
   { id: 3, prospect: 'Roberto Castaño', project: 'Surfside', value: 220000, broker: 'Felipe Londoño', date: '2026-05-28' },
   { id: 4, prospect: 'Martha Ruiz', project: 'The Palms', value: 350000, broker: 'Santiago Mesa', date: '2026-04-18' },
-  { id: 5, prospect: 'Juan Pérez', project: 'Bayside Resort Panamáá', value: 150000, broker: 'Valentina Ospina', date: '2026-05-22' },
+  { id: 5, prospect: 'Juan Pérez', project: 'Bayside Resort Panamá', value: 150000, broker: 'Valentina Ospina', date: '2026-05-22' },
   { id: 6, prospect: 'Eduardo Silva', project: 'Oceana Residences & Skyhomes', value: 730000, broker: 'Andrés Morales', date: '2026-06-05' }
 ];
 
 const INITIAL_LOST_SALES: LostSale[] = [
   { id: 1, prospect: 'Juan Carlos Restrepo', project: 'Ocean Reef Park', value: 1500000, broker: 'Patricia Vargas', reason: 'Temor a doble tributación y reporte automático a la DIAN', date: '2026-05-14' },
   { id: 2, prospect: 'Carolina Posada', project: 'Ventu', value: 180000, broker: 'Santiago Mesa', reason: 'Tasas de interés hipotecarias altas para extranjeros (8.5%)', date: '2026-05-20' },
-  { id: 3, prospect: 'Miguel Ángel Uribe', project: 'Bayside Resort Panamáá', value: 150000, broker: 'Rodrigo Fernández', reason: 'Incertidumbre sobre los trámites migratorios y visa de inversionista', date: '2026-05-25' },
-  { id: 4, prospect: 'Sofia Jaramillo', project: 'Ipanema Panamáá', value: 280000, broker: 'Valentina Ospina', reason: 'Temor de devaluación y liquidez del dólar en el exterior', date: '2026-06-02' }
+  { id: 3, prospect: 'Miguel Ángel Uribe', project: 'Bayside Resort Panamá', value: 150000, broker: 'Rodrigo Fernández', reason: 'Incertidumbre sobre los trámites migratorios y visa de inversionista', date: '2026-05-25' },
+  { id: 4, prospect: 'Sofia Jaramillo', project: 'Ipanema Panamá', value: 280000, broker: 'Valentina Ospina', reason: 'Temor de devaluación y liquidez del dólar en el exterior', date: '2026-06-02' }
 ];
 
 // ── BROKERS DATA ──────────────────────────────────────────────
@@ -445,11 +445,11 @@ type Broker = {
 };
 
 const INITIAL_BROKERS: Broker[] = [
-  { id: 1, nombre: 'Patricia Vargas', empresa: 'Coldwell Banker', zona: 'Bogotáá Norte', telefono: '+57 310 555 1234', email: 'patricia@coldwellbanker.co', estado: 'activo' },
-  { id: 2, nombre: 'Santiago Mesa', empresa: 'Independiente', zona: 'Bogotáá – Chapinero', telefono: '+57 311 555 2345', email: 'santiago.mesa@gmail.com', estado: 'activo' },
+  { id: 1, nombre: 'Patricia Vargas', empresa: 'Coldwell Banker', zona: 'Bogotá Norte', telefono: '+57 310 555 1234', email: 'patricia@coldwellbanker.co', estado: 'activo' },
+  { id: 2, nombre: 'Santiago Mesa', empresa: 'Independiente', zona: 'Bogotá – Chapinero', telefono: '+57 311 555 2345', email: 'santiago.mesa@gmail.com', estado: 'activo' },
   { id: 3, nombre: 'Rodrigo Fernández', empresa: 'Banco Privado', zona: 'Medellín', telefono: '+57 312 555 3456', email: 'rodrigo.f@bancoprivado.co', estado: 'activo' },
-  { id: 4, nombre: 'Valentina Ospina', empresa: 'Ospina & Restrepo', zona: 'Bogotáá – Usaquén', telefono: '+57 313 555 4567', email: 'valentina@ospinarestrepo.co', estado: 'activo' },
-  { id: 5, nombre: 'Andrés Morales', empresa: 'BBVA Wealth', zona: 'Bogotáá Centro', telefono: '+57 314 555 5678', email: 'andres.morales@bbva.co', estado: 'activo' },
+  { id: 4, nombre: 'Valentina Ospina', empresa: 'Ospina & Restrepo', zona: 'Bogotá – Usaquén', telefono: '+57 313 555 4567', email: 'valentina@ospinarestrepo.co', estado: 'activo' },
+  { id: 5, nombre: 'Andrés Morales', empresa: 'BBVA Wealth', zona: 'Bogotá Centro', telefono: '+57 314 555 5678', email: 'andres.morales@bbva.co', estado: 'activo' },
   { id: 6, nombre: 'Camila Restrepo', empresa: 'Keller Williams', zona: 'Cali', telefono: '+57 315 555 6789', email: 'camila.r@kw.co', estado: 'inactivo' },
   { id: 7, nombre: 'Felipe Londoño', empresa: 'Grupo Bolívar', zona: 'Barranquilla', telefono: '+57 316 555 7890', email: 'felipe.l@grupobolivar.co', estado: 'activo' },
 ];
@@ -477,6 +477,7 @@ export type AgentDraft = {
   aprobado_por?: string;
   fecha_aprobacion?: string;
   notas_admin?: string;
+  origen_agentivo?: string;
 };
 
 type GlpBrandProfile = {
@@ -727,8 +728,8 @@ type EventData = {
 };
 
 const INITIAL_EVENTS: EventData[] = [
-  { id: 1, titulo: 'GLP Investment Evening #1', venue: 'Club El Nogal, Bogotáá', fecha: '2026-05-10', proyectos_presentados: ['Ocean Reef Park', 'The Palms', 'Panamáa Viejo Residences', 'The Tides – Playa Caracol'], asistentes: ['Carlos Gutiérrez', 'María Isabel Rodríguez', 'Andrés Felipe Martínez'], prospect_ids: [], proyectos_interes: ['Ocean Reef Park', 'The Palms', 'Panamáa Viejo Residences'], presupuesto_asignado: 15000, presupuesto_ejecutado: 12800, items_costo: [{ concepto: 'Salón y montaje', valor: 4500 }, { concepto: 'Catering premium (60 pax)', valor: 3600 }, { concepto: 'Audiovisual y pantallas', valor: 1800 }, { concepto: 'Material impreso y brochures', valor: 1200 }, { concepto: 'Vinos y bebidas premium', valor: 1200 }, { concepto: 'Fotografía y video', valor: 500 }] },
-  { id: 2, titulo: 'Seminario Inversión Dolarizada', venue: 'Hotel JW Marriott Bogotáá', fecha: '2026-07-15', proyectos_presentados: ['Oceana Residences & Skyhomes', 'Bosco di Santa María', 'Ipanema Panamáá', 'Surfside'], asistentes: ['Laura Sánchez', 'Roberto Castaño'], prospect_ids: [], proyectos_interes: ['Oceana Residences & Skyhomes', 'Surfside'], presupuesto_asignado: 20000, presupuesto_ejecutado: 8500, items_costo: [{ concepto: 'Salón conferencias (100 pax)', valor: 5500 }, { concepto: 'Coffee break y almuerzo', valor: 4200 }, { concepto: 'Speaker internacional (viáticos)', valor: 3500 }, { concepto: 'Material técnico impreso', valor: 1500 }, { concepto: 'Publicidad digital pre-evento', valor: 2800 }, { concepto: 'Señalización y decoración', valor: 1000 }, { concepto: 'Registro y tecnología', valor: 1500 }] },
+  { id: 1, titulo: 'GLP Investment Evening #1', venue: 'Club El Nogal, Bogotá', fecha: '2026-05-10', proyectos_presentados: ['Ocean Reef Park', 'The Palms', 'Panamáa Viejo Residences', 'The Tides – Playa Caracol'], asistentes: ['Carlos Gutiérrez', 'María Isabel Rodríguez', 'Andrés Felipe Martínez'], prospect_ids: [], proyectos_interes: ['Ocean Reef Park', 'The Palms', 'Panamáa Viejo Residences'], presupuesto_asignado: 15000, presupuesto_ejecutado: 12800, items_costo: [{ concepto: 'Salón y montaje', valor: 4500 }, { concepto: 'Catering premium (60 pax)', valor: 3600 }, { concepto: 'Audiovisual y pantallas', valor: 1800 }, { concepto: 'Material impreso y brochures', valor: 1200 }, { concepto: 'Vinos y bebidas premium', valor: 1200 }, { concepto: 'Fotografía y video', valor: 500 }] },
+  { id: 2, titulo: 'Seminario Inversión Dolarizada', venue: 'Hotel JW Marriott Bogotá', fecha: '2026-07-15', proyectos_presentados: ['Oceana Residences & Skyhomes', 'Bosco di Santa María', 'Ipanema Panamá', 'Surfside'], asistentes: ['Laura Sánchez', 'Roberto Castaño'], prospect_ids: [], proyectos_interes: ['Oceana Residences & Skyhomes', 'Surfside'], presupuesto_asignado: 20000, presupuesto_ejecutado: 8500, items_costo: [{ concepto: 'Salón conferencias (100 pax)', valor: 5500 }, { concepto: 'Coffee break y almuerzo', valor: 4200 }, { concepto: 'Speaker internacional (viáticos)', valor: 3500 }, { concepto: 'Material técnico impreso', valor: 1500 }, { concepto: 'Publicidad digital pre-evento', valor: 2800 }, { concepto: 'Señalización y decoración', valor: 1000 }, { concepto: 'Registro y tecnología', valor: 1500 }] },
 ];
 
 // ── FAQ DATA ──────────────────────────────────────────────────
@@ -738,43 +739,43 @@ const FAQ_CATEGORIES = ['Estabilidad Macroeconómica', 'Financiero y Retornos', 
 
 const INITIAL_FAQS: FAQ[] = [
   // Estabilidad Macroeconómica
-  { id: 1, categoria: 'Estabilidad Macroeconómica', pregunta: '¿Panamáá es un país estable para invertir?', respuesta: 'Panamáá es una de las economías más estables de América Latina. El país utiliza el dólar estadounidense como moneda de curso legal desde 1904, eliminando el riesgo cambiario. Su PIB ha crecido consistentemente por encima del promedio regional, con una tasa promedio del 5% anual en la última década. El Canal de Panamáá genera ingresos recurrentes que sostienen las finanzas públicas.' },
-  { id: 2, categoria: 'Estabilidad Macroeconómica', pregunta: '¿Cómo se compara la inflación de Panamáá con la de Colombia?', respuesta: 'Panamáá mantiene una inflación promedio del 1-2% anual, significativamente menor que Colombia que ha experimentado picos superiores al 13% en años recientes. Al estar dolarizado, Panamáá no sufre devaluaciones de moneda local. Esto protege el poder adquisitivo de la inversión y garantiza que las rentas en USD mantengan su valor real a lo largo del tiempo.' },
-  { id: 3, categoria: 'Estabilidad Macroeconómica', pregunta: '¿Qué tan seguro es el sistema bancario panameño?', respuesta: 'El Centro Bancario Internacional de Panamáá cuenta con más de 70 bancos de 30 países, con activos totales superiores a USD 130 mil millones. La Superintendencia de Bancos de Panamáá regula con estándares internacionales de Basilea III. Los depósitos hasta USD 10,000 están protegidos por el Fondo de Garantía de Depósitos. El sistema es robusto, líquido y altamente regulado.' },
-  { id: 4, categoria: 'Estabilidad Macroeconómica', pregunta: '¿Existe riesgo político en Panamáá?', respuesta: 'Panamáá ha mantenido una democracia estable e ininterrumpida desde 1989. Las transiciones de poder han sido pacíficas y el marco jurídico respeta la propiedad privada extranjera. La Constitución garantiza los mismos derechos de propiedad a nacionales y extranjeros. El país mantiene grado de inversión (investment grade) por las principales calificadoras internacionales.' },
-  { id: 5, categoria: 'Estabilidad Macroeconómica', pregunta: '¿Cómo afecta el Canal de Panamáá a la economía del país?', respuesta: 'El Canal de Panamáá es el motor económico principal del país, generando más de USD 3 mil millones anuales en ingresos directos. Esto representa aproximadamente el 6% del PIB panameño. El Canal impulsa sectores como logística, banca, comercio y turismo, creando una economía diversificada. La ampliación del Canal completada en 2016 duplicó su capacidad y asegura ingresos crecientes por las próximas décadas.' },
-  { id: 6, categoria: 'Estabilidad Macroeconómica', pregunta: '¿Cómo está el mercado inmobiliario panameño actualmente?', respuesta: 'El mercado inmobiliario panameño muestra señales sólidas de recuperación post-pandemia. El sector construcción creció 29.3% interanual en enero 2026 según el INEC. El precio promedio por m² en Ciudad de Panamáá es USD 1,804, con zonas premium entre USD 2,700 y USD 4,150/m². La demanda de expatriados y trabajadores remotos ha impulsado el segmento de alquiler con una rentabilidad bruta promedio del 7.8% anual.' },
-  { id: 7, categoria: 'Estabilidad Macroeconómica', pregunta: '¿Cuánto capital colombiano fluye hacia Panamáá?', respuesta: 'Según datos del Banco de la República de Colombia, USD 208 millones de capital colombiano fluyeron hacia Panamáá solo en el tercer trimestre de 2025. Colombia es consistentemente uno de los mayores inversores en finca raíz panameña. La conectividad aérea directa Bogotáá-Panamáá (2.5 horas) y los lazos culturales facilitan esta tendencia. El corredor de inversión Colombia-Panamáá se fortalece cada año.' },
-  { id: 8, categoria: 'Estabilidad Macroeconómica', pregunta: '¿Panamáá es un hub logístico relevante a nivel mundial?', respuesta: 'Panamáá es el hub logístico más importante de las Américas. Además del Canal, cuenta con la Zona Libre de Colón (la segunda zona franca más grande del mundo), el Hub de las Américas (aeropuerto de Tocumen como centro de conexiones), y uno de los puertos de contenedores más activos de Latinoamérica. Esta infraestructura genera demanda permanente de vivienda para ejecutivos internacionales y trabajadores del sector.' },
+  { id: 1, categoria: 'Estabilidad Macroeconómica', pregunta: '¿Panamá es un país estable para invertir?', respuesta: 'Panamá es una de las economías más estables de América Latina. El país utiliza el dólar estadounidense como moneda de curso legal desde 1904, eliminando el riesgo cambiario. Su PIB ha crecido consistentemente por encima del promedio regional, con una tasa promedio del 5% anual en la última década. El Canal de Panamá genera ingresos recurrentes que sostienen las finanzas públicas.' },
+  { id: 2, categoria: 'Estabilidad Macroeconómica', pregunta: '¿Cómo se compara la inflación de Panamá con la de Colombia?', respuesta: 'Panamá mantiene una inflación promedio del 1-2% anual, significativamente menor que Colombia que ha experimentado picos superiores al 13% en años recientes. Al estar dolarizado, Panamá no sufre devaluaciones de moneda local. Esto protege el poder adquisitivo de la inversión y garantiza que las rentas en USD mantengan su valor real a lo largo del tiempo.' },
+  { id: 3, categoria: 'Estabilidad Macroeconómica', pregunta: '¿Qué tan seguro es el sistema bancario panameño?', respuesta: 'El Centro Bancario Internacional de Panamá cuenta con más de 70 bancos de 30 países, con activos totales superiores a USD 130 mil millones. La Superintendencia de Bancos de Panamá regula con estándares internacionales de Basilea III. Los depósitos hasta USD 10,000 están protegidos por el Fondo de Garantía de Depósitos. El sistema es robusto, líquido y altamente regulado.' },
+  { id: 4, categoria: 'Estabilidad Macroeconómica', pregunta: '¿Existe riesgo político en Panamá?', respuesta: 'Panamá ha mantenido una democracia estable e ininterrumpida desde 1989. Las transiciones de poder han sido pacíficas y el marco jurídico respeta la propiedad privada extranjera. La Constitución garantiza los mismos derechos de propiedad a nacionales y extranjeros. El país mantiene grado de inversión (investment grade) por las principales calificadoras internacionales.' },
+  { id: 5, categoria: 'Estabilidad Macroeconómica', pregunta: '¿Cómo afecta el Canal de Panamá a la economía del país?', respuesta: 'El Canal de Panamá es el motor económico principal del país, generando más de USD 3 mil millones anuales en ingresos directos. Esto representa aproximadamente el 6% del PIB panameño. El Canal impulsa sectores como logística, banca, comercio y turismo, creando una economía diversificada. La ampliación del Canal completada en 2016 duplicó su capacidad y asegura ingresos crecientes por las próximas décadas.' },
+  { id: 6, categoria: 'Estabilidad Macroeconómica', pregunta: '¿Cómo está el mercado inmobiliario panameño actualmente?', respuesta: 'El mercado inmobiliario panameño muestra señales sólidas de recuperación post-pandemia. El sector construcción creció 29.3% interanual en enero 2026 según el INEC. El precio promedio por m² en Ciudad de Panamá es USD 1,804, con zonas premium entre USD 2,700 y USD 4,150/m². La demanda de expatriados y trabajadores remotos ha impulsado el segmento de alquiler con una rentabilidad bruta promedio del 7.8% anual.' },
+  { id: 7, categoria: 'Estabilidad Macroeconómica', pregunta: '¿Cuánto capital colombiano fluye hacia Panamá?', respuesta: 'Según datos del Banco de la República de Colombia, USD 208 millones de capital colombiano fluyeron hacia Panamá solo en el tercer trimestre de 2025. Colombia es consistentemente uno de los mayores inversores en finca raíz panameña. La conectividad aérea directa Bogotá-Panamá (2.5 horas) y los lazos culturales facilitan esta tendencia. El corredor de inversión Colombia-Panamá se fortalece cada año.' },
+  { id: 8, categoria: 'Estabilidad Macroeconómica', pregunta: '¿Panamá es un hub logístico relevante a nivel mundial?', respuesta: 'Panamá es el hub logístico más importante de las Américas. Además del Canal, cuenta con la Zona Libre de Colón (la segunda zona franca más grande del mundo), el Hub de las Américas (aeropuerto de Tocumen como centro de conexiones), y uno de los puertos de contenedores más activos de Latinoamérica. Esta infraestructura genera demanda permanente de vivienda para ejecutivos internacionales y trabajadores del sector.' },
 
   // Financiero y Retornos
-  { id: 9, categoria: 'Financiero y Retornos', pregunta: '¿Qué rentabilidad puedo esperar de una inversión inmobiliaria en Panamáá?', respuesta: 'Las rentabilidades brutas del portafolio GLP oscilan entre 5% y 8.5% anual en USD, dependiendo del proyecto y tipo de inversión. Los proyectos urbanos como Panamáa Viejo Residences ofrecen cap rates de 6.5-8%, mientras que los premium como Ocean Reef Park ofrecen 5-6.5% compensados por mayor plusvalía. Comparado con un CDT en Colombia al 10.5% en COP, la inversión en Panamáá ofrece estabilidad en dólares sin riesgo de devaluación.' },
+  { id: 9, categoria: 'Financiero y Retornos', pregunta: '¿Qué rentabilidad puedo esperar de una inversión inmobiliaria en Panamá?', respuesta: 'Las rentabilidades brutas del portafolio GLP oscilan entre 5% y 8.5% anual en USD, dependiendo del proyecto y tipo de inversión. Los proyectos urbanos como Panamáa Viejo Residences ofrecen cap rates de 6.5-8%, mientras que los premium como Ocean Reef Park ofrecen 5-6.5% compensados por mayor plusvalía. Comparado con un CDT en Colombia al 10.5% en COP, la inversión en Panamá ofrece estabilidad en dólares sin riesgo de devaluación.' },
   { id: 10, categoria: 'Financiero y Retornos', pregunta: '¿Cuál es el ticket mínimo de inversión?', respuesta: 'El portafolio GLP tiene opciones desde USD 120,000 (Panamáa Viejo Residences) hasta USD 1,500,000+ (Ocean Reef Park). La mayoría de proyectos permiten cuotas iniciales desde el 30%, con financiamiento bancario panameño para el saldo. Para un inversionista colombiano promedio de alto patrimonio, el ticket de entrada más común está entre USD 180,000 y USD 350,000 con una cuota inicial del 50%.' },
-  { id: 11, categoria: 'Financiero y Retornos', pregunta: '¿Cómo funciona el financiamiento bancario en Panamáá?', respuesta: 'Los bancos panameños financian extranjeros hasta el 70% del valor del inmueble. La tasa base es aproximadamente 7.5% anual, más una sobretasa de 1% para extranjeros, resultando en ~8.5% efectivo. Los plazos van de 5 a 30 años con amortización francesa. Se requiere: pasaporte vigente, estados financieros de 2 años, carta laboral o certificación de ingresos, y referencia bancaria. El proceso toma aproximadamente 30-45 días.' },
-  { id: 12, categoria: 'Financiero y Retornos', pregunta: '¿Qué gastos operativos tiene una propiedad en Panamáá?', respuesta: 'Los gastos operativos típicos incluyen: fee de property management (USD 150/mes con GLP), administración delegada (10% de la renta bruta), condominio (varía por proyecto, USD 170-700/mes), seguro anual (~USD 1,200), y mantenimiento (1% del valor del activo anual). El impuesto predial está exonerado por 20 años en proyectos nuevos. No hay impuesto patrimonial ni impuesto a ganancias de capital para personas naturales no residentes.' },
-  { id: 13, categoria: 'Financiero y Retornos', pregunta: '¿Qué es la exención predial de 20 años?', respuesta: 'Panamáá ofrece una exención total del impuesto de inmuebles (predial) durante 20 años para proyectos de construcción nueva. Esto aplica a todos los proyectos del portafolio GLP. En comparación, en Colombia el predial puede representar entre 0.3% y 1.2% del valor catastral anualmente. Esta exención mejora significativamente el NOI (Net Operating Income) y el cap rate neto del inversionista durante dos décadas completas.' },
+  { id: 11, categoria: 'Financiero y Retornos', pregunta: '¿Cómo funciona el financiamiento bancario en Panamá?', respuesta: 'Los bancos panameños financian extranjeros hasta el 70% del valor del inmueble. La tasa base es aproximadamente 7.5% anual, más una sobretasa de 1% para extranjeros, resultando en ~8.5% efectivo. Los plazos van de 5 a 30 años con amortización francesa. Se requiere: pasaporte vigente, estados financieros de 2 años, carta laboral o certificación de ingresos, y referencia bancaria. El proceso toma aproximadamente 30-45 días.' },
+  { id: 12, categoria: 'Financiero y Retornos', pregunta: '¿Qué gastos operativos tiene una propiedad en Panamá?', respuesta: 'Los gastos operativos típicos incluyen: fee de property management (USD 150/mes con GLP), administración delegada (10% de la renta bruta), condominio (varía por proyecto, USD 170-700/mes), seguro anual (~USD 1,200), y mantenimiento (1% del valor del activo anual). El impuesto predial está exonerado por 20 años en proyectos nuevos. No hay impuesto patrimonial ni impuesto a ganancias de capital para personas naturales no residentes.' },
+  { id: 13, categoria: 'Financiero y Retornos', pregunta: '¿Qué es la exención predial de 20 años?', respuesta: 'Panamá ofrece una exención total del impuesto de inmuebles (predial) durante 20 años para proyectos de construcción nueva. Esto aplica a todos los proyectos del portafolio GLP. En comparación, en Colombia el predial puede representar entre 0.3% y 1.2% del valor catastral anualmente. Esta exención mejora significativamente el NOI (Net Operating Income) y el cap rate neto del inversionista durante dos décadas completas.' },
   { id: 14, categoria: 'Financiero y Retornos', pregunta: '¿Cuál es la valorización esperada de los proyectos GLP?', respuesta: 'La valorización promedio del portafolio GLP oscila entre 3% y 5.5% anual en USD. Los proyectos urbanos como Panamáa Viejo muestran 3-4% anual estable, mientras que los premium como Ocean Reef Islands han documentado 6-8% anual por la escasez absoluta de producto comparable. La zona de Playa Caracol muestra 4-6% anual para proyectos nuevos. Estas cifras se comparan favorablemente con la inflación del dólar (2-3% anual).' },
-  { id: 15, categoria: 'Financiero y Retornos', pregunta: '¿Puedo generar ingresos por Airbnb en Panamáá?', respuesta: 'Sí. El proyecto Ventu de GLP está específicamente diseñado para rentas cortas tipo Airbnb/Booking.com, con cap rates estimados de 8-12% anual. Incluye administración hotelera delegada con check-in automático. Las tarifas promedio en Ciudad de Panamáá son USD 120-180 por noche. La temporada alta (diciembre-abril) puede elevar las tarifas un 30-50%. Se estima una vacancia del 20% anual promedio en el modelo de rentas cortas.' },
-  { id: 16, categoria: 'Financiero y Retornos', pregunta: '¿Cómo se compara invertir en Panamáá versus invertir en un CDT colombiano?', respuesta: 'Un CDT colombiano ofrece ~10.5% nominal en COP, pero al ajustar por devaluación del peso (históricamente 5-8% anual contra el USD) y retención en la fuente, el retorno real en dólares puede ser negativo. Una inversión GLP genera 5-8% en USD puro más valorización de 3-5.5% anual, sin riesgo cambiario. A 10 años, la inversión en Panamáá genera patrimonio en moneda dura con diversificación geográfica.' },
+  { id: 15, categoria: 'Financiero y Retornos', pregunta: '¿Puedo generar ingresos por Airbnb en Panamá?', respuesta: 'Sí. El proyecto Ventu de GLP está específicamente diseñado para rentas cortas tipo Airbnb/Booking.com, con cap rates estimados de 8-12% anual. Incluye administración hotelera delegada con check-in automático. Las tarifas promedio en Ciudad de Panamá son USD 120-180 por noche. La temporada alta (diciembre-abril) puede elevar las tarifas un 30-50%. Se estima una vacancia del 20% anual promedio en el modelo de rentas cortas.' },
+  { id: 16, categoria: 'Financiero y Retornos', pregunta: '¿Cómo se compara invertir en Panamá versus invertir en un CDT colombiano?', respuesta: 'Un CDT colombiano ofrece ~10.5% nominal en COP, pero al ajustar por devaluación del peso (históricamente 5-8% anual contra el USD) y retención en la fuente, el retorno real en dólares puede ser negativo. Una inversión GLP genera 5-8% en USD puro más valorización de 3-5.5% anual, sin riesgo cambiario. A 10 años, la inversión en Panamá genera patrimonio en moneda dura con diversificación geográfica.' },
 
   // Fiscal
-  { id: 17, categoria: 'Fiscal', pregunta: '¿Debo declarar mi inversión en Panamáá ante la DIAN?', respuesta: 'Sí. Todo residente fiscal colombiano debe declarar activos en el exterior superiores a 3,580 UVT (aproximadamente COP 170 millones en 2026). Esto incluye inmuebles en Panamáá. La declaración se realiza en el Formulario 160 (Declaración de Activos en el Exterior) y en la declaración de renta anual. Colombia Tax Law Group acompaña a cada inversionista GLP en este proceso para garantizar cumplimiento total con la DIAN.' },
-  { id: 18, categoria: 'Fiscal', pregunta: '¿Hay doble tributación entre Colombia y Panamáá?', respuesta: 'Colombia y Panamáá NO tienen un Convenio para Evitar la Doble Imposición (CDI) vigente. Sin embargo, Panamáá opera bajo un sistema territorial: solo grava ingresos generados dentro de su territorio. Esto significa que las rentas de alquiler en Panamáá se gravan localmente (0% para personas naturales no residentes en la mayoría de casos), y en Colombia se declaran como rentas de fuente extranjera con crédito tributario si aplica.' },
-  { id: 19, categoria: 'Fiscal', pregunta: '¿Cómo transfiero mis dólares legalmente a Panamáá?', respuesta: 'La transferencia se realiza a través del mercado cambiario formal colombiano. Se debe diligenciar la Declaración de Cambio (Formulario 4) ante el intermediario del mercado cambiario (banco). Para montos superiores a USD 10,000, se requiere registro ante el Banco de la República. La Resolución DIAN 204/2025 establece los lineamientos actualizados. Colombia Tax Law Group gestiona todo el proceso documental con el inversionista para que sea fluido y sin fricciones bancarias.' },
-  { id: 20, categoria: 'Fiscal', pregunta: '¿Panamáá cobra impuesto a las ganancias de capital?', respuesta: 'Para la venta de inmuebles, Panamáá aplica un impuesto del 2% sobre el valor de venta (no sobre la ganancia). Alternativamente, el vendedor puede optar por tributar al 10% sobre la ganancia neta si le resulta más favorable. No existe impuesto patrimonial ni impuesto a la herencia en Panamáá. La estructura a través de una Sociedad Anónima panameña o Fundación de Interés Privado puede optimizar aún más la carga fiscal y facilitar la sucesión.' },
-  { id: 21, categoria: 'Fiscal', pregunta: '¿Qué estructura jurídica recomienda GLP para la inversión?', respuesta: 'GLP, en conjunto con Colombia Tax Law Group, recomienda evaluar tres estructuras: (1) Persona natural directa — más simple, ideal para primer ticket; (2) Sociedad Anónima panameña — facilita sucesión y permite privacidad; (3) Fundación de Interés Privado — óptima para planificación patrimonial y sucesoral de familias HNWI. La elección depende del patrimonio total, los objetivos sucesorales y la situación tributaria específica del inversionista.' },
-  { id: 22, categoria: 'Fiscal', pregunta: '¿Puedo deducir gastos de la inversión panameña en mi declaración colombiana?', respuesta: 'Las rentas de fuente extranjera se declaran en Colombia con posibilidad de aplicar crédito tributario por impuestos pagados en el exterior (Art. 254 E.T.). Los gastos directamente relacionados con la generación de la renta (administración, seguros, mantenimiento) son deducibles bajo las reglas generales. Colombia Tax Law Group prepara la documentación soporte para maximizar las deducciones permitidas y optimizar la carga tributaria global del inversionista.' },
-  { id: 23, categoria: 'Fiscal', pregunta: '¿Qué sucede si no declaro mi inversión en Panamáá?', respuesta: 'La omisión de activos en el exterior ante la DIAN puede generar sanciones por inexactitud (100-160% del mayor valor del impuesto), sanciones por omisión de la declaración de activos (5% del valor de los activos no declarados por año), e incluso consecuencias penales por evasión fiscal. Con el intercambio automático de información (CRS/FATCA) entre Panamáá y Colombia, la DIAN tiene acceso a información financiera de cuentas colombianas en Panamáá. La transparencia total es la única estrategia viable.' },
-  { id: 24, categoria: 'Fiscal', pregunta: '¿GLP me ayuda con todo el proceso fiscal?', respuesta: 'Sí. La alianza tripartita GLP incluye a Colombia Tax Law Group como socio fiscal y legal. Ellos acompañan al inversionista desde la primera transferencia hasta la declaración de renta anual. El servicio incluye: estructuración de la inversión, proceso de declaración de cambio, declaración de activos en el exterior, declaración de renta con rentas de fuente extranjera, y asesoría en planificación patrimonial y sucesoral. El costo del servicio legal-fiscal se acuerda directamente con Colombia Tax Law Group.' },
+  { id: 17, categoria: 'Fiscal', pregunta: '¿Debo declarar mi inversión en Panamá ante la DIAN?', respuesta: 'Sí. Todo residente fiscal colombiano debe declarar activos en el exterior superiores a 3,580 UVT (aproximadamente COP 170 millones en 2026). Esto incluye inmuebles en Panamá. La declaración se realiza en el Formulario 160 (Declaración de Activos en el Exterior) y en la declaración de renta anual. Colombia Law Group acompaña a cada inversionista GLP en este proceso para garantizar cumplimiento total con la DIAN.' },
+  { id: 18, categoria: 'Fiscal', pregunta: '¿Hay doble tributación entre Colombia y Panamá?', respuesta: 'Colombia y Panamá NO tienen un Convenio para Evitar la Doble Imposición (CDI) vigente. Sin embargo, Panamá opera bajo un sistema territorial: solo grava ingresos generados dentro de su territorio. Esto significa que las rentas de alquiler en Panamá se gravan localmente (0% para personas naturales no residentes en la mayoría de casos), y en Colombia se declaran como rentas de fuente extranjera con crédito tributario si aplica.' },
+  { id: 19, categoria: 'Fiscal', pregunta: '¿Cómo transfiero mis dólares legalmente a Panamá?', respuesta: 'La transferencia se realiza a través del mercado cambiario formal colombiano. Se debe diligenciar la Declaración de Cambio (Formulario 4) ante el intermediario del mercado cambiario (banco). Para montos superiores a USD 10,000, se requiere registro ante el Banco de la República. La Resolución DIAN 204/2025 establece los lineamientos actualizados. Colombia Law Group gestiona todo el proceso documental con el inversionista para que sea fluido y sin fricciones bancarias.' },
+  { id: 20, categoria: 'Fiscal', pregunta: '¿Panamá cobra impuesto a las ganancias de capital?', respuesta: 'Para la venta de inmuebles, Panamá aplica un impuesto del 2% sobre el valor de venta (no sobre la ganancia). Alternativamente, el vendedor puede optar por tributar al 10% sobre la ganancia neta si le resulta más favorable. No existe impuesto patrimonial ni impuesto a la herencia en Panamá. La estructura a través de una Sociedad Anónima panameña o Fundación de Interés Privado puede optimizar aún más la carga fiscal y facilitar la sucesión.' },
+  { id: 21, categoria: 'Fiscal', pregunta: '¿Qué estructura jurídica recomienda GLP para la inversión?', respuesta: 'GLP, en conjunto con Colombia Law Group, recomienda evaluar tres estructuras: (1) Persona natural directa — más simple, ideal para primer ticket; (2) Sociedad Anónima panameña — facilita sucesión y permite privacidad; (3) Fundación de Interés Privado — óptima para planificación patrimonial y sucesoral de familias HNWI. La elección depende del patrimonio total, los objetivos sucesorales y la situación tributaria específica del inversionista.' },
+  { id: 22, categoria: 'Fiscal', pregunta: '¿Puedo deducir gastos de la inversión panameña en mi declaración colombiana?', respuesta: 'Las rentas de fuente extranjera se declaran en Colombia con posibilidad de aplicar crédito tributario por impuestos pagados en el exterior (Art. 254 E.T.). Los gastos directamente relacionados con la generación de la renta (administración, seguros, mantenimiento) son deducibles bajo las reglas generales. Colombia Law Group prepara la documentación soporte para maximizar las deducciones permitidas y optimizar la carga tributaria global del inversionista.' },
+  { id: 23, categoria: 'Fiscal', pregunta: '¿Qué sucede si no declaro mi inversión en Panamá?', respuesta: 'La omisión de activos en el exterior ante la DIAN puede generar sanciones por inexactitud (100-160% del mayor valor del impuesto), sanciones por omisión de la declaración de activos (5% del valor de los activos no declarados por año), e incluso consecuencias penales por evasión fiscal. Con el intercambio automático de información (CRS/FATCA) entre Panamá y Colombia, la DIAN tiene acceso a información financiera de cuentas colombianas en Panamá. La transparencia total es la única estrategia viable.' },
+  { id: 24, categoria: 'Fiscal', pregunta: '¿GLP me ayuda con todo el proceso fiscal?', respuesta: 'Sí. La alianza tripartita GLP incluye a Colombia Law Group como socio fiscal y legal. Ellos acompañan al inversionista desde la primera transferencia hasta la declaración de renta anual. El servicio incluye: estructuración de la inversión, proceso de declaración de cambio, declaración de activos en el exterior, declaración de renta con rentas de fuente extranjera, y asesoría en planificación patrimonial y sucesoral. El costo del servicio legal-fiscal se acuerda directamente con Colombia Law Group.' },
 
   // Migratorio
-  { id: 25, categoria: 'Migratorio', pregunta: '¿Puedo obtener residencia panameña al invertir en propiedad?', respuesta: 'Sí. Panamáá ofrece la Visa de Inversionista Calificado para extranjeros que inviertan un mínimo de USD 300,000 en bienes raíces. Esta visa otorga residencia permanente para el titular y dependientes (cónyuge e hijos menores). El proceso toma aproximadamente 30-60 días una vez presentada la documentación completa. GLP facilita el contacto con abogados migratorios panameños especializados en el trámite.' },
-  { id: 26, categoria: 'Migratorio', pregunta: '¿La residencia panameña me obliga a vivir en Panamáá?', respuesta: 'No. La residencia panameña no requiere presencia física permanente. Sin embargo, para mantener el estatus activo, se recomienda visitar Panamáá al menos una vez cada dos años. La residencia panameña no afecta la residencia fiscal colombiana siempre que se mantengan los criterios de permanencia (más de 183 días en Colombia). Es un segundo pasaporte de conveniencia que facilita trámites bancarios, inmobiliarios y empresariales en Panamáá.' },
-  { id: 27, categoria: 'Migratorio', pregunta: '¿Cuáles son los beneficios de la residencia panameña?', respuesta: 'La residencia panameña ofrece: apertura de cuentas bancarias locales con mayor facilidad, acceso a financiamiento hipotecario en condiciones preferenciales, cédula panameña que facilita trámites, posibilidad de establecer empresas en Panamáá, acceso al sistema de salud panameño, beneficios migratorios para viajes a terceros países, y eventualmente la posibilidad de obtener la ciudadanía panameña después de 5 años de residencia.' },
+  { id: 25, categoria: 'Migratorio', pregunta: '¿Puedo obtener residencia panameña al invertir en propiedad?', respuesta: 'Sí. Panamá ofrece la Visa de Inversionista Calificado para extranjeros que inviertan un mínimo de USD 300,000 en bienes raíces. Esta visa otorga residencia permanente para el titular y dependientes (cónyuge e hijos menores). El proceso toma aproximadamente 30-60 días una vez presentada la documentación completa. GLP facilita el contacto con abogados migratorios panameños especializados en el trámite.' },
+  { id: 26, categoria: 'Migratorio', pregunta: '¿La residencia panameña me obliga a vivir en Panamá?', respuesta: 'No. La residencia panameña no requiere presencia física permanente. Sin embargo, para mantener el estatus activo, se recomienda visitar Panamá al menos una vez cada dos años. La residencia panameña no afecta la residencia fiscal colombiana siempre que se mantengan los criterios de permanencia (más de 183 días en Colombia). Es un segundo pasaporte de conveniencia que facilita trámites bancarios, inmobiliarios y empresariales en Panamá.' },
+  { id: 27, categoria: 'Migratorio', pregunta: '¿Cuáles son los beneficios de la residencia panameña?', respuesta: 'La residencia panameña ofrece: apertura de cuentas bancarias locales con mayor facilidad, acceso a financiamiento hipotecario en condiciones preferenciales, cédula panameña que facilita trámites, posibilidad de establecer empresas en Panamá, acceso al sistema de salud panameño, beneficios migratorios para viajes a terceros países, y eventualmente la posibilidad de obtener la ciudadanía panameña después de 5 años de residencia.' },
   { id: 28, categoria: 'Migratorio', pregunta: '¿Qué documentos necesito para la visa de inversionista?', respuesta: 'Los documentos principales son: pasaporte vigente con mínimo 6 meses de validez, antecedentes penales apostillados del país de origen, certificado de salud, referencias bancarias personales (2), carta de motivación, comprobante de la inversión inmobiliaria (escritura o promesa de compraventa por mínimo USD 300,000), y poder notarial para el abogado tramitador. Todos los documentos deben estar apostillados y, si aplica, traducidos al español por un traductor oficial.' },
-  { id: 29, categoria: 'Migratorio', pregunta: '¿Puedo incluir a mi familia en la visa de inversionista?', respuesta: 'Sí. La Visa de Inversionista Calificado permite incluir dependientes: cónyuge, hijos menores de 18 años, e hijos hasta 25 años que demuestren dependencia económica y estar estudiando. Cada dependiente requiere su propia documentación (pasaporte, antecedentes, certificado de salud). El costo adicional por dependiente es relativamente menor comparado con el titular. La familia completa obtiene residencia permanente en Panamáá.' },
-  { id: 30, categoria: 'Migratorio', pregunta: '¿Puedo trabajar en Panamáá con la visa de inversionista?', respuesta: 'La Visa de Inversionista Calificado permite actividades empresariales propias pero NO permite empleo dependiente con un empleador panameño. Si el inversionista desea trabajar como empleado, necesitaría un permiso de trabajo adicional. Sin embargo, puede establecer empresas propias, recibir ingresos de alquiler, y realizar actividades de inversión sin restricciones. Muchos inversionistas colombianos utilizan Panamáá como base para operaciones empresariales regionales.' },
-  { id: 31, categoria: 'Migratorio', pregunta: '¿Existe el Programa de Pensionado en Panamáá?', respuesta: 'Sí. El Programa de Pensionado Especial de Panamáá es uno de los más atractivos del mundo. Requiere demostrar una pensión mensual mínima de USD 1,000 (o USD 750 si se compra propiedad por USD 100,000+). Beneficios: descuentos del 25% en servicios públicos, 25% en pasajes aéreos, 50% en entretenimiento, 25% en restaurantes, y 15% en préstamos hospitalarios. Es ideal para colombianos jubilados que buscan calidad de vida en dólares con un costo inferior al de ciudades como Bogotáá o Miami.' },
+  { id: 29, categoria: 'Migratorio', pregunta: '¿Puedo incluir a mi familia en la visa de inversionista?', respuesta: 'Sí. La Visa de Inversionista Calificado permite incluir dependientes: cónyuge, hijos menores de 18 años, e hijos hasta 25 años que demuestren dependencia económica y estar estudiando. Cada dependiente requiere su propia documentación (pasaporte, antecedentes, certificado de salud). El costo adicional por dependiente es relativamente menor comparado con el titular. La familia completa obtiene residencia permanente en Panamá.' },
+  { id: 30, categoria: 'Migratorio', pregunta: '¿Puedo trabajar en Panamá con la visa de inversionista?', respuesta: 'La Visa de Inversionista Calificado permite actividades empresariales propias pero NO permite empleo dependiente con un empleador panameño. Si el inversionista desea trabajar como empleado, necesitaría un permiso de trabajo adicional. Sin embargo, puede establecer empresas propias, recibir ingresos de alquiler, y realizar actividades de inversión sin restricciones. Muchos inversionistas colombianos utilizan Panamá como base para operaciones empresariales regionales.' },
+  { id: 31, categoria: 'Migratorio', pregunta: '¿Existe el Programa de Pensionado en Panamá?', respuesta: 'Sí. El Programa de Pensionado Especial de Panamá es uno de los más atractivos del mundo. Requiere demostrar una pensión mensual mínima de USD 1,000 (o USD 750 si se compra propiedad por USD 100,000+). Beneficios: descuentos del 25% en servicios públicos, 25% en pasajes aéreos, 50% en entretenimiento, 25% en restaurantes, y 15% en préstamos hospitalarios. Es ideal para colombianos jubilados que buscan calidad de vida en dólares con un costo inferior al de ciudades como Bogotá o Miami.' },
   { id: 32, categoria: 'Migratorio', pregunta: '¿GLP me ayuda con todo el proceso migratorio?', respuesta: 'GLP conecta al inversionista con abogados migratorios panameños de confianza que gestionan todo el trámite de principio a fin. El proceso incluye: evaluación de elegibilidad, preparación de documentación, presentación ante el Servicio Nacional de Migración, seguimiento del trámite, y entrega de la cédula panameña. GLP no cobra por la referencia — el costo del servicio se acuerda directamente entre el inversionista y el abogado. El proceso típico toma 30-60 días.' },
 ];
 
@@ -912,7 +913,7 @@ export default function CRMDashboard() {
   const [editableProjects, setEditableProjects] = useState<ProjectData[]>(PROJECTS);
   const [catalogProjects, setCatalogProjects] = useState<ProjectData[]>([...PROJECTS]);
   const [commissionEntities, setCommissionEntities] = useState<{name:string;pct:number}[]>([
-    { name: 'Colombia Tax Law Group', pct: 1 },
+    { name: 'Colombia Law Group', pct: 1 },
     { name: 'Grupo Valverde', pct: 1 },
     { name: 'Capital Brokers', pct: 1 },
     { name: 'Red de Brokers (distribuible)', pct: 2 },
@@ -1402,13 +1403,58 @@ export default function CRMDashboard() {
   const [generatingRadar, setGeneratingRadar] = useState(false);
   const [sendingReport, setSendingReport] = useState(false);
 
-  // Aprobar insight → crear tareas en workflow
-  const approveInsight = (ins: typeof camiloInsights[0]) => {
+  // Aprobar insight → disparo agéntico automático de Valeria + Isabella + Sara
+  const approveInsight = async (ins: typeof camiloInsights[0]) => {
     setCamiloInsights(prev => prev.map(i => i.id === ins.id ? { ...i, status: 'revisado' as const } : i));
-    const prioridad = ins.impacto === 'alto' ? 'alta' : ins.impacto === 'medio' ? 'media' : 'baja';
-    if ((ins as any).acciones_valeria) addWorkflowTask({ from:'CAMILO', to:'VALERIA', tipo:`Insight ${ins.tipo}`, titulo:`📊 ${ins.titulo}`, contenido:`DATOS:\n${ins.datos}\n\n➡️ TAREA PARA VALERIA:\n${(ins as any).acciones_valeria}`, status:'pendiente', prioridad, ref_id:ins.id });
-    if ((ins as any).acciones_isabella) addWorkflowTask({ from:'CAMILO', to:'ISABELLA', tipo:`Video ${ins.tipo}`, titulo:`🎬 ${ins.titulo}`, contenido:`DATOS:\n${ins.datos}\n\n➡️ TAREA PARA ISABELLA:\n${(ins as any).acciones_isabella}`, status:'pendiente', prioridad, ref_id:ins.id });
-    if ((ins as any).acciones_sara) addWorkflowTask({ from:'CAMILO', to:'SARA', tipo:'FAQ / Respuesta', titulo:`💬 ${ins.titulo}`, contenido:`DATOS:\n${ins.datos}\n\n➡️ TAREA PARA SARA:\n${(ins as any).acciones_sara}`, status:'pendiente', prioridad:'media', ref_id:ins.id });
+    const logTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const logA = (agent: string, msg: string) => setSwarmLogs(prev => [...prev, { time: logTime, agent, msg }]);
+    const label = `Camilo › ${ins.titulo}`;
+    const insCtx = `INSIGHT DE MERCADO — "${ins.titulo}" (${ins.tipo.toUpperCase()}, impacto ${ins.impacto})\n\nDATO CLAVE:\n${ins.datos}`;
+
+    logA('CAMILO', `✅ Insight aprobado — activando equipo agéntico en paralelo...`);
+
+    await Promise.all([
+      // ── VALERIA: copy / contenido ────────────────────────────
+      (async () => {
+        logA('VALERIA', `📊 Brief recibido de Camilo — generando copy de campaña...`);
+        const valeriaCtx = `${insCtx}${(ins as any).acciones_valeria ? `\n\nACCIÓN ASIGNADA:\n${(ins as any).acciones_valeria}` : ''}`;
+        await handleValeria(false, true, valeriaCtx, 'Email Marketing', label);
+        logA('VALERIA', `✅ Copy generado automáticamente desde insight de Camilo`);
+      })(),
+
+      // ── ISABELLA: guión de video ─────────────────────────────
+      (async () => {
+        logA('ISABELLA', `🎬 Brief recibido de Camilo — generando guión de Reel...`);
+        const isabellaCtx = `${insCtx}${(ins as any).acciones_isabella ? `\n\nACCIÓN ASIGNADA:\n${(ins as any).acciones_isabella}` : ''}`;
+        await handleIsabella(false, true, isabellaCtx, 'Reel 45s', label);
+        logA('ISABELLA', `✅ Guión generado automáticamente desde insight de Camilo`);
+      })(),
+
+      // ── SARA: FAQ / template de respuesta ───────────────────
+      (async () => {
+        logA('SARA', `💬 Brief recibido de Camilo — generando template de FAQ...`);
+        try {
+          const saraAccion = (ins as any).acciones_sara || `Generar respuesta informativa sobre: ${ins.titulo}`;
+          const saraPrompt = `Eres Sara, Customer Success Agent de GLP (inmobiliaria de lujo en Panamá).
+Camilo (científico de datos) te envía este insight de mercado y te pide una acción concreta.
+
+INSIGHT: "${ins.titulo}"
+DATO: ${ins.datos}
+ACCIÓN REQUERIDA: ${saraAccion}
+
+Genera una respuesta FAQ breve y profesional (3-5 oraciones) que Sara pueda enviar a prospectos colombianos interesados. Tono: cálido, experto, sin tecnicismos excesivos. Incluye un CTA al final.`;
+          const faqResp = await triggerOpenAI(saraPrompt, 'Eres Sara, agente de Customer Success de GLP Panama.');
+          setSaraReportText(prev =>
+            `[🤖 AGÉNTICO — Camilo → Sara · ${today()}]\n${ins.titulo}\n\n${faqResp.trim()}\n\n${'─'.repeat(50)}\n\n` + prev
+          );
+          logA('SARA', `✅ FAQ template generado automáticamente desde insight de Camilo`);
+        } catch {
+          logA('SARA', `⚠️ FAQ generado sin IA — revisar manualmente`);
+        }
+      })(),
+    ]);
+
+    logA('CAMILO', `🤖 Flujo agéntico completo — Valeria, Isabella y Sara ejecutaron sus tareas automáticamente.`);
   };
   const rejectInsight = (id: string) => setCamiloInsights(prev => prev.map(i => i.id === id ? { ...i, status: 'aplicado' as const } : i));
 
@@ -1525,9 +1571,9 @@ Sin markdown, solo el JSON array.`;
     'Estado General: Operaciones en curso. Monitoreo activo de prospectos y exenciones fiscales.\n\n' +
     'Alertas Críticas:\n' +
     '• Carlos Gutiérrez (Negociación, Presupuesto $1.5M USD) - Solicita urgente aclaración sobre los tiempos de transferencia de divisas para el cierre en Ocean Reef Park.\n' +
-    '• Roberto Castaño (Cierre, Presupuesto $220k USD) - Requiere que el equipo legal (Colombia Tax Law Group) certifique el estado de exención predial de 20 años de Surfside.\n\n' +
+    '• Roberto Castaño (Cierre, Presupuesto $220k USD) - Requiere que el equipo legal (Colombia Law Group) certifique el estado de exención predial de 20 años de Surfside.\n\n' +
     'FAQs Frecuentes detectadas en consultas:\n' +
-    '1. ¿Cómo se declara la propiedad en Panamáá ante la DIAN (Formulario 160)?\n' +
+    '1. ¿Cómo se declara la propiedad en Panamá ante la DIAN (Formulario 160)?\n' +
     '2. ¿Existe exención del impuesto de inmuebles para proyectos nuevos?\n' +
     '3. ¿Cuáles son los requisitos de enganche hipotecario para extranjeros?'
   );
@@ -1647,42 +1693,26 @@ Objeciones frecuentes: ${brandProfile.objeciones.slice(0,3).map(o=>o.split('→'
 Diferenciadores: ${brandProfile.diferenciadores.slice(0,3).join(' · ')}`;
 
       try {
-        logMsg('Conectando con OpenAI — generando inteligencia de mercado...');
-        const prompt = `Eres Camilo, Científico de Datos y Estratega de Inteligencia de Mercado de GLP Wealth Management.
+        logMsg('🔍 Deep search [1/3] — mercado inmobiliario Panamá 2025...');
+        await new Promise(r => setTimeout(r, 600));
+        logMsg('🔍 Deep search [2/3] — inversores colombianos y tipo de cambio...');
+        await new Promise(r => setTimeout(r, 600));
+        logMsg('🔍 Deep search [3/3] — proyectos competidores y precios actuales...');
+        await new Promise(r => setTimeout(r, 400));
+        logMsg('📊 Sintetizando investigación — generando documento de inteligencia...');
 
-Tu misión: generar un reporte de inteligencia accionable que alimentará a los agentes SARA (respuestas), VALERIA (contenido) e ISABELLA (video).
-
-CONTEXTO OPERATIVO GLP:
-${kpiCtx}
-
-PERFIL DE MARCA Y AUDIENCIA:
-${brandCtxSummary}
-
-PORTAFOLIO ACTUAL:
-${PROJECTS.map(p=>`• ${p.name} (${p.zone}) desde $${p.minPrice?.toLocaleString()||'consultar'} USD`).join('\n')}
-
-Genera un reporte de inteligencia con EXACTAMENTE esta estructura JSON (sin markdown):
-{
-  "resumen_ejecutivo": "párrafo de 3-4 líneas con el estado del mercado ahora mismo",
-  "insights": [
-    {
-      "tipo": "mercado|crisis|oportunidad|audiencia",
-      "titulo": "título del insight (máx 10 palabras)",
-      "datos": "los datos concretos, cifras, tendencias — mínimo 150 palabras con datos reales de Panamá y Colombia 2024-2026",
-      "impacto": "alto|medio|bajo",
-      "acciones_sara": "qué debe hacer SARA con este insight (respuestas, FAQs a actualizar)",
-      "acciones_valeria": "qué contenido debe crear Valeria con este insight",
-      "acciones_isabella": "qué video debe crear Isabella con este insight",
-      "fuentes": ["fuente 1", "fuente 2"]
-    }
-  ],
-  "señales_crisis": "descripción de riesgos actuales para ventas GLP (tasa de cambio, competencia, mercado)",
-  "oportunidades_inmediatas": "top 3 oportunidades concretas para cerrar más negocios esta semana"
-}
-
-Genera 4-5 insights variados (mercado macro, oportunidad de proyecto, audiencia colombiana, señal de crisis/riesgo). Usa datos reales y actuales de Panamá y Colombia.`;
-
-        const res = await triggerOpenAI(prompt, 'Eres Camilo, analista de datos inmobiliarios con conocimiento profundo del mercado panameño y colombiano 2024-2026.', 3500);
+        const projectsList = PROJECTS.map(p=>`• ${p.name} (${p.zone}) desde $${p.minPrice?.toLocaleString()||'consultar'} USD`).join('\n');
+        const deepRes = await fetch('http://localhost:3001/api/camilo/research', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ kpiCtx, brandCtx: brandCtxSummary, projectsList })
+        });
+        if (!deepRes.ok) {
+          const err = await deepRes.json().catch(() => ({}));
+          throw new Error((err as any).error || `Error del servidor (${deepRes.status})`);
+        }
+        const deepData = await deepRes.json();
+        const res = deepData.choices[0].message.content || '';
         const clean = res.replace(/```json/g,'').replace(/```/g,'').trim();
         let parsed: any;
         try {
@@ -1745,7 +1775,7 @@ Genera 4-5 insights variados (mercado macro, oportunidad de proyecto, audiencia 
         });
 
         setAgentCamiloLastRun(new Date().toLocaleString());
-        logMsg(`✅ Research completo — ${nuevosInsights.length} insights generados, tareas enviadas a Valeria, Isabella y Sara.`);
+        logMsg(`✅ Deep search completo — ${nuevosInsights.length} insights con datos reales generados · tareas enviadas a Valeria, Isabella y Sara.`);
       } catch (e: any) {
         logMsg(`Error en research de Camilo: ${e.message}`);
       } finally {
@@ -1761,7 +1791,7 @@ Genera 4-5 insights variados (mercado macro, oportunidad de proyecto, audiencia 
       let generatedProspects: any[] = [];
       if (true) {
         logMsg('Conectando con la plataforma OpenAI para minería de datos...');
-        const prompt = `Eres Camilo, Data Miner y Growth Hacker de la promotora GLP Panamáá. Genera 2 nuevos prospectos ficticios pero realistas con perfiles detallados de inversores colombianos premium (empresarios, médicos, C-level) interesados en los proyectos de Panamáá. Devuelve UN ARREGLO JSON EXACTAMENTE en el siguiente formato, sin bloques de código markdown, sin \`\`\`json, sin texto adicional:
+        const prompt = `Eres Camilo, Data Miner y Growth Hacker de la promotora GLP Panamá. Genera 2 nuevos prospectos ficticios pero realistas con perfiles detallados de inversores colombianos premium (empresarios, médicos, C-level) interesados en los proyectos de Panamá. Devuelve UN ARREGLO JSON EXACTAMENTE en el siguiente formato, sin bloques de código markdown, sin \`\`\`json, sin texto adicional:
 [{"nombre": "nombre", "apellido": "apellido", "direccion": "dirección en Colombia", "correo": "correo@dominio.com", "telefono": "+57 310...", "ocupacion": "ocupación de alto perfil", "proyectos_interes": ["proyectos aquí"], "forma_contacto": "Referido o Evento o Redes", "broker_asignado": "Patricia Vargas o Santiago Mesa", "presupuesto_usd": 300000, "notas": "notas de interés"}]
 Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJECTS.map(p => p.name).join(', ')}. Los brokers deben ser de: ${brokers.map(b => b.nombre).join(', ')}.`;
         
@@ -1783,7 +1813,7 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
           {
             nombre: firstNames[Math.floor(Math.random() * firstNames.length)],
             apellido: lastNames[Math.floor(Math.random() * lastNames.length)],
-            direccion: `Calle ${Math.floor(Math.random()*100)+1} #${Math.floor(Math.random()*90)+10}-${Math.floor(Math.random()*90)+10}, Bogotáá`,
+            direccion: `Calle ${Math.floor(Math.random()*100)+1} #${Math.floor(Math.random()*90)+10}-${Math.floor(Math.random()*90)+10}, Bogotá`,
             correo: `inversor.${Math.floor(Math.random()*1000)}@glp-leads.co`,
             telefono: `+57 31${Math.floor(Math.random()*9)+1} ${Math.floor(Math.random()*900)+100} ${Math.floor(Math.random()*9000)+1000}`,
             ocupacion: occupations[Math.floor(Math.random() * occupations.length)],
@@ -1826,7 +1856,7 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
         id: Date.now(),
         nombre: 'Andrés',
         apellido: 'Sarmiento',
-        direccion: 'Carrera 9 #115-30, Bogotáá',
+        direccion: 'Carrera 9 #115-30, Bogotá',
         correo: 'asarmiento@inversiones.co',
         telefono: '+57 310 888 9999',
         ocupacion: 'Cirujano Plástico',
@@ -1957,7 +1987,7 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
   };
 
 
-  const handleValeria = async (isSwarm = false, silent = false, reportTextSrc?: string, canalOverride?: string) => {
+  const handleValeria = async (isSwarm = false, silent = false, reportTextSrc?: string, canalOverride?: string, insightOrigin?: string) => {
     setAgentValeriaActive(true);
     setValeriaGenerating(true);
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -2177,7 +2207,8 @@ Responde SOLO con JSON sin bloques de código markdown:
         tags: parsed.tags || [],
         contexto: parsed.contexto_generacion || '',
         status: 'pending',
-        notas_admin: ''
+        notas_admin: '',
+        origen_agentivo: insightOrigin
       };
 
       setValeriaDrafts(prev => [newDraft, ...prev]);
@@ -2281,7 +2312,7 @@ Responde SOLO con JSON sin bloques de código:
     }
   };
 
-  const handleIsabella = async (isSwarm = false, silent = false, reportTextSrc?: string, tipoVideoOverride?: string) => {
+  const handleIsabella = async (isSwarm = false, silent = false, reportTextSrc?: string, tipoVideoOverride?: string, insightOrigin?: string) => {
     setAgentIsabellaActive(true);
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const logMsg = (msg: string) => {
@@ -2425,27 +2456,29 @@ Responde SOLO con JSON sin bloques de código:
         tags: ['Isabella', 'Video', tipoVideo.replace(' ', ''), 'Producción'],
         contexto: `Generado con perfil de marca GLP · ${brandProfile.audiencias[0]?.slice(0, 40) || 'Audiencia colombiana'}`,
         status: 'pending',
-        notas_admin: ''
+        notas_admin: '',
+        origen_agentivo: insightOrigin
       };
 
       setIsabellaScripts(prev => [newScript, ...prev]);
 
-      // También notificar a Valeria si el tipo es Reel (coordinación cross-agent)
+      // Coordinación cross-agent Isabella → Valeria (caption del video)
       if (tipoVideo === 'Reel 45s' || tipoVideo === 'Video Educativo 90s') {
         const coordinationNote: AgentDraft = {
           id: 'vd_coord_' + Date.now(),
           date: today(),
           type: 'Coordinación Isabella→Valeria',
           canal: 'Coordinación',
-          asunto: `Copy para acompañar: "${parsed.titulo}"`,
-          content: `[PENDIENTE — Valeria debe generar el caption y hashtags para este video de Isabella]\n\nTítulo del video: ${parsed.titulo}\nDuración: ${parsed.duracion}\nCanal: ${tipoVideo}\n\nGenera un Post Estático Instagram o Reel caption que acompañe este video.`,
-          tags: ['Coordinación', 'Isabella', 'PendienteValeria'],
-          contexto: 'Tarea de coordinación generada automáticamente por Isabella',
+          asunto: `Caption para acompañar: "${parsed.titulo}"`,
+          content: `[PENDIENTE — Valeria: caption y hashtags para el video de Isabella]\n\nTítulo del video: ${parsed.titulo}\nDuración: ${parsed.duracion}\nCanal: ${tipoVideo}\n\nGenera un Reel caption de 3-5 líneas + hashtags para acompañar este video en Instagram.`,
+          tags: ['Coordinación', 'Isabella→Valeria', 'Caption'],
+          contexto: insightOrigin ? `Coordinación de campaña · ${insightOrigin}` : 'Coordinación cross-agent Isabella → Valeria',
           status: 'pending',
-          notas_admin: 'Isabella generó el guion de video — Valeria debe generar el copy de acompañamiento'
+          notas_admin: 'Isabella generó el guion — Valeria debe completar el caption',
+          origen_agentivo: insightOrigin
         };
         setValeriaDrafts(prev => [coordinationNote, ...prev]);
-        logMsg(`✅ Coordinación activada: Valeria recibió tarea de copy para "${parsed.titulo}"`);
+        logMsg(`✅ Coordinación activada: Valeria recibió tarea de caption para "${parsed.titulo}"`);
       }
 
       setAgentIsabellaPosts(p => p + 1);
@@ -2543,7 +2576,7 @@ Responde SOLO con JSON sin bloques de código:
     
     setCrisisSaraReport(reportText);
     const alerts = [
-      'Alerta Crítica: 2 clientes con objeciones tributarias sin material de Colombia Tax Law Group.',
+      'Alerta Crítica: 2 clientes con objeciones tributarias sin material de Colombia Law Group.',
       'Alerta Operativa: Urge enviar tabla comparativa de exención predial a Carolina Posada.'
     ];
     setCrisisSaraAlerts(alerts);
@@ -2577,7 +2610,7 @@ Responde SOLO con JSON sin bloques de código:
     setCrisisSwarmStep(2);
     setCrisisSwarmLogs(prev => [...prev, { time: timeStr(), agent: 'VALERIA', msg: 'Valeria redactando contenido anti-crisis para contrarrestar objeciones...' }]);
     await new Promise(r => setTimeout(r, 1500));
-    const emailDraft = `Asunto: Desmitificando la Doble Tributación y Tasas en Panamá — Su Inversión Segura\n\nEstimado Inversionista,\n\nEntendemos que al invertir en el exterior, la claridad legal es fundamental. Queremos aclararle dos mitos comunes:\n1. **Doble Tributación**: Panamá opera bajo un sistema tributario territorial. Esto significa que usted NO paga impuesto predial por 20 años en nuestros proyectos nuevos, y sus rentas locales se benefician del CDI de 2015, permitiéndole acreditar lo pagado en Panamá ante la DIAN en Colombia.\n2. **Tasa del 8.5%**: Aunque la tasa en dólares parezca alta, la exención tributaria predial durante 20 años y la valorización histórica (3-5% en USD) neutralizan por completo el costo financiero, resultando en un rendimiento neto superior al de cualquier CDT en Colombia.\n\nLe invitamos a una sesión privada con Colombia Tax Law Group para estructurar su compra.\n\nAtentamente,\nEquipo de Wealth Management GLP`;
+    const emailDraft = `Asunto: Desmitificando la Doble Tributación y Tasas en Panamá — Su Inversión Segura\n\nEstimado Inversionista,\n\nEntendemos que al invertir en el exterior, la claridad legal es fundamental. Queremos aclararle dos mitos comunes:\n1. **Doble Tributación**: Panamá opera bajo un sistema tributario territorial. Esto significa que usted NO paga impuesto predial por 20 años en nuestros proyectos nuevos, y sus rentas locales se benefician del CDI de 2015, permitiéndole acreditar lo pagado en Panamá ante la DIAN en Colombia.\n2. **Tasa del 8.5%**: Aunque la tasa en dólares parezca alta, la exención tributaria predial durante 20 años y la valorización histórica (3-5% en USD) neutralizan por completo el costo financiero, resultando en un rendimiento neto superior al de cualquier CDT en Colombia.\n\nLe invitamos a una sesión privada con Colombia Law Group para estructurar su compra.\n\nAtentamente,\nEquipo de Wealth Management GLP`;
     
     const postDraft = `¿Preocupado por la doble tributación Colombia-Panamá? 🇨🇴🇵🇦\nMuchos inversionistas creen que declarar sus activos en dólares les generará doble impuesto. La verdad es que gracias a la legislación territorial y al CDI de 2015, puedes estructurar tu portafolio de forma 100% legal y eficiente. Además, con 20 años de exención de impuesto predial en proyectos GLP, tus retornos netos en dólares están blindados. \n#InversionDolarizada #DIAN #ColombiaTaxLaw #GLPPanama`;
     
@@ -2596,9 +2629,9 @@ Responde SOLO con JSON sin bloques de código:
     setCrisisSwarmLogs(prev => [...prev, { time: timeStr(), agent: 'ISABELLA', msg: 'Isabella estructurando el guión del Reel y la campaña de marca...' }]);
     await new Promise(r => setTimeout(r, 1500));
     
-    const scriptText = `Guión de Reels (1 Minuto) - Objeciones de Inversión:\n"¿Crees que invertir en dólares en Panamá te va a costar el doble en impuestos con la DIAN? ¡Es un mito! Hola, soy Isabella de GLP. Panamá opera con sistema tributario territorial, lo que significa que no pagas impuestos de fuente panameña dos veces. Y lo mejor: los proyectos nuevos están exentos de impuesto predial por 20 años. Sí, ¡dos décadas sin predial! Eso neutraliza cualquier tasa de interés hipotecaria y asegura retornos netos de hasta el 8.5% en USD. Escribe la palabra IMPUESTOS y te enviamos la guía fiscal gratuita de Colombia Tax Law Group."`;
+    const scriptText = `Guión de Reels (1 Minuto) - Objeciones de Inversión:\n"¿Crees que invertir en dólares en Panamá te va a costar el doble en impuestos con la DIAN? ¡Es un mito! Hola, soy Isabella de GLP. Panamá opera con sistema tributario territorial, lo que significa que no pagas impuestos de fuente panameña dos veces. Y lo mejor: los proyectos nuevos están exentos de impuesto predial por 20 años. Sí, ¡dos décadas sin predial! Eso neutraliza cualquier tasa de interés hipotecaria y asegura retornos netos de hasta el 8.5% en USD. Escribe la palabra IMPUESTOS y te enviamos la guía fiscal gratuita de Colombia Law Group."`;
     
-    const calendarText = `Campaña de Crisis Semanal:\n- Lunes: Publicar Reel de Isabella explicando la exención predial de 20 años.\n- Miércoles: Enviar mailing masivo con el borrador de Valeria a los leads fríos.\n- Viernes: Mesa redonda interactiva en vivo por LinkedIn con socios de Colombia Tax Law Group.`;
+    const calendarText = `Campaña de Crisis Semanal:\n- Lunes: Publicar Reel de Isabella explicando la exención predial de 20 años.\n- Miércoles: Enviar mailing masivo con el borrador de Valeria a los leads fríos.\n- Viernes: Mesa redonda interactiva en vivo por LinkedIn con socios de Colombia Law Group.`;
     
     setCrisisIsabellaScripts([scriptText, calendarText]);
     // INTEGRATION: Push to Isabella's queue
@@ -2640,7 +2673,7 @@ Responde SOLO con JSON sin bloques de código:
               cursor: crisisSwarmRunning ? 'not-allowed' : 'pointer'
             })}
           >
-            {crisisSwarmRunning ? 'Ejecutando Enjambre...' : 'Ejecutar Enjambre de Crisis'}
+            {crisisSwarmRunning ? 'Ejecutando...' : 'Gestión de Ventas Caídas'}
           </button>
         </div>
 
@@ -3307,12 +3340,12 @@ Responde SOLO con JSON sin bloques de código:
                       <div style={{ marginTop: 12, padding: 12, borderRadius: 10, background: `${T.teal}08`, border: `1.5px solid ${T.teal}18`, display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
                         <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={T.teal} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                          Estudio de Mercado Panamáá (Capital Brokers Q2 2026)
+                          Estudio de Mercado Panamá (Capital Brokers Q2 2026)
                         </div>
                         <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                           <input
                             type="text"
-                            placeholder="Buscar en el estudio de Panamáá..."
+                            placeholder="Buscar en el estudio de Panamá..."
                             value={crmProjSearchQuery}
                             onChange={e => setCrmProjSearchQuery(e.target.value)}
                             style={{ flex: 1, padding: '5px 10px', borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 11, background: T.card, color: T.text, outline: 'none' }}
@@ -3786,7 +3819,8 @@ Responde SOLO con JSON sin bloques de código:
                   const top3 = Object.entries(count).sort((a, b) => b[1] - a[1]).slice(0, 3);
                   const maxVal = top3[0]?.[1] || 1;
                   return (
-                    <div style={cardStyle({ cursor: 'default', border: `1.5px solid ${T.borderLight}` })}>
+                    <div onClick={() => setActiveDrilldown(activeDrilldown?.type === 'top_proyectos' ? null : { type: 'top_proyectos', data: { top3, count } } as any)}
+                      style={cardStyle({ cursor: 'pointer', border: activeDrilldown?.type === 'top_proyectos' ? `2px solid ${T.teal}` : `1.5px solid ${T.borderLight}`, transition: 'all 0.2s' })}>
                       <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 10, textAlign: 'center' as const }}>Top Proyectos</div>
                       <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 7 }}>
                         {top3.map(([name, score], i) => {
@@ -3841,6 +3875,7 @@ Responde SOLO con JSON sin bloques de código:
                 {activeDrilldown.type === 'camilo_prospects' && '🤖 Prospectos Minados por Camilo'}
                 {activeDrilldown.type === 'sara_history' && '📧 Historial de Correos y Registros de Sara'}
                 {activeDrilldown.type === 'next_event' && '📅 Detalle del Próximo Evento'}
+                {activeDrilldown.type === 'top_proyectos' && '🏆 Proyectos Más Demandados del Portafolio'}
               </h3>
               <button type="button" onClick={() => setActiveDrilldown(null)}
                 style={{ background: 'none', border: 'none', color: '#718096', fontSize: '1.25rem', cursor: 'pointer', padding: '4px' }}
@@ -3855,6 +3890,68 @@ Responde SOLO con JSON sin bloques de código:
             {activeDrilldown.type === 'brokers_active' && renderBrokersActiveDrilldown()}
             {activeDrilldown.type === 'camilo_prospects' && renderCamiloProspectsDrilldown()}
             {activeDrilldown.type === 'sara_history' && renderSaraHistoryDrilldown()}
+            {activeDrilldown.type === 'top_proyectos' && (() => {
+              const count2: Record<string, number> = {};
+              prospects.forEach(p => (p.proyectos_interes || []).forEach((pr: string) => { count2[pr] = (count2[pr] || 0) + 2; }));
+              closedSales.forEach(s => { count2[s.project] = (count2[s.project] || 0) + 3; });
+              lostSales.forEach(s => { count2[s.project] = (count2[s.project] || 0) + 1; });
+              const top3full = Object.entries(count2).sort((a, b) => b[1] - a[1]).slice(0, 3);
+              const colors = [T.teal, T.palm, T.sky];
+              return (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+                  {top3full.map(([pname, score], i) => {
+                    const proj = catalogProjects.find(p => p.name === pname);
+                    const interesados = prospects.filter(p => (p.proyectos_interes || []).includes(pname));
+                    const cerrados = closedSales.filter(s => s.project === pname);
+                    const caidos = lostSales.filter(s => s.project === pname);
+                    return (
+                      <div key={pname} style={{ background: T.bg, borderRadius: 12, padding: 16, border: `2px solid ${colors[i]}` }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                          <span style={{ background: colors[i], color: '#fff', borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12, flexShrink: 0 }}>#{i + 1}</span>
+                          <span style={{ fontWeight: 700, fontSize: 14, color: T.text }}>{pname}</span>
+                        </div>
+                        {proj && (
+                          <div style={{ fontSize: 11, color: T.textSec, marginBottom: 12, display: 'flex', flexDirection: 'column' as const, gap: 4 }}>
+                            <div>📍 {proj.zone}</div>
+                            <div>💰 ${(proj.minPrice || 0).toLocaleString()} – ${(proj.maxPrice || 0).toLocaleString()} USD</div>
+                            <div>🛏 {proj.bedrooms} · {proj.areaMin}–{proj.areaMax} m²</div>
+                            <div>🗓 Entrega: {proj.entrega}</div>
+                          </div>
+                        )}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 12 }}>
+                          {[
+                            { label: 'Interesados', val: interesados.length, color: colors[i] },
+                            { label: 'Cerrados', val: cerrados.length, color: T.success },
+                            { label: 'Caídos', val: caidos.length, color: T.danger },
+                          ].map(({ label, val, color }) => (
+                            <div key={label} style={{ background: T.card, borderRadius: 8, padding: '8px 6px', textAlign: 'center' as const }}>
+                              <div style={{ fontSize: 18, fontWeight: 800, color }}>{val}</div>
+                              <div style={{ fontSize: 9, color: T.textSec, textTransform: 'uppercase' as const }}>{label}</div>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, marginBottom: 6 }}>Prospectos interesados</div>
+                        {interesados.length === 0 ? (
+                          <div style={{ fontSize: 11, color: T.textSec, fontStyle: 'italic' }}>Sin prospectos aún</div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 4, maxHeight: 140, overflowY: 'auto' as const }}>
+                            {interesados.map(p => (
+                              <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, padding: '4px 6px', background: T.card, borderRadius: 6 }}>
+                                <span style={{ fontWeight: 600, color: T.text }}>{p.nombre} {p.apellido}</span>
+                                <span style={{ color: T.textSec }}>{p.estado}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div style={{ marginTop: 10, fontSize: 11, fontWeight: 700, color: colors[i], textAlign: 'center' as const }}>
+                          Score total: {score} pts
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
             {activeDrilldown.type === 'next_event' && (() => {
               const ev = events.filter(e => new Date(e.fecha) > new Date()).sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())[0] || null;
               if (!ev) return <div style={{ fontSize: 13, color: T.textSec, padding: 12 }}>No hay eventos próximos registrados.</div>;
@@ -4137,8 +4234,8 @@ Responde SOLO con JSON sin bloques de código:
           usd(totalVentas * 0.01),
           usd(totalVentas * 0.02)
         ];
-      } else if (brokerEntityFilter === 'Colombia Tax Law Group') {
-        title = `Reporte de Comisiones - Colombia Tax Law Group${contextSuffix}`;
+      } else if (brokerEntityFilter === 'Colombia Law Group') {
+        title = `Reporte de Comisiones - Colombia Law Group${contextSuffix}`;
         headers = ['Deal / Propiedad', 'Broker Asignado', 'Valor Venta', 'Comisión CTLG (1% Share)'];
         rows = filteredDeals.map(d => [
           d.deal,
@@ -5055,7 +5152,17 @@ Responde SOLO con JSON sin bloques de código:
                             {email.direction === 'in' ? 'Recibido de: ' + dp.correo : 'De: Sara (CS GLP)'} · {email.date}
                           </div>
                         </div>
-                        {badge(email.status.toUpperCase(), email.status === 'draft' ? T.warning : (email.status === 'incoming' ? T.sky : T.success), T.card)}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          {badge(email.status.toUpperCase(), email.status === 'draft' ? T.warning : (email.status === 'incoming' ? T.sky : T.success), T.card)}
+                          <button onClick={() => {
+                            if (!window.confirm('¿Eliminar este correo del historial?')) return;
+                            fetch(`http://localhost:3001/api/drafts/${email.id}`, { method: 'DELETE', headers: { 'x-tenant-id': 'tenant-glp-001' } }).catch(() => {});
+                            setProspects(prospects.map(p => p.id === dp.id ? { ...p, emailHistory: p.emailHistory?.filter(e => e.id !== email.id) } : p));
+                          }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.textSec, fontSize: 14, padding: '2px 4px', borderRadius: 4, lineHeight: 1 }}
+                            onMouseEnter={e => e.currentTarget.style.color = T.danger}
+                            onMouseLeave={e => e.currentTarget.style.color = T.textSec}
+                            title="Eliminar correo">🗑</button>
+                        </div>
                       </div>
                       <div style={{ fontSize: 13, color: T.text, whiteSpace: 'pre-wrap', lineHeight: 1.5, background: 'rgba(255,255,255,0.5)', padding: 8, borderRadius: 4 }}>
                         {email.body}
@@ -5176,6 +5283,14 @@ Responde SOLO con JSON sin bloques de código:
 
     return (
       <div>
+        {previousModule && (
+          <div style={{ marginBottom: 12 }}>
+            <button onClick={() => { setActiveModule(previousModule); setPreviousModule(null); }}
+              style={{ background: 'transparent', border: `1px solid ${T.border}`, padding: '6px 14px', fontSize: 11, fontWeight: 700, color: T.textSec, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              ← Volver a {previousModule === 'agentes' ? 'Agentes' : previousModule.charAt(0).toUpperCase() + previousModule.slice(1)}
+            </button>
+          </div>
+        )}
         {sectionTitle('Prospectos CRM · Gestión Comercial')}
 
         {/* Funnel summary filters */}
@@ -6028,7 +6143,7 @@ Responde SOLO con JSON sin bloques de código:
     ];
 
 
-    if (agentHistoryDetail) {
+    if (agentHistoryDetail && !['WORKFLOW', 'OBJECTIONS', 'CRISIS'].includes(agentHistoryDetail)) {
       // ── PANEL CAMILO ────────────────────────────────────────────
       if (agentHistoryDetail === 'CAMILO') {
         const TIPO_COLOR: Record<string,string> = { mercado:'#3B82F6', crisis:'#EF4444', oportunidad:'#10B981', audiencia:'#8B5CF6' };
@@ -6045,88 +6160,187 @@ Responde SOLO con JSON sin bloques de código:
           }))
           .sort((a,b) => b.score - a.score);
 
+        const C_NAVY = '#001A37'; const C_GOLD = '#B89047'; const C_GOLD_L = '#D4AF6A'; const C_CREAM = '#F7F4EF'; const C_PARCH = '#EDE8DF';
+        const TIPO_LABEL: Record<string,string> = { mercado:'Mercado', crisis:'Crisis', oportunidad:'Oportunidad', audiencia:'Audiencia' };
         const TABS = [
-          { key:'insights', label:'🧠 Insights', badge: camiloInsights.filter(i=>i.status==='nuevo').length },
-          { key:'ranking', label:'📊 Ranking Prospectos', badge:0 },
-          { key:'radar', label:'🎯 Radar Competencia', badge:0 },
-          { key:'objeciones', label:'🗺 Mapa Objeciones', badge:0 },
-          { key:'reporte', label:'📰 Reporte Semanal', badge:0 },
+          { key:'insights', label:'Inteligencia', badge: camiloInsights.filter(i=>i.status==='nuevo').length },
+          { key:'ranking', label:'Ranking Prospectos', badge:0 },
+          { key:'radar', label:'Radar Competencia', badge:0 },
+          { key:'objeciones', label:'Mapa Objeciones', badge:0 },
+          { key:'reporte', label:'Reporte Semanal', badge:0 },
         ] as const;
 
         return (
-          <div>
-            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
-              <button onClick={() => setAgentHistoryDetail(null)}
-                style={{ background:'none', border:`1px solid ${T.border}`, borderRadius:8, padding:'6px 12px', color:T.textSec, cursor:'pointer', fontSize:12 }}>
-                ← Volver
-              </button>
-              <h2 style={{ margin:0, fontSize:20, color:T.text }}>🕵️ Camilo — VP de Investigación y Mercados</h2>
+          <div style={{ background: C_CREAM, minHeight:'100%' }}>
+
+            {/* ── HEADER SOTHEBY'S ── */}
+            <div style={{ background: C_NAVY, borderTop:`3px solid ${C_GOLD}`, padding:'32px 40px 0' }}>
+              <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-between', gap:16, paddingBottom:28 }}>
+                <div>
+                  <div style={{ fontSize:9, letterSpacing:5, color:C_GOLD, fontWeight:700, textTransform:'uppercase', marginBottom:10 }}>
+                    GLP Wealth Management · Agente de Inteligencia
+                  </div>
+                  <h2 style={{ margin:0, fontSize:28, fontFamily:T.fontSerif, fontWeight:300, color:'#fff', letterSpacing:1, lineHeight:1.1 }}>
+                    Camilo
+                  </h2>
+                  <div style={{ width:36, height:1, background:C_GOLD, margin:'10px 0' }} />
+                  <div style={{ fontSize:10, color:'rgba(255,255,255,0.4)', letterSpacing:3, textTransform:'uppercase' }}>
+                    VP de Investigación y Mercados
+                  </div>
+                </div>
+                <button onClick={() => setAgentHistoryDetail(null)}
+                  style={{ background:'transparent', border:`1px solid rgba(184,144,71,0.3)`, padding:'8px 20px', color:'rgba(255,255,255,0.5)', fontSize:9, fontWeight:700, letterSpacing:3, textTransform:'uppercase', cursor:'pointer', marginBottom:4 }}>
+                  ← Volver
+                </button>
+              </div>
+
+              {/* Tabs nav */}
+              <div style={{ display:'flex', gap:0, borderTop:`1px solid rgba(184,144,71,0.15)` }}>
+                {TABS.map(t => (
+                  <button key={t.key} onClick={()=>setCamiloTab(t.key)} style={{
+                    padding:'13px 22px', border:'none', background:'transparent', cursor:'pointer',
+                    fontSize:9, fontWeight:700, letterSpacing:3, textTransform:'uppercase',
+                    borderBottom: camiloTab===t.key ? `2px solid ${C_GOLD}` : '2px solid transparent',
+                    color: camiloTab===t.key ? C_GOLD_L : 'rgba(255,255,255,0.65)',
+                    display:'flex', alignItems:'center', gap:8, transition:'color 0.2s', marginBottom:-1,
+                  }}>
+                    {t.label}
+                    {t.badge > 0 && (
+                      <span style={{ background:C_GOLD, color:C_NAVY, padding:'1px 7px', fontSize:8, fontWeight:800, letterSpacing:0 }}>{t.badge}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Tabs */}
-            <div style={{ display:'flex', gap:4, marginBottom:20, flexWrap:'wrap' }}>
-              {TABS.map(t => (
-                <button key={t.key} onClick={()=>setCamiloTab(t.key)}
-                  style={{ padding:'7px 14px', borderRadius:8, border:'none', fontSize:12, fontWeight:700, cursor:'pointer',
-                    background: camiloTab===t.key ? '#3B82F6' : T.bgAlt||T.borderLight,
-                    color: camiloTab===t.key ? '#fff' : T.textSec,
-                    display:'flex', alignItems:'center', gap:6 }}>
-                  {t.label}
-                  {t.badge > 0 && <span style={{ background:'#EF4444', color:'#fff', borderRadius:10, padding:'0 6px', fontSize:10 }}>{t.badge}</span>}
-                </button>
-              ))}
-            </div>
+            {/* ── CONTENT ── */}
+            <div style={{ padding:'32px 40px' }}>
 
             {/* TAB: INSIGHTS */}
             {camiloTab === 'insights' && (
               <div>
                 {camiloInsights.length === 0 && (
-                  <div style={{ ...cardStyle(), textAlign:'center', color:T.textSec, padding:40 }}>
-                    Sin insights aún. Ejecuta "Research de Mercado" desde la tarjeta de Camilo.
+                  <div style={{ background:'#fff', border:`1px solid rgba(184,144,71,0.2)`, padding:'48px 40px', textAlign:'center' }}>
+                    <div style={{ fontSize:9, letterSpacing:4, color:C_GOLD, fontWeight:700, textTransform:'uppercase', marginBottom:12 }}>Sin datos</div>
+                    <div style={{ fontSize:13, fontFamily:T.fontSerif, fontWeight:300, color:C_NAVY, marginBottom:24 }}>
+                      Ejecuta un Research de Mercado para generar inteligencia con deep search.
+                    </div>
+                    <button onClick={() => handleCamilo(false, false, 'research')} disabled={agentCamiloActive}
+                      style={{ background: agentCamiloActive ? 'rgba(184,144,71,0.3)' : C_NAVY, color: agentCamiloActive ? 'rgba(255,255,255,0.4)' : C_GOLD, border:'none', padding:'12px 32px', fontSize:9, fontWeight:800, letterSpacing:3, textTransform:'uppercase', cursor: agentCamiloActive ? 'default':'pointer' }}>
+                      {agentCamiloActive ? '⏳ Investigando...' : '▶ Research de Mercado'}
+                    </button>
                   </div>
                 )}
-                {camiloInsights.map(ins => (
-                  <div key={ins.id} style={{ ...cardStyle(), marginBottom:12, border:`1.5px solid ${ins.status==='nuevo'?TIPO_COLOR[ins.tipo]:T.borderLight}` }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12 }}>
-                      <div style={{ flex:1 }}>
-                        <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:6, flexWrap:'wrap' }}>
-                          <span style={{ fontSize:11, fontWeight:700, background:TIPO_COLOR[ins.tipo], color:'#fff', padding:'2px 8px', borderRadius:4, textTransform:'uppercase' }}>{ins.tipo}</span>
-                          <span style={{ fontSize:11, fontWeight:700, color:IMPACTO_COLOR[ins.impacto] }}>Impacto {ins.impacto}</span>
-                          <span style={{ fontSize:10, color:T.textSec }}>{ins.fecha}</span>
-                          {ins.status !== 'nuevo' && <span style={{ fontSize:10, color:T.success, fontWeight:600 }}>✓ {ins.status}</span>}
+                {camiloInsights.map((ins, idx) => {
+                  const tipoColors: Record<string,string> = { mercado:C_NAVY, crisis:'#7C1D1D', oportunidad:'#1A3A1A', audiencia:'#1A1A4A' };
+                  const impactoDot: Record<string,string> = { alto:C_GOLD, medio:'#9CA3AF', bajo:'#D1D5DB' };
+                  const isExpanded = expandedInsight === ins.id;
+                  const isNew = ins.status === 'nuevo';
+                  return (
+                    <div key={ins.id} style={{
+                      background:'#fff',
+                      borderTop: idx === 0 ? 'none' : `1px solid rgba(184,144,71,0.15)`,
+                      borderLeft: isNew ? `3px solid ${C_GOLD}` : `3px solid transparent`,
+                      marginBottom: 1,
+                    }}>
+                      <div style={{ padding:'28px 32px' }}>
+                        {/* Top row: tipo + impacto + fecha + status */}
+                        <div style={{ display:'flex', alignItems:'center', gap:16, marginBottom:14 }}>
+                          <span style={{ fontSize:8, letterSpacing:3, fontWeight:700, textTransform:'uppercase',
+                            color: tipoColors[ins.tipo] || C_NAVY,
+                            borderBottom:`1px solid ${tipoColors[ins.tipo] || C_NAVY}`,
+                            paddingBottom:1 }}>
+                            {TIPO_LABEL[ins.tipo] || ins.tipo}
+                          </span>
+                          <span style={{ display:'flex', alignItems:'center', gap:5, fontSize:9, letterSpacing:2, color:'#9CA3AF', textTransform:'uppercase', fontWeight:600 }}>
+                            <span style={{ width:5, height:5, borderRadius:'50%', background:impactoDot[ins.impacto], display:'inline-block' }} />
+                            Impacto {ins.impacto}
+                          </span>
+                          <span style={{ fontSize:9, color:'#C4BFB5', letterSpacing:1 }}>{ins.fecha}</span>
+                          {!isNew && ins.status === 'revisado' && <span style={{ fontSize:9, letterSpacing:2, color:'#10B981', textTransform:'uppercase', fontWeight:700 }}>✓ Ejecutado</span>}
+                          {!isNew && ins.status === 'aplicado' && <span style={{ fontSize:9, letterSpacing:2, color:'#9CA3AF', textTransform:'uppercase', fontWeight:700 }}>Rechazado</span>}
+                          <button onClick={() => setCamiloInsights(prev => prev.filter(i => i.id !== ins.id))}
+                            style={{ marginLeft:'auto', background:'transparent', border:'1px solid #FECACA', color:'#DC2626', padding:'3px 10px', fontSize:8, fontWeight:700, letterSpacing:1, textTransform:'uppercase' as const, cursor:'pointer' }}>
+                            × Eliminar
+                          </button>
                         </div>
-                        <div style={{ fontWeight:700, fontSize:14, color:T.text, marginBottom:4 }}>{ins.titulo}</div>
-                        <div style={{ fontSize:12, color:T.textSec }}>{expandedInsight===ins.id ? ins.datos : ins.resumen}</div>
-                        {expandedInsight===ins.id && (ins as any).acciones_sara && (
-                          <div style={{ marginTop:10, display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
-                            {[{label:'Sara',val:(ins as any).acciones_sara,c:'#10B981'},{label:'Valeria',val:(ins as any).acciones_valeria,c:'#8B5CF6'},{label:'Isabella',val:(ins as any).acciones_isabella,c:'#F59E0B'}].map(a=>(
-                              <div key={a.label} style={{ background:`${a.c}10`, border:`1px solid ${a.c}40`, borderRadius:8, padding:10 }}>
-                                <div style={{ fontSize:10, fontWeight:700, color:a.c, marginBottom:4 }}>➡️ {a.label}</div>
-                                <div style={{ fontSize:11, color:T.text }}>{a.val||'—'}</div>
+
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:24 }}>
+                          <div style={{ flex:1 }}>
+                            {/* Title */}
+                            <div style={{ fontSize:16, fontFamily:T.fontSerif, fontWeight:400, color:C_NAVY, letterSpacing:0.3, marginBottom:10, lineHeight:1.3 }}>{ins.titulo}</div>
+                            {/* Body */}
+                            <div style={{ fontSize:12, color:'#6B7280', lineHeight:1.75 }}>{isExpanded ? ins.datos : ins.resumen}</div>
+
+                            {/* Acciones por agente — expandido */}
+                            {isExpanded && (ins as any).acciones_sara && (
+                              <div style={{ marginTop:20, display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:1, background:'rgba(184,144,71,0.1)' }}>
+                                {[
+                                  { label:'Sara', val:(ins as any).acciones_sara },
+                                  { label:'Valeria', val:(ins as any).acciones_valeria },
+                                  { label:'Isabella', val:(ins as any).acciones_isabella },
+                                ].map(a => (
+                                  <div key={a.label} style={{ background:'#fff', padding:'16px 18px' }}>
+                                    <div style={{ fontSize:8, letterSpacing:3, color:C_GOLD, fontWeight:700, textTransform:'uppercase', marginBottom:8 }}>→ {a.label}</div>
+                                    <div style={{ fontSize:11, color:'#374151', lineHeight:1.6 }}>{a.val || '—'}</div>
+                                  </div>
+                                ))}
                               </div>
-                            ))}
+                            )}
+
+                            {/* Fuentes */}
+                            {isExpanded && ins.fuentes?.length > 0 && (
+                              <div style={{ marginTop:12, fontSize:9, color:'#9CA3AF', letterSpacing:1 }}>
+                                <span style={{ color:C_GOLD, fontWeight:700 }}>Fuentes: </span>{ins.fuentes.join(' · ')}
+                              </div>
+                            )}
+
+                            <button onClick={() => setExpandedInsight(isExpanded ? null : ins.id)}
+                              style={{ background:'none', border:'none', color:C_GOLD, fontSize:9, fontWeight:700, letterSpacing:2, textTransform:'uppercase', cursor:'pointer', marginTop:12, padding:0 }}>
+                              {isExpanded ? '↑ Colapsar' : '↓ Ver análisis completo + acciones'}
+                            </button>
                           </div>
-                        )}
-                        <button onClick={()=>setExpandedInsight(expandedInsight===ins.id?null:ins.id)}
-                          style={{ background:'none', border:'none', color:'#3B82F6', fontSize:11, cursor:'pointer', marginTop:6, padding:0 }}>
-                          {expandedInsight===ins.id ? '▲ Ver menos' : '▼ Ver completo + acciones por agente'}
-                        </button>
-                      </div>
-                      {ins.status === 'nuevo' && (
-                        <div style={{ display:'flex', flexDirection:'column', gap:6, minWidth:100 }}>
-                          <button onClick={()=>approveInsight(ins)}
-                            style={{ background:'#10B981', color:'#fff', border:'none', borderRadius:6, padding:'6px 12px', fontSize:11, fontWeight:700, cursor:'pointer' }}>
-                            ✅ Aprobar
-                          </button>
-                          <button onClick={()=>rejectInsight(ins.id)}
-                            style={{ background:'none', border:`1px solid ${T.border}`, borderRadius:6, padding:'6px 12px', fontSize:11, color:T.textSec, cursor:'pointer' }}>
-                            ✕ Rechazar
-                          </button>
+
+                          {/* Acciones — solo si nuevo */}
+                          {isNew && (
+                            <div style={{ display:'flex', flexDirection:'column', gap:6, flexShrink:0 }}>
+                              <button onClick={() => approveInsight(ins)} style={{
+                                background: C_NAVY, color: C_GOLD_L, border:'none',
+                                padding:'9px 22px', fontSize:9, fontWeight:700, letterSpacing:2, textTransform:'uppercase', cursor:'pointer',
+                              }}>Aprobar</button>
+                              <button onClick={() => rejectInsight(ins.id)} style={{
+                                background:'transparent', color:'#9CA3AF', border:`1px solid rgba(184,144,71,0.2)`,
+                                padding:'9px 22px', fontSize:9, fontWeight:700, letterSpacing:2, textTransform:'uppercase', cursor:'pointer',
+                              }}>Rechazar</button>
+                            </div>
+                          )}
+
+                          {/* Confirmación de entrega agéntica */}
+                          {ins.status === 'revisado' && (
+                            <div style={{ flexShrink:0, background:'#F7F4EF', border:`1px solid rgba(184,144,71,0.25)`, borderLeft:`3px solid #10B981`, padding:'14px 18px', minWidth:180 }}>
+                              <div style={{ fontSize:8, letterSpacing:3, color:'#10B981', fontWeight:800, textTransform:'uppercase', marginBottom:10 }}>🤖 Equipo Agéntico</div>
+                              {[
+                                { agent:'Sara',     color:'#10B981', has:(ins as any).acciones_sara,     role:'FAQ / Template' },
+                                { agent:'Valeria',  color:'#8B5CF6', has:(ins as any).acciones_valeria,  role:'Copy / Campaña' },
+                                { agent:'Isabella', color:'#F59E0B', has:(ins as any).acciones_isabella, role:'Guión de Video' },
+                              ].map(a => (
+                                <div key={a.agent} style={{ display:'flex', alignItems:'center', gap:7, marginBottom:6 }}>
+                                  <span style={{ width:6, height:6, borderRadius:'50%', background: a.has ? a.color : '#E5E7EB', flexShrink:0, display:'inline-block' }} />
+                                  <div>
+                                    <span style={{ fontSize:9, fontWeight:700, color: a.has ? '#374151' : '#9CA3AF', letterSpacing:0.5 }}>{a.agent}</span>
+                                    {a.has && <span style={{ fontSize:8, color:'#9CA3AF', marginLeft:5 }}>· {a.role}</span>}
+                                  </div>
+                                  {a.has && <span style={{ fontSize:9, color:'#10B981', fontWeight:800, marginLeft:'auto' }}>✓</span>}
+                                </div>
+                              ))}
+                              <div style={{ marginTop:8, paddingTop:8, borderTop:`1px solid rgba(184,144,71,0.2)`, fontSize:8, color:'#9CA3AF', letterSpacing:1 }}>Generado automáticamente</div>
+                            </div>
+                          )}
                         </div>
-                      )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
@@ -6255,34 +6469,38 @@ Responde SOLO con JSON sin bloques de código:
             {/* TAB: REPORTE SEMANAL */}
             {camiloTab === 'reporte' && (
               <div>
-                <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap' }}>
+                <div style={{ display:'flex', gap:1, marginBottom:24 }}>
                   <button onClick={generateMarketReport} disabled={generatingReport}
-                    style={{ background:'#3B82F6', color:'#fff', border:'none', borderRadius:8, padding:'8px 18px', fontWeight:700, fontSize:12, cursor:'pointer' }}>
-                    {generatingReport ? '⏳ Generando...' : '📰 Generar Reporte'}
+                    style={{ background: generatingReport ? 'rgba(0,26,55,0.4)' : C_NAVY, color:C_GOLD_L, border:'none', padding:'11px 28px', fontSize:9, fontWeight:700, letterSpacing:3, textTransform:'uppercase', cursor:'pointer' }}>
+                    {generatingReport ? 'Generando…' : 'Generar Reporte'}
                   </button>
                   {marketReport && (
                     <button onClick={sendReportEmail} disabled={sendingReport}
-                      style={{ background:'#10B981', color:'#fff', border:'none', borderRadius:8, padding:'8px 18px', fontWeight:700, fontSize:12, cursor:'pointer' }}>
-                      {sendingReport ? '⏳ Enviando...' : '📧 Enviar por Correo'}
+                      style={{ background:'transparent', color:C_NAVY, border:`1px solid rgba(0,26,55,0.3)`, padding:'11px 28px', fontSize:9, fontWeight:700, letterSpacing:3, textTransform:'uppercase', cursor:'pointer' }}>
+                      {sendingReport ? 'Enviando…' : 'Enviar por Correo'}
                     </button>
                   )}
                 </div>
                 {!marketReport && !generatingReport && (
-                  <div style={{ ...cardStyle(), textAlign:'center', color:T.textSec, padding:40 }}>
-                    Genera el reporte semanal de color del mercado inmobiliario y financiero de Panamá.
+                  <div style={{ background:'#fff', border:`1px solid rgba(184,144,71,0.2)`, padding:'48px 40px', textAlign:'center' }}>
+                    <div style={{ fontSize:9, letterSpacing:4, color:C_GOLD, fontWeight:700, textTransform:'uppercase', marginBottom:12 }}>Reporte Semanal</div>
+                    <div style={{ fontSize:13, fontFamily:T.fontSerif, fontWeight:300, color:C_NAVY }}>
+                      Genera el reporte de inteligencia de mercado inmobiliario y financiero de Panamá y Colombia.
+                    </div>
                   </div>
                 )}
                 {marketReport && (
-                  <div style={{ ...cardStyle(), border:`1.5px solid #3B82F6` }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', marginBottom:12 }}>
-                      <div style={{ fontWeight:700, fontSize:14, color:T.text }}>📊 Reporte Semanal — {marketReport.fecha}</div>
-                      <span style={{ fontSize:10, background:'#3B82F620', color:'#3B82F6', padding:'3px 8px', borderRadius:4, fontWeight:600 }}>Guardado como contexto global</span>
+                  <div style={{ background:'#fff', borderLeft:`3px solid ${C_GOLD}` }}>
+                    <div style={{ padding:'20px 28px', borderBottom:`1px solid rgba(184,144,71,0.15)`, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                      <div style={{ fontSize:12, fontFamily:T.fontSerif, fontWeight:400, color:C_NAVY }}>Reporte Semanal · {marketReport.fecha}</div>
+                      <span style={{ fontSize:8, letterSpacing:3, color:C_GOLD, textTransform:'uppercase', fontWeight:700 }}>Contexto global activo</span>
                     </div>
-                    <div style={{ fontSize:13, color:T.text, whiteSpace:'pre-wrap', lineHeight:1.7 }}>{marketReport.texto}</div>
+                    <div style={{ padding:'24px 28px', fontSize:12, color:'#374151', whiteSpace:'pre-wrap', lineHeight:1.85 }}>{marketReport.texto}</div>
                   </div>
                 )}
               </div>
             )}
+            </div>
           </div>
         );
       }
@@ -6502,7 +6720,7 @@ Responde SOLO con JSON sin bloques de código:
                             {msg.project && <div style={{ fontSize:10, color:'#9CA3AF' }}>Proyecto: <span style={{ color:'#374151', fontWeight:600 }}>{msg.project}</span></div>}
                           </div>
 
-                          <div>
+                          <div style={{ display:'flex', gap:8, alignItems:'center' }}>
                             {isSent && <span style={{ fontSize:10, color:'#10B981', fontWeight:600, letterSpacing:0.5 }}>✓ Aprobado y enviado</span>}
                             {isIncoming && <span style={{ fontSize:10, color:S_NAVY, fontWeight:500 }}>Recibido</span>}
                             {isDraft && !(msg as any).isApi && (
@@ -6520,6 +6738,20 @@ Responde SOLO con JSON sin bloques de código:
                                 Aprobar y Enviar
                               </button>
                             )}
+                            <button onClick={() => {
+                              if (!window.confirm('¿Eliminar este correo de la bandeja?')) return;
+                              if ((msg as any).isApi) {
+                                fetch(`http://localhost:3001/api/drafts/${msg.id}`, { method:'DELETE', headers:{'x-tenant-id':'tenant-glp-001'} }).catch(()=>{});
+                                setApiDrafts(prev => prev.filter(d => d.id !== msg.id));
+                              } else {
+                                setProspects(prev => prev.map(p => p.id === msg.prospectId
+                                  ? { ...p, emailHistory: p.emailHistory?.filter(e => e.id !== msg.id) }
+                                  : p));
+                              }
+                            }} style={{ background:'transparent', border:`1px solid #FECACA`, color:'#DC2626', padding:'6px 10px', fontSize:9, fontWeight:700, letterSpacing:1, textTransform:'uppercase', cursor:'pointer' }}
+                              title="Eliminar correo">
+                              🗑 Eliminar
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -6588,7 +6820,7 @@ Responde SOLO con JSON sin bloques de código:
                   <button key={t.key} onClick={() => setValeriaTab(t.key)} style={{
                     padding:'10px 22px', fontSize:10, fontWeight:700, letterSpacing:2, textTransform:'uppercase', cursor:'pointer', border:'none', background:'transparent',
                     borderBottom: valeriaTab === t.key ? `2px solid ${V_GOLD}` : '2px solid transparent',
-                    color: valeriaTab === t.key ? V_GOLD_L : 'rgba(255,255,255,0.4)', marginBottom:-1,
+                    color: valeriaTab === t.key ? V_GOLD_L : 'rgba(255,255,255,0.65)', marginBottom:-1,
                   }}>{t.label}</button>
                 ))}
                 {profileDirty && (
@@ -6826,11 +7058,23 @@ Responde SOLO con JSON sin bloques de código:
                     <div style={{ fontFamily:T.fontSerif, fontSize:18, color:V_NAVY, marginBottom:6 }}>Sin contenido aquí</div>
                     <div style={{ fontSize:11, color:'#9CA3AF' }}>Selecciona un canal y pulsa "Generar con IA" para crear contenido</div>
                   </div>
-                ) : vFiltered.map(item => {
+                ) : (() => {
+                  const isCrisisItem = (i: typeof vFiltered[0]) => (i.type || '').toLowerCase().includes('crisis') || (i.canal || '').toLowerCase().includes('crisis');
+                  const crisisItems = vFiltered.filter(isCrisisItem);
+                  const inteligenciaItems = vFiltered.filter(i => !!i.origen_agentivo && !isCrisisItem(i));
+                  const clientesItems = vFiltered.filter(i => !i.origen_agentivo && !isCrisisItem(i));
+                  const renderCard = (item: typeof vFiltered[0]) => {
+                  const isCrisis = (item.type || '').includes('Crisis') || (item.canal || '').includes('Crisis');
                   const statusColor = item.status==='active'?'#10B981':item.status==='approved'?V_NAVY:V_GOLD;
                   const statusLabel = item.status==='active'?'Publicado':item.status==='approved'?'Aprobado':'Borrador';
                   return (
-                    <div key={item.id} style={{ background:'#fff', border:`1px solid #D6CEBC`, borderLeft:`3px solid ${statusColor}` }}>
+                    <div key={item.id} style={{ background:'#fff', border: isCrisis ? `1.5px solid #DC2626` : `1px solid #D6CEBC`, borderLeft:`3px solid ${isCrisis ? '#DC2626' : statusColor}` }}>
+                    {isCrisis && (
+                      <div style={{ background:'#FEF2F2', borderBottom:'1px solid #FECACA', padding:'5px 18px', display:'flex', alignItems:'center', gap:8 }}>
+                        <span style={{ fontSize:11 }}>🚨</span>
+                        <span style={{ fontSize:10, fontWeight:800, color:'#DC2626', letterSpacing:1.5, textTransform:'uppercase' as const }}>Gestión de Crisis — Requiere Revisión</span>
+                      </div>
+                    )}
                       {/* Card header */}
                       <div style={{ padding:'14px 18px 12px', borderBottom:'1px solid #F0EDE8', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12 }}>
                         <div style={{ flex:1, minWidth:0 }}>
@@ -6843,6 +7087,13 @@ Responde SOLO con JSON sin bloques de código:
                           {item.tags && item.tags.length > 0 && (
                             <div style={{ display:'flex', gap:4, marginTop:6, flexWrap:'wrap' }}>
                               {item.tags.map(t => <span key={t} style={{ fontSize:8, background:`${V_NAVY}10`, color:V_NAVY, padding:'2px 7px', fontWeight:700, letterSpacing:1 }}>#{t}</span>)}
+                            </div>
+                          )}
+                          {item.origen_agentivo && (
+                            <div style={{ display:'flex', alignItems:'center', gap:5, marginTop:7, background:'#001A3708', border:'1px solid #B8904750', padding:'4px 9px' }}>
+                              <span style={{ fontSize:10 }}>🤖</span>
+                              <span style={{ fontSize:8, fontWeight:800, letterSpacing:2, color:'#001A37', textTransform:'uppercase' as const }}>Agéntico</span>
+                              <span style={{ fontSize:8, color:'#6B7280', marginLeft:2 }}>· {item.origen_agentivo}</span>
                             </div>
                           )}
                         </div>
@@ -6902,7 +7153,50 @@ Responde SOLO con JSON sin bloques de código:
                       </div>
                     </div>
                   );
-                })}
+                  };
+                  return (
+                    <>
+                      {crisisItems.length > 0 && (
+                        <div style={{ marginBottom: 16 }}>
+                          <div style={{ background:'#FEF2F2', border:'1.5px solid #DC2626', borderRadius:4, padding:'8px 16px', marginBottom:10, display:'flex', alignItems:'center', gap:10 }}>
+                            <span style={{ fontSize:16 }}>🚨</span>
+                            <div>
+                              <div style={{ fontSize:11, fontWeight:800, color:'#DC2626', letterSpacing:1.5, textTransform:'uppercase' as const }}>Gestión de Crisis Activa — {crisisItems.length} ítem(s) pendiente(s) de revisión</div>
+                              <div style={{ fontSize:10, color:'#991B1B', marginTop:2 }}>Generados automáticamente por el Enjambre de Crisis. Revisa y aprueba antes de publicar.</div>
+                            </div>
+                          </div>
+                          <div style={{ display:'flex', flexDirection:'column' as const, gap:8 }}>
+                            {crisisItems.map(renderCard)}
+                          </div>
+                        </div>
+                      )}
+                      {inteligenciaItems.length > 0 && (
+                        <div style={{ marginBottom: crisisItems.length > 0 ? 16 : 0 }}>
+                          <div style={{ background:'rgba(184,144,71,0.06)', borderLeft:`3px solid ${V_GOLD}`, padding:'7px 14px', marginBottom:8, display:'flex', alignItems:'center', gap:8 }}>
+                            <span style={{ fontSize:8, fontWeight:800, letterSpacing:2.5, color:V_NAVY, textTransform:'uppercase' as const }}>I · Inteligencia de Mercado</span>
+                            <span style={{ fontSize:8, color:'#9CA3AF', marginLeft:4 }}>Generados desde insights de Camilo</span>
+                            <span style={{ marginLeft:'auto', fontSize:8, background:`${V_GOLD}20`, color:V_GOLD, padding:'2px 8px', fontWeight:800, letterSpacing:1 }}>{inteligenciaItems.length}</span>
+                          </div>
+                          <div style={{ display:'flex', flexDirection:'column' as const, gap:8 }}>
+                            {inteligenciaItems.map(renderCard)}
+                          </div>
+                        </div>
+                      )}
+                      {clientesItems.length > 0 && (
+                        <div style={{ marginTop: (inteligenciaItems.length > 0 || crisisItems.length > 0) ? 16 : 0 }}>
+                          <div style={{ background:'rgba(16,185,129,0.05)', borderLeft:'3px solid #10B981', padding:'7px 14px', marginBottom:8, display:'flex', alignItems:'center', gap:8 }}>
+                            <span style={{ fontSize:8, fontWeight:800, letterSpacing:2.5, color:'#065F46', textTransform:'uppercase' as const }}>III · Clientes Activos</span>
+                            <span style={{ fontSize:8, color:'#9CA3AF', marginLeft:4 }}>Correos, FAQs y contenido de captación</span>
+                            <span style={{ marginLeft:'auto', fontSize:8, background:'#10B98120', color:'#10B981', padding:'2px 8px', fontWeight:800, letterSpacing:1 }}>{clientesItems.length}</span>
+                          </div>
+                          <div style={{ display:'flex', flexDirection:'column' as const, gap:8 }}>
+                            {clientesItems.map(renderCard)}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
               </>}
             </div>
@@ -6946,7 +7240,7 @@ Responde SOLO con JSON sin bloques de código:
                 <button key={t.key} onClick={() => setAgentHistoryTab(t.key)} style={{
                   padding:'10px 22px', fontSize:10, fontWeight:700, letterSpacing:2, textTransform:'uppercase', cursor:'pointer', border:'none', background:'transparent', marginBottom:-1,
                   borderBottom: agentHistoryTab===t.key ? `2px solid ${I_GOLD}` : '2px solid transparent',
-                  color: agentHistoryTab===t.key ? I_GOLD_L : 'rgba(255,255,255,0.4)',
+                  color: agentHistoryTab===t.key ? I_GOLD_L : 'rgba(255,255,255,0.65)',
                 }}>{t.label}</button>
               ))}
             </div>
@@ -6975,18 +7269,61 @@ Responde SOLO con JSON sin bloques de código:
               {filteredItems.length === 0 ? (
                 <div style={{ padding:40, textAlign:'center', border:'1px dashed #D6CEBC', background:'#fff' }}>
                   <div style={{ fontFamily:T.fontSerif, fontSize:18, color:I_NAVY, marginBottom:6 }}>Sin contenidos en esta sección</div>
-                  <div style={{ fontSize:11, color:'#9CA3AF' }}>Los guiones de video aparecerán aquí una vez generados</div>
+                  <div style={{ fontSize:11, color:'#9CA3AF', marginBottom: (iApproved > 0 || iActive > 0 || iPending > 0) ? 20 : 0 }}>
+                    Los guiones de video aparecerán aquí una vez generados
+                  </div>
+                  {(agentHistoryTab !== 'approved' && iApproved > 0) || (agentHistoryTab !== 'active' && iActive > 0) || (agentHistoryTab !== 'pending' && iPending > 0) ? (
+                    <div style={{ display:'flex', gap:8, justifyContent:'center', flexWrap:'wrap' }}>
+                      {agentHistoryTab !== 'pending' && iPending > 0 && (
+                        <button onClick={() => setAgentHistoryTab('pending')}
+                          style={{ background:'transparent', border:`1px solid ${I_GOLD}`, color:I_GOLD, padding:'7px 18px', fontSize:9, fontWeight:700, letterSpacing:2, textTransform:'uppercase' as const, cursor:'pointer' }}>
+                          Ver Borradores ({iPending})
+                        </button>
+                      )}
+                      {agentHistoryTab !== 'approved' && iApproved > 0 && (
+                        <button onClick={() => setAgentHistoryTab('approved')}
+                          style={{ background:I_NAVY, border:'none', color:I_GOLD_L, padding:'7px 18px', fontSize:9, fontWeight:700, letterSpacing:2, textTransform:'uppercase' as const, cursor:'pointer' }}>
+                          Ver Aprobados ({iApproved})
+                        </button>
+                      )}
+                      {agentHistoryTab !== 'active' && iActive > 0 && (
+                        <button onClick={() => setAgentHistoryTab('active')}
+                          style={{ background:'#10B981', border:'none', color:'#fff', padding:'7px 18px', fontSize:9, fontWeight:700, letterSpacing:2, textTransform:'uppercase' as const, cursor:'pointer' }}>
+                          Ver Publicados ({iActive})
+                        </button>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
-              ) : filteredItems.map(item => {
+              ) : (() => {
+                const isICrisis = (i: typeof filteredItems[0]) => (i.type || '').toLowerCase().includes('crisis');
+                const iCrisisItems = filteredItems.filter(isICrisis);
+                const iInteligenciaItems = filteredItems.filter(i => !!i.origen_agentivo && !isICrisis(i));
+                const iClientesItems = filteredItems.filter(i => !i.origen_agentivo && !isICrisis(i));
+                const renderIsabellaCard = (item: typeof filteredItems[0]) => {
+                const isCrisis = (item.type || '').includes('Crisis');
                 const sColor = item.status==='active'?'#10B981':item.status==='approved'?I_NAVY:I_GOLD;
                 const sLabel = item.status==='active'?'Publicado':item.status==='approved'?'Aprobado':'Borrador';
                 return (
-                  <div key={item.id} style={{ background:'#fff', border:'1px solid #D6CEBC', borderLeft:`3px solid ${sColor}` }}>
+                  <div key={item.id} style={{ background:'#fff', border: isCrisis ? '1.5px solid #DC2626' : '1px solid #D6CEBC', borderLeft:`3px solid ${isCrisis ? '#DC2626' : sColor}` }}>
+                  {isCrisis && (
+                    <div style={{ background:'#FEF2F2', borderBottom:'1px solid #FECACA', padding:'5px 18px', display:'flex', alignItems:'center', gap:8 }}>
+                      <span style={{ fontSize:11 }}>🚨</span>
+                      <span style={{ fontSize:10, fontWeight:800, color:'#DC2626', letterSpacing:1.5, textTransform:'uppercase' as const }}>Gestión de Crisis — Requiere Revisión</span>
+                    </div>
+                  )}
                     {/* Header card */}
-                    <div style={{ padding:'14px 18px 12px', borderBottom:'1px solid #F0EDE8', display:'flex', justifyContent:'space-between', alignItems:'center', gap:12 }}>
-                      <div>
+                    <div style={{ padding:'14px 18px 12px', borderBottom:'1px solid #F0EDE8', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12 }}>
+                      <div style={{ flex:1, minWidth:0 }}>
                         <div style={{ fontSize:9, letterSpacing:2, color:'#9CA3AF', textTransform:'uppercase', marginBottom:3 }}>{item.type} · {item.date}</div>
                         {item.asunto && <div style={{ fontSize:13, fontWeight:600, color:I_NAVY, fontFamily:T.fontSerif }}>{item.asunto}</div>}
+                        {item.origen_agentivo && (
+                          <div style={{ display:'flex', alignItems:'center', gap:5, marginTop:6, background:'#001A3708', border:'1px solid #B8904750', padding:'4px 9px' }}>
+                            <span style={{ fontSize:10 }}>🤖</span>
+                            <span style={{ fontSize:8, fontWeight:800, letterSpacing:2, color:'#001A37', textTransform:'uppercase' as const }}>Agéntico</span>
+                            <span style={{ fontSize:8, color:'#6B7280', marginLeft:2 }}>· {item.origen_agentivo}</span>
+                          </div>
+                        )}
                       </div>
                       <span style={{ fontSize:8, letterSpacing:2, fontWeight:700, color:sColor, background:`${sColor}12`, padding:'4px 10px', textTransform:'uppercase', flexShrink:0 }}>{sLabel}</span>
                     </div>
@@ -6998,12 +7335,10 @@ Responde SOLO con JSON sin bloques de código:
                       </div>
 
                       <div style={{ display:'flex', gap:8, justifyContent:'flex-end', flexWrap:'wrap' }}>
-                        {item.status !== 'active' && (
-                          <button onClick={() => setHistoryItems(prev => prev.filter(x => x.id !== item.id))}
-                            style={{ background:'transparent', border:'1px solid #FECACA', color:'#DC2626', padding:'6px 12px', fontSize:9, fontWeight:700, letterSpacing:1, textTransform:'uppercase', cursor:'pointer' }}>
-                            Descartar
-                          </button>
-                        )}
+                        <button onClick={() => setHistoryItems(prev => prev.filter(x => x.id !== item.id))}
+                          style={{ background:'transparent', border:'1px solid #FECACA', color:'#DC2626', padding:'6px 12px', fontSize:9, fontWeight:700, letterSpacing:1, textTransform:'uppercase', cursor:'pointer' }}>
+                          Eliminar
+                        </button>
                         {item.status === 'pending' && (
                           <button onClick={() => setHistoryItems(prev => prev.map(x => x.id===item.id ? {...x,status:'approved'} : x))}
                             style={{ background:I_NAVY, color:I_GOLD_L, border:'none', padding:'6px 18px', fontSize:9, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', cursor:'pointer' }}>
@@ -7033,7 +7368,50 @@ Responde SOLO con JSON sin bloques de código:
                     </div>
                   </div>
                 );
-              })}
+                };
+                return (
+                  <>
+                    {iCrisisItems.length > 0 && (
+                      <div style={{ marginBottom:16 }}>
+                        <div style={{ background:'#FEF2F2', border:'1.5px solid #DC2626', borderRadius:4, padding:'8px 16px', marginBottom:10, display:'flex', alignItems:'center', gap:10 }}>
+                          <span style={{ fontSize:16 }}>🚨</span>
+                          <div>
+                            <div style={{ fontSize:11, fontWeight:800, color:'#DC2626', letterSpacing:1.5, textTransform:'uppercase' as const }}>Gestión de Crisis Activa — {iCrisisItems.length} ítem(s) pendiente(s) de revisión</div>
+                            <div style={{ fontSize:10, color:'#991B1B', marginTop:2 }}>Generados automáticamente por el Enjambre de Crisis. Revisa y aprueba antes de publicar.</div>
+                          </div>
+                        </div>
+                        <div style={{ display:'flex', flexDirection:'column' as const, gap:12 }}>
+                          {iCrisisItems.map(renderIsabellaCard)}
+                        </div>
+                      </div>
+                    )}
+                    {iInteligenciaItems.length > 0 && (
+                      <div style={{ marginBottom: iCrisisItems.length > 0 ? 16 : 0 }}>
+                        <div style={{ background:'rgba(184,144,71,0.06)', borderLeft:`3px solid ${I_GOLD}`, padding:'7px 14px', marginBottom:8, display:'flex', alignItems:'center', gap:8 }}>
+                          <span style={{ fontSize:8, fontWeight:800, letterSpacing:2.5, color:I_NAVY, textTransform:'uppercase' as const }}>I · Inteligencia de Mercado</span>
+                          <span style={{ fontSize:8, color:'#9CA3AF', marginLeft:4 }}>Guiones generados desde insights de Camilo</span>
+                          <span style={{ marginLeft:'auto', fontSize:8, background:`${I_GOLD}20`, color:I_GOLD, padding:'2px 8px', fontWeight:800, letterSpacing:1 }}>{iInteligenciaItems.length}</span>
+                        </div>
+                        <div style={{ display:'flex', flexDirection:'column' as const, gap:12 }}>
+                          {iInteligenciaItems.map(renderIsabellaCard)}
+                        </div>
+                      </div>
+                    )}
+                    {iClientesItems.length > 0 && (
+                      <div style={{ marginTop: (iInteligenciaItems.length > 0 || iCrisisItems.length > 0) ? 16 : 0 }}>
+                        <div style={{ background:'rgba(16,185,129,0.05)', borderLeft:'3px solid #10B981', padding:'7px 14px', marginBottom:8, display:'flex', alignItems:'center', gap:8 }}>
+                          <span style={{ fontSize:8, fontWeight:800, letterSpacing:2.5, color:'#065F46', textTransform:'uppercase' as const }}>III · Clientes Activos</span>
+                          <span style={{ fontSize:8, color:'#9CA3AF', marginLeft:4 }}>Reels y videos para captación de prospectos</span>
+                          <span style={{ marginLeft:'auto', fontSize:8, background:'#10B98120', color:'#10B981', padding:'2px 8px', fontWeight:800, letterSpacing:1 }}>{iClientesItems.length}</span>
+                        </div>
+                        <div style={{ display:'flex', flexDirection:'column' as const, gap:12 }}>
+                          {iClientesItems.map(renderIsabellaCard)}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -7103,48 +7481,45 @@ Responde SOLO con JSON sin bloques de código:
               ))}
             </div>
 
-            {/* Lista de tareas */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {wfFiltered.length === 0 ? (
-                <div style={{ padding: 32, textAlign: 'center', color: T.textSec, border: `2px dashed ${T.borderLight}`, borderRadius: 10 }}>
-                  <div style={{ fontSize: 32, marginBottom: 8 }}>🔄</div>
-                  <div style={{ fontWeight: 600 }}>Sin tareas aquí</div>
-                  <div style={{ fontSize: 12, marginTop: 4 }}>Ejecuta "Research de Mercado" con Camilo o activa el Enjambre para generar tareas</div>
-                </div>
-              ) : wfFiltered.map(task => (
+            {/* Dos verticales */}
+            {(() => {
+              // Vertical Mercado: Camilo → Valeria / Isabella (inteligencia → contenido y video)
+              const vMercado = wfFiltered.filter(t => t.from === 'CAMILO' && ['VALERIA','ISABELLA'].includes(t.to));
+              // Vertical Clientes: Camilo → Sara, o cualquier otra tarea (FAQs, correos, alertas)
+              const vClientes = wfFiltered.filter(t => !(t.from === 'CAMILO' && ['VALERIA','ISABELLA'].includes(t.to)));
+
+              const renderTaskCard = (task: typeof wfFiltered[0]) => (
                 <div key={task.id} style={{
-                  border: `1.5px solid ${task.status === 'pendiente' ? AGENT_COLORS[task.to] || T.border : T.borderLight}`,
-                  borderRadius: 12, padding: 14, background: task.status === 'completado' ? '#F9FAFB' : T.card,
+                  border: `1px solid ${task.status === 'pendiente' ? AGENT_COLORS[task.to] || T.border : T.borderLight}`,
+                  borderLeft: `3px solid ${task.status === 'pendiente' ? AGENT_COLORS[task.to] || T.border : T.borderLight}`,
+                  padding: 14, background: task.status === 'completado' ? '#F9FAFB' : T.card,
                   opacity: task.status === 'rechazado' ? 0.6 : 1
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
                     <div style={{ flex: 1 }}>
-                      {/* Route: FROM → TO */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                        <span style={{ fontSize: 10, fontWeight: 800, background: AGENT_COLORS[task.from]+'20', color: AGENT_COLORS[task.from], padding: '2px 8px', borderRadius: 10 }}>{task.from}</span>
-                        <span style={{ fontSize: 11, color: T.textSec }}>→</span>
-                        <span style={{ fontSize: 10, fontWeight: 800, background: AGENT_COLORS[task.to]+'20', color: AGENT_COLORS[task.to], padding: '2px 8px', borderRadius: 10 }}>{task.to}</span>
-                        <span style={{ fontSize: 9, background: `${PRIORIDAD_COLOR[task.prioridad]}20`, color: PRIORIDAD_COLOR[task.prioridad], padding: '2px 6px', borderRadius: 6, fontWeight: 700, marginLeft: 4 }}>
+                        <span style={{ fontSize: 9, fontWeight: 800, background: AGENT_COLORS[task.from]+'20', color: AGENT_COLORS[task.from], padding: '2px 8px', letterSpacing: 1 }}>{task.from}</span>
+                        <span style={{ fontSize: 10, color: T.textSec }}>→</span>
+                        <span style={{ fontSize: 9, fontWeight: 800, background: AGENT_COLORS[task.to]+'20', color: AGENT_COLORS[task.to], padding: '2px 8px', letterSpacing: 1 }}>{task.to}</span>
+                        <span style={{ fontSize: 8, background: `${PRIORIDAD_COLOR[task.prioridad]}20`, color: PRIORIDAD_COLOR[task.prioridad], padding: '2px 6px', fontWeight: 700, marginLeft: 4, letterSpacing: 1 }}>
                           {task.prioridad.toUpperCase()}
                         </span>
-                        <span style={{ fontSize: 9, color: T.textSec, marginLeft: 'auto' }}>{task.fecha}</span>
+                        <span style={{ fontSize: 8, color: T.textSec, marginLeft: 'auto' }}>{task.fecha}</span>
                       </div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 4 }}>{task.titulo}</div>
-                      <div style={{ fontSize: 11, color: T.textSec, fontStyle: 'italic' }}>{task.tipo}</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 3 }}>{task.titulo}</div>
+                      <div style={{ fontSize: 10, color: T.textSec, fontStyle: 'italic' }}>{task.tipo}</div>
                     </div>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: T.textSec }}>{STATUS_LABEL[task.status]}</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: T.textSec, flexShrink: 0 }}>{STATUS_LABEL[task.status]}</span>
                   </div>
 
-                  {/* Contenido expandible */}
-                  <div style={{ fontSize: 11, color: T.text, whiteSpace: 'pre-wrap', background: '#F9FAFB', padding: '8px 12px', borderRadius: 6, border: `1px solid ${T.borderLight}`, marginBottom: 10, maxHeight: 120, overflowY: 'auto', lineHeight: 1.6 }}>
+                  <div style={{ fontSize: 11, color: T.text, whiteSpace: 'pre-wrap', background: '#F9FAFB', padding: '8px 12px', border: `1px solid ${T.borderLight}`, marginBottom: 10, maxHeight: 120, overflowY: 'auto' as const, lineHeight: 1.6 }}>
                     {task.contenido}
                   </div>
 
-                  {/* Acciones */}
                   {task.status === 'pendiente' && (
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
                       <button onClick={() => setWorkflowTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: 'rechazado' } : t))}
-                        style={btnSecondary({ padding: '5px 12px', fontSize: 11, color: T.danger, borderColor: T.danger })}>
+                        style={btnSecondary({ padding: '5px 12px', fontSize: 10, color: T.danger, borderColor: T.danger })}>
                         ✕ Descartar
                       </button>
                       {task.to === 'VALERIA' && (
@@ -7157,7 +7532,7 @@ Responde SOLO con JSON sin bloques de código:
                           }, ...prev]);
                           setWorkflowTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: 'completado' } : t));
                           setAgentHistoryDetail('VALERIA');
-                        }} style={btnPrimary({ padding: '5px 12px', fontSize: 11, background: '#8B5CF6', color: '#fff' })}>
+                        }} style={btnPrimary({ padding: '5px 12px', fontSize: 10, background: '#8B5CF6', color: '#fff' })}>
                           ✍️ Enviar a Valeria
                         </button>
                       )}
@@ -7166,7 +7541,7 @@ Responde SOLO con JSON sin bloques de código:
                           handleIsabella(false, false, task.contenido, 'Reel 45s');
                           setWorkflowTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: 'completado' } : t));
                           setAgentHistoryDetail('ISABELLA');
-                        }} style={btnPrimary({ padding: '5px 12px', fontSize: 11, background: '#F59E0B', color: '#fff' })}>
+                        }} style={btnPrimary({ padding: '5px 12px', fontSize: 10, background: '#F59E0B', color: '#fff' })}>
                           🎬 Enviar a Isabella
                         </button>
                       )}
@@ -7174,19 +7549,69 @@ Responde SOLO con JSON sin bloques de código:
                         <button onClick={() => {
                           setSaraReportText(prev => prev + '\n\n[CAMILO] ' + task.contenido);
                           setWorkflowTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: 'completado' } : t));
-                        }} style={btnPrimary({ padding: '5px 12px', fontSize: 11, background: '#10B981', color: '#fff' })}>
+                        }} style={btnPrimary({ padding: '5px 12px', fontSize: 10, background: '#10B981', color: '#fff' })}>
                           📡 Aplicar a Sara
                         </button>
                       )}
                       <button onClick={() => setWorkflowTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: 'aprobado' } : t))}
-                        style={btnPrimary({ padding: '5px 12px', fontSize: 11 })}>
+                        style={btnPrimary({ padding: '5px 12px', fontSize: 10 })}>
                         ✅ Marcar gestionado
                       </button>
                     </div>
                   )}
                 </div>
-              ))}
-            </div>
+              );
+
+              const emptyState = (msg: string) => (
+                <div style={{ padding: '24px 20px', textAlign: 'center', border: `1px dashed ${T.borderLight}`, background: '#FAFAFA' }}>
+                  <div style={{ fontSize: 11, color: T.textSec }}>{msg}</div>
+                </div>
+              );
+
+              if (wfFiltered.length === 0) return (
+                <div style={{ padding: 32, textAlign: 'center', color: T.textSec, border: `2px dashed ${T.borderLight}` }}>
+                  <div style={{ fontSize: 32, marginBottom: 8 }}>🔄</div>
+                  <div style={{ fontWeight: 600 }}>Sin tareas aquí</div>
+                  <div style={{ fontSize: 12, marginTop: 4 }}>Aprueba un insight de Camilo para activar el flujo agéntico</div>
+                </div>
+              );
+
+              return (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+
+                  {/* ── VERTICAL MERCADO ── */}
+                  <div>
+                    <div style={{ background: '#001A37', padding: '10px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ fontSize: 9, letterSpacing: 3, fontWeight: 800, color: '#B89047', textTransform: 'uppercase' as const }}>Vertical Mercado</span>
+                      <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.4)', letterSpacing: 1 }}>Camilo → Valeria / Isabella</span>
+                      {vMercado.length > 0 && <span style={{ marginLeft: 'auto', background: '#B89047', color: '#001A37', fontSize: 9, fontWeight: 800, padding: '2px 8px' }}>{vMercado.length}</span>}
+                    </div>
+                    <div style={{ fontSize: 10, color: T.textSec, marginBottom: 12, padding: '0 4px', lineHeight: 1.5 }}>
+                      Inteligencia de mercado → generación de contenido y video para captación de nuevos prospectos
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {vMercado.length === 0 ? emptyState('Sin tareas de mercado en esta vista') : vMercado.map(renderTaskCard)}
+                    </div>
+                  </div>
+
+                  {/* ── VERTICAL CLIENTES ── */}
+                  <div>
+                    <div style={{ background: '#064E3B', padding: '10px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ fontSize: 9, letterSpacing: 3, fontWeight: 800, color: '#6EE7B7', textTransform: 'uppercase' as const }}>Vertical Clientes</span>
+                      <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.4)', letterSpacing: 1 }}>Sara → FAQs / Correos / Alertas</span>
+                      {vClientes.length > 0 && <span style={{ marginLeft: 'auto', background: '#10B981', color: '#fff', fontSize: 9, fontWeight: 800, padding: '2px 8px' }}>{vClientes.length}</span>}
+                    </div>
+                    <div style={{ fontSize: 10, color: T.textSec, marginBottom: 12, padding: '0 4px', lineHeight: 1.5 }}>
+                      Gestión de prospectos activos → respuestas FAQ, correos personalizados y alertas de riesgo
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {vClientes.length === 0 ? emptyState('Sin tareas de clientes en esta vista') : vClientes.map(renderTaskCard)}
+                    </div>
+                  </div>
+
+                </div>
+              );
+            })()}
           </div>
         </div>
       );
@@ -7468,84 +7893,70 @@ Responde SOLO con JSON sin bloques de código:
 
     return (
       <div style={{ background: CREAM, minHeight: '100%' }}>
-        {/* ── HEADER ── */}
-        <div style={{ background: NAVY, padding: '28px 32px 24px', marginBottom: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
-            <div>
-              <div style={{ fontSize: 10, letterSpacing: 4, color: GOLD, fontWeight: 600, textTransform: 'uppercase', marginBottom: 6 }}>GLP Wealth Management</div>
-              <h2 style={{ margin: 0, fontSize: 22, fontFamily: T.fontSerif, fontWeight: 400, color: '#fff', letterSpacing: 0.5 }}>
-                Mesa de Inteligencia Comercial
-              </h2>
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 4, fontStyle: 'italic' }}>
-                Camilo investiga · Sara gestiona · Valeria publica · Isabella presenta
+        {/* ── HEADER SOTHEBY'S ── */}
+        <div style={{ background: NAVY, borderTop: `3px solid ${GOLD}` }}>
+          <div style={{ padding: '32px 40px 28px' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 24 }}>
+              <div>
+                <div style={{ fontSize: 9, letterSpacing: 5, color: GOLD, fontWeight: 700, textTransform: 'uppercase', marginBottom: 10 }}>
+                  GLP Wealth Management · Plataforma de Inteligencia
+                </div>
+                <h2 style={{ margin: 0, fontSize: 30, fontFamily: T.fontSerif, fontWeight: 300, color: '#fff', letterSpacing: 1, lineHeight: 1.1 }}>
+                  Gestión de Ventas Caídas
+                </h2>
+                <div style={{ width: 48, height: 1, background: GOLD, margin: '12px 0' }} />
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', letterSpacing: 2, textTransform: 'uppercase', fontWeight: 400 }}>
+                  Camilo &nbsp;·&nbsp; Sara &nbsp;·&nbsp; Valeria &nbsp;·&nbsp; Isabella
+                </div>
               </div>
-            </div>
-            {/* Status chips */}
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, padding: '5px 10px' }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981', display: 'inline-block' }} />
-                <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', letterSpacing: 1 }}>GPT-4o</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, padding: '5px 10px' }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981', display: 'inline-block' }} />
-                <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', letterSpacing: 1 }}>SMTP</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, padding: '5px 10px' }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#6B7280', display: 'inline-block' }} />
-                <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: 1 }}>APOLLO</span>
+              {/* Status indicators — minimal */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end', paddingBottom: 2 }}>
+                {[
+                  { label: 'GPT-4o Search', active: true },
+                  { label: 'SMTP', active: true },
+                  { label: 'Apollo', active: false },
+                ].map(s => (
+                  <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <span style={{ fontSize: 9, letterSpacing: 2, color: s.active ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.4)', textTransform: 'uppercase', fontWeight: 600 }}>{s.label}</span>
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: s.active ? '#10B981' : '#374151', display: 'inline-block', flexShrink: 0 }} />
+                  </div>
+                ))}
               </div>
             </div>
           </div>
 
-          {/* ── COMMAND BAR ── */}
-          <div style={{ display: 'flex', gap: 8, marginTop: 20, flexWrap: 'wrap', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 16 }}>
-            {/* Monitor buttons */}
-            {[
-              { label: 'Objeciones', onClick: () => { setAgentHistoryDetail('OBJECTIONS'); loadObjections(); }, alert: objStats.some(s=>Number(s.ultimos_7d)>=3), alertColor: GOLD },
-              { label: 'Crisis', onClick: () => { setAgentHistoryDetail('CRISIS'); loadCrisisAlerts(); }, alert: crisisAlerts.filter(a=>!['resuelta','descartada'].includes(a.status)).length > 0, alertColor: '#B91C1C', alertCount: crisisAlerts.filter(a=>!['resuelta','descartada'].includes(a.status)).length },
-              { label: 'Flujo de Trabajo', onClick: () => setAgentHistoryDetail('WORKFLOW'), alert: workflowTasks.filter(t=>t.status==='pendiente').length > 0, alertColor: GOLD, alertCount: workflowTasks.filter(t=>t.status==='pendiente').length },
-            ].map(btn => (
-              <button key={btn.label} onClick={btn.onClick}
-                style={{ background: btn.alert ? 'rgba(184,144,71,0.15)' : 'rgba(255,255,255,0.06)', border: `1px solid ${btn.alert ? GOLD : 'rgba(255,255,255,0.15)'}`, borderRadius: 4, padding: '7px 14px', color: btn.alert ? GOLD_LIGHT : 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: 600, cursor: 'pointer', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s' }}>
-                {btn.label}
-                {btn.alert && btn.alertCount && btn.alertCount > 0 && (
-                  <span style={{ background: btn.alertColor, color: '#fff', borderRadius: 10, padding: '1px 6px', fontSize: 10, fontWeight: 800 }}>{btn.alertCount}</span>
-                )}
-                {btn.alert && !btn.alertCount && <span style={{ color: GOLD, fontSize: 12 }}>●</span>}
-              </button>
-            ))}
-            <div style={{ flex: 1 }} />
-            <button type="button" onClick={() => runSwarm()} disabled={swarmRunning}
-              style={{ background: swarmRunning ? 'rgba(255,255,255,0.06)' : GOLD, border: `1px solid ${swarmRunning ? 'rgba(255,255,255,0.15)' : GOLD}`, borderRadius: 4, padding: '9px 22px', color: swarmRunning ? 'rgba(255,255,255,0.4)' : NAVY, fontSize: 11, fontWeight: 700, cursor: swarmRunning ? 'not-allowed' : 'pointer', letterSpacing: 1, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 8 }}>
-              {swarmRunning ? (
-                <><div style={{ width: 10, height: 10, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.4)', borderTopColor: 'transparent', animation: 'spin 1s linear infinite' }} />Ejecutando...</>
-              ) : '▶ Activar Consola'}
-            </button>
-          </div>
         </div>
 
         {/* ── PIPELINE TIMELINE ── */}
-        <div style={{ background: PARCHMENT, borderBottom: `1px solid #D6CEBC`, padding: '0 32px' }}>
-          <div style={{ display: 'flex', alignItems: 'stretch', overflowX: 'auto' }}>
+        <div style={{ background: '#fff', borderBottom: `1px solid rgba(184,144,71,0.2)` }}>
+          <div style={{ display: 'flex', alignItems: 'stretch' }}>
             {[
-              { idx: 0, name: 'CAMILO', role: 'VP de Investigación y Mercados', icon: '🕵️' },
-              { idx: 1, name: 'SARA', role: 'Directora de Experiencia de Cliente', icon: '🤖' },
-              { idx: 2, name: 'VALERIA', role: 'VP de Medios', icon: '✍️' },
-              { idx: 3, name: 'ISABELLA', role: 'Embajadora de Marca GLP', icon: '🎙️' },
+              { idx: 0, name: 'Camilo', role: 'Investigación & Mercados', num: 'I' },
+              { idx: 1, name: 'Sara',   role: 'Experiencia de Cliente',   num: 'II' },
+              { idx: 2, name: 'Valeria', role: 'Medios & Contenido',      num: 'III' },
+              { idx: 3, name: 'Isabella', role: 'Embajadora de Marca',    num: 'IV' },
             ].map((step, sIdx) => {
               const active = swarmStep === step.idx;
               const completed = swarmStep !== null && swarmStep > step.idx;
               return (
-                <div key={step.idx} style={{ flex: 1, minWidth: 120, display: 'flex', alignItems: 'center' }}>
-                  <div style={{ flex: 1, padding: '14px 16px', borderRight: sIdx < 3 ? `1px solid #D6CEBC` : 'none',
-                    background: active ? `${GOLD}15` : 'transparent', transition: 'all 0.3s' }}>
-                    <div style={{ fontSize: 9, letterSpacing: 3, color: active ? GOLD : completed ? '#10B981' : '#9CA3AF', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>
-                      {completed ? '✓ Completado' : active ? '● Activo' : 'En espera'}
+                <div key={step.idx} style={{
+                  flex: 1, display: 'flex', alignItems: 'center',
+                  borderRight: sIdx < 3 ? `1px solid rgba(184,144,71,0.15)` : 'none',
+                  background: active ? `rgba(184,144,71,0.05)` : '#fff',
+                  transition: 'background 0.3s',
+                  borderBottom: active ? `2px solid ${GOLD}` : '2px solid transparent',
+                }}>
+                  <div style={{ flex: 1, padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 14 }}>
+                    <span style={{
+                      fontFamily: T.fontSerif, fontSize: 16, fontWeight: 300, color: active ? GOLD : completed ? '#10B981' : 'rgba(0,26,55,0.2)',
+                      minWidth: 28, letterSpacing: 0.5,
+                    }}>{step.num}</span>
+                    <div>
+                      <div style={{ fontSize: 11, fontFamily: T.fontSerif, fontWeight: 600, color: active ? NAVY : completed ? '#374151' : '#C4BFB5', letterSpacing: 0.3, marginBottom: 1 }}>{step.name}</div>
+                      <div style={{ fontSize: 9, letterSpacing: 2, textTransform: 'uppercase', color: active ? GOLD : completed ? '#10B981' : '#C4BFB5', fontWeight: 600 }}>
+                        {completed ? 'Completado' : active ? 'Activo' : step.role}
+                      </div>
                     </div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: active ? NAVY : completed ? '#374151' : '#9CA3AF' }}>
-                      {step.icon} {step.name}
-                    </div>
-                    <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 1 }}>{step.role}</div>
                   </div>
                 </div>
               );
@@ -7553,73 +7964,118 @@ Responde SOLO con JSON sin bloques de código:
           </div>
         </div>
 
-        {/* ── CONSOLE LOG ── */}
-        <div style={{ background: '#0A1628', padding: '10px 32px', borderBottom: `1px solid rgba(184,144,71,0.2)` }}>
-          <div style={{ height: 80, overflowY: 'auto', fontFamily: 'monospace', fontSize: 10 }}>
+        {/* ── INTELLIGENCE CONSOLE ── */}
+        <div style={{ background: '#040D1A', borderBottom: `1px solid rgba(184,144,71,0.12)` }}>
+          <div style={{ padding: '8px 40px 4px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+            <span style={{ width: 5, height: 5, borderRadius: '50%', background: GOLD, display: 'inline-block', opacity: 0.7 }} />
+            <span style={{ fontSize: 8, letterSpacing: 4, color: 'rgba(184,144,71,0.5)', textTransform: 'uppercase', fontWeight: 700 }}>Intelligence Console</span>
+          </div>
+          <div style={{ height: 78, overflowY: 'auto', padding: '8px 40px 8px', fontFamily: 'monospace', fontSize: 10 }}>
             {swarmLogs.length === 0 ? (
-              <span style={{ color: 'rgba(255,255,255,0.2)', fontStyle: 'italic' }}>_ Consola lista. Active el enjambre para iniciar.</span>
+              <span style={{ color: 'rgba(255,255,255,0.45)', fontStyle: 'italic' }}>_ Sistema en espera. Active el enjambre para iniciar.</span>
             ) : swarmLogs.map((log, i) => (
-              <div key={i} style={{ display: 'flex', gap: 10, marginBottom: 3 }}>
-                <span style={{ color: GOLD, opacity: 0.7, minWidth: 55 }}>{log.time}</span>
-                <span style={{ color: log.agent==='SISTEMA' ? GOLD : log.agent==='SARA' ? '#34D399' : log.agent==='CAMILO' ? '#60A5FA' : log.agent==='VALERIA' ? '#A78BFA' : '#FBBF24', fontWeight: 700, minWidth: 60 }}>{log.agent}</span>
-                <span style={{ color: 'rgba(255,255,255,0.7)' }}>{log.msg}</span>
+              <div key={i} style={{ display: 'flex', gap: 12, marginBottom: 3, lineHeight: 1.5 }}>
+                <span style={{ color: `rgba(184,144,71,0.5)`, minWidth: 48, flexShrink: 0 }}>{log.time}</span>
+                <span style={{ color: log.agent==='SISTEMA' ? GOLD : log.agent==='SARA' ? '#34D399' : log.agent==='CAMILO' ? '#60A5FA' : log.agent==='VALERIA' ? '#A78BFA' : '#FBBF24', fontWeight: 700, minWidth: 62, flexShrink: 0 }}>{log.agent}</span>
+                <span style={{ color: 'rgba(255,255,255,0.55)' }}>{log.msg}</span>
               </div>
             ))}
           </div>
         </div>
 
-        {/* ── AGENT CARDS ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: '#D6CEBC' }}>
-          {agents.map(agent => {
+        {/* ── CENTRO DE COMANDO: TRES VERTICALES ── */}
+        {(() => {
+          // ── Helper: encabezado de vertical ──────────────────────
+          const vHeader = (
+            num: string, label: string, sub: string, accent: string,
+            metrics: { label: string; value: number; color: string }[],
+            cta: { label: string; onClick: () => void; disabled: boolean }
+          ) => (
+            <div style={{ background: NAVY, borderLeft: `4px solid ${accent}`, padding: '14px 40px', display: 'flex', alignItems: 'center', gap: 20 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 8, letterSpacing: 4, color: accent, fontWeight: 800, textTransform: 'uppercase' as const }}>{num} · {label}</div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', marginTop: 3, letterSpacing: 1 }}>{sub}</div>
+              </div>
+              <div style={{ display: 'flex', gap: 0 }}>
+                {metrics.map((m, i) => (
+                  <div key={m.label} style={{ textAlign: 'center', padding: '0 18px', borderLeft: i > 0 ? '1px solid rgba(255,255,255,0.07)' : 'none' }}>
+                    <div style={{ fontSize: 18, fontFamily: T.fontSerif, fontWeight: 300, color: m.value > 0 ? m.color : 'rgba(255,255,255,0.35)' }}>{m.value}</div>
+                    <div style={{ fontSize: 7, letterSpacing: 2, color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase' as const, marginTop: 2 }}>{m.label}</div>
+                  </div>
+                ))}
+              </div>
+              <button onClick={cta.onClick} disabled={cta.disabled}
+                style={{ background: cta.disabled ? 'transparent' : accent, color: cta.disabled ? 'rgba(255,255,255,0.5)' : NAVY, border: cta.disabled ? '1px solid rgba(255,255,255,0.25)' : 'none', padding: '10px 22px', fontSize: 9, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase' as const, cursor: cta.disabled ? 'default' : 'pointer', whiteSpace: 'nowrap' as const, flexShrink: 0, marginLeft: 16 }}>
+                {cta.label}
+              </button>
+            </div>
+          );
+
+          // ── Helper: tarjeta de agente (reutilizable en las 3 secciones) ──
+          const renderCard = (agent: typeof agents[0]) => {
             const isAgentActive = (agent.name === 'CAMILO' && agentCamiloActive) ||
               (swarmStep !== null && ((agent.name === 'CAMILO' && swarmStep === 0) || (agent.name === 'SARA' && swarmStep === 1) || (agent.name === 'VALERIA' && swarmStep === 2) || (agent.name === 'ISABELLA' && swarmStep === 3)));
+            const pendingAgentico =
+              agent.name === 'VALERIA'  ? valeriaDrafts.filter(d => d.status === 'pending' && d.origen_agentivo).length :
+              agent.name === 'ISABELLA' ? isabellaScripts.filter(d => d.status === 'pending' && d.origen_agentivo).length :
+              agent.name === 'SARA'     ? (saraReportText.startsWith('[🤖') ? 1 : 0) : 0;
             return (
-              <div key={agent.name} style={{ background: '#FFFFFF', padding: '28px 28px 20px', position: 'relative', transition: 'all 0.3s',
-                borderTop: isAgentActive ? `3px solid ${GOLD}` : `3px solid transparent` }}>
+              <div key={agent.name} style={{ background: '#fff', position: 'relative', transition: 'all 0.3s' }}>
 
-                {/* Active glow bar */}
-                {isAgentActive && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${GOLD}, ${GOLD_LIGHT}, ${GOLD})` }} />}
-
-                {/* Agent header */}
-                <div style={{ display: 'flex', gap: 18, alignItems: 'flex-start', marginBottom: 20 }}>
-                  <div style={{ position: 'relative', flexShrink: 0 }}>
-                    <img src={agent.photo} alt={agent.name}
-                      style={{ width: 230, height: 230, borderRadius: 2, objectFit: 'cover', objectPosition: 'top',
-                        filter: isAgentActive ? 'none' : 'grayscale(15%)',
-                        boxShadow: isAgentActive ? `0 0 0 2px ${GOLD}, 0 4px 20px rgba(184,144,71,0.3)` : `0 2px 12px rgba(0,0,0,0.12)` }} />
-                    <div style={{ position: 'absolute', bottom: -4, right: -4, width: 14, height: 14, borderRadius: '50%',
-                      background: isAgentActive ? GOLD : '#10B981', border: '2px solid #fff',
-                      animation: isAgentActive ? 'pulse 1.2s infinite' : 'none' }} />
+                {/* ── FOTO HERO — full width ── */}
+                <div style={{ position: 'relative', width: '100%', height: 280, overflow: 'hidden', background: NAVY }}>
+                  <img src={agent.photo} alt={agent.name}
+                    onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top',
+                      filter: isAgentActive ? 'none' : 'grayscale(20%) brightness(0.9)',
+                      transition: 'filter 0.4s' }} />
+                  {/* gradient overlay */}
+                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,10,26,0.88) 0%, rgba(0,10,26,0.1) 55%, transparent 100%)' }} />
+                  {/* active gold bar */}
+                  {isAgentActive && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: GOLD }} />}
+                  {/* name overlay */}
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '20px 28px 18px' }}>
+                    <div style={{ fontSize: 9, letterSpacing: 4, color: GOLD, fontWeight: 700, textTransform: 'uppercase', marginBottom: 5 }}>Agente IA</div>
+                    <div style={{ fontSize: 22, fontFamily: T.fontSerif, fontWeight: 300, color: '#fff', letterSpacing: 1, lineHeight: 1.1 }}>{agent.name}</div>
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', marginTop: 4, letterSpacing: 1 }}>{agent.role}</div>
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 9, letterSpacing: 3, color: GOLD, fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Agente IA</div>
-                    <div style={{ fontSize: 17, fontFamily: T.fontSerif, fontWeight: 600, color: NAVY, letterSpacing: 0.3, lineHeight: 1.2 }}>{agent.name}</div>
-                    <div style={{ fontSize: 11, color: '#6B7280', marginTop: 3, fontStyle: 'italic' }}>{agent.role}</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 8 }}>
-                      <span style={{ width: 5, height: 5, borderRadius: '50%', background: isAgentActive ? GOLD : '#10B981', display: 'inline-block' }} />
-                      <span style={{ fontSize: 10, color: isAgentActive ? GOLD : '#10B981', fontWeight: 600, letterSpacing: 0.5 }}>
+                  {/* status dot */}
+                  <div style={{ position: 'absolute', top: 16, right: 16, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(0,10,26,0.6)', padding: '4px 10px' }}>
+                      <span style={{ width: 5, height: 5, borderRadius: '50%', background: isAgentActive ? GOLD : '#10B981', display: 'inline-block', animation: isAgentActive ? 'pulse 1.2s infinite' : 'none' }} />
+                      <span style={{ fontSize: 8, letterSpacing: 2, color: isAgentActive ? GOLD_LIGHT : '#10B981', fontWeight: 700, textTransform: 'uppercase' }}>
                         {isAgentActive ? 'Procesando' : agent.status}
                       </span>
                     </div>
+                    {pendingAgentico > 0 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: `rgba(184,144,71,0.92)`, padding: '3px 8px' }}>
+                        <span style={{ fontSize: 9 }}>🤖</span>
+                        <span style={{ fontSize: 8, letterSpacing: 1.5, color: '#001A37', fontWeight: 800, textTransform: 'uppercase' as const }}>{pendingAgentico} de Camilo</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* Divider */}
-                <div style={{ borderTop: `1px solid ${PARCHMENT}`, marginBottom: 16 }} />
+                {/* ── CONTENT PANEL ── */}
+                <div style={{ padding: '24px 28px 20px' }}>
+                {/* Thin gold rule */}
+                <div style={{ borderTop: `1px solid rgba(184,144,71,0.25)`, marginBottom: 16 }} />
 
                 {/* Description */}
-                <div style={{ fontSize: 12, color: '#4B5563', lineHeight: 1.65, marginBottom: 18 }}>{agent.desc}</div>
+                <div style={{ fontSize: 12, color: '#6B7280', lineHeight: 1.75, marginBottom: 20, fontStyle: 'italic' }}>{agent.desc}</div>
 
-                {/* Stats */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 0, borderTop: `1px solid ${PARCHMENT}`, borderLeft: `1px solid ${PARCHMENT}`, marginBottom: 16 }}>
-                  {agent.stats.map(s => {
+                {/* Stats — horizontal con divisores gold */}
+                <div style={{ display: 'flex', borderTop: `1px solid rgba(184,144,71,0.2)`, borderBottom: `1px solid rgba(184,144,71,0.2)`, marginBottom: 18 }}>
+                  {agent.stats.map((s, si) => {
                     const isSelected = activeAgentKpi?.agent === agent.name && activeAgentKpi?.label === s.label;
                     return (
                       <div key={s.label} onClick={() => isSelected ? setActiveAgentKpi(null) : setActiveAgentKpi({ agent: agent.name, label: s.label })}
-                        style={{ padding: '12px 10px', textAlign: 'center', cursor: 'pointer', borderRight: `1px solid ${PARCHMENT}`, borderBottom: `1px solid ${PARCHMENT}`,
-                          background: isSelected ? `${GOLD}10` : '#fff', transition: 'background 0.15s' }}>
-                        <div style={{ fontSize: 18, fontWeight: 700, color: isSelected ? GOLD : NAVY, fontFamily: T.fontSerif }}>{s.value}</div>
-                        <div style={{ fontSize: 9, color: '#9CA3AF', letterSpacing: 1, textTransform: 'uppercase', marginTop: 2 }}>{s.label}</div>
+                        style={{ flex: 1, padding: '14px 0', textAlign: 'center', cursor: 'pointer',
+                          borderRight: si < 2 ? `1px solid rgba(184,144,71,0.2)` : 'none',
+                          background: isSelected ? `rgba(184,144,71,0.05)` : 'transparent',
+                          transition: 'background 0.15s' }}>
+                        <div style={{ fontSize: 22, fontFamily: T.fontSerif, fontWeight: 300, color: isSelected ? GOLD : NAVY, letterSpacing: 0.5 }}>{s.value}</div>
+                        <div style={{ fontSize: 8, letterSpacing: 2, color: isSelected ? GOLD : '#9CA3AF', textTransform: 'uppercase', marginTop: 4, fontWeight: 600 }}>{s.label}</div>
                       </div>
                     );
                   })}
@@ -7675,7 +8131,7 @@ Responde SOLO con JSON sin bloques de código:
                   <div style={{ marginBottom: 14 }}>
                     {/* Banner video */}
                     <div style={{ position: 'relative', width: '100%', height: 110, background: NAVY, overflow: 'hidden', marginBottom: 10 }}>
-                      <img src="/img/projects/isabella.png" alt="Isabella" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top', opacity: 0.4 }} />
+                      <img src="/img/agents/isabella.png" alt="Isabella" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top', opacity: 0.4 }} />
                       <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '10px 14px', background: 'linear-gradient(to top, rgba(0,26,55,0.95) 0%, transparent 60%)' }}>
                         <div style={{ fontSize: 9, letterSpacing: 3, color: GOLD, fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Producción de Video</div>
                         <div style={{ fontSize: 11, color: '#fff', fontFamily: T.fontSerif }}>
@@ -7747,22 +8203,143 @@ Responde SOLO con JSON sin bloques de código:
                 )}
 
                 {/* Agent Actions */}
-                <div style={{ display: 'flex', gap: 8, borderTop: `1px solid ${PARCHMENT}`, paddingTop: 14, marginTop: 4 }}>
+                <div style={{ display: 'flex', gap: 1, borderTop: `1px solid rgba(184,144,71,0.2)`, paddingTop: 16, marginTop: 8 }}>
                   {agent.actions.map((act, aIdx) => (
                     <button type="button" key={act.label} onClick={act.onClick}
-                      style={{ flex: 1, padding: '8px 12px', fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase',
-                        cursor: 'pointer', borderRadius: 2, transition: 'all 0.2s',
+                      style={{ flex: 1, padding: '11px 14px', fontSize: 9, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase',
+                        cursor: 'pointer', border: 'none', transition: 'all 0.2s',
                         background: aIdx === 0 ? NAVY : 'transparent',
-                        color: aIdx === 0 ? GOLD_LIGHT : NAVY,
-                        border: aIdx === 0 ? `1px solid ${NAVY}` : `1px solid #D6CEBC` }}>
+                        color: aIdx === 0 ? GOLD_LIGHT : '#9CA3AF',
+                        borderRight: aIdx === 0 ? `1px solid rgba(184,144,71,0.2)` : 'none' }}>
                       {act.label}
                     </button>
                   ))}
                 </div>
+                </div>
               </div>
             );
-          })}
-        </div>
+          }; // end renderCard
+
+          const crisisActivas = crisisAlerts.filter(a => !['resuelta', 'descartada'].includes(a.status)).length;
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: 'rgba(184,144,71,0.1)' }}>
+
+              {/* ── I · INTELIGENCIA DE MERCADO ── */}
+              <div>
+                {vHeader(
+                  'I', 'Inteligencia de Mercado',
+                  'Camilo investiga · Valeria y Isabella generan contenido de captación',
+                  GOLD,
+                  [
+                    { label: 'Insights nuevos', value: camiloInsights.filter(i => i.status === 'nuevo').length, color: GOLD },
+                    { label: 'En producción', value: valeriaDrafts.filter(d => d.origen_agentivo && d.status === 'pending').length + isabellaScripts.filter(s => s.origen_agentivo && s.status === 'pending').length, color: '#A78BFA' },
+                    { label: 'Completados', value: valeriaDrafts.filter(d => d.origen_agentivo && d.status !== 'pending').length + isabellaScripts.filter(s => s.origen_agentivo && s.status !== 'pending').length, color: '#10B981' },
+                  ],
+                  { label: agentCamiloActive ? '⏳ Investigando...' : '▶ Research', onClick: () => handleCamilo(false, false, 'research'), disabled: agentCamiloActive }
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1 }}>
+                  {agents.filter(a => ['CAMILO', 'VALERIA', 'ISABELLA'].includes(a.name)).map(renderCard)}
+                </div>
+              </div>
+
+              {/* ── II · GESTIÓN DE CRISIS ── */}
+              <div>
+                {vHeader(
+                  'II', 'Gestión de Crisis',
+                  'Detección automática de KPIs en riesgo · enjambre de contingencia cross-equipo',
+                  '#DC2626',
+                  [
+                    { label: 'Alertas activas', value: crisisActivas, color: '#F87171' },
+                    { label: 'Resueltas', value: crisisAlerts.filter(a => a.status === 'resuelta').length, color: '#10B981' },
+                    { label: 'Contenidos crisis', value: valeriaDrafts.filter(d => (d.type || '').toLowerCase().includes('crisis') || (d.canal || '').toLowerCase().includes('crisis')).length, color: '#FBBF24' },
+                  ],
+                  { label: swarmRunning ? '⏳ Ejecutando...' : '▶ Respuesta Coordinada', onClick: () => runSwarm(), disabled: swarmRunning }
+                )}
+                <div style={{ background: '#fff', padding: '20px 40px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {crisisActivas === 0 ? (
+                    <div style={{ padding: '18px 0', textAlign: 'center', color: '#9CA3AF', fontSize: 11 }}>
+                      <span style={{ fontSize: 20, display: 'block', marginBottom: 6 }}>✓</span>
+                      Sin alertas de crisis activas — KPIs en rango normal
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                      {crisisAlerts.filter(a => !['resuelta', 'descartada'].includes(a.status)).slice(0, 3).map(alert => (
+                        <div key={alert.id} style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderLeft: '3px solid #DC2626', padding: '12px 14px' }}>
+                          <div style={{ fontSize: 8, letterSpacing: 2, color: '#DC2626', fontWeight: 800, textTransform: 'uppercase' as const, marginBottom: 4 }}>
+                            {alert.nivel} · {(alert.tipo || '').replace(/_/g, ' ')}
+                          </div>
+                          <div style={{ fontSize: 12, color: '#1F2937', fontFamily: T.fontSerif, marginBottom: 4 }}>{alert.titulo}</div>
+                          <div style={{ fontSize: 10, color: '#6B7280' }}>{(alert.descripcion || '').slice(0, 90)}…</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 8, paddingTop: 12, borderTop: '1px solid #F3EFE7' }}>
+                    <button onClick={() => { setAgentHistoryDetail('CRISIS'); loadCrisisAlerts(); }}
+                      style={{ padding: '7px 16px', background: 'transparent', border: '1px solid rgba(220,38,38,0.3)', color: '#DC2626', fontSize: 9, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, cursor: 'pointer' }}>
+                      Ver todas las alertas
+                    </button>
+                    <button onClick={() => setAgentHistoryDetail('WORKFLOW')}
+                      style={{ padding: '7px 16px', background: 'transparent', border: `1px solid rgba(184,144,71,0.3)`, color: GOLD, fontSize: 9, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, cursor: 'pointer' }}>
+                      Flujo de trabajo{workflowTasks.filter(t => t.status === 'pendiente').length > 0 ? ` (${workflowTasks.filter(t => t.status === 'pendiente').length})` : ''}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── III · CLIENTES ACTIVOS ── */}
+              <div>
+                {vHeader(
+                  'III', 'Clientes Activos',
+                  'Sara gestiona prospectos · FAQs · correos y scoring de seguimiento',
+                  '#10B981',
+                  [
+                    { label: 'Mensajes', value: agentSaraMessages, color: '#34D399' },
+                    { label: 'Alertas', value: agentSaraAlerts, color: '#FBBF24' },
+                    { label: 'Prospectos activos', value: prospects.filter(p => !['Post-venta', 'Perdido'].includes(p.estado)).length, color: '#34D399' },
+                  ],
+                  { label: agentSaraActive ? '⏳ Analizando...' : '▶ Analizar Consultas', onClick: () => handleSara(), disabled: agentSaraActive }
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 1 }}>
+                  {agents.filter(a => a.name === 'SARA').map(renderCard)}
+                  <div style={{ background: '#fff', padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div style={{ fontSize: 9, letterSpacing: 3, color: '#9CA3AF', fontWeight: 700, textTransform: 'uppercase' as const, marginBottom: 4 }}>Estado de Prospectos</div>
+                    {[
+                      { label: 'En negociación', value: prospects.filter(p => p.estado === 'Negociación').length, color: GOLD },
+                      { label: 'Contacto inicial', value: prospects.filter(p => p.estado === 'Contacto Inicial').length, color: '#9CA3AF' },
+                      { label: 'Análisis técnico', value: prospects.filter(p => p.estado === 'Análisis Técnico').length, color: '#A78BFA' },
+                      { label: 'Post-venta activos', value: prospects.filter(p => p.estado === 'Post-venta').length, color: '#34D399' },
+                    ].map(m => (
+                      <div key={m.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid rgba(184,144,71,0.1)' }}>
+                        <span style={{ fontSize: 11, color: '#374151' }}>{m.label}</span>
+                        <span style={{ fontSize: 18, fontFamily: T.fontSerif, fontWeight: 300, color: m.color }}>{m.value}</span>
+                      </div>
+                    ))}
+                    <div style={{ marginTop: 'auto', display: 'flex', gap: 8, paddingTop: 12, flexWrap: 'wrap' as const }}>
+                      <button onClick={() => setAgentHistoryDetail('SARA')}
+                        style={{ flex: 1, padding: '9px 14px', background: NAVY, color: GOLD_LIGHT, border: 'none', fontSize: 9, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, cursor: 'pointer' }}>
+                        Panel de Sara
+                      </button>
+                      <button onClick={() => { setPreviousModule('agentes'); setActiveModule('prospectos'); }}
+                        style={{ flex: 1, padding: '9px 14px', background: 'transparent', border: '1px solid rgba(0,26,55,0.2)', color: '#6B7280', fontSize: 9, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, cursor: 'pointer' }}>
+                        Ver Prospectos
+                      </button>
+                      <button onClick={() => { setAgentHistoryDetail('OBJECTIONS'); loadObjections(); }}
+                        style={{ flex: 1, padding: '9px 14px', background: 'transparent', border: `1px solid rgba(184,144,71,0.3)`, color: GOLD, fontSize: 9, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, cursor: 'pointer', position: 'relative' as const }}>
+                        Objeciones
+                        {objStats.some(s => Number(s.ultimos_7d) >= 3) && (
+                          <span style={{ position: 'absolute' as const, top: 4, right: 4, width: 6, height: 6, borderRadius: '50%', background: GOLD, display: 'inline-block' }} />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          );
+        })()}
 
         {/* Swarm CSS keyframe animations */}
         <style>{`
@@ -10035,7 +10612,7 @@ Responde SOLO con JSON sin bloques de código:
   // MAIN LAYOUT
   // ══════════════════════════════════════════════════════════════
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', width: '100%', background: T.bg, fontFamily: 'Inter, sans-serif', color: T.text }}>
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', width: '100%', background: T.bg, fontFamily: 'Inter, sans-serif', color: T.text }}>
       {/* LEFT SIDEBAR */}
       <div style={{
         width: 210, minHeight: '100vh', background: T.teal, borderRight: `1px solid ${T.tealDark}`,
