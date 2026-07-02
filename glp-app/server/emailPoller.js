@@ -138,6 +138,51 @@ Responde SOLO con JSON: {"subject":"...","body":"..."}`
   }
 }
 
+// B.2: Notificación al admin cuando Sara genera un borrador desde correo entrante
+async function notifyAdminNewDraft({ nombre, rawEmail, subject, draft }) {
+  const adminEmail = process.env.ADMIN_EMAIL;
+  const smtpUser  = process.env.SMTP_USER;
+  const smtpPass  = process.env.SMTP_PASS;
+  if (!adminEmail || !smtpUser || !smtpPass) return;
+
+  try {
+    const nodemailer = require('nodemailer');
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: smtpUser, pass: smtpPass }
+    });
+
+    await transporter.sendMail({
+      from: `"Sara · GLP CRM" <${smtpUser}>`,
+      to: adminEmail,
+      subject: `📨 Sara generó borrador — ${nombre} escribió: "${subject}"`,
+      html: `
+        <div style="font-family:sans-serif;max-width:640px;margin:0 auto">
+          <div style="background:#001A37;color:#D4AF6A;padding:20px;text-align:center">
+            <h2 style="margin:0;letter-spacing:2px">SARA · CORREO ENTRANTE</h2>
+            <p style="margin:4px 0;font-size:12px;color:#fff;opacity:.8">${new Date().toLocaleString('es-CO')}</p>
+          </div>
+          <div style="padding:24px;background:#fff">
+            <p>Sara recibió un correo de <strong>${nombre}</strong> (<a href="mailto:${rawEmail}">${rawEmail}</a>) y generó automáticamente un borrador de respuesta listo para revisar.</p>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px">
+              <tr><td style="padding:8px;color:#6b7280;width:120px">Remitente</td><td style="padding:8px;font-weight:600">${nombre} &lt;${rawEmail}&gt;</td></tr>
+              <tr style="background:#f9fafb"><td style="padding:8px;color:#6b7280">Asunto original</td><td style="padding:8px">${subject}</td></tr>
+              <tr><td style="padding:8px;color:#6b7280">Asunto borrador</td><td style="padding:8px;font-weight:600;color:#001A37">${draft.subject}</td></tr>
+            </table>
+            <div style="border-left:3px solid #B89047;padding:12px 16px;background:#fafaf7;margin-bottom:20px">
+              <div style="font-size:11px;color:#B89047;font-weight:700;letter-spacing:1px;margin-bottom:8px">BORRADOR SARA</div>
+              <pre style="white-space:pre-wrap;font-family:sans-serif;font-size:13px;color:#374151;margin:0">${draft.body}</pre>
+            </div>
+            <p style="color:#9ca3af;font-size:11px">Ingresa al CRM → Módulo Sara → Gestión de Correos para aprobar y enviar este borrador.</p>
+          </div>
+        </div>`
+    });
+    console.log(`[IMAP] 📧 Admin notificado: borrador para ${nombre} <${rawEmail}>`);
+  } catch (err) {
+    console.error('[IMAP] Error notificando admin:', err.message);
+  }
+}
+
 async function pollInbox() {
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
@@ -309,6 +354,9 @@ async function pollInbox() {
              'Correo Entrante', String(draft.subject), String(draft.body), 'pending', 'alta']
           );
           console.log(`[IMAP] 📝 Borrador SARA creado: "${draft.subject}"`);
+
+          // B.2: Notificar al admin cuando Sara genera un borrador desde correo entrante
+          await notifyAdminNewDraft({ nombre, rawEmail, subject, draft });
         } else {
           console.log(`[IMAP] Borrador ya existe, omitiendo.`);
         }
