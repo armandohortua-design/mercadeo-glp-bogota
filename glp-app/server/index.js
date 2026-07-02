@@ -957,6 +957,39 @@ app.post('/api/sara/monitor', async (req, res) => {
   }
 });
 
+// Envío directo de correo desde borradores locales del historial de prospectos
+app.post('/api/sara/send-email', async (req, res) => {
+  try {
+    const { to, subject, body, prospectId } = req.body;
+    if (!to || !subject || !body) return res.status(400).json({ error: 'Faltan campos: to, subject, body.' });
+
+    const tenant = await resolveTenant(req);
+    const transporter = getTransporter(tenant);
+    if (!transporter) return res.status(500).json({ error: 'SMTP no configurado. Verifica SMTP_USER y SMTP_PASS en .env' });
+
+    await transporter.sendMail({
+      from: `"Sara Valenzuela · GLP Wealth Management" <${process.env.SMTP_USER}>`,
+      to,
+      subject,
+      html: body.replace(/\n/g, '<br>')
+    });
+
+    // Registrar actividad en el prospecto si se proporcionó ID
+    if (prospectId) {
+      await pool.query(
+        `UPDATE prospectos SET fecha_ultima_actividad = NOW() WHERE id = $1 AND tenant_id = $2`,
+        [prospectId, TENANT]
+      );
+    }
+
+    console.log(`[Sara·Email] ✅ Correo enviado a ${to} — "${subject}"`);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[Sara·Email] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // B.1: Trigger manual Sara·72h (también corre automático cada hora)
 app.post('/api/sara/trigger-72h', async (req, res) => {
   try {

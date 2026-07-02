@@ -6056,6 +6056,26 @@ Responde SOLO con JSON sin bloques de código:
     };
 
     const handleApproveDraft = (draftId: string, prospectId: number, project: string) => {
+      // Buscar el borrador y el correo del prospecto antes de actualizar estado
+      const prospect = prospects.find(p => p.id === prospectId);
+      const draft = prospect?.emailHistory?.find(eh => eh.id === draftId);
+
+      if (prospect && draft) {
+        // Llamar al SMTP — envío real al cliente
+        fetch('http://localhost:3001/api/sara/send-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: prospect.correo,
+            subject: draft.subject,
+            body: draft.body,
+            prospectId: prospect.id
+          })
+        }).then(r => r.json()).then(data => {
+          if (!data.success) console.error('[Sara] Error enviando correo:', data.error);
+        }).catch(e => console.error('[Sara] Error SMTP:', e));
+      }
+
       setProspects(prev => prev.map(p => {
         if (p.id === prospectId) {
           const newEmailHistory = (p.emailHistory || []).map(eh => eh.id === draftId ? { ...eh, status: 'sent' as const } : eh);
