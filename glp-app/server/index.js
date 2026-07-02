@@ -4,7 +4,7 @@ const nodemailer = require('nodemailer');
 require('dotenv').config();
 const pool = require('./db');
 const { startEmailPoller, pollInbox } = require('./emailPoller');
-const { startProspectMonitor, monitorProspects, saraAutoTrigger72h } = require('./prospectMonitor');
+const { startProspectMonitor, monitorProspects, saraAutoTrigger72h, detectColdProspects } = require('./prospectMonitor');
 const { startCrisisDetector, detectCrisis } = require('./crisisDetector');
 
 const app = express();
@@ -962,6 +962,16 @@ app.post('/api/sara/trigger-72h', async (req, res) => {
   try {
     const count = await saraAutoTrigger72h();
     res.json({ success: true, borradoresGenerados: count });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// B.3: Trigger manual detección fríos por score (también corre automático cada hora)
+app.post('/api/sara/detect-cold', async (req, res) => {
+  try {
+    const count = await detectColdProspects();
+    res.json({ success: true, friosDetectados: count });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
