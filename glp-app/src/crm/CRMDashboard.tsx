@@ -1,4 +1,5 @@
 ﻿import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
 import { MARKET_STUDY_DB } from '../marketStudyDb';
 import { supabase, uploadProjectImage, saveProjectImageUrl } from '../lib/supabase';
 
@@ -895,6 +896,12 @@ export default function CRMDashboard() {
   const [analyticsFunnel, setAnalyticsFunnel] = useState<any[]>([]);
   const [analyticsCanal, setAnalyticsCanal] = useState<any[]>([]);
   const [analyticsBroker, setAnalyticsBroker] = useState<any[]>([]);
+  const [analyticsFiltros, setAnalyticsFiltros] = useState<{canales:string[];brokers:string[];proyectos:string[]}>({canales:[],brokers:[],proyectos:[]});
+  const [rptDias, setRptDias] = useState<number>(90);
+  const [rptCanal, setRptCanal] = useState<string>('');
+  const [rptBroker, setRptBroker] = useState<string>('');
+  const [rptProyecto, setRptProyecto] = useState<string>('');
+  const [rptLoading, setRptLoading] = useState(false);
 
   // ── Authentication States ──
   const [currentUser, setCurrentUser] = useState<string | null>(() => {
@@ -1638,13 +1645,29 @@ Sin markdown, solo el JSON array.`;
   // ── Cargar analytics al entrar al módulo Reportes ────────────────────────
   useEffect(() => {
     if (activeModule !== 'reportes') return;
-    fetch(`${API}/analytics/resumen`).then(r=>r.json()).then(setAnalyticsResumen).catch(()=>{});
-    fetch(`${API}/analytics/por-tiempo`).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setAnalyticsTiempo(d); }).catch(()=>{});
-    fetch(`${API}/analytics/por-proyecto`).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setAnalyticsProyecto(d); }).catch(()=>{});
-    fetch(`${API}/analytics/funnel`).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setAnalyticsFunnel(d); }).catch(()=>{});
-    fetch(`${API}/analytics/por-canal`).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setAnalyticsCanal(d); }).catch(()=>{});
-    fetch(`${API}/analytics/por-broker`).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setAnalyticsBroker(d); }).catch(()=>{});
+    fetch(`${API}/analytics/filtros`).then(r=>r.json()).then(d=>{ if(d.canales) setAnalyticsFiltros(d); }).catch(()=>{});
   }, [activeModule]);
+
+  useEffect(() => {
+    if (activeModule !== 'reportes') return;
+    const q = new URLSearchParams({ dias: String(rptDias), ...(rptCanal && {canal: rptCanal}), ...(rptBroker && {broker: rptBroker}), ...(rptProyecto && {proyecto: rptProyecto}) }).toString();
+    setRptLoading(true);
+    Promise.all([
+      fetch(`${API}/analytics/resumen?${q}`).then(r=>r.json()),
+      fetch(`${API}/analytics/por-tiempo?${q}`).then(r=>r.json()),
+      fetch(`${API}/analytics/por-proyecto?${q}`).then(r=>r.json()),
+      fetch(`${API}/analytics/funnel?${q}`).then(r=>r.json()),
+      fetch(`${API}/analytics/por-canal?${q}`).then(r=>r.json()),
+      fetch(`${API}/analytics/por-broker?${q}`).then(r=>r.json()),
+    ]).then(([res, tiempo, proyecto, funnel, canal, broker]) => {
+      setAnalyticsResumen(res);
+      if(Array.isArray(tiempo))   setAnalyticsTiempo(tiempo);
+      if(Array.isArray(proyecto)) setAnalyticsProyecto(proyecto);
+      if(Array.isArray(funnel))   setAnalyticsFunnel(funnel);
+      if(Array.isArray(canal))    setAnalyticsCanal(canal);
+      if(Array.isArray(broker))   setAnalyticsBroker(broker);
+    }).catch(()=>{}).finally(()=>setRptLoading(false));
+  }, [activeModule, rptDias, rptCanal, rptBroker, rptProyecto]);
 
   const updateProfile = (field: keyof GlpBrandProfile, value: any) => {
     setBrandProfile(prev => ({ ...prev, [field]: value }));
@@ -10096,146 +10119,193 @@ Responde SOLO con JSON sin bloques de código:
 
     // ── REPORTES (Fase D) ─────────────────────────────────────
     if (activeModule === 'reportes') {
-      const GOLD = '#B89047';
-      const NAVY = '#001A37';
-      const maxProyecto = analyticsProyecto.reduce((m, r) => Math.max(m, Number(r.total)), 1);
-      const maxFunnel   = analyticsFunnel.reduce((m, r) => Math.max(m, Number(r.total)), 1);
-      const maxCanal    = analyticsCanal.reduce((m, r) => Math.max(m, Number(r.total)), 1);
-      const maxTiempo   = analyticsTiempo.reduce((m, r) => Math.max(m, Number(r.total)), 1);
-      const fmtUSD = (n: number) => n >= 1000000 ? `$${(n/1000000).toFixed(1)}M` : n >= 1000 ? `$${(n/1000).toFixed(0)}K` : `$${n}`;
-      const funnelColors: Record<string, string> = {
-        'Post-venta': '#16a34a', 'Cierre': '#2563eb', 'Negociación': '#7c3aed',
-        'Presentación': '#d97706', 'Calificado': '#0891b2', 'Contacto Inicial': '#64748b',
-        'Lead Frío': '#94a3b8',
+      const G = '#B89047'; const N = '#001A37';
+      const fmtUSD = (n: number) => n >= 1_000_000 ? `$${(n/1_000_000).toFixed(1)}M` : n >= 1_000 ? `$${(n/1_000).toFixed(0)}K` : `$${Math.round(n)}`;
+      const CANAL_COLORS = ['#B89047','#001A37','#2563eb','#16a34a','#7c3aed','#d97706','#0891b2','#dc2626'];
+      const FUNNEL_COLORS: Record<string,string> = { 'Post-venta':'#16a34a','Cierre':'#2563eb','Negociación':'#7c3aed','Presentación':'#d97706','Calificado':'#0891b2','Contacto Inicial':'#64748b','Lead Frío':'#94a3b8' };
+      const periodos = [{ d:7,l:'7 días'},{d:30,l:'30 días'},{d:90,l:'90 días'},{d:180,l:'6 meses'},{d:365,l:'1 año'}];
+      const card = (label:string, value:string|number, sub:string, trend?:string) => (
+        <div style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,padding:'18px 22px'}}>
+          <div style={{fontSize:10,color:'#94a3b8',fontWeight:700,textTransform:'uppercase',letterSpacing:1.2,marginBottom:6}}>{label}</div>
+          <div style={{fontSize:26,fontWeight:700,color:N,lineHeight:1.1}}>{rptLoading ? '…' : value}</div>
+          <div style={{fontSize:11,color:'#64748b',marginTop:5,display:'flex',gap:6,alignItems:'center'}}>
+            {trend && <span style={{color:trend.startsWith('+')?'#16a34a':'#dc2626',fontWeight:700}}>{trend}</span>}
+            {sub}
+          </div>
+        </div>
+      );
+      const exportExcel = () => {
+        import('xlsx').then(XLSX => {
+          const wb = XLSX.utils.book_new();
+          const addSheet = (name:string, data:any[]) => {
+            if(data.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), name);
+          };
+          addSheet('Por Tiempo', analyticsTiempo);
+          addSheet('Por Proyecto', analyticsProyecto);
+          addSheet('Funnel', analyticsFunnel);
+          addSheet('Por Canal', analyticsCanal);
+          addSheet('Brokers', analyticsBroker);
+          XLSX.writeFile(wb, `GLP_Reportes_${new Date().toISOString().slice(0,10)}.xlsx`);
+        });
       };
+      const nuevosMes = Number(analyticsResumen?.nuevos_mes ?? 0);
+      const nuevosMesAnt = Number(analyticsResumen?.nuevos_mes_ant ?? 0);
+      const trendMes = nuevosMesAnt > 0 ? `${nuevosMes >= nuevosMesAnt ? '+' : ''}${Math.round((nuevosMes-nuevosMesAnt)/nuevosMesAnt*100)}%` : '';
+      const totalP = Number(analyticsResumen?.total_prospectos ?? 0);
+      const calif = Number(analyticsResumen?.calificados ?? 0);
       return (
-        <div style={{ padding: '28px 32px', background: '#f8fafc', minHeight: '100%' }}>
-          {/* Header */}
-          <div style={{ marginBottom: 28 }}>
-            <div style={{ fontSize: 11, letterSpacing: 3, color: GOLD, fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Reportería</div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: NAVY }}>Análisis de Ventas y Pipeline</div>
-            <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>Datos en tiempo real desde la base de datos</div>
+        <div style={{padding:'24px 28px',background:'#f8fafc',minHeight:'100%'}}>
+          {/* Header + acciones */}
+          <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:20}}>
+            <div>
+              <div style={{fontSize:10,letterSpacing:3,color:G,fontWeight:700,textTransform:'uppercase',marginBottom:3}}>Módulo de Reportería</div>
+              <div style={{fontSize:20,fontWeight:700,color:N}}>Análisis de Ventas y Pipeline</div>
+            </div>
+            <button onClick={exportExcel} style={{background:N,color:'#fff',border:'none',borderRadius:8,padding:'8px 18px',fontSize:12,fontWeight:600,cursor:'pointer',display:'flex',alignItems:'center',gap:6}}>
+              ⬇ Exportar Excel
+            </button>
+          </div>
+
+          {/* Barra de filtros */}
+          <div style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,padding:'14px 20px',marginBottom:20,display:'flex',flexWrap:'wrap',gap:12,alignItems:'center'}}>
+            <div style={{fontSize:11,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:1}}>Filtros</div>
+            {/* Período */}
+            <div style={{display:'flex',gap:4,background:'#f1f5f9',borderRadius:8,padding:3}}>
+              {periodos.map(p => (
+                <button key={p.d} onClick={()=>setRptDias(p.d)} style={{padding:'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:11,fontWeight:600,background:rptDias===p.d?N:'transparent',color:rptDias===p.d?'#fff':'#64748b',transition:'all 0.15s'}}>
+                  {p.l}
+                </button>
+              ))}
+            </div>
+            {/* Proyecto */}
+            <select value={rptProyecto} onChange={e=>setRptProyecto(e.target.value)} style={{border:'1px solid #e2e8f0',borderRadius:8,padding:'6px 10px',fontSize:12,color:'#374151',background:'#fff',cursor:'pointer'}}>
+              <option value=''>Todos los proyectos</option>
+              {analyticsFiltros.proyectos.map(p=><option key={p} value={p}>{p}</option>)}
+            </select>
+            {/* Canal */}
+            <select value={rptCanal} onChange={e=>setRptCanal(e.target.value)} style={{border:'1px solid #e2e8f0',borderRadius:8,padding:'6px 10px',fontSize:12,color:'#374151',background:'#fff',cursor:'pointer'}}>
+              <option value=''>Todos los canales</option>
+              {analyticsFiltros.canales.map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+            {/* Broker */}
+            <select value={rptBroker} onChange={e=>setRptBroker(e.target.value)} style={{border:'1px solid #e2e8f0',borderRadius:8,padding:'6px 10px',fontSize:12,color:'#374151',background:'#fff',cursor:'pointer'}}>
+              <option value=''>Todos los brokers</option>
+              {analyticsFiltros.brokers.map(b=><option key={b} value={b}>{b}</option>)}
+            </select>
+            {(rptCanal||rptBroker||rptProyecto) && (
+              <button onClick={()=>{setRptCanal('');setRptBroker('');setRptProyecto('');}} style={{fontSize:11,color:'#dc2626',background:'none',border:'none',cursor:'pointer',fontWeight:600}}>✕ Limpiar</button>
+            )}
+            {rptLoading && <span style={{fontSize:11,color:G,fontWeight:600}}>Cargando…</span>}
           </div>
 
           {/* KPI Cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>
-            {[
-              { label: 'Total Prospectos', value: analyticsResumen?.total_prospectos ?? '—', sub: `${analyticsResumen?.nuevos_mes ?? 0} este mes` },
-              { label: 'Pipeline Total', value: analyticsResumen ? fmtUSD(Number(analyticsResumen.pipeline_total)) : '—', sub: `Ticket prom. ${analyticsResumen ? fmtUSD(Number(analyticsResumen.ticket_promedio)) : '—'}` },
-              { label: 'Calificados', value: analyticsResumen?.calificados ?? '—', sub: `${analyticsResumen && analyticsResumen.total_prospectos > 0 ? Math.round(Number(analyticsResumen.calificados)/Number(analyticsResumen.total_prospectos)*100) : 0}% del total` },
-              { label: 'Cerrados', value: analyticsResumen?.cerrados ?? '—', sub: 'Estado Post-venta' },
-            ].map(card => (
-              <div key={card.label} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '18px 20px' }}>
-                <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>{card.label}</div>
-                <div style={{ fontSize: 28, fontWeight: 700, color: NAVY, lineHeight: 1.1 }}>{card.value}</div>
-                <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>{card.sub}</div>
-              </div>
-            ))}
+          <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:14,marginBottom:20}}>
+            {card('Total prospectos', totalP, `en los últimos ${rptDias} días`, trendMes || undefined)}
+            {card('Pipeline total', fmtUSD(Number(analyticsResumen?.pipeline_total??0)), `Ticket prom. ${fmtUSD(Number(analyticsResumen?.ticket_promedio??0))}`)}
+            {card('Calificados', calif, `${totalP>0?Math.round(calif/totalP*100):0}% del total`)}
+            {card('Cerrados', analyticsResumen?.cerrados??'—', 'Estado Post-venta')}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
-            {/* Leads por mes */}
-            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '20px 24px' }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, marginBottom: 16 }}>Prospectos por mes</div>
-              {analyticsTiempo.length === 0 ? (
-                <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 20 }}>Sin datos</div>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 140 }}>
-                  {analyticsTiempo.map((r: any) => (
-                    <div key={r.mes} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                      <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>{r.total}</div>
-                      <div style={{ width: '100%', background: GOLD, borderRadius: '4px 4px 0 0', height: `${Math.max(4, (Number(r.total)/maxTiempo)*110)}px`, transition: 'height 0.3s' }} />
-                      <div style={{ fontSize: 10, color: '#94a3b8', textAlign: 'center', lineHeight: 1.2 }}>{r.label}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
+          {/* Fila 1: Línea temporal + Funnel */}
+          <div style={{display:'grid',gridTemplateColumns:'1.4fr 1fr',gap:16,marginBottom:16}}>
+            <div style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,padding:'20px 20px 10px'}}>
+              <div style={{fontSize:13,fontWeight:700,color:N,marginBottom:16}}>Prospectos en el tiempo</div>
+              {analyticsTiempo.length === 0
+                ? <div style={{color:'#94a3b8',textAlign:'center',padding:'30px 0',fontSize:13}}>Sin datos para este período</div>
+                : <ResponsiveContainer width="100%" height={200}>
+                    <LineChart data={analyticsTiempo.map(r=>({...r,total:Number(r.total)}))}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                      <XAxis dataKey="label" tick={{fontSize:10,fill:'#94a3b8'}} tickLine={false} axisLine={false} />
+                      <YAxis tick={{fontSize:10,fill:'#94a3b8'}} tickLine={false} axisLine={false} allowDecimals={false} />
+                      <Tooltip contentStyle={{fontSize:12,borderRadius:8,border:'1px solid #e2e8f0'}} />
+                      <Line type="monotone" dataKey="total" stroke={G} strokeWidth={2.5} dot={{r:4,fill:G,strokeWidth:0}} activeDot={{r:6}} name="Prospectos" />
+                    </LineChart>
+                  </ResponsiveContainer>
+              }
             </div>
-
-            {/* Funnel por etapa */}
-            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '20px 24px' }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, marginBottom: 16 }}>Funnel de conversión</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {analyticsFunnel.map((r: any) => (
-                  <div key={r.estado}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                      <span style={{ fontSize: 12, color: '#374151' }}>{r.estado}</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>{r.total}</span>
-                    </div>
-                    <div style={{ background: '#f1f5f9', borderRadius: 4, height: 8 }}>
-                      <div style={{ height: 8, borderRadius: 4, background: funnelColors[r.estado] || '#64748b', width: `${Math.max(2, (Number(r.total)/maxFunnel)*100)}%`, transition: 'width 0.4s' }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
+            <div style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,padding:'20px 20px 10px'}}>
+              <div style={{fontSize:13,fontWeight:700,color:N,marginBottom:16}}>Funnel de conversión</div>
+              {analyticsFunnel.length === 0
+                ? <div style={{color:'#94a3b8',textAlign:'center',padding:'30px 0',fontSize:13}}>Sin datos</div>
+                : <ResponsiveContainer width="100%" height={200}>
+                    <BarChart data={analyticsFunnel.map(r=>({...r,total:Number(r.total)}))} layout="vertical" margin={{left:0,right:16}}>
+                      <XAxis type="number" tick={{fontSize:10,fill:'#94a3b8'}} tickLine={false} axisLine={false} allowDecimals={false} />
+                      <YAxis type="category" dataKey="estado" tick={{fontSize:10,fill:'#64748b'}} tickLine={false} axisLine={false} width={100} />
+                      <Tooltip contentStyle={{fontSize:12,borderRadius:8,border:'1px solid #e2e8f0'}} />
+                      <Bar dataKey="total" radius={[0,4,4,0]} name="Prospectos">
+                        {analyticsFunnel.map((r:any) => <Cell key={r.estado} fill={FUNNEL_COLORS[r.estado]||'#94a3b8'} />)}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+              }
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
-            {/* Por proyecto */}
-            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '20px 24px' }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, marginBottom: 16 }}>Prospectos por proyecto</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {analyticsProyecto.map((r: any) => (
-                  <div key={r.proyecto}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                      <span style={{ fontSize: 12, color: '#374151', maxWidth: '70%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.proyecto}</span>
-                      <span style={{ fontSize: 12, color: '#64748b' }}>{r.total} <span style={{ color: '#94a3b8', fontWeight: 400 }}>· {fmtUSD(Number(r.presupuesto))}</span></span>
-                    </div>
-                    <div style={{ background: '#f1f5f9', borderRadius: 4, height: 7 }}>
-                      <div style={{ height: 7, borderRadius: 4, background: NAVY, width: `${Math.max(2, (Number(r.total)/maxProyecto)*100)}%`, transition: 'width 0.4s' }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
+          {/* Fila 2: Por proyecto + Por canal */}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:16}}>
+            <div style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,padding:'20px 20px 10px'}}>
+              <div style={{fontSize:13,fontWeight:700,color:N,marginBottom:16}}>Prospectos por proyecto</div>
+              {analyticsProyecto.length === 0
+                ? <div style={{color:'#94a3b8',textAlign:'center',padding:'30px 0',fontSize:13}}>Sin datos</div>
+                : <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={analyticsProyecto.map(r=>({...r,total:Number(r.total),presupuesto:Number(r.presupuesto)}))} margin={{left:0,right:8}}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                      <XAxis dataKey="proyecto" tick={{fontSize:9,fill:'#94a3b8'}} tickLine={false} axisLine={false} interval={0} angle={-30} textAnchor="end" height={50} />
+                      <YAxis tick={{fontSize:10,fill:'#94a3b8'}} tickLine={false} axisLine={false} allowDecimals={false} />
+                      <Tooltip contentStyle={{fontSize:12,borderRadius:8,border:'1px solid #e2e8f0'}} formatter={(v:any,n:string)=>n==='presupuesto'?[fmtUSD(v),'Pipeline']:v} />
+                      <Bar dataKey="total" fill={N} radius={[4,4,0,0]} name="Prospectos" />
+                      <Bar dataKey="presupuesto" fill={G} radius={[4,4,0,0]} name="presupuesto" hide />
+                    </BarChart>
+                  </ResponsiveContainer>
+              }
             </div>
-
-            {/* Por canal */}
-            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '20px 24px' }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, marginBottom: 16 }}>Fuente de captación</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {analyticsCanal.map((r: any, i: number) => {
-                  const pct = Math.round((Number(r.total)/Number(analyticsResumen?.total_prospectos||1))*100);
-                  const colors = [GOLD, NAVY, '#2563eb', '#16a34a', '#7c3aed', '#d97706'];
-                  return (
-                    <div key={r.canal} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: colors[i % colors.length], flexShrink: 0 }} />
-                      <div style={{ flex: 1, fontSize: 12, color: '#374151' }}>{r.canal}</div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: NAVY, minWidth: 24, textAlign: 'right' }}>{r.total}</div>
-                      <div style={{ width: 80, background: '#f1f5f9', borderRadius: 4, height: 7 }}>
-                        <div style={{ height: 7, borderRadius: 4, background: colors[i % colors.length], width: `${Math.max(2,(Number(r.total)/maxCanal)*100)}%` }} />
-                      </div>
-                      <div style={{ fontSize: 11, color: '#94a3b8', minWidth: 30, textAlign: 'right' }}>{pct}%</div>
-                    </div>
-                  );
-                })}
-              </div>
+            <div style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,padding:'20px 20px 10px'}}>
+              <div style={{fontSize:13,fontWeight:700,color:N,marginBottom:8}}>Fuente de captación</div>
+              {analyticsCanal.length === 0
+                ? <div style={{color:'#94a3b8',textAlign:'center',padding:'30px 0',fontSize:13}}>Sin datos</div>
+                : <ResponsiveContainer width="100%" height={220}>
+                    <PieChart>
+                      <Pie data={analyticsCanal.map(r=>({name:r.canal,value:Number(r.total)}))} cx="50%" cy="50%" outerRadius={80} innerRadius={40} dataKey="value" nameKey="name" label={({name,percent})=>`${name} ${Math.round(percent*100)}%`} labelLine={false} style={{fontSize:10}}>
+                        {analyticsCanal.map((_:any,i:number)=><Cell key={i} fill={CANAL_COLORS[i%CANAL_COLORS.length]} />)}
+                      </Pie>
+                      <Tooltip contentStyle={{fontSize:12,borderRadius:8,border:'1px solid #e2e8f0'}} />
+                    </PieChart>
+                  </ResponsiveContainer>
+              }
             </div>
           </div>
 
           {/* Tabla brokers */}
-          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '20px 24px' }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, marginBottom: 16 }}>Ranking de brokers</div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <div style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,padding:'20px 24px'}}>
+            <div style={{fontSize:13,fontWeight:700,color:N,marginBottom:14}}>Ranking de brokers</div>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
               <thead>
-                <tr style={{ background: '#f8fafc' }}>
-                  {['Broker', 'Prospectos', 'Calificados', 'Tasa conv.', 'Pipeline'].map(h => (
-                    <th key={h} style={{ padding: '10px 12px', textAlign: h === 'Broker' ? 'left' : 'right', fontWeight: 600, color: '#64748b', borderBottom: '1px solid #e2e8f0', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
+                <tr style={{background:'#f8fafc'}}>
+                  {['#','Broker','Prospectos','Calificados','Cerrados','Tasa conv.','Pipeline USD'].map((h,i)=>(
+                    <th key={h} style={{padding:'10px 12px',textAlign:i<=1?'left':'right',fontWeight:600,color:'#64748b',borderBottom:'1px solid #e2e8f0',fontSize:10,textTransform:'uppercase',letterSpacing:0.5}}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {analyticsBroker.map((r: any, i: number) => (
-                  <tr key={r.broker} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
-                    <td style={{ padding: '10px 12px', color: NAVY, fontWeight: 600 }}>{r.broker}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', color: '#374151' }}>{r.total}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', color: '#374151' }}>{r.calificados}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', color: r.total > 0 && Number(r.calificados)/Number(r.total) > 0.5 ? '#16a34a' : '#64748b', fontWeight: 600 }}>
-                      {r.total > 0 ? `${Math.round(Number(r.calificados)/Number(r.total)*100)}%` : '—'}
-                    </td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', color: '#374151' }}>{fmtUSD(Number(r.presupuesto))}</td>
-                  </tr>
-                ))}
+                {analyticsBroker.length === 0
+                  ? <tr><td colSpan={7} style={{textAlign:'center',padding:24,color:'#94a3b8',fontSize:13}}>Sin datos de brokers asignados</td></tr>
+                  : analyticsBroker.map((r:any,i:number)=>{
+                      const tasa = Number(r.total)>0 ? Math.round(Number(r.calificados)/Number(r.total)*100) : 0;
+                      return (
+                        <tr key={r.broker} style={{background:i%2===0?'#fff':'#f8fafc',borderBottom:'1px solid #f1f5f9'}}>
+                          <td style={{padding:'10px 12px',color:'#94a3b8',fontWeight:700,width:32}}>{i+1}</td>
+                          <td style={{padding:'10px 12px',color:N,fontWeight:600}}>{r.broker}</td>
+                          <td style={{padding:'10px 12px',textAlign:'right'}}>{r.total}</td>
+                          <td style={{padding:'10px 12px',textAlign:'right'}}>{r.calificados}</td>
+                          <td style={{padding:'10px 12px',textAlign:'right'}}>{r.cerrados}</td>
+                          <td style={{padding:'10px 12px',textAlign:'right'}}>
+                            <span style={{fontWeight:700,color:tasa>50?'#16a34a':tasa>25?G:'#94a3b8'}}>{tasa}%</span>
+                          </td>
+                          <td style={{padding:'10px 12px',textAlign:'right',fontWeight:600,color:N}}>{fmtUSD(Number(r.presupuesto))}</td>
+                        </tr>
+                      );
+                    })
+                }
               </tbody>
             </table>
           </div>
