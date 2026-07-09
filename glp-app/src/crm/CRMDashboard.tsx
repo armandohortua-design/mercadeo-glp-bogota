@@ -10983,7 +10983,7 @@ Responde SOLO con JSON sin bloques de código:
       </div>
 
       {/* MAIN AREA */}
-      <div style={{ flex: 1, marginLeft: 210, marginRight: activeModule === 'configuracion' ? 0 : 280, display: 'flex', flexDirection: 'column' as const }}>
+      <div style={{ flex: 1, marginLeft: 210, marginRight: (activeModule === 'configuracion' || activeModule === 'reportes') ? 0 : 280, display: 'flex', flexDirection: 'column' as const }}>
         {/* TOP HEADER */}
         <div style={{ background: T.teal, padding: '10px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky' as const, top: 0, zIndex: 5, borderBottom: `1px solid rgba(255,255,255,0.1)` }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', letterSpacing: 0.3 }}>
@@ -10998,13 +10998,13 @@ Responde SOLO con JSON sin bloques de código:
           </div>
         </div>
         {/* CONTENT */}
-        <div id="crm-content" style={{ padding: '24px 28px', overflowY: 'auto' as const, flex: 1 }}>
+        <div id="crm-content" style={{ padding: activeModule === 'reportes' ? 0 : '24px 28px', overflowY: 'auto' as const, flex: 1 }}>
           {renderModule()}
         </div>
       </div>
 
       {/* RIGHT PANEL — Contextual */}
-      {activeModule !== 'configuracion' && (
+      {activeModule !== 'configuracion' && activeModule !== 'reportes' && (
         <div style={{ width: 280, position: 'fixed' as const, top: 0, right: 0, bottom: 0, zIndex: 9, background: '#fff', borderLeft: `1px solid ${T.borderLight}`, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' }}>
           {renderRightPanel()}
         </div>
