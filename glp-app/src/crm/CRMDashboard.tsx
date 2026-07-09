@@ -783,6 +783,7 @@ const INITIAL_FAQS: FAQ[] = [
 const MODULES_PRIMARY = [
   { id: 'kpis',         label: 'Dashboard' },
   { id: 'prospectos',   label: 'Prospectos' },
+  { id: 'reportes',     label: 'Reportes' },
   { id: 'portafolio',   label: 'Portafolio GLP' },
   { id: 'calculadora',  label: 'Calculadora' },
   { id: 'agentes',      label: 'Agentes IA' },
@@ -886,6 +887,14 @@ const labelStyle = {
 export default function CRMDashboard() {
   const [activeModule, setActiveModule] = useState('kpis');
   const [activeProspect, setActiveProspect] = useState<Prospect | null>(null);
+
+  // ── Analytics State (Fase D) ──
+  const [analyticsResumen, setAnalyticsResumen] = useState<any>(null);
+  const [analyticsTiempo, setAnalyticsTiempo] = useState<any[]>([]);
+  const [analyticsProyecto, setAnalyticsProyecto] = useState<any[]>([]);
+  const [analyticsFunnel, setAnalyticsFunnel] = useState<any[]>([]);
+  const [analyticsCanal, setAnalyticsCanal] = useState<any[]>([]);
+  const [analyticsBroker, setAnalyticsBroker] = useState<any[]>([]);
 
   // ── Authentication States ──
   const [currentUser, setCurrentUser] = useState<string | null>(() => {
@@ -1624,6 +1633,17 @@ Sin markdown, solo el JSON array.`;
     fetch(`${API}/camilo/insights`).then(r=>r.json()).then(d=>{ if(Array.isArray(d) && d.length) setCamiloInsights(d as any); }).catch(()=>{});
     fetch(`${API}/valeria/drafts`).then(r=>r.json()).then(d=>{ if(Array.isArray(d) && d.length) setValeriaDrafts(d as any); }).catch(()=>{});
     fetch(`${API}/isabella/scripts`).then(r=>r.json()).then(d=>{ if(Array.isArray(d) && d.length) setIsabellaScripts(d as any); }).catch(()=>{});
+  }, [activeModule]);
+
+  // ── Cargar analytics al entrar al módulo Reportes ────────────────────────
+  useEffect(() => {
+    if (activeModule !== 'reportes') return;
+    fetch(`${API}/analytics/resumen`).then(r=>r.json()).then(setAnalyticsResumen).catch(()=>{});
+    fetch(`${API}/analytics/por-tiempo`).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setAnalyticsTiempo(d); }).catch(()=>{});
+    fetch(`${API}/analytics/por-proyecto`).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setAnalyticsProyecto(d); }).catch(()=>{});
+    fetch(`${API}/analytics/funnel`).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setAnalyticsFunnel(d); }).catch(()=>{});
+    fetch(`${API}/analytics/por-canal`).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setAnalyticsCanal(d); }).catch(()=>{});
+    fetch(`${API}/analytics/por-broker`).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setAnalyticsBroker(d); }).catch(()=>{});
   }, [activeModule]);
 
   const updateProfile = (field: keyof GlpBrandProfile, value: any) => {
@@ -10071,6 +10091,155 @@ Responde SOLO con JSON sin bloques de código:
             </div>
           </div>
         </>
+      );
+    }
+
+    // ── REPORTES (Fase D) ─────────────────────────────────────
+    if (activeModule === 'reportes') {
+      const GOLD = '#B89047';
+      const NAVY = '#001A37';
+      const maxProyecto = analyticsProyecto.reduce((m, r) => Math.max(m, Number(r.total)), 1);
+      const maxFunnel   = analyticsFunnel.reduce((m, r) => Math.max(m, Number(r.total)), 1);
+      const maxCanal    = analyticsCanal.reduce((m, r) => Math.max(m, Number(r.total)), 1);
+      const maxTiempo   = analyticsTiempo.reduce((m, r) => Math.max(m, Number(r.total)), 1);
+      const fmtUSD = (n: number) => n >= 1000000 ? `$${(n/1000000).toFixed(1)}M` : n >= 1000 ? `$${(n/1000).toFixed(0)}K` : `$${n}`;
+      const funnelColors: Record<string, string> = {
+        'Post-venta': '#16a34a', 'Cierre': '#2563eb', 'Negociación': '#7c3aed',
+        'Presentación': '#d97706', 'Calificado': '#0891b2', 'Contacto Inicial': '#64748b',
+        'Lead Frío': '#94a3b8',
+      };
+      return (
+        <div style={{ padding: '28px 32px', background: '#f8fafc', minHeight: '100%' }}>
+          {/* Header */}
+          <div style={{ marginBottom: 28 }}>
+            <div style={{ fontSize: 11, letterSpacing: 3, color: GOLD, fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Reportería</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: NAVY }}>Análisis de Ventas y Pipeline</div>
+            <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>Datos en tiempo real desde la base de datos</div>
+          </div>
+
+          {/* KPI Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>
+            {[
+              { label: 'Total Prospectos', value: analyticsResumen?.total_prospectos ?? '—', sub: `${analyticsResumen?.nuevos_mes ?? 0} este mes` },
+              { label: 'Pipeline Total', value: analyticsResumen ? fmtUSD(Number(analyticsResumen.pipeline_total)) : '—', sub: `Ticket prom. ${analyticsResumen ? fmtUSD(Number(analyticsResumen.ticket_promedio)) : '—'}` },
+              { label: 'Calificados', value: analyticsResumen?.calificados ?? '—', sub: `${analyticsResumen && analyticsResumen.total_prospectos > 0 ? Math.round(Number(analyticsResumen.calificados)/Number(analyticsResumen.total_prospectos)*100) : 0}% del total` },
+              { label: 'Cerrados', value: analyticsResumen?.cerrados ?? '—', sub: 'Estado Post-venta' },
+            ].map(card => (
+              <div key={card.label} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '18px 20px' }}>
+                <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>{card.label}</div>
+                <div style={{ fontSize: 28, fontWeight: 700, color: NAVY, lineHeight: 1.1 }}>{card.value}</div>
+                <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>{card.sub}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+            {/* Leads por mes */}
+            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '20px 24px' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, marginBottom: 16 }}>Prospectos por mes</div>
+              {analyticsTiempo.length === 0 ? (
+                <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 20 }}>Sin datos</div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 140 }}>
+                  {analyticsTiempo.map((r: any) => (
+                    <div key={r.mes} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                      <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>{r.total}</div>
+                      <div style={{ width: '100%', background: GOLD, borderRadius: '4px 4px 0 0', height: `${Math.max(4, (Number(r.total)/maxTiempo)*110)}px`, transition: 'height 0.3s' }} />
+                      <div style={{ fontSize: 10, color: '#94a3b8', textAlign: 'center', lineHeight: 1.2 }}>{r.label}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Funnel por etapa */}
+            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '20px 24px' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, marginBottom: 16 }}>Funnel de conversión</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {analyticsFunnel.map((r: any) => (
+                  <div key={r.estado}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                      <span style={{ fontSize: 12, color: '#374151' }}>{r.estado}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>{r.total}</span>
+                    </div>
+                    <div style={{ background: '#f1f5f9', borderRadius: 4, height: 8 }}>
+                      <div style={{ height: 8, borderRadius: 4, background: funnelColors[r.estado] || '#64748b', width: `${Math.max(2, (Number(r.total)/maxFunnel)*100)}%`, transition: 'width 0.4s' }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+            {/* Por proyecto */}
+            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '20px 24px' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, marginBottom: 16 }}>Prospectos por proyecto</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {analyticsProyecto.map((r: any) => (
+                  <div key={r.proyecto}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                      <span style={{ fontSize: 12, color: '#374151', maxWidth: '70%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.proyecto}</span>
+                      <span style={{ fontSize: 12, color: '#64748b' }}>{r.total} <span style={{ color: '#94a3b8', fontWeight: 400 }}>· {fmtUSD(Number(r.presupuesto))}</span></span>
+                    </div>
+                    <div style={{ background: '#f1f5f9', borderRadius: 4, height: 7 }}>
+                      <div style={{ height: 7, borderRadius: 4, background: NAVY, width: `${Math.max(2, (Number(r.total)/maxProyecto)*100)}%`, transition: 'width 0.4s' }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Por canal */}
+            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '20px 24px' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, marginBottom: 16 }}>Fuente de captación</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {analyticsCanal.map((r: any, i: number) => {
+                  const pct = Math.round((Number(r.total)/Number(analyticsResumen?.total_prospectos||1))*100);
+                  const colors = [GOLD, NAVY, '#2563eb', '#16a34a', '#7c3aed', '#d97706'];
+                  return (
+                    <div key={r.canal} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: colors[i % colors.length], flexShrink: 0 }} />
+                      <div style={{ flex: 1, fontSize: 12, color: '#374151' }}>{r.canal}</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: NAVY, minWidth: 24, textAlign: 'right' }}>{r.total}</div>
+                      <div style={{ width: 80, background: '#f1f5f9', borderRadius: 4, height: 7 }}>
+                        <div style={{ height: 7, borderRadius: 4, background: colors[i % colors.length], width: `${Math.max(2,(Number(r.total)/maxCanal)*100)}%` }} />
+                      </div>
+                      <div style={{ fontSize: 11, color: '#94a3b8', minWidth: 30, textAlign: 'right' }}>{pct}%</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Tabla brokers */}
+          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '20px 24px' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, marginBottom: 16 }}>Ranking de brokers</div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: '#f8fafc' }}>
+                  {['Broker', 'Prospectos', 'Calificados', 'Tasa conv.', 'Pipeline'].map(h => (
+                    <th key={h} style={{ padding: '10px 12px', textAlign: h === 'Broker' ? 'left' : 'right', fontWeight: 600, color: '#64748b', borderBottom: '1px solid #e2e8f0', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {analyticsBroker.map((r: any, i: number) => (
+                  <tr key={r.broker} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
+                    <td style={{ padding: '10px 12px', color: NAVY, fontWeight: 600 }}>{r.broker}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', color: '#374151' }}>{r.total}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', color: '#374151' }}>{r.calificados}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', color: r.total > 0 && Number(r.calificados)/Number(r.total) > 0.5 ? '#16a34a' : '#64748b', fontWeight: 600 }}>
+                      {r.total > 0 ? `${Math.round(Number(r.calificados)/Number(r.total)*100)}%` : '—'}
+                    </td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', color: '#374151' }}>{fmtUSD(Number(r.presupuesto))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       );
     }
 

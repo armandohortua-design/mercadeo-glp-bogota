@@ -458,18 +458,37 @@ Para calcular score_calificacion suma: menciona_inversion(+20) + menciona_presup
       }
     }
 
-    // Guardar prospecto en la base de datos
+    // Guardar prospecto en la base de datos (upsert por correo)
     const budgetUSD = (typeof analysis?.presupuesto_usd === 'number' && analysis.presupuesto_usd > 0)
       ? analysis.presupuesto_usd : null;
     const score = analysis?.score_calificacion || 0;
     const estadoLead = score >= 60 ? 'Calificado' : score >= 30 ? 'Contacto Inicial' : 'Lead Frío';
-    await pool.query(
-      `INSERT INTO prospectos (tenant_id, nombre, apellido, correo, telefono, proyectos_interes, forma_contacto, estado, canal, notas, presupuesto_usd, fecha_registro, fecha_ultima_actividad)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW())`,
-      [tenant.id, firstName, '', email, phone || '',
-       JSON.stringify([detectedProject]), channel || 'Web', estadoLead, channel || 'Web',
-       enrichedNotes, budgetUSD]
+    const { rows: existing } = await pool.query(
+      'SELECT id FROM prospectos WHERE correo = $1 AND tenant_id = $2',
+      [email, tenant.id]
     );
+    if (existing.length > 0) {
+      await pool.query(
+        `UPDATE prospectos SET
+           proyectos_interes = (
+             SELECT jsonb_agg(DISTINCT e) FROM jsonb_array_elements_text(
+               COALESCE(proyectos_interes::jsonb,'[]'::jsonb) || $1::jsonb
+             ) e
+           ),
+           notas = COALESCE(notas,'') || $2,
+           fecha_ultima_actividad = NOW()
+         WHERE id = $3`,
+        [JSON.stringify([detectedProject]), `\n[Web ${new Date().toLocaleDateString('es-CO')}] ${message || ''}`, existing[0].id]
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO prospectos (tenant_id, nombre, apellido, correo, telefono, proyectos_interes, forma_contacto, estado, canal, notas, presupuesto_usd, fecha_registro, fecha_ultima_actividad)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW())`,
+        [tenant.id, firstName, '', email, phone || '',
+         JSON.stringify([detectedProject]), channel || 'Web', estadoLead, channel || 'Web',
+         enrichedNotes, budgetUSD]
+      );
+    }
 
     const draftId = `draft-${Date.now()}`;
     await pool.query(
@@ -1498,6 +1517,101 @@ app.delete('/api/isabella/scripts/:id', async (req, res) => {
     );
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ==========================================
+// ANALYTICS — Fase D: Reportería
+// ==========================================
+app.get('/api/analytics/resumen', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { rows } = await pool.query(`
+      SELECT
+        COUNT(*)                                                          AS total_prospectos,
+        COUNT(*) FILTER (WHERE fecha_registro >= NOW() - INTERVAL '30 days') AS nuevos_mes,
+        COALESCE(SUM(presupuesto_usd::numeric), 0)                        AS pipeline_total,
+        COALESCE(AVG(presupuesto_usd::numeric) FILTER (WHERE presupuesto_usd IS NOT NULL), 0) AS ticket_promedio,
+        COUNT(*) FILTER (WHERE estado IN ('Calificado','Negociación','Cierre','Post-venta')) AS calificados,
+        COUNT(*) FILTER (WHERE estado = 'Post-venta')                     AS cerrados
+      FROM prospectos WHERE tenant_id = $1
+    `, [tenant.id]);
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/analytics/por-tiempo', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { rows } = await pool.query(`
+      SELECT
+        TO_CHAR(fecha_registro, 'YYYY-MM') AS mes,
+        TO_CHAR(fecha_registro, 'Mon YY')  AS label,
+        COUNT(*)                            AS total,
+        COALESCE(SUM(presupuesto_usd::numeric), 0) AS presupuesto
+      FROM prospectos
+      WHERE tenant_id = $1 AND fecha_registro >= NOW() - INTERVAL '6 months'
+      GROUP BY 1, 2 ORDER BY 1
+    `, [tenant.id]);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/analytics/por-proyecto', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { rows } = await pool.query(`
+      SELECT p_elem AS proyecto, COUNT(*) AS total,
+             COALESCE(SUM(pr.presupuesto_usd::numeric), 0) AS presupuesto
+      FROM prospectos pr,
+           jsonb_array_elements_text(
+             CASE WHEN jsonb_typeof(proyectos_interes::jsonb) = 'array'
+                  THEN proyectos_interes::jsonb ELSE '[]'::jsonb END
+           ) AS p_elem
+      WHERE pr.tenant_id = $1
+      GROUP BY 1 ORDER BY 2 DESC LIMIT 12
+    `, [tenant.id]);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/analytics/funnel', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { rows } = await pool.query(`
+      SELECT estado, COUNT(*) AS total
+      FROM prospectos WHERE tenant_id = $1
+      GROUP BY estado ORDER BY total DESC
+    `, [tenant.id]);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/analytics/por-canal', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { rows } = await pool.query(`
+      SELECT COALESCE(canal, 'Sin canal') AS canal, COUNT(*) AS total
+      FROM prospectos WHERE tenant_id = $1
+      GROUP BY 1 ORDER BY 2 DESC
+    `, [tenant.id]);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/analytics/por-broker', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { rows } = await pool.query(`
+      SELECT
+        COALESCE(broker_asignado, 'Sin asignar') AS broker,
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE estado IN ('Calificado','Negociación','Cierre','Post-venta')) AS calificados,
+        COALESCE(SUM(presupuesto_usd::numeric), 0) AS presupuesto
+      FROM prospectos WHERE tenant_id = $1
+      GROUP BY 1 ORDER BY 2 DESC
+    `, [tenant.id]);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ==========================================
