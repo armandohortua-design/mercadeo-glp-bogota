@@ -1264,7 +1264,8 @@ app.post('/api/backup/github', (req, res) => {
     }
 
     execSync(`git commit -m "${commitMsg.replace(/"/g, "'")}"`, { cwd: REPO_ROOT });
-    execSync('git push origin main', { cwd: REPO_ROOT });
+    const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: REPO_ROOT }).toString().trim();
+    execSync(`git push origin ${currentBranch}`, { cwd: REPO_ROOT });
 
     const lastCommit = execSync('git log -1 --pretty=format:"%h|%s|%ai"', { cwd: REPO_ROOT }).toString().trim();
     const [hash, subject, date] = lastCommit.split('|');
@@ -1524,12 +1525,38 @@ app.delete('/api/isabella/scripts/:id', async (req, res) => {
 // ==========================================
 
 // Helper: construye cláusulas WHERE dinámicas con filtros opcionales
+// Normaliza proyectos_interes a JSONB array independientemente de si está guardado como string o array
+const PROYECTOS_JSONB = `CASE
+  WHEN jsonb_typeof(proyectos_interes::jsonb) = 'array'  THEN proyectos_interes::jsonb
+  WHEN jsonb_typeof(proyectos_interes::jsonb) = 'string' THEN jsonb_build_array(proyectos_interes::jsonb #>> '{}')
+  ELSE '[]'::jsonb
+END`;
+
 function buildAnalyticsWhere(tenantId, params) {
-  const { dias = 365, canal, broker, proyecto } = params;
-  const conditions = [`tenant_id = $1`, `fecha_registro >= NOW() - INTERVAL '${parseInt(dias)} days'`];
+  const { dias = 365, canal, broker, proyecto, fecha_inicio, fecha_fin } = params;
+  const conditions = [`tenant_id = $1`];
+  if (fecha_inicio && fecha_fin) {
+    conditions.push(`fecha_registro >= '${fecha_inicio}'::date`);
+    conditions.push(`fecha_registro < ('${fecha_fin}'::date + INTERVAL '1 day')`);
+  } else {
+    conditions.push(`fecha_registro >= NOW() - INTERVAL '${parseInt(dias)} days'`);
+  }
   const values = [tenantId];
-  if (canal)   { values.push(canal);   conditions.push(`canal = $${values.length}`); }
-  if (broker)  { values.push(broker);  conditions.push(`broker_asignado = $${values.length}`); }
+  if (canal) { values.push(canal); conditions.push(`canal = $${values.length}`); }
+  if (broker) {
+    if (broker === 'Sin asignar') {
+      conditions.push(`broker_asignado IS NULL`);
+    } else {
+      values.push(broker);
+      conditions.push(`broker_asignado = $${values.length}`);
+    }
+  }
+  if (proyecto) {
+    values.push(proyecto);
+    conditions.push(`EXISTS (
+      SELECT 1 FROM jsonb_array_elements_text(${PROYECTOS_JSONB}) p WHERE p = $${values.length}
+    )`);
+  }
   return { where: conditions.join(' AND '), values, proyecto };
 }
 
@@ -1546,7 +1573,7 @@ app.get('/api/analytics/resumen', async (req, res) => {
         COALESCE(SUM(presupuesto_usd::numeric), 0)                                     AS pipeline_total,
         COALESCE(AVG(presupuesto_usd::numeric) FILTER (WHERE presupuesto_usd IS NOT NULL), 0) AS ticket_promedio,
         COUNT(*) FILTER (WHERE estado IN ('Calificado','Negociación','Cierre','Post-venta')) AS calificados,
-        COUNT(*) FILTER (WHERE estado = 'Post-venta')                                  AS cerrados
+        COUNT(*) FILTER (WHERE estado IN ('Cierre','Post-venta'))                       AS cerrados
       FROM prospectos WHERE ${where}
     `, values);
     res.json(rows[0]);
@@ -1582,8 +1609,7 @@ app.get('/api/analytics/por-proyecto', async (req, res) => {
              COALESCE(SUM(pr.presupuesto_usd::numeric), 0) AS presupuesto
       FROM prospectos pr,
            jsonb_array_elements_text(
-             CASE WHEN jsonb_typeof(proyectos_interes::jsonb) = 'array'
-                  THEN proyectos_interes::jsonb ELSE '[]'::jsonb END
+             ${PROYECTOS_JSONB}
            ) AS p_elem
       WHERE ${where} ${proyectoFilter}
       GROUP BY 1 ORDER BY 2 DESC LIMIT 15
@@ -1636,10 +1662,121 @@ app.get('/api/analytics/por-broker', async (req, res) => {
         COALESCE(broker_asignado, 'Sin asignar') AS broker,
         COUNT(*) AS total,
         COUNT(*) FILTER (WHERE estado IN ('Calificado','Negociación','Cierre','Post-venta')) AS calificados,
-        COUNT(*) FILTER (WHERE estado = 'Post-venta') AS cerrados,
+        COUNT(*) FILTER (WHERE estado IN ('Cierre','Post-venta')) AS cerrados,
         COALESCE(SUM(presupuesto_usd::numeric), 0) AS presupuesto
       FROM prospectos WHERE ${where}
       GROUP BY 1 ORDER BY 2 DESC
+    `, values);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Broker × período (semana/mes/trimestre)
+app.get('/api/analytics/broker-tiempo', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { where, values } = buildAnalyticsWhere(tenant.id, req.query);
+    const agrup = req.query.agrup || 'mes';
+    const trunc = agrup === 'semana' ? 'week' : agrup === 'trimestre' ? 'quarter' : 'month';
+    const fmt   = agrup === 'semana' ? 'IYYY-"W"IW' : agrup === 'trimestre' ? 'YYYY-"Q"Q' : 'YYYY-MM';
+    const { rows } = await pool.query(`
+      SELECT
+        TO_CHAR(DATE_TRUNC('${trunc}', fecha_registro), '${fmt}') AS periodo,
+        COALESCE(broker_asignado, 'Sin asignar') AS broker,
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE estado IN ('Cierre','Post-venta')) AS cerrados,
+        COALESCE(SUM(presupuesto_usd::numeric), 0) AS presupuesto
+      FROM prospectos WHERE ${where}
+      GROUP BY 1, 2 ORDER BY 1, 3 DESC
+    `, values);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Proyecto × período
+app.get('/api/analytics/proyecto-tiempo', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { where, values } = buildAnalyticsWhere(tenant.id, req.query);
+    const agrup = req.query.agrup || 'mes';
+    const trunc = agrup === 'semana' ? 'week' : agrup === 'trimestre' ? 'quarter' : 'month';
+    const fmt   = agrup === 'semana' ? 'IYYY-"W"IW' : agrup === 'trimestre' ? 'YYYY-"Q"Q' : 'YYYY-MM';
+    const { rows } = await pool.query(`
+      SELECT
+        TO_CHAR(DATE_TRUNC('${trunc}', fecha_registro), '${fmt}') AS periodo,
+        p_elem AS proyecto,
+        COUNT(*) AS total,
+        COALESCE(SUM(pr.presupuesto_usd::numeric), 0) AS presupuesto
+      FROM prospectos pr,
+           jsonb_array_elements_text(
+             ${PROYECTOS_JSONB}
+           ) AS p_elem
+      WHERE ${where}
+      GROUP BY 1, 2 ORDER BY 1, 3 DESC
+    `, values);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Tasa de conversión por canal
+app.get('/api/analytics/conversion-canal', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { where, values } = buildAnalyticsWhere(tenant.id, req.query);
+    const { rows } = await pool.query(`
+      SELECT
+        COALESCE(canal, 'Sin canal') AS canal,
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE estado IN ('Calificado','Negociación','Cierre','Post-venta')) AS calificados,
+        COUNT(*) FILTER (WHERE estado IN ('Cierre','Post-venta')) AS cerrados,
+        ROUND(COUNT(*) FILTER (WHERE estado IN ('Calificado','Negociación','Cierre','Post-venta'))::numeric / NULLIF(COUNT(*),0) * 100, 1) AS tasa_calif,
+        ROUND(COUNT(*) FILTER (WHERE estado IN ('Cierre','Post-venta'))::numeric / NULLIF(COUNT(*),0) * 100, 1) AS tasa_cierre
+      FROM prospectos WHERE ${where}
+      GROUP BY 1 ORDER BY 2 DESC
+    `, values);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Velocidad de cierre: días promedio entre estados
+app.get('/api/analytics/velocidad', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { where, values } = buildAnalyticsWhere(tenant.id, req.query);
+    // Calcula días promedio que un prospecto ha estado en su estado actual
+    const { rows } = await pool.query(`
+      SELECT
+        estado,
+        COUNT(*) AS total,
+        ROUND(AVG(EXTRACT(EPOCH FROM (NOW() - fecha_registro)) / 86400)::numeric, 1) AS dias_en_estado,
+        MIN(EXTRACT(EPOCH FROM (NOW() - fecha_registro)) / 86400)::integer AS dias_min,
+        MAX(EXTRACT(EPOCH FROM (NOW() - fecha_registro)) / 86400)::integer AS dias_max
+      FROM prospectos WHERE ${where} AND estado IS NOT NULL
+      GROUP BY estado
+      ORDER BY CASE estado
+        WHEN 'Contacto Inicial' THEN 1
+        WHEN 'Calificado'       THEN 2
+        WHEN 'Presentación'     THEN 3
+        WHEN 'Negociación'      THEN 4
+        WHEN 'Cierre'           THEN 5
+        WHEN 'Post-venta'       THEN 6
+        ELSE 7 END
+    `, values);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Drilldown: lista de prospectos que cumplen los filtros activos
+app.get('/api/analytics/prospectos-detalle', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { where, values } = buildAnalyticsWhere(tenant.id, req.query);
+    const { rows } = await pool.query(`
+      SELECT id, nombre, apellido, correo, telefono, estado, canal,
+             COALESCE(broker_asignado, 'Sin asignar') AS broker_asignado,
+             proyectos_interes, presupuesto_usd, fecha_registro
+      FROM prospectos WHERE ${where}
+      ORDER BY fecha_registro DESC LIMIT 200
     `, values);
     res.json(rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1652,13 +1789,138 @@ app.get('/api/analytics/filtros', async (req, res) => {
     const [canales, brokers, proyectos] = await Promise.all([
       pool.query(`SELECT DISTINCT COALESCE(canal,'Sin canal') AS v FROM prospectos WHERE tenant_id=$1 ORDER BY 1`, [tenant.id]),
       pool.query(`SELECT DISTINCT broker_asignado AS v FROM prospectos WHERE tenant_id=$1 AND broker_asignado IS NOT NULL ORDER BY 1`, [tenant.id]),
-      pool.query(`SELECT DISTINCT p_elem AS v FROM prospectos, jsonb_array_elements_text(CASE WHEN jsonb_typeof(proyectos_interes::jsonb)='array' THEN proyectos_interes::jsonb ELSE '[]'::jsonb END) p_elem WHERE tenant_id=$1 ORDER BY 1`, [tenant.id]),
+      pool.query(`
+        SELECT DISTINCT v FROM (
+          SELECT p_elem AS v FROM prospectos, jsonb_array_elements_text(${PROYECTOS_JSONB}) p_elem WHERE tenant_id=$1
+          UNION
+          SELECT data->>'name' AS v FROM projects WHERE tenant_id=$1 AND data->>'name' IS NOT NULL
+        ) t WHERE v IS NOT NULL AND v <> '' ORDER BY 1
+      `, [tenant.id]),
     ]);
     res.json({
       canales:   canales.rows.map(r => r.v),
       brokers:   brokers.rows.map(r => r.v),
       proyectos: proyectos.rows.map(r => r.v),
     });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ==========================================
+// FASE F: CASOS / POSTVENTA
+// ==========================================
+
+// Auto-crear tabla casos si no existe
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS casos (
+        id SERIAL PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        prospecto_id INTEGER REFERENCES prospectos(id) ON DELETE SET NULL,
+        titulo TEXT NOT NULL,
+        descripcion TEXT DEFAULT '',
+        tipo TEXT DEFAULT 'consulta',
+        prioridad TEXT DEFAULT 'normal',
+        estado TEXT DEFAULT 'abierto',
+        asignado_a TEXT,
+        notas TEXT DEFAULT '',
+        actividades JSONB DEFAULT '[]',
+        fecha_apertura TIMESTAMPTZ DEFAULT NOW(),
+        fecha_cierre TIMESTAMPTZ,
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+  } catch (e) { console.warn('casos table check:', e.message); }
+  // Migración: agregar columna actividades si no existe
+  try {
+    await pool.query(`ALTER TABLE casos ADD COLUMN IF NOT EXISTS actividades JSONB DEFAULT '[]'`);
+  } catch (e) { /* columna ya existe */ }
+})();
+
+app.get('/api/casos', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Tenant no encontrado' });
+    const { estado, prioridad, tipo, prospecto_id } = req.query;
+    const conds = ['c.tenant_id = $1'];
+    const vals = [tenant.id];
+    if (estado)        { vals.push(estado);        conds.push(`c.estado = $${vals.length}`); }
+    if (prioridad)     { vals.push(prioridad);      conds.push(`c.prioridad = $${vals.length}`); }
+    if (tipo)          { vals.push(tipo);           conds.push(`c.tipo = $${vals.length}`); }
+    if (prospecto_id)  { vals.push(prospecto_id);   conds.push(`c.prospecto_id = $${vals.length}`); }
+    const { rows } = await pool.query(`
+      SELECT c.*,
+             p.nombre || ' ' || p.apellido AS prospecto_nombre,
+             p.correo AS prospecto_correo,
+             p.estado AS prospecto_estado
+      FROM casos c
+      LEFT JOIN prospectos p ON p.id = c.prospecto_id
+      WHERE ${conds.join(' AND ')}
+      ORDER BY
+        CASE c.prioridad WHEN 'urgente' THEN 1 WHEN 'alta' THEN 2 WHEN 'normal' THEN 3 ELSE 4 END,
+        c.fecha_apertura DESC
+    `, vals);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/casos', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Tenant no encontrado' });
+    const { prospecto_id, titulo, descripcion, tipo, prioridad, asignado_a, notas } = req.body;
+    const { rows } = await pool.query(`
+      INSERT INTO casos (tenant_id, prospecto_id, titulo, descripcion, tipo, prioridad, asignado_a, notas)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *
+    `, [tenant.id, prospecto_id || null, titulo, descripcion || '', tipo || 'consulta',
+        prioridad || 'normal', asignado_a || null, notas || '']);
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/casos/:id', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Tenant no encontrado' });
+    const { titulo, descripcion, tipo, prioridad, estado, asignado_a, notas, actividades } = req.body;
+    const fechaCierre = estado === 'cerrado' ? 'NOW()' : 'fecha_cierre';
+    const { rows } = await pool.query(`
+      UPDATE casos SET
+        titulo=$2, descripcion=$3, tipo=$4, prioridad=$5,
+        estado=$6, asignado_a=$7, notas=$8, actividades=$9,
+        fecha_cierre=${fechaCierre}, updated_at=NOW()
+      WHERE id=$1 AND tenant_id=$10 RETURNING *
+    `, [req.params.id, titulo, descripcion || '', tipo, prioridad, estado, asignado_a || null, notas || '',
+        JSON.stringify(actividades || []), tenant.id]);
+    res.json(rows[0] || {});
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/casos/:id', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Tenant no encontrado' });
+    await pool.query('DELETE FROM casos WHERE id=$1 AND tenant_id=$2', [req.params.id, tenant.id]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/casos/stats', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Tenant no encontrado' });
+    const { rows } = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE estado='abierto') AS abiertos,
+        COUNT(*) FILTER (WHERE estado='en_gestion') AS en_gestion,
+        COUNT(*) FILTER (WHERE estado='resuelto') AS resueltos,
+        COUNT(*) FILTER (WHERE estado='cerrado') AS cerrados,
+        COUNT(*) FILTER (WHERE prioridad='urgente' AND estado NOT IN ('cerrado','resuelto')) AS urgentes,
+        AVG(EXTRACT(EPOCH FROM (COALESCE(fecha_cierre,NOW()) - fecha_apertura))/3600)
+          FILTER (WHERE estado IN ('resuelto','cerrado')) AS avg_horas_resolucion
+      FROM casos WHERE tenant_id=$1
+    `, [tenant.id]);
+    res.json(rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

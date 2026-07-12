@@ -1,5 +1,5 @@
-﻿import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
+﻿import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { BarChart, Bar, LineChart, Line, ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend, LabelList } from 'recharts';
 import { MARKET_STUDY_DB } from '../marketStudyDb';
 import { supabase, uploadProjectImage, saveProjectImageUrl } from '../lib/supabase';
 
@@ -57,6 +57,7 @@ const Icon = ({ name, size = 24, color = 'currentColor', style = {} }: { name: s
     case 'faq':        return <svg {...props}><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>;
     case 'calculator': return <svg {...props}><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="8" y2="10.01"/><line x1="12" y1="10" x2="12" y2="10.01"/><line x1="16" y1="10" x2="16" y2="10.01"/><line x1="8" y1="14" x2="8" y2="14.01"/><line x1="12" y1="14" x2="12" y2="14.01"/><line x1="16" y1="14" x2="16" y2="18"/></svg>;
     case 'backup':     return <svg {...props}><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.95"/></svg>;
+    case 'campanas':   return <svg {...props}><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.09h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.69a16 16 0 0 0 6 6l.97-.97a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16z"/><path d="M16 2a4 4 0 0 1 4 4"/><path d="M16 6h.01"/></svg>;
     case 'plug':       return <svg {...props}><path d="M18 6L6 18"/><path d="M6 6l3.5 3.5"/><path d="M10.5 10.5L14 14"/><circle cx="18.5" cy="5.5" r="2.5"/><circle cx="5.5" cy="18.5" r="2.5"/></svg>;
     case 'wave':       return <svg {...props}><path d="M2 12c0-4 2-6 5-6s5 3 5 3 2 3 5 3 5-2 5-6"/><path d="M2 19c0-1.5 1-2.5 2.5-2.5S7 17.5 7 19"/></svg>;
     case 'diamond':    return <svg {...props}><polygon points="12 2 22 12 12 22 2 12"/></svg>;
@@ -564,8 +565,101 @@ type Prospect = {
   emailHistory?: EmailThreadItem[];
 };
 
-const FUNNEL_STAGES = ['Contacto Inicial', 'Calificación', 'Presentación', 'Negociación', 'Cierre', 'Post-venta'];
+const FUNNEL_STAGES = ['Contacto Inicial', 'Calificado', 'Presentación', 'Negociación', 'Cierre', 'Post-venta'];
 const CONTACT_FORMS = ['Broker', 'Pagina Web', 'LinkedIn', 'TikTok', 'Instagram', 'WhatsApp', 'Evento', 'Referido'];
+
+// Calcula analytics desde prospectos locales (fallback cuando backend offline)
+const computeAnalyticsFromProspects = (ps: Prospect[]) => {
+  const now = new Date();
+  const tm = now.getMonth(), ty = now.getFullYear();
+  const lm = tm === 0 ? 11 : tm - 1, ly = tm === 0 ? ty - 1 : ty;
+  const budget = (p: any) => parseFloat(String(p.presupuesto_usd)) || 0;
+  const totalPipe = ps.reduce((s, p) => s + budget(p), 0);
+  const countMap = <K extends string>(key: (p: Prospect) => K | null) => {
+    const m = new Map<string, {total:number; presupuesto:number}>();
+    ps.forEach(p => {
+      const k = key(p) || 'Sin datos'; if (!k) return;
+      const c = m.get(k) || {total:0, presupuesto:0};
+      m.set(k, {total: c.total+1, presupuesto: c.presupuesto + budget(p)});
+    });
+    return Array.from(m.entries()).map(([k, v]) => ({name: k, ...v})).sort((a,b) => b.total - a.total);
+  };
+  const resumen = {
+    total_prospectos: ps.length,
+    nuevos_mes: ps.filter(p => { const d = new Date(p.fecha_entrada||''); return d.getMonth()===tm && d.getFullYear()===ty; }).length,
+    nuevos_mes_ant: ps.filter(p => { const d = new Date(p.fecha_entrada||''); return d.getMonth()===lm && d.getFullYear()===ly; }).length,
+    calificados: ps.filter(p => ['Calificado','Presentación','Negociación','Cierre','Post-venta'].includes(p.estado||'')).length,
+    pipeline_total: totalPipe,
+    ticket_promedio: ps.length > 0 ? totalPipe / ps.length : 0,
+    cerrados: ps.filter(p => p.estado === 'Post-venta').length,
+  };
+  // Los gráficos de Recharts esperan el campo "total" para conteo
+  const funnel = FUNNEL_STAGES.map(estado => ({estado, total: ps.filter(p => p.estado === estado).length}));
+  const byCanal = countMap(p => p.forma_contacto as any).map(r => ({canal: r.name, total: r.total, presupuesto: r.presupuesto}));
+  const QUAL_STAGES = ['Calificado','Presentación','Negociación','Cierre','Post-venta'];
+  const byBroker = (() => {
+    const m = new Map<string, {total:number;presupuesto:number;calificados:number;cerrados:number}>();
+    ps.forEach(p => {
+      const k = (p.broker_asignado as any) || 'Sin datos';
+      const c = m.get(k) || {total:0,presupuesto:0,calificados:0,cerrados:0};
+      m.set(k, {total:c.total+1, presupuesto:c.presupuesto+budget(p), calificados:c.calificados+(QUAL_STAGES.includes(p.estado||'')?1:0), cerrados:c.cerrados+(p.estado==='Post-venta'?1:0)});
+    });
+    return Array.from(m.entries()).map(([k,v])=>({broker:k,...v})).sort((a,b)=>b.total-a.total);
+  })();
+  const brokerTiempo: any[] = [];
+  const proyectoTiempo: any[] = [];
+  const brkSet = [...new Set(ps.map(p=>(p.broker_asignado as any)||'Sin datos'))];
+  const projTiempoSet = [...new Set(ps.flatMap(p=>Array.isArray(p.proyectos_interes)?p.proyectos_interes:[]))].slice(0,8);
+  for (let i = 5; i >= 0; i--) {
+    const d2 = new Date(ty, tm - i, 1), m2b = d2.getMonth(), y2b = d2.getFullYear();
+    const mesB = d2.toLocaleString('es',{month:'short'})+' '+String(y2b).slice(2);
+    brkSet.forEach(brk => {
+      const cnt = ps.filter(p=>{ const pd=new Date(p.fecha_entrada||''); return pd.getMonth()===m2b && pd.getFullYear()===y2b && ((p.broker_asignado as any)||'Sin datos')===brk; }).length;
+      if (cnt > 0) brokerTiempo.push({broker:brk, periodo:mesB, total:cnt});
+    });
+    projTiempoSet.forEach(proj => {
+      const cnt = ps.filter(p=>{ const pd=new Date(p.fecha_entrada||''); return pd.getMonth()===m2b && pd.getFullYear()===y2b && (Array.isArray(p.proyectos_interes)?p.proyectos_interes:[]).includes(proj); }).length;
+      if (cnt > 0) proyectoTiempo.push({proyecto:proj, periodo:mesB, total:cnt});
+    });
+  }
+  const projMap = new Map<string, {total:number;presupuesto:number}>();
+  ps.forEach(p => {
+    const pis = Array.isArray(p.proyectos_interes) ? p.proyectos_interes : [];
+    pis.forEach((proj: string) => {
+      const c = projMap.get(proj) || {total:0, presupuesto:0};
+      projMap.set(proj, {total: c.total+1, presupuesto: c.presupuesto + budget(p)});
+    });
+  });
+  const byProject = Array.from(projMap.entries()).map(([proyecto, d]) => ({proyecto, ...d})).sort((a,b)=>b.total-a.total);
+  const tiempo: any[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(ty, tm - i, 1), m2 = d.getMonth(), y2 = d.getFullYear();
+    const mes = d.toLocaleString('es', {month:'short'}) + ' ' + String(y2).slice(2);
+    const slice = ps.filter(p => { const pd = new Date(p.fecha_entrada||''); return pd.getMonth()===m2 && pd.getFullYear()===y2; });
+    tiempo.push({periodo: mes, total: slice.length, presupuesto: slice.reduce((s,p)=>s+budget(p),0)});
+  }
+  // Conversión por canal
+  const conversionCanal = (() => {
+    const m = new Map<string, {total:number;calificados:number;cerrados:number}>();
+    ps.forEach(p => {
+      const k = (p.forma_contacto as any) || 'Sin datos';
+      const c = m.get(k) || {total:0,calificados:0,cerrados:0};
+      m.set(k, {total:c.total+1, calificados:c.calificados+(QUAL_STAGES.includes(p.estado||'')?1:0), cerrados:c.cerrados+(p.estado==='Post-venta'?1:0)});
+    });
+    return Array.from(m.entries()).map(([canal,v])=>({canal,...v, tasa_calif:v.total>0?Math.round(v.calificados/v.total*100):0, tasa_cierre:v.total>0?Math.round(v.cerrados/v.total*100):0})).sort((a,b)=>b.total-a.total);
+  })();
+  // Velocidad por etapa: días desde entrada para prospectos en cada estado
+  const today2 = new Date();
+  const velocidad = FUNNEL_STAGES.map(estado => {
+    const inStage = ps.filter(p => p.estado === estado);
+    if (inStage.length === 0) return null;
+    const days = inStage.map(p => Math.max(1, Math.round((today2.getTime() - new Date(p.fecha_entrada||today2.toISOString()).getTime()) / 86400000)));
+    const avg = Math.round(days.reduce((s,d)=>s+d,0)/days.length);
+    return {estado, dias_en_estado: avg, dias_min: Math.min(...days), dias_max: Math.max(...days), total: inStage.length};
+  }).filter(Boolean);
+  const detalle = ps.map(p => ({...p}));
+  return {resumen, funnel, byCanal, byBroker, byProject, tiempo, brokerTiempo, proyectoTiempo, conversionCanal, velocidad, detalle};
+};
 
 const generateSampleProspects = (): Prospect[] => {
   const firstNames = [
@@ -785,6 +879,7 @@ const MODULES_PRIMARY = [
   { id: 'kpis',         label: 'Dashboard' },
   { id: 'prospectos',   label: 'Prospectos' },
   { id: 'reportes',     label: 'Reportes' },
+  { id: 'campanas',     label: 'Campañas' },
   { id: 'portafolio',   label: 'Portafolio GLP' },
   { id: 'calculadora',  label: 'Calculadora' },
   { id: 'agentes',      label: 'Agentes IA' },
@@ -792,24 +887,60 @@ const MODULES_PRIMARY = [
 ];
 const MODULES_SECONDARY = [
   { id: 'brokers',      label: 'Brokers' },
+  { id: 'casos',        label: 'PQRs' },
   { id: 'faqs',         label: 'FAQs' },
   { id: 'catalogo',     label: 'Catálogo' },
   { id: 'configuracion',label: 'Configuración' },
 ];
 const MODULES = [...MODULES_PRIMARY, ...MODULES_SECONDARY];
 
+// Roles: superadmin | presidencia | gerencia | broker
+type UserRole = 'superadmin' | 'presidencia' | 'gerencia' | 'broker';
+
+const ROLE_LABELS: Record<UserRole, string> = {
+  superadmin:  'Superadministrador',
+  presidencia: 'Presidencia',
+  gerencia:    'Gerencia Comercial',
+  broker:      'Broker / Asesor',
+};
+
+// Módulos accesibles por rol (superadmin siempre tiene todos)
+const ROLE_MODULES: Record<UserRole, string[]> = {
+  superadmin:  [], // vacío = todos
+  presidencia: ['dashboard','reportes','portafolio','kpis'],
+  gerencia:    ['dashboard','prospectos','reportes','campanas','portafolio','calculadora','agentes','casos','brokers','faqs','eventos','catalogo'],
+  broker:      ['prospectos','portafolio','calculadora','casos','faqs'],
+};
+
+const SUPERADMIN_USERNAME = 'ahortua';
+
 const getAdminUsers = () => {
   const usersSaved = localStorage.getItem('glp_crm_users');
+  let users: any[] = [];
   if (usersSaved) {
-    try {
-      return JSON.parse(usersSaved);
-    } catch (e) {
-      console.error(e);
-    }
+    try { users = JSON.parse(usersSaved); } catch (e) { console.error(e); }
   }
-  const defaultUsers = [{ username: 'admin', password: 'admin123', name: 'Administrador Principal' }];
-  localStorage.setItem('glp_crm_users', JSON.stringify(defaultUsers));
-  return defaultUsers;
+  // Garantiza que ahortua siempre existe como superadmin
+  const hasAhortua = users.some((u: any) => u.username === SUPERADMIN_USERNAME);
+  if (!hasAhortua) {
+    users = [
+      { username: SUPERADMIN_USERNAME, password: '0611', name: 'Armando Hortua', rol: 'superadmin' },
+      ...users,
+    ];
+    localStorage.setItem('glp_crm_users', JSON.stringify(users));
+  }
+  // Garantiza que pvargas (demo broker) siempre existe con sus prospectos asignados
+  const hasPvargas = users.some((u: any) => u.username === 'pvargas');
+  if (!hasPvargas) {
+    users = [...users, { username: 'pvargas', password: 'demo', name: 'Patricia Vargas', nombre: 'Patricia Vargas', rol: 'broker' }];
+    localStorage.setItem('glp_crm_users', JSON.stringify(users));
+  }
+  // Migra usuarios sin rol a gerencia por defecto
+  const migrated = users.map((u: any) => ({
+    ...u,
+    rol: u.username === SUPERADMIN_USERNAME ? 'superadmin' : (u.rol || 'gerencia'),
+  }));
+  return migrated;
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -817,10 +948,10 @@ const getAdminUsers = () => {
 // ═══════════════════════════════════════════════════════════════
 const cardStyle = (extra: Record<string, any> = {}) => ({
   background: T.card,
-  borderRadius: 12,
+  borderRadius: 4,
   padding: '20px 24px',
-  border: `1px solid ${T.borderLight}`,
-  boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+  border: `1px solid ${T.border}`,
+  boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
   ...extra,
 });
 
@@ -897,16 +1028,41 @@ export default function CRMDashboard() {
   const [analyticsCanal, setAnalyticsCanal] = useState<any[]>([]);
   const [analyticsBroker, setAnalyticsBroker] = useState<any[]>([]);
   const [analyticsFiltros, setAnalyticsFiltros] = useState<{canales:string[];brokers:string[];proyectos:string[]}>({canales:[],brokers:[],proyectos:[]});
+  const [analyticsBrokerTiempo, setAnalyticsBrokerTiempo] = useState<any[]>([]);
+  const [analyticsProyectoTiempo, setAnalyticsProyectoTiempo] = useState<any[]>([]);
+  const [analyticsConversionCanal, setAnalyticsConversionCanal] = useState<any[]>([]);
+  const [analyticsVelocidad, setAnalyticsVelocidad] = useState<any[]>([]);
   const [rptDias, setRptDias] = useState<number>(90);
+  const [rptFechaInicio, setRptFechaInicio] = useState<string>('');
+  const [rptFechaFin, setRptFechaFin] = useState<string>('');
   const [rptCanal, setRptCanal] = useState<string>('');
   const [rptBroker, setRptBroker] = useState<string>('');
   const [rptProyecto, setRptProyecto] = useState<string>('');
   const [rptLoading, setRptLoading] = useState(false);
+  const [rptDetalle, setRptDetalle] = useState<any[]>([]);
+  const [rptShowDetalle, setRptShowDetalle] = useState(false);
+  const [dtSearch, setDtSearch] = useState('');
+  const [dtEstado, setDtEstado] = useState('');
+  const [dtSort, setDtSort] = useState<{col:string;dir:1|-1}>({col:'fecha_registro',dir:-1});
+  const [rptSubView, setRptSubView] = useState<'resumen'|'brokers'|'proyectos'|'fuentes'|'velocidad'>('resumen');
+  const [rptAgrup, setRptAgrup] = useState<'semana'|'mes'|'trimestre'>('mes');
 
   // ── Authentication States ──
   const [currentUser, setCurrentUser] = useState<string | null>(() => {
     return sessionStorage.getItem('glp_crm_logged_user');
   });
+  const currentUserRole = useMemo<UserRole>(() => {
+    if (!currentUser) return 'gerencia';
+    if (currentUser.toLowerCase() === SUPERADMIN_USERNAME.toLowerCase()) return 'superadmin';
+    const users = getAdminUsers();
+    const u = users.find((x: any) => x.username === currentUser);
+    return (u?.rol as UserRole) || 'gerencia';
+  }, [currentUser]);
+  const isSuperAdmin = currentUserRole === 'superadmin';
+  const allowedModules = useMemo(() => {
+    if (isSuperAdmin) return null; // null = sin restricción
+    return ROLE_MODULES[currentUserRole];
+  }, [currentUserRole, isSuperAdmin]);
 
   // ── Module States ───────────────────────────────────────────
   const [closedSales, setClosedSales] = useState<Sale[]>(INITIAL_CLOSED_SALES);
@@ -979,7 +1135,13 @@ export default function CRMDashboard() {
   const [calcFilterPrice, setCalcFilterPrice] = useState<string>('all');
 
   // Brokers
-  const [brokers, setBrokers] = useState<Broker[]>(INITIAL_BROKERS);
+  const [brokers, setBrokers] = useState<Broker[]>(() => {
+    try {
+      const saved = localStorage.getItem('glp_crm_brokers');
+      if (saved) { const parsed = JSON.parse(saved); if (Array.isArray(parsed) && parsed.length > 0) return parsed; }
+    } catch {}
+    return INITIAL_BROKERS;
+  });
   const [showBrokerForm, setShowBrokerForm] = useState(false);
   const [brokerDrilldown, setBrokerDrilldown] = useState<number | null>(null);
   const [brokerEntityFilter, setBrokerEntityFilter] = useState('all');
@@ -988,8 +1150,19 @@ export default function CRMDashboard() {
   const [reportTarget, setReportTarget] = useState('all');
   const [newBroker, setNewBroker] = useState({ nombre: '', empresa: '', zona: '', telefono: '', email: '' });
 
+  // Persistir brokers en localStorage para que sobrevivan el refresh
+  useEffect(() => { localStorage.setItem('glp_crm_brokers', JSON.stringify(brokers)); }, [brokers]);
+
   // Prospects
   const [prospects, setProspects] = useState<Prospect[]>([]);
+  // Brokers solo ven sus prospectos; otros ven todos
+  const visibleProspects = useMemo(() => {
+    if (currentUserRole !== 'broker') return prospects;
+    const users = getAdminUsers();
+    const u = users.find((x: any) => x.username === currentUser);
+    const brokerName = u?.nombre || u?.name || '';
+    return prospects.filter(p => !brokerName || p.broker_asignado === brokerName);
+  }, [prospects, currentUserRole, currentUser]);
 
   useEffect(() => {
     const applyMigration = (data: Prospect[]) => {
@@ -1022,87 +1195,6 @@ export default function CRMDashboard() {
         return p;
       });
       
-      // Inject TEST PROSPECTS
-      const testProspects = [
-        {
-          id: 999001,
-          nombre: 'TEST-1', apellido: 'Inicial',
-          direccion: 'Bogotá', correo: 'test1.inicial@gmail.com', telefono: '+57 300 000 0001',
-          ocupacion: 'Piloto Comercial', proyectos_interes: ['Ocean Reef Park'],
-          forma_contacto: 'WhatsApp', broker_asignado: 'Patricia Vargas', estado: 'Contacto Inicial',
-          presupuesto_usd: 120000, notas: 'Prospecto de prueba para validar Contacto Inicial',
-          fecha_entrada: new Date().toISOString().split('T')[0],
-          historial: [{ fecha: new Date().toISOString().split('T')[0], accion: 'Creación', detalle: 'Prospecto inyectado' }],
-          emailHistory: [
-            { id: 't1_1', date: new Date().toISOString().split('T')[0], subject: 'Consulta desde WhatsApp', body: 'Hola, quiero el brochure', status: 'incoming', direction: 'in' },
-            { id: 't1_2', date: new Date().toISOString().split('T')[0], subject: 'Envío de Brochure - SARA', body: 'Adjunto brochure de Ocean Reef', status: 'draft', direction: 'out' }
-          ]
-        },
-        {
-          id: 999002,
-          nombre: 'TEST-2', apellido: 'Calificación',
-          direccion: 'Medellín', correo: 'test2.calificacion@gmail.com', telefono: '+57 300 000 0002',
-          ocupacion: 'CEO', proyectos_interes: ['The Palms'],
-          forma_contacto: 'LinkedIn', broker_asignado: 'Santiago Mesa', estado: 'Calificación',
-          presupuesto_usd: 350000, notas: 'Prospecto de prueba para validar Calificación y Termómetro SARA',
-          fecha_entrada: new Date().toISOString().split('T')[0],
-          historial: [{ fecha: new Date().toISOString().split('T')[0], accion: 'Creación', detalle: 'Prospecto inyectado' }],
-          emailHistory: [
-            { id: 't2_1', date: new Date().toISOString().split('T')[0], subject: 'FAQ - Retorno de inversión', body: '¿Cuál es el ROI esperado?', status: 'incoming', direction: 'in' },
-            { id: 't2_2', date: new Date().toISOString().split('T')[0], subject: 'Información de ROI - The Palms', body: 'El ROI esperado es del 7% anual.', status: 'draft', direction: 'out' }
-          ]
-        },
-        {
-          id: 999003,
-          nombre: 'TEST-3', apellido: 'Presentación',
-          direccion: 'Cali', correo: 'test3.presentacion@gmail.com', telefono: '+57 300 000 0003',
-          ocupacion: 'Inversionista', proyectos_interes: ['Panamá Viejo Residences'],
-          forma_contacto: 'Referido', broker_asignado: 'Felipe Londoño', estado: 'Presentación',
-          presupuesto_usd: 500000, notas: 'Prospecto de prueba para Presentación',
-          fecha_entrada: new Date().toISOString().split('T')[0],
-          historial: [{ fecha: new Date().toISOString().split('T')[0], accion: 'Creación', detalle: 'Prospecto inyectado' }],
-          emailHistory: [
-             { id: 't3_1', date: new Date().toISOString().split('T')[0], subject: 'Resumen de Zoom', body: 'Fue una buena reunión, espero el resumen.', status: 'incoming', direction: 'in' },
-             { id: 't3_2', date: new Date().toISOString().split('T')[0], subject: 'Resumen de Presentación - SARA', body: 'Gracias por asistir a la presentación. Adjunto los detalles.', status: 'draft', direction: 'out' }
-          ]
-        },
-        {
-          id: 999004,
-          nombre: 'TEST-4', apellido: 'Negociación',
-          direccion: 'Barranquilla', correo: 'test4.negociacion@gmail.com', telefono: '+57 300 000 0004',
-          ocupacion: 'Abogado', proyectos_interes: ['Ocean Reef Park'],
-          forma_contacto: 'Web', broker_asignado: 'Patricia Vargas', estado: 'Negociación',
-          presupuesto_usd: 1200000, notas: 'Validar colores de advertencia/amarillo en el termómetro',
-          fecha_entrada: new Date().toISOString().split('T')[0],
-          historial: [{ fecha: new Date().toISOString().split('T')[0], accion: 'Creación', detalle: 'Prospecto inyectado' }],
-          emailHistory: [
-             { id: 't4_1', date: new Date().toISOString().split('T')[0], subject: 'Contraoferta y FAQ Tributaria', body: '¿Me pueden confirmar el tema tributario para firmar?', status: 'incoming', direction: 'in' },
-             { id: 't4_2', date: new Date().toISOString().split('T')[0], subject: 'Confirmación Legal y Tributaria', body: 'Confirmamos la exención de 20 años.', status: 'draft', direction: 'out' }
-          ]
-        },
-        {
-          id: 999005,
-          nombre: 'TEST-5', apellido: 'Cierre',
-          direccion: 'Bogotá', correo: 'test5.cierre@gmail.com', telefono: '+57 300 000 0005',
-          ocupacion: 'Médico', proyectos_interes: ['Surfside'],
-          forma_contacto: 'Web', broker_asignado: 'Andrés Morales', estado: 'Cierre',
-          presupuesto_usd: 400000, notas: 'Validar color verde y completitud en embudo',
-          fecha_entrada: new Date().toISOString().split('T')[0],
-          historial: [{ fecha: new Date().toISOString().split('T')[0], accion: 'Creación', detalle: 'Prospecto inyectado' }],
-          emailHistory: [
-             { id: 't5_1', date: new Date().toISOString().split('T')[0], subject: 'Comprobante de Transferencia', body: 'Adjunto Swift de la reserva.', status: 'incoming', direction: 'in' },
-             { id: 't5_2', date: new Date().toISOString().split('T')[0], subject: '¡Felicidades por su Inversión!', body: 'Hemos recibido los fondos. Bienvenido a Surfside.', status: 'sent', direction: 'out' }
-          ]
-        }
-      ];
-
-      // Add them if they don't exist
-      testProspects.forEach(tp => {
-        if (!migrated.find(p => p.id === tp.id)) {
-          migrated.unshift(tp);
-        }
-      });
-
       return migrated;
     };
 
@@ -1121,6 +1213,8 @@ export default function CRMDashboard() {
       })
       .catch(e => {
         console.error('Error fetching prospects:', e);
+        // Backend offline: usar datos demo para que los módulos tengan contenido
+        setProspects(applyMigration(INITIAL_PROSPECTS));
       });
   }, []);
 
@@ -1198,6 +1292,99 @@ export default function CRMDashboard() {
     presupuesto_usd: 0, notas: '', historial: [],
   });
 
+  // Casos / Postventa (Fase F)
+  // Campañas state
+  const [campanaTab, setCampanaTab] = useState<'dashboard'|'lista'|'nueva'|'roi'>('dashboard');
+  const [campanaWizardStep, setCampanaWizardStep] = useState(1);
+  const [campanaDetalle, setCampanaDetalle] = useState<any | null>(null);
+  const [campanas, setCampanas] = useState<any[]>([
+    {
+      id: 1, nombre: 'Reactivación Leads Fríos — Q3 2026', tipo: 'drip', canal: 'Email',
+      objetivo: 'reactivar', segmentoEtapas: ['Lead Frío'], segmentoPresupMin: 0, segmentoPresupMax: 9999999,
+      segmentoProyectos: [], segmentoInactividad: 60, segmentoScore: 0,
+      estado: 'activa', enviados: 0, abiertos: 0, clicks: 0, citas: 0, cierres: 0, revenue: 0,
+      fechaInicio: '2026-07-01', fechaFin: '2026-07-31', proximoEnvio: '2026-07-15',
+      prospectosTotales: 0, prospectosPaso: [],
+      asunto: '{{nombre}}, hay algo nuevo en GLP que queremos compartirte', cuerpo: '',
+      dripPasos: [
+        { dias: 0, asunto: '{{nombre}}, hace tiempo no hablamos — y tenemos novedades', cuerpo: 'Estimado {{nombre}},\n\nHace un tiempo tuvimos el gusto de conocernos y conversar sobre tu búsqueda de propiedad en Panamá. Sabemos que los tiempos y prioridades cambian, y lo entendemos perfectamente.\n\nEl mercado inmobiliario panameño ha evolucionado notablemente en los últimos meses: nuevas etapas disponibles en Armonía, Ocena y The Palms, precios de lanzamiento y condiciones de financiación más favorables.\n\n¿Tienes 15 minutos esta semana para ponernos al día?\n\nCon gusto,\n{{broker}}\nGLP — Propiedades de Lujo', enviados: 0, abiertos: 0 },
+        { dias: 5, asunto: '{{nombre}}, ¿conoces Armonía y Ventu en Bella Vista?', cuerpo: 'Estimado {{nombre}},\n\nQuisimos compartirte dos proyectos en Bella Vista — una de las zonas con mayor demanda de renta en Ciudad de Panamá:\n\n✶ Armonía — desde $181,000 USD · Entrega inmediata disponible · Cap rate 6.0–7.5%\n✶ Ventu — modelo hotelero optimizado para Airbnb · Cap rate proyectado 8–12%\n\nAmbos a 5 minutos de Multiplaza Pacific.\n\n¿Agendamos una visita esta semana?\n\n{{broker}}\nGLP — Propiedades de Lujo', enviados: 0, abiertos: 0 },
+        { dias: 12, asunto: 'Últimas unidades disponibles — oferta especial para ti', cuerpo: 'Estimado {{nombre}},\n\nQueremos ser directos: hay disponibilidad limitada en algunos de nuestros proyectos más solicitados y hemos podido gestionar condiciones especiales para prospectos selectos.\n\nSi tienes interés en retomar la conversación, esta es la semana indicada.\n\nRespóndenos este correo o escíbenos por WhatsApp y coordinamos en menos de 24 horas.\n\n{{broker}}\nGLP — Propiedades de Lujo', enviados: 0, abiertos: 0 },
+      ],
+      costoTotal: 0, alertas: [],
+    },
+    {
+      id: 2, nombre: 'Bienvenida Contacto Inicial — Drip GLP', tipo: 'drip', canal: 'Email',
+      objetivo: 'nurturing', segmentoEtapas: ['Contacto Inicial'], segmentoPresupMin: 0, segmentoPresupMax: 9999999,
+      segmentoProyectos: [], segmentoInactividad: 0, segmentoScore: 0,
+      estado: 'activa', enviados: 0, abiertos: 0, clicks: 0, citas: 0, cierres: 0, revenue: 0,
+      fechaInicio: '2026-07-01', fechaFin: null, proximoEnvio: '2026-07-10',
+      prospectosTotales: 0, prospectosPaso: [],
+      asunto: '{{nombre}}, bienvenido a GLP — El portafolio de lujo de Panamá', cuerpo: '',
+      dripPasos: [
+        { dias: 0, asunto: '{{nombre}}, bienvenido a GLP — El portafolio de lujo de Panamá', cuerpo: 'Estimado {{nombre}},\n\nEs un placer darte la bienvenida a GLP. Somos la firma especializada en propiedades residenciales de lujo en Panamá, con proyectos en Ciudad de Panamá, Ocean Reef Islands y Playa Caracol.\n\nNuestro portafolio incluye opciones desde $136,000 hasta $2,100,000 USD — para inversionistas de renta, compradores patrimoniales y quienes buscan su segunda residencia frente al Pacífico.\n\nEn los próximos días te compartiremos información que te permitirá conocernos mejor. Mientras tanto, ¿hay algún proyecto o zona que te haya llamado la atención?\n\nCon gusto,\n{{broker}}\nGLP — Propiedades de Lujo', enviados: 0, abiertos: 0 },
+        { dias: 3, asunto: '{{nombre}}, ¿buscas renta, valorización o segunda residencia?', cuerpo: 'Estimado {{nombre}},\n\nCada comprador tiene un objetivo diferente, y en GLP nos especializamos en encontrar el activo exacto para cada perfil:\n\n🏙️ Para renta: Armonía (6.0–7.5%), Ventu hotelero (8–12%), Panama Viejo Residence (6.5–8.0%)\n🏔️ Para valorización patrimonial: Ocena en Santa María, Bosco, The Palms en Ocean Reef\n🌊 Para segunda residencia: Aires del Mar, The Tides y Brisas del Mar en Playa Caracol\n\n¿Cuál de estos perfiles se acerca más a lo que buscas?\n\n{{broker}}\nGLP — Propiedades de Lujo', enviados: 0, abiertos: 0 },
+        { dias: 7, asunto: 'El mercado inmobiliario de lujo en Panamá — lo que debes saber', cuerpo: 'Estimado {{nombre}},\n\nPanamá tiene una de las economías más estables de América Latina: dolarización, libre repatriación de capitales y sin impuesto de ganancia de capital para extranjeros.\n\nEn los últimos 12 meses:\n• Valorización promedio en Ciudad de Panamá: 4–6% anual\n• Vacancia en proyectos premium: 4–8%\n• Cap rates más altos que Miami o Bogotá para el mismo nivel de calidad\n\nSi te interesa profundizar, podemos preparar un análisis personalizado para tu presupuesto.\n\n{{broker}}\nGLP — Propiedades de Lujo', enviados: 0, abiertos: 0 },
+        { dias: 14, asunto: '{{nombre}}, ¿agendamos una visita o videollamada esta semana?', cuerpo: 'Estimado {{nombre}},\n\nHemos disfrutado compartirte información sobre el mercado y nuestro portafolio. Ahora nos encantaría dar el siguiente paso: conocerte mejor y entender exactamente qué estás buscando.\n\nPodemos coordinar:\n• Una visita privada a nuestras salas de ventas en Ciudad de Panamá\n• Una videollamada de 30 minutos con nuestro equipo de asesores\n• Un análisis personalizado de rentabilidad para tu caso específico\n\n¿Qué opción te acomoda más?\n\n{{broker}}\nGLP — Propiedades de Lujo', enviados: 0, abiertos: 0 },
+      ],
+      costoTotal: 0, alertas: [],
+    },
+    {
+      id: 3, nombre: 'Presentación Ocena y Bosco — Alto Presupuesto', tipo: 'drip', canal: 'Email',
+      objetivo: 'presentacion', segmentoEtapas: ['Calificado', 'Presentación'], segmentoPresupMin: 400000, segmentoPresupMax: 9999999,
+      segmentoProyectos: ['Ocena', 'Bosco'], segmentoInactividad: 0, segmentoScore: 40,
+      estado: 'borrador', enviados: 0, abiertos: 0, clicks: 0, citas: 0, cierres: 0, revenue: 0,
+      fechaInicio: null, fechaFin: null, proximoEnvio: null,
+      prospectosTotales: 0, prospectosPaso: [],
+      asunto: '{{nombre}}, Santa María es el activo patrimonial más sólido de Panamá', cuerpo: '',
+      dripPasos: [
+        { dias: 0, asunto: '{{nombre}}, Santa María es el activo patrimonial más sólido de Panamá', cuerpo: 'Estimado {{nombre}},\n\nSanta María Golf & Country Club es hoy el corredor residencial de más alta valorización en Ciudad de Panamá — con el único campo de golf Jack Nicklaus del país.\n\nEn este entorno exclusivo tenemos dos proyectos:\n\n✶ Ocena — desde $446,000 USD · 100–270 m² · Entrega Q4 2027\n✶ Bosco — desde $474,000 USD · Jardines botánicos únicos · Entrega 2030\n\nAmbos ofrecen valorización proyectada del 5–7% anual.\n\n{{broker}}\nGLP — Propiedades de Lujo', enviados: 0, abiertos: 0 },
+        { dias: 5, asunto: 'Visita privada a Ocena — solo para clientes seleccionados', cuerpo: 'Estimado {{nombre}},\n\nNos gustaría invitarte a una visita privada al proyecto Ocena en Santa María esta semana. Podrás ver los avances de obra, conocer el modelo del apartamento y conversar con el equipo de diseño.\n\nTenemos disponibilidad martes y jueves en la tarde. ¿Cuál te funciona mejor?\n\n{{broker}}\nGLP — Propiedades de Lujo', enviados: 0, abiertos: 0 },
+        { dias: 12, asunto: 'Propuesta de unidad reservada para {{nombre}} en Ocena', cuerpo: 'Estimado {{nombre}},\n\nBasados en lo que conocemos de tu perfil, hemos identificado la unidad que mejor se ajusta a tus objetivos en Ocena:\n\n📐 Área: 130 m² con terraza panorámica\n💰 Precio: $580,000 USD\n🏦 Cuota inicial: 20% en cuotas durante la obra\n📈 Valorización proyectada: 5–6% anual\n💵 Renta mensual estimada: $2,800–$3,200 USD\n\nEsta unidad tiene derecho de primera selección hasta el viernes.\n\n{{broker}}\nGLP — Propiedades de Lujo', enviados: 0, abiertos: 0 },
+      ],
+      costoTotal: 0, alertas: [],
+    },
+    {
+      id: 4, nombre: 'Invitación VIP — Ocean Reef Islands', tipo: 'masiva', canal: 'Email',
+      objetivo: 'evento', segmentoEtapas: ['Calificado', 'Presentación', 'Negociación'], segmentoPresupMin: 800000, segmentoPresupMax: 9999999,
+      segmentoProyectos: ['The Palms', 'Ocean Reef Park', 'O Club Residences'], segmentoInactividad: 0, segmentoScore: 50,
+      estado: 'borrador', enviados: 0, abiertos: 0, clicks: 0, citas: 0, cierres: 0, revenue: 0,
+      fechaInicio: null, fechaFin: null, proximoEnvio: null,
+      prospectosTotales: 0, prospectosPaso: [],
+      asunto: 'Invitación privada — Presentación exclusiva Ocean Reef Islands', cuerpo: 'Estimado {{nombre}},\n\nTenemos el honor de invitarte a una presentación privada de Ocean Reef Islands — el desarrollo residencial más exclusivo de Panamá, en una isla artificial en Punta Pacífica con acceso directo al Hospital Johns Hopkins.\n\nEl evento incluye:\n• Recorrido en lancha privada por la isla\n• Visita a unidades de The Palms (entrega inmediata) desde $1,200,000 USD\n• Presentación de Ocean Reef Park y O Club Residences\n• Cóctel de bienvenida y conversación con el equipo de arquitectos\n\nLos cupos son estrictamente limitados. Por favor confirma tu interés respondiendo este mensaje.\n\n{{broker}}\nGLP — Propiedades de Lujo',
+      dripPasos: [],
+      costoTotal: 0, alertas: [],
+    },
+  ]);
+  const [nuevaCampana, setNuevaCampana] = useState<any>({
+    nombre: '', tipo: 'drip', canal: 'Email', objetivo: 'nurturing',
+    segmentoEtapas: [], segmentoPresupMin: 0, segmentoPresupMax: 9999999,
+    segmentoProyectos: [], segmentoInactividad: 0, segmentoScore: 0,
+    asunto: '', cuerpo: '',
+    dripPasos: [
+      { dias: 0, asunto: '', cuerpo: '', enviados: 0, abiertos: 0 },
+      { dias: 3, asunto: '', cuerpo: '', enviados: 0, abiertos: 0 },
+      { dias: 7, asunto: '', cuerpo: '', enviados: 0, abiertos: 0 },
+    ],
+    costoTotal: 0,
+  });
+  const [campanaEditPaso, setCampanaEditPaso] = useState<number | null>(0);
+  const [campanasMercado, setCampanasMercado] = useState<'colombia'|'panama'|'latam'>('panama');
+
+  const [casos, setCasos] = useState<any[]>([]);
+  const [casosStats, setCasosStats] = useState<any>(null);
+  const [casosLoading, setCasosLoading] = useState(false);
+  const [casoDetail, setCasoDetail] = useState<any | null>(null);
+  const [casoForm, setCasoForm] = useState(false);
+  const [casoFilterEstado, setCasoFilterEstado] = useState('');
+  // Actividades de caso
+  const [casoActTipo, setCasoActTipo] = useState('llamada');
+  const [casoActDesc, setCasoActDesc] = useState('');
+  const [casoActOpen, setCasoActOpen] = useState(false);
+  const [casoFilterPrioridad, setCasoFilterPrioridad] = useState('');
+  const [casoFilterTipo, setCasoFilterTipo] = useState('');
+  const [newCaso, setNewCaso] = useState<any>({ titulo:'', descripcion:'', tipo:'consulta', prioridad:'normal', asignado_a:'', notas:'', prospecto_id:'' });
+
   // Events
   const [events, setEvents] = useState<EventData[]>(INITIAL_EVENTS);
   const [expandedEvent, setExpandedEvent] = useState<number | null>(null);
@@ -1226,6 +1413,28 @@ export default function CRMDashboard() {
   const [showFaqForm, setShowFaqForm] = useState(false);
   const [newFaq, setNewFaq] = useState({ categoria: FAQ_CATEGORIES[0], pregunta: '', respuesta: '' });
 
+  // Mobile view
+  const [forceMobileView, setForceMobileView] = useState(false);
+  const [isMobileScreen, setIsMobileScreen] = useState(() => window.innerWidth < 768);
+  const [mobileTab, setMobileTab] = useState<'portafolio'|'calculadora'|'prospectos'|'actividad'|'nuevo'>('prospectos');
+  const [mobileProspect, setMobileProspect] = useState<Prospect | null>(null);
+  const [mobileActProspId, setMobileActProspId] = useState('');
+  const [mobileActTipo, setMobileActTipo] = useState('llamada');
+  const [mobileActDesc, setMobileActDesc] = useState('');
+  const [mobileActSaved, setMobileActSaved] = useState(false);
+  const [mobileNewProsp, setMobileNewProsp] = useState({ nombre:'', apellido:'', telefono:'', email:'', presupuesto_usd:'', estado:'Contacto Inicial', broker_asignado:'', proyectos_interes:[] as string[], forma_contacto:'WhatsApp' });
+  const [mobileNewSaved, setMobileNewSaved] = useState(false);
+  const [mobileProject, setMobileProject] = useState<any | null>(null);
+  const [mobileCalcTab, setMobileCalcTab] = useState<'cuota'|'hipoteca'>('cuota');
+  const [mobileCalcMeses, setMobileCalcMeses] = useState(36);
+  const [mobileCalcMesesCustom, setMobileCalcMesesCustom] = useState(false);
+
+  React.useEffect(() => {
+    const handler = () => setIsMobileScreen(window.innerWidth < 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+
   // Calculadora ROI
   const [calcPerfil, setCalcPerfil] = useState<string | null>(null);
   const [calcProject, setCalcProject] = useState<string | null>(null);
@@ -1253,7 +1462,22 @@ export default function CRMDashboard() {
   const [gitStatus, setGitStatus] = useState<'idle'|'loading'|'ok'|'sin_cambios'|'error'>('idle');
   const [gitMsg, setGitMsg] = useState('');
   const [gitCommitNote, setGitCommitNote] = useState('');
-  const [gitHistorial, setGitHistorial] = useState<{hash:string;subject:string;date:string}[]>([]);
+  const [gitHistorial, setGitHistorial] = useState<{hash:string;subject:string;date:string}[]>(() => {
+    try { const s = localStorage.getItem('glp_git_historial'); if (s) { const p = JSON.parse(s); if (Array.isArray(p) && p.length > 0) return p; } } catch {}
+    // Historial base del repositorio (commits reales del proyecto)
+    return [
+      { hash: 'e0d1388', subject: 'Reportes: pantalla completa sin panel derecho', date: '2026-07-09' },
+      { hash: 'e5666a8', subject: 'Reportes: rediseño completo con filtros configurables y Recharts', date: '2026-07-09' },
+      { hash: '71c3637', subject: 'Fase D: Módulo de Reportes con analytics de ventas', date: '2026-07-09' },
+      { hash: '2bddb5a', subject: 'Sara: soporte de archivos adjuntos en borradores de correo', date: '2026-07-02' },
+      { hash: '6067207', subject: 'Fix: envio real de correos al aprobar borradores de Sara', date: '2026-07-02' },
+      { hash: '6ce1dbb', subject: 'Tarea C.1: Email al admin cuando se detecta crisis GRAVE en KPI', date: '2026-07-02' },
+      { hash: '86fdb5b', subject: 'Tarea B.3: Deteccion de prospectos frios por score', date: '2026-07-02' },
+      { hash: '9d737d3', subject: 'Tarea B.2: Notificacion al admin cuando Sara genera borrador', date: '2026-07-02' },
+      { hash: '0697225', subject: 'Tarea B.1: Trigger autonomo Sara 72h con notificacion al admin', date: '2026-07-02' },
+      { hash: 'fc59635', subject: 'Tarea A.3: Conectar frontend de agentes a Supabase (dual-write)', date: '2026-07-02' },
+    ];
+  });
   const [historialLoaded, setHistorialLoaded] = useState(false);
   const [agentSaraActive, setAgentSaraActive] = useState(false);
   const [agentValeriaActive, setAgentValeriaActive] = useState(false);
@@ -1642,32 +1866,126 @@ Sin markdown, solo el JSON array.`;
     fetch(`${API}/isabella/scripts`).then(r=>r.json()).then(d=>{ if(Array.isArray(d) && d.length) setIsabellaScripts(d as any); }).catch(()=>{});
   }, [activeModule]);
 
+  // ── Cargar casos al entrar al módulo ────────────────────────────────────
+  const fetchCasos = () => {
+    setCasosLoading(true);
+    const q = new URLSearchParams();
+    if (casoFilterEstado)    q.set('estado', casoFilterEstado);
+    if (casoFilterPrioridad) q.set('prioridad', casoFilterPrioridad);
+    if (casoFilterTipo)      q.set('tipo', casoFilterTipo);
+    Promise.all([
+      fetch(`${API}/casos?${q}`).then(r=>r.json()).catch(()=>[]),
+      fetch(`${API}/casos/stats`).then(r=>r.json()).catch(()=>null),
+    ]).then(([list, stats]) => {
+      if (Array.isArray(list)) setCasos(list);
+      if (stats) setCasosStats(stats);
+    }).finally(()=>setCasosLoading(false));
+  };
+  useEffect(() => {
+    if (activeModule !== 'casos') return;
+    fetchCasos();
+  }, [activeModule, casoFilterEstado, casoFilterPrioridad, casoFilterTipo]);
+
   // ── Cargar analytics al entrar al módulo Reportes ────────────────────────
   useEffect(() => {
     if (activeModule !== 'reportes') return;
-    fetch(`${API}/analytics/filtros`).then(r=>r.json()).then(d=>{ if(d.canales) setAnalyticsFiltros(d); }).catch(()=>{});
+    fetch(`${API}/analytics/filtros`).then(r=>r.json()).then(d=>{ if(d.canales) setAnalyticsFiltros(d); }).catch(()=>{
+      // Fallback local: derivar filtros disponibles de prospectos en memoria
+      const brkSet = [...new Set(prospects.map(p=>(p.broker_asignado as any)||'').filter(Boolean))].sort();
+      const canSet = [...new Set(prospects.map(p=>(p.forma_contacto as any)||'').filter(Boolean))].sort();
+      const projSet = [...new Set(prospects.flatMap(p=>Array.isArray(p.proyectos_interes)?p.proyectos_interes:[]))].sort();
+      setAnalyticsFiltros({brokers: brkSet, canales: canSet, proyectos: projSet});
+    });
   }, [activeModule]);
 
   useEffect(() => {
     if (activeModule !== 'reportes') return;
-    const q = new URLSearchParams({ dias: String(rptDias), ...(rptCanal && {canal: rptCanal}), ...(rptBroker && {broker: rptBroker}), ...(rptProyecto && {proyecto: rptProyecto}) }).toString();
+    const usaRango = rptFechaInicio && rptFechaFin;
+    const q = new URLSearchParams({
+      ...(usaRango ? {fecha_inicio: rptFechaInicio, fecha_fin: rptFechaFin} : {dias: String(rptDias)}),
+      ...(rptCanal && {canal: rptCanal}),
+      ...(rptBroker && {broker: rptBroker}),
+      ...(rptProyecto && {proyecto: rptProyecto}),
+    }).toString();
+    const qa = q + `&agrup=${rptAgrup}`;
     setRptLoading(true);
-    Promise.all([
-      fetch(`${API}/analytics/resumen?${q}`).then(r=>r.json()),
-      fetch(`${API}/analytics/por-tiempo?${q}`).then(r=>r.json()),
-      fetch(`${API}/analytics/por-proyecto?${q}`).then(r=>r.json()),
-      fetch(`${API}/analytics/funnel?${q}`).then(r=>r.json()),
-      fetch(`${API}/analytics/por-canal?${q}`).then(r=>r.json()),
-      fetch(`${API}/analytics/por-broker?${q}`).then(r=>r.json()),
-    ]).then(([res, tiempo, proyecto, funnel, canal, broker]) => {
-      setAnalyticsResumen(res);
-      if(Array.isArray(tiempo))   setAnalyticsTiempo(tiempo);
-      if(Array.isArray(proyecto)) setAnalyticsProyecto(proyecto);
-      if(Array.isArray(funnel))   setAnalyticsFunnel(funnel);
-      if(Array.isArray(canal))    setAnalyticsCanal(canal);
-      if(Array.isArray(broker))   setAnalyticsBroker(broker);
-    }).catch(()=>{}).finally(()=>setRptLoading(false));
-  }, [activeModule, rptDias, rptCanal, rptBroker, rptProyecto]);
+    const safeJson = (r: Response) => r.json().catch(() => null);
+    Promise.allSettled([
+      fetch(`${API}/analytics/resumen?${q}`).then(safeJson),
+      fetch(`${API}/analytics/por-tiempo?${q}`).then(safeJson),
+      fetch(`${API}/analytics/por-proyecto?${q}`).then(safeJson),
+      fetch(`${API}/analytics/funnel?${q}`).then(safeJson),
+      fetch(`${API}/analytics/por-canal?${q}`).then(safeJson),
+      fetch(`${API}/analytics/por-broker?${q}`).then(safeJson),
+      fetch(`${API}/analytics/broker-tiempo?${qa}`).then(safeJson),
+      fetch(`${API}/analytics/proyecto-tiempo?${qa}`).then(safeJson),
+      fetch(`${API}/analytics/conversion-canal?${q}`).then(safeJson),
+      fetch(`${API}/analytics/velocidad?${q}`).then(safeJson),
+      fetch(`${API}/analytics/prospectos-detalle?${q}`).then(safeJson),
+    ]).then(results => {
+      const val = (i: number) => results[i].status === 'fulfilled' ? results[i].value : null;
+      const res = val(0); if(res && !res.error) setAnalyticsResumen(res);
+      const tiempo = val(1);     if(Array.isArray(tiempo))    setAnalyticsTiempo(tiempo);
+      const proyecto = val(2);   if(Array.isArray(proyecto))  setAnalyticsProyecto(proyecto);
+      const funnel = val(3);     if(Array.isArray(funnel))    setAnalyticsFunnel(funnel);
+      const canal = val(4);      if(Array.isArray(canal))     setAnalyticsCanal(canal);
+      const broker = val(5);     if(Array.isArray(broker))    setAnalyticsBroker(broker);
+      const brokerT = val(6);    if(Array.isArray(brokerT))   setAnalyticsBrokerTiempo(brokerT);
+      const proyectoT = val(7);  if(Array.isArray(proyectoT)) setAnalyticsProyectoTiempo(proyectoT);
+      const convCanal = val(8);  if(Array.isArray(convCanal)) setAnalyticsConversionCanal(convCanal);
+      const velocidad = val(9);  if(Array.isArray(velocidad)) setAnalyticsVelocidad(velocidad);
+      const detalle = val(10);   if(Array.isArray(detalle))   setRptDetalle(detalle);
+      // Fallback local: si el backend no respondió, calcular desde prospectos en memoria
+      if (!res || res.error) {
+        const cutoffDate = rptFechaInicio ? new Date(rptFechaInicio)
+          : rptDias > 0 ? new Date(Date.now() - rptDias * 86400000) : null;
+        const endDate = rptFechaFin ? new Date(rptFechaFin + 'T23:59:59') : null;
+        const filtered = prospects.filter(p => {
+          if (rptBroker && (p.broker_asignado as any) !== rptBroker) return false;
+          if (rptCanal && (p.forma_contacto as any) !== rptCanal) return false;
+          if (rptProyecto && !(Array.isArray(p.proyectos_interes) ? p.proyectos_interes : []).includes(rptProyecto)) return false;
+          if (cutoffDate || endDate) {
+            const d = new Date(p.fecha_entrada || '');
+            if (cutoffDate && d < cutoffDate) return false;
+            if (endDate && d > endDate) return false;
+          }
+          return true;
+        });
+        const local = computeAnalyticsFromProspects(filtered);
+        setAnalyticsResumen(local.resumen);
+        setAnalyticsTiempo(local.tiempo);
+        setAnalyticsProyecto(local.byProject);
+        setAnalyticsFunnel(local.funnel);
+        setAnalyticsCanal(local.byCanal);
+        setAnalyticsBroker(local.byBroker);
+        setAnalyticsBrokerTiempo(local.brokerTiempo);
+        setAnalyticsProyectoTiempo(local.proyectoTiempo);
+        setAnalyticsConversionCanal(local.conversionCanal);
+        setAnalyticsVelocidad(local.velocidad as any[]);
+        setRptDetalle(local.detalle);
+      }
+    }).finally(()=>setRptLoading(false));
+  }, [activeModule, rptDias, rptCanal, rptBroker, rptProyecto, rptAgrup, rptFechaInicio, rptFechaFin]);
+
+  // Si los prospectos se cargaron después de que se calcularon los analytics (race condition offline),
+  // recalcular cuando hay datos reales pero el resumen está vacío o sin prospectos
+  useEffect(() => {
+    if (activeModule !== 'reportes') return;
+    if (prospects.length === 0) return;
+    if (analyticsResumen !== null && Number(analyticsResumen.total_prospectos) > 0) return;
+    const local = computeAnalyticsFromProspects(prospects);
+    setAnalyticsResumen(local.resumen);
+    setAnalyticsTiempo(local.tiempo);
+    setAnalyticsProyecto(local.byProject);
+    setAnalyticsFunnel(local.funnel);
+    setAnalyticsCanal(local.byCanal);
+    setAnalyticsBroker(local.byBroker);
+    setAnalyticsBrokerTiempo(local.brokerTiempo);
+    setAnalyticsProyectoTiempo(local.proyectoTiempo);
+    setAnalyticsConversionCanal(local.conversionCanal);
+    setAnalyticsVelocidad(local.velocidad as any[]);
+    setRptDetalle(local.detalle);
+  }, [activeModule, prospects, analyticsResumen]);
 
   const updateProfile = (field: keyof GlpBrandProfile, value: any) => {
     setBrandProfile(prev => ({ ...prev, [field]: value }));
@@ -2725,7 +3043,7 @@ Responde SOLO con JSON sin bloques de código:
     ];
 
     return (
-      <div style={{ background: '#F8FAFC', borderRadius: 12, padding: 18, border: `1.5px solid ${T.borderLight}`, marginTop: 16 }}>
+      <div style={{ background: '#F8FAFC', borderRadius: 4, padding: 18, border: `1.5px solid ${T.borderLight}`, marginTop: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 20 }}>🤖</span>
@@ -2899,7 +3217,7 @@ Responde SOLO con JSON sin bloques de código:
 
 
   const sectionTitle = (text: string) => (
-    <h3 style={{ fontSize: 16, fontWeight: 700, color: T.text, margin: '0 0 16px 0', borderLeft: `4px solid ${T.teal}`, paddingLeft: 12 }}>{text}</h3>
+    <h3 style={{ fontSize: 22, fontWeight: 300, color: T.text, margin: '0 0 20px 0', fontFamily: T.fontSerif, letterSpacing: '0.03em', borderBottom: `1px solid ${T.border}`, paddingBottom: 10 }}>{text}</h3>
   );
 
   const renderSidebarIcon = (id: string, color: string) => {
@@ -2919,6 +3237,21 @@ Responde SOLO con JSON sin bloques de código:
           <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
             <path d="M3 3v18h18" />
             <path d="m18 8-5 5-3-3-4 4" />
+          </svg>
+        );
+      case 'campanas':
+        return (
+          <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.09h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.69a16 16 0 0 0 6 6l.97-.97a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16z"/>
+          </svg>
+        );
+      case 'casos':
+        return (
+          <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+            <rect x="9" y="3" width="6" height="4" rx="2"/>
+            <line x1="9" y1="12" x2="15" y2="12"/>
+            <line x1="9" y1="16" x2="13" y2="16"/>
           </svg>
         );
       case 'brokers':
@@ -2975,6 +3308,14 @@ Responde SOLO con JSON sin bloques de código:
             <line x1="12" y1="14" x2="12" y2="14.01" />
             <line x1="8" y1="18" x2="8" y2="18.01" />
             <line x1="12" y1="18" x2="12" y2="18.01" />
+          </svg>
+        );
+      case 'reportes':
+        return (
+          <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <rect x="2" y="3" width="20" height="14" rx="2"/>
+            <path d="M8 21h8M12 17v4"/>
+            <path d="M7 8l3 3 2-2 3 3"/>
           </svg>
         );
       case 'configuracion':
@@ -3145,7 +3486,7 @@ Responde SOLO con JSON sin bloques de código:
   };
 
   const badge = (text: string, bg: string, color: string) => (
-    <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 12, fontSize: 11, fontWeight: 600, background: bg, color }}>{text}</span>
+    <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 4, fontSize: 11, fontWeight: 600, background: bg, color }}>{text}</span>
   );
 
   const statCard = (label: string, value: string, color: string, icon: string) => (
@@ -3191,10 +3532,10 @@ Responde SOLO con JSON sin bloques de código:
         <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
           {[['all', 'Todos'], ['Proyecto de Ciudad', 'Ciudad'], ['Ocean Reef Islands', 'Ocean Reef Islands'], ['Playa Caracol', 'Playa Caracol']].map(([id, label]) => (
             <button key={id} onClick={() => setPortFilter(id)} style={{
-              padding: '6px 14px', borderRadius: 16, border: `1px solid ${id === 'all' ? T.teal : catColors[id] || T.teal}`,
-              background: portFilter === id ? (id === 'all' ? T.teal : catColors[id]) : 'transparent',
-              color: portFilter === id ? '#fff' : T.text,
-              fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              padding: '6px 16px', borderRadius: 2, border: `1px solid ${T.border}`,
+              background: portFilter === id ? T.text : 'transparent',
+              color: portFilter === id ? '#FAF9F6' : T.textSec,
+              fontSize: 9, fontWeight: 600, cursor: 'pointer', letterSpacing: '0.1em', textTransform: 'uppercase' as const,
             }}>
               {label}
             </button>
@@ -3221,24 +3562,24 @@ Responde SOLO con JSON sin bloques de código:
                     setCrmProjSearchQuery(p.zoneShort || p.zone.split('—')[1]?.trim() || p.zone.split(',')[0]);
                   }
                 }}>
-                <div style={{ height: expanded ? 200 : 160, ...heroStyle, display: 'flex', alignItems: 'flex-end', padding: 16, position: 'relative' as const }}>
-                  <div style={{ position: 'absolute' as const, inset: 0, background: 'linear-gradient(transparent 40%, rgba(0,0,0,0.55))' }} />
+                <div style={{ height: expanded ? 220 : 180, ...heroStyle, display: 'flex', alignItems: 'flex-end', padding: '14px 16px', position: 'relative' as const }}>
+                  <div style={{ position: 'absolute' as const, inset: 0, background: 'linear-gradient(to bottom, rgba(0,0,0,0.08) 0%, transparent 35%, rgba(0,0,0,0.72) 100%)' }} />
                   {/* Upload button */}
                   <button onClick={e => {
                     e.stopPropagation();
                     setUploadingProject(p.name);
                     uploadInputRef.current?.click();
                   }} title="Subir imagen de portada" style={{
-                    position: 'absolute' as const, top: 8, right: 8, zIndex: 10,
-                    background: 'rgba(0,0,0,0.5)', border: 'none', borderRadius: 6,
-                    color: '#fff', fontSize: 16, width: 32, height: 32, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    position: 'absolute' as const, top: 10, right: 10, zIndex: 10,
+                    background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6,
+                    color: '#fff', fontSize: 14, width: 30, height: 30, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)',
                   }}>
                     {isUploading ? '⏳' : '📷'}
                   </button>
                   {/* Badge de interés del prospecto activo */}
                   {isProspectInterest && !expanded && (
-                    <div style={{ position: 'absolute' as const, top: 8, left: 8, zIndex: 10, background: T.coral, color: '#fff', fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 4, letterSpacing: 0.5, textTransform: 'uppercase' as const }}>
+                    <div style={{ position: 'absolute' as const, top: 10, left: 10, zIndex: 10, background: T.coral, color: '#fff', fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 2, letterSpacing: '0.06em', textTransform: 'uppercase' as const }}>
                       ★ {activeProspect?.nombre?.split(' ')[0]}
                     </div>
                   )}
@@ -3248,28 +3589,49 @@ Responde SOLO con JSON sin bloques de código:
                       title="Volver a la grilla"
                       style={{
                         position: 'absolute' as const, top: 10, left: 10, zIndex: 10,
-                        background: T.coral, border: 'none', borderRadius: 8,
-                        color: '#fff', fontSize: 13, fontWeight: 800, cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.35)', letterSpacing: 0.3,
+                        background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 4,
+                        color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px',
+                        backdropFilter: 'blur(4px)', letterSpacing: 0.3,
                       }}>
-                      ‹ Volver a proyectos
+                      ‹ Volver
                     </button>
                   )}
-                  <div style={{ position: 'relative' as const, zIndex: 1, display: 'flex', gap: 6, alignItems: 'flex-end', width: '100%' }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: expanded ? 18 : 15, fontWeight: 700, color: '#fff', textShadow: '0 1px 3px rgba(0,0,0,0.4)' }}>{p.name}</div>
-                      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)' }}>{p.zoneShort}</div>
+                  <div style={{ position: 'relative' as const, zIndex: 1, width: '100%' }}>
+                    {/* Category + entrega badges */}
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.75)', background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(4px)', padding: '2px 8px', borderRadius: 2, letterSpacing: '0.05em', textTransform: 'uppercase' as const }}>
+                        {p.category}
+                      </span>
+                      {p.entrega && (
+                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', background: 'rgba(0,0,0,0.3)', padding: '2px 8px', borderRadius: 2, backdropFilter: 'blur(4px)', letterSpacing: '0.04em' }}>
+                          🗓 {p.entrega}
+                        </span>
+                      )}
                     </div>
-                    {badge(p.category, 'rgba(255,255,255,0.2)', '#fff')}
-                    {p.entrega && <span style={{ fontSize: 9, background: 'rgba(0,0,0,0.4)', color: '#fff', padding: '2px 6px', borderRadius: 8, whiteSpace: 'nowrap' }}>🗓 {p.entrega}</span>}
+                    {/* Project name */}
+                    <div style={{ fontSize: expanded ? 20 : 17, fontWeight: 700, color: '#fff', lineHeight: 1.1, letterSpacing: '-0.01em', textShadow: '0 2px 6px rgba(0,0,0,0.5)', marginBottom: 3 }}>{p.name}</div>
+                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', letterSpacing: '0.02em' }}>{p.zoneShort}</div>
                   </div>
                 </div>
-                <div style={{ padding: '16px 20px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 12 }}>
-                    <div><span style={{ color: T.textSec }}>Desde: </span><span style={{ fontWeight: 700, color: T.teal }}>{usd(p.minPrice)}</span></div>
-                    <div><span style={{ color: T.textSec }}>Hab: </span><span style={{ fontWeight: 600 }}>{p.bedrooms}</span></div>
-                    <div style={{ gridColumn: 'span 2' }}><span style={{ color: T.textSec }}>Área: </span><span style={{ fontWeight: 600 }}>{p.areaMin}–{p.areaMax} m²</span></div>
+                {/* Gold accent line */}
+                <div style={{ height: 2, background: `linear-gradient(to right, #B89047, #D4AF6A, transparent)` }} />
+                <div style={{ padding: '14px 18px' }}>
+                  {/* Precio destacado */}
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, letterSpacing: '0.08em', textTransform: 'uppercase' as const, marginBottom: 3 }}>Precio desde</div>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: '#001A37', fontFamily: T.fontSerif, letterSpacing: '-0.01em' }}>{usd(p.minPrice)}</div>
+                  </div>
+                  {/* Datos secundarios en fila */}
+                  <div style={{ display: 'flex', gap: 0, borderTop: `1px solid ${T.border}`, paddingTop: 10 }}>
+                    <div style={{ flex: 1, paddingRight: 12, borderRight: `1px solid ${T.border}` }}>
+                      <div style={{ fontSize: 10, color: T.textSec, letterSpacing: '0.07em', textTransform: 'uppercase' as const, marginBottom: 2 }}>Habitaciones</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{p.bedrooms}</div>
+                    </div>
+                    <div style={{ flex: 1, paddingLeft: 12 }}>
+                      <div style={{ fontSize: 10, color: T.textSec, letterSpacing: '0.07em', textTransform: 'uppercase' as const, marginBottom: 2 }}>Área</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{p.areaMin}–{p.areaMax} m²</div>
+                    </div>
                   </div>
                   {expanded && (
                     <div style={{ marginTop: 16, borderTop: `1px solid ${T.borderLight}`, paddingTop: 16 }} onClick={e => e.stopPropagation()}>
@@ -3730,7 +4092,7 @@ Responde SOLO con JSON sin bloques de código:
     };
 
     const renderProspectsTotalDrilldown = () => {
-      const totalBudget = prospects.reduce((sum, p) => sum + p.presupuesto_usd, 0);
+      const totalBudget = prospects.reduce((sum, p) => sum + Number(p.presupuesto_usd || 0), 0);
       const avgBudget = prospects.length > 0 ? totalBudget / prospects.length : 0;
       
       return (
@@ -3865,13 +4227,13 @@ Responde SOLO con JSON sin bloques de código:
           const nextEvent = events.filter(e => new Date(e.fecha) > today).sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())[0];
           const eventosProximos = events.filter(e => new Date(e.fecha) > today).length;
           const diasNextEvent = nextEvent ? Math.ceil((new Date(nextEvent.fecha).getTime() - today.getTime()) / 86400000) : null;
-          const kpiCard = (type: string, icon: string, value: React.ReactNode, label: string, sub: string, color: string) => (
+          const kpiCard = (type: string, _icon: string, value: React.ReactNode, label: string, sub: string, color: string) => (
             <div onClick={() => setActiveDrilldown(activeDrilldown?.type === type ? null : { type } as any)}
-              style={cardStyle({ textAlign: 'center' as const, cursor: 'pointer', border: activeDrilldown?.type === type ? `2px solid ${color}` : `1.5px solid ${T.borderLight}`, transition: 'all 0.2s' })}>
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}><Icon name={icon} size={24} color={color} /></div>
-              <div style={{ fontSize: 20, fontWeight: 700, color, lineHeight: 1.2 }}>{value}</div>
-              <div style={{ fontSize: 11, color: T.textSec, marginTop: 4 }}>{label}</div>
-              <div style={{ fontSize: 10, color, marginTop: 5, fontWeight: 600 }}>{sub}</div>
+              style={cardStyle({ textAlign: 'center' as const, cursor: 'pointer', background: '#FAF9F6', border: activeDrilldown?.type === type ? `1.5px solid ${color}` : `1px solid ${T.border}`, transition: 'all 0.2s', padding: '24px 20px' })}>
+              <div style={{ fontSize: 8, fontWeight: 600, color: T.textSec, letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginBottom: 12 }}>{label}</div>
+              <div style={{ fontSize: 34, fontWeight: 300, color: T.text, lineHeight: 1.05, fontFamily: T.fontSerif }}>{value}</div>
+              <div style={{ width: 28, height: 1, background: color, margin: '12px auto 10px' }} />
+              <div style={{ fontSize: 8, color, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase' as const }}>{sub}</div>
             </div>
           );
           return (
@@ -3888,8 +4250,8 @@ Responde SOLO con JSON sin bloques de código:
                   const maxVal = top3[0]?.[1] || 1;
                   return (
                     <div onClick={() => setActiveDrilldown(activeDrilldown?.type === 'top_proyectos' ? null : { type: 'top_proyectos', data: { top3, count } } as any)}
-                      style={cardStyle({ cursor: 'pointer', border: activeDrilldown?.type === 'top_proyectos' ? `2px solid ${T.teal}` : `1.5px solid ${T.borderLight}`, transition: 'all 0.2s' })}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 10, textAlign: 'center' as const }}>Top Proyectos</div>
+                      style={cardStyle({ cursor: 'pointer', background: '#FAF9F6', border: activeDrilldown?.type === 'top_proyectos' ? `1.5px solid ${T.teal}` : `1px solid ${T.border}`, transition: 'all 0.2s', padding: '24px 20px' })}>
+                      <div style={{ fontSize: 8, fontWeight: 600, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.14em', marginBottom: 10, textAlign: 'center' as const }}>Top Proyectos</div>
                       <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 7 }}>
                         {top3.map(([name, score], i) => {
                           const colors = [T.teal, T.palm, T.sky];
@@ -3931,9 +4293,9 @@ Responde SOLO con JSON sin bloques de código:
 
         {/* Active Drilldown Container */}
         {activeDrilldown && (
-          <div style={{ marginTop: 24, background: T.card, borderRadius: 12, padding: 20, border: `1.5px solid ${T.teal}`, boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottom: `2px solid ${T.teal}`, paddingBottom: 8 }}>
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: T.teal }}>
+          <div style={{ marginTop: 24, background: '#FAF9F6', borderRadius: 4, padding: 20, border: `1px solid ${T.border}`, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottom: `1px solid ${T.border}`, paddingBottom: 10 }}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 300, color: T.text, fontFamily: T.fontSerif, letterSpacing: '0.02em' }}>
                 {activeDrilldown.type === 'ticket' && '🔍 Detalle de Ticket Promedio (Ventas Cerradas)'}
                 {activeDrilldown.type === 'conversion' && '📈 Detalle de Conversión (Ventas Caídas / Objeciones / Control de Crisis)'}
                 {activeDrilldown.type === 'funnel' && `👥 Detalle de Pipeline: Etapa "${activeDrilldown.stage}"`}
@@ -3973,7 +4335,7 @@ Responde SOLO con JSON sin bloques de código:
                     const cerrados = closedSales.filter(s => s.project === pname);
                     const caidos = lostSales.filter(s => s.project === pname);
                     return (
-                      <div key={pname} style={{ background: T.bg, borderRadius: 12, padding: 16, border: `2px solid ${colors[i]}` }}>
+                      <div key={pname} style={{ background: T.bg, borderRadius: 4, padding: 16, border: `2px solid ${colors[i]}` }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                           <span style={{ background: colors[i], color: '#fff', borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12, flexShrink: 0 }}>#{i + 1}</span>
                           <span style={{ fontWeight: 700, fontSize: 14, color: T.text }}>{pname}</span>
@@ -4070,7 +4432,7 @@ Responde SOLO con JSON sin bloques de código:
                         ))}
                         {totalInvitados === 0 && <div style={{ fontSize: 11, color: T.textSec, fontStyle: 'italic' }}>Sin invitados registrados</div>}
                       </div>
-                      <button onClick={() => { setActiveModule('eventos'); setExpandedEvent(ev.id); }} style={{ marginTop: 10, fontSize: 11, color: T.teal, background: 'none', border: `1px solid ${T.teal}40`, borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontWeight: 600 }}>
+                      <button onClick={() => { setActiveDrilldown(null); setActiveModule('eventos'); setExpandedEvent(ev.id); }} style={{ marginTop: 10, fontSize: 11, color: T.teal, background: 'none', border: `1px solid ${T.teal}40`, borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontWeight: 600 }}>
                         Ver evento completo →
                       </button>
                     </div>
@@ -4099,7 +4461,7 @@ Responde SOLO con JSON sin bloques de código:
               <div key={p.id} style={{ background: T.bg, padding: 16, borderRadius: 10, border: `1px solid ${T.borderLight}`, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ fontWeight: 800, fontSize: 14, color: T.text }}>{p.nombre} {p.apellido}</div>
-                  <div style={{ background: '#E6FFFA', color: '#047857', padding: '2px 8px', borderRadius: 12, fontSize: 10, fontWeight: 700 }}>{p.estado}</div>
+                  <div style={{ background: '#E6FFFA', color: '#047857', padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>{p.estado}</div>
                 </div>
                 <div style={{ fontSize: 11, color: T.textSec }}>💼 {p.ocupacion} | Presupuesto: ${p.presupuesto_usd.toLocaleString()} USD</div>
                 <div style={{ fontSize: 11, color: T.textSec }}>📍 {p.direccion}</div>
@@ -4130,7 +4492,7 @@ Responde SOLO con JSON sin bloques de código:
             <div style={{ background: T.bg, padding: 16, borderRadius: 10, border: `1px solid ${T.borderLight}`, display: 'flex', flexDirection: 'column', gap: 6, gridColumn: '1 / -1' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                   <div style={{ fontWeight: 800, fontSize: 14, color: T.teal }}>Último Reporte Generado</div>
-                  <div style={{ background: '#E6FFFA', color: '#047857', padding: '2px 8px', borderRadius: 12, fontSize: 10, fontWeight: 700 }}>Completado</div>
+                  <div style={{ background: '#E6FFFA', color: '#047857', padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>Completado</div>
                 </div>
                 <div style={{ fontSize: 11, color: T.textSec, whiteSpace: 'pre-wrap', lineHeight: 1.5, background: '#F8FAFC', padding: 12, borderRadius: 6, border: `1px solid ${T.border}` }}>
                   {saraReportText}
@@ -4142,7 +4504,7 @@ Responde SOLO con JSON sin bloques de código:
              <div key={idx} style={{ background: T.bg, padding: 16, borderRadius: 10, border: `1px solid #FCA5A5`, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ fontWeight: 800, fontSize: 14, color: '#991B1B' }}>Alerta Crítica</div>
-                  <div style={{ background: '#FEF2F2', color: '#991B1B', padding: '2px 8px', borderRadius: 12, fontSize: 10, fontWeight: 700 }}>Pendiente</div>
+                  <div style={{ background: '#FEF2F2', color: '#991B1B', padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>Pendiente</div>
                 </div>
                 <div style={{ fontSize: 11, color: T.textSec }}>{alert}</div>
              </div>
@@ -4152,7 +4514,7 @@ Responde SOLO con JSON sin bloques de código:
              <div key={`draft-${idx}`} style={{ background: T.bg, padding: 16, borderRadius: 10, border: `1px solid ${T.borderLight}`, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ fontWeight: 800, fontSize: 14, color: T.text }}>Borrador Aprobado</div>
-                  <div style={{ background: '#E6FFFA', color: '#047857', padding: '2px 8px', borderRadius: 12, fontSize: 10, fontWeight: 700 }}>Enviado</div>
+                  <div style={{ background: '#E6FFFA', color: '#047857', padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>Enviado</div>
                 </div>
                 <div style={{ fontSize: 11, color: T.textSec }}>Id: {draftId}</div>
                 <div style={{ fontSize: 11, color: T.textSec }}>Gestionado por Sara</div>
@@ -4165,19 +4527,105 @@ Responde SOLO con JSON sin bloques de código:
 
   // ══════════════════════════════════════════════════════════════
   // ── CLOSING PROBABILITY ────────────────────────────────────────
-  const calcClosingProb = (p: Prospect): number => {
-    const stageBase: Record<string, number> = {
-      'Contacto Inicial': 8, 'Calificación': 25, 'Presentación': 45,
-      'Negociación': 68, 'Cierre': 95, 'Post-venta': 100,
+  // Fase E: Lead Score desglosado
+  const calcLeadScore = (p: Prospect): { total: number; desglose: {label:string; pts:number; max:number; tip:string}[] } => {
+    // ── DIMENSIÓN 1: Intención declarada (25 pts) ─────────────────
+    const bud = Number(p.presupuesto_usd || 0);
+    const budPts = bud >= 800000 ? 15 : bud >= 500000 ? 12 : bud >= 300000 ? 9 : bud >= 150000 ? 5 : bud > 0 ? 2 : 0;
+    const urgKeywords = /antes de|urgen|ya decid|listo para|necesito|este año|este mes|próximo mes|comprometido/i;
+    const urgPts = p.notas && urgKeywords.test(p.notas) ? 7 : 0;
+    const proyIntPts = (p.proyectos_interes||[]).length >= 3 ? 3 : (p.proyectos_interes||[]).length >= 2 ? 2 : (p.proyectos_interes||[]).length >= 1 ? 1 : 0;
+    const intencionPts = Math.min(budPts + urgPts + proyIntPts, 25);
+
+    // ── DIMENSIÓN 2: Etapa del pipeline (20 pts) ──────────────────
+    const stageMap: Record<string, number> = {
+      'Contacto Inicial': 2, 'Calificado': 6, 'Presentación': 11,
+      'Negociación': 16, 'Cierre': 19, 'Post-venta': 20, 'Lead Frío': 1,
     };
-    let score = stageBase[p.estado] ?? 5;
-    if ((p.emailHistory || []).length >= 3) score += 8;
-    else if ((p.emailHistory || []).length >= 1) score += 4;
-    if (p.broker_asignado) score += 6;
-    if ((p.proyectos_interes || []).length >= 2) score += 5;
-    if (p.notas && p.notas.length > 40) score += 4;
-    if (p.presupuesto_usd >= 300000) score += 4;
-    return Math.min(score, 99);
+    const etapaPts = stageMap[p.estado] ?? 2;
+
+    // ── DIMENSIÓN 3: Actividad reciente (20 pts) ──────────────────
+    // Último contacto = fecha más reciente entre emails, eventos o registro
+    const lastEmail = (p.emailHistory||[]).reduce((d: number, e: any) => {
+      const t = e.date ? new Date(e.date).getTime() : 0; return t > d ? t : d;
+    }, 0);
+    const lastActivity = lastEmail || (p.fecha_entrada ? new Date(p.fecha_entrada).getTime() : 0);
+    const diasUltContact = lastActivity ? Math.floor((Date.now() - lastActivity) / 86400000) : 999;
+    const actividadPts = diasUltContact <= 3 ? 20 : diasUltContact <= 7 ? 17 : diasUltContact <= 14 ? 13
+      : diasUltContact <= 30 ? 9 : diasUltContact <= 60 ? 5 : diasUltContact <= 90 ? 2 : 0;
+
+    // ── DIMENSIÓN 4: Engagement acumulado (15 pts) ────────────────
+    const emailCount = (p.emailHistory||[]).length;
+    const repliedEmails = (p.emailHistory||[]).filter((e: any) => e.type === 'sent' || e.status === 'approved').length;
+    const engPts = Math.min(
+      (emailCount >= 5 ? 8 : emailCount >= 3 ? 5 : emailCount >= 1 ? 2 : 0) +
+      (repliedEmails >= 3 ? 7 : repliedEmails >= 1 ? 4 : 0),
+      15
+    );
+
+    // ── DIMENSIÓN 5: Perfil completado (10 pts) ───────────────────
+    const camposPts =
+      (p.correo ? 2 : 0) + (p.telefono ? 2 : 0) + (p.direccion ? 1 : 0) +
+      (p.broker_asignado ? 1 : 0) + ((p.proyectos_interes||[]).length > 0 ? 1 : 0) +
+      (p.notas && p.notas.length > 80 ? 3 : p.notas && p.notas.length > 20 ? 1 : 0);
+    const perfilPts = Math.min(camposPts, 10);
+
+    // ── DIMENSIÓN 6: Señales de urgencia adicionales (10 pts) ────
+    const canalCaliente = ['Referidos', 'WhatsApp', 'Evento'].includes(p.forma_contacto || '') ? 4 : 0;
+    const etapaAvanzada = ['Negociación','Cierre'].includes(p.estado) ? 6 : ['Presentación'].includes(p.estado) ? 3 : 0;
+    const urgenciaPts = Math.min(canalCaliente + etapaAvanzada, 10);
+
+    // ── PENALIZACIONES ────────────────────────────────────────────
+    const penalInactivo = diasUltContact > 60 ? -10 : diasUltContact > 45 ? -5 : 0;
+    const penalSinContacto = (!p.correo && !p.telefono) ? -5 : 0;
+
+    const desglose = [
+      { label: 'Intención declarada',  pts: intencionPts, max: 25, tip: bud > 0 ? `$${(bud/1000).toFixed(0)}K · ${urgPts>0?'urgencia detectada':'sin urgencia'}` : 'Presupuesto no definido' },
+      { label: 'Etapa del pipeline',   pts: etapaPts,     max: 20, tip: p.estado },
+      { label: 'Actividad reciente',   pts: actividadPts, max: 20, tip: diasUltContact < 999 ? `Último contacto: ${diasUltContact}d` : 'Sin actividad registrada' },
+      { label: 'Engagement acumulado', pts: engPts,       max: 15, tip: `${emailCount} emails · ${repliedEmails} respondidos` },
+      { label: 'Perfil completado',    pts: perfilPts,    max: 10, tip: `${camposPts} / 10 campos` },
+      { label: 'Señales de urgencia',  pts: urgenciaPts,  max: 10, tip: `Canal: ${p.forma_contacto||'—'} · Etapa: ${p.estado}` },
+      { label: 'Penalización',         pts: penalInactivo + penalSinContacto, max: 0, tip: penalInactivo < 0 ? `Inactivo ${diasUltContact}d` : penalSinContacto < 0 ? 'Sin correo ni teléfono' : 'Sin penalizaciones' },
+    ];
+    const total = Math.min(Math.max(desglose.reduce((s,d)=>s+d.pts, 0), 1), 99);
+    return { total, desglose };
+  };
+  const calcClosingProb = (p: Prospect): number => calcLeadScore(p).total;
+
+  const LeadScoreCard = ({ p }: { p: Prospect }) => {
+    const { total, desglose } = calcLeadScore(p);
+    const color = total >= 70 ? '#16a34a' : total >= 40 ? '#d97706' : '#dc2626';
+    const label = total >= 70 ? 'Caliente' : total >= 40 ? 'Tibio' : 'Frío';
+    const bgLabel = total >= 70 ? '#f0fdf4' : total >= 40 ? '#fffbeb' : '#fef2f2';
+    const ff = T.fontSans;
+    return (
+      <div style={{background:'#f8fafc',border:`1px solid ${T.border}`,borderRadius:10,padding:'14px 16px'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+          <span style={{fontSize:11,fontWeight:700,color:T.textSec,textTransform:'uppercase',letterSpacing:'0.06em',fontFamily:ff}}>Lead Score IA</span>
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <span style={{fontSize:22,fontWeight:800,color,fontFamily:ff}}>{total}</span>
+            <span style={{fontSize:10,fontWeight:700,background:bgLabel,color,border:`1px solid ${color}30`,borderRadius:20,padding:'2px 8px',fontFamily:ff}}>{label}</span>
+          </div>
+        </div>
+        {/* Barra total */}
+        <div style={{height:6,background:T.borderLight,borderRadius:3,overflow:'hidden',marginBottom:12}}>
+          <div style={{width:`${total}%`,height:'100%',background:color,borderRadius:3,transition:'width 0.5s'}}/>
+        </div>
+        {/* Desglose */}
+        <div style={{display:'flex',flexDirection:'column',gap:5}}>
+          {desglose.map((d,i)=>(
+            <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 80px 28px',alignItems:'center',gap:6}}>
+              <span style={{fontSize:10,color:T.textSec,fontFamily:ff,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}} title={d.tip}>{d.label}</span>
+              <div style={{height:4,background:T.borderLight,borderRadius:2,overflow:'hidden'}}>
+                <div style={{width:`${(d.pts/d.max)*100}%`,height:'100%',background:d.pts>0?color:'transparent',borderRadius:2,transition:'width 0.4s'}}/>
+              </div>
+              <span style={{fontSize:10,fontWeight:700,color:d.pts>0?color:T.textSec,textAlign:'right',fontFamily:ff}}>{d.pts}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   };
 
   const ThermometerBar = ({ prob }: { prob: number }) => {
@@ -4995,7 +5443,7 @@ Responde SOLO con JSON sin bloques de código:
 
           {/* ALERTA SARA */}
           {dpAlerta && (
-            <div style={{ background: ALERT_BG[dpAlerta.nivel], border: `2px solid ${ALERT_BORDER[dpAlerta.nivel]}`, borderRadius: 12, padding: 20, marginBottom: 16 }}>
+            <div style={{ background: ALERT_BG[dpAlerta.nivel], border: `2px solid ${ALERT_BORDER[dpAlerta.nivel]}`, borderRadius: 4, padding: 20, marginBottom: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 800, color: ALERT_BORDER[dpAlerta.nivel], marginBottom: 4 }}>
@@ -5063,14 +5511,13 @@ Responde SOLO con JSON sin bloques de código:
                 <div style={{ fontSize: 13, color: T.textSec }}>{dp.ocupacion} · Registrado el {dp.fecha_entrada}</div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                  <div style={{ fontSize: 10, color: T.textSec, fontWeight: 600 }}>
-                    Análisis IA SARA: Probabilidad de Cierre ({dp.estado === 'Contacto Inicial' ? 10 : dp.estado === 'Calificación' ? 30 : dp.estado === 'Presentación' ? 50 : dp.estado === 'Negociación' ? 75 : dp.estado === 'Cierre' ? 100 : 0}%)
+                {/* Score badge compacto en header */}
+                {(() => { const sc = calcClosingProb(dp); const c = sc>=70?'#16a34a':sc>=40?'#d97706':'#dc2626'; const ff=T.fontSans; return (
+                  <div style={{display:'flex',flexDirection:'column',alignItems:'center',background:'#f8fafc',border:`2px solid ${c}`,borderRadius:8,padding:'4px 10px',minWidth:52}}>
+                    <span style={{fontSize:18,fontWeight:800,color:c,lineHeight:1,fontFamily:ff}}>{sc}</span>
+                    <span style={{fontSize:8,fontWeight:700,color:c,textTransform:'uppercase',letterSpacing:'0.05em',fontFamily:ff}}>Score</span>
                   </div>
-                  <div style={{ width: 120, height: 8, background: T.borderLight, borderRadius: 4, overflow: 'hidden' }}>
-                    <div style={{ width: `${dp.estado === 'Contacto Inicial' ? 10 : dp.estado === 'Calificación' ? 30 : dp.estado === 'Presentación' ? 50 : dp.estado === 'Negociación' ? 75 : dp.estado === 'Cierre' ? 100 : 0}%`, height: '100%', background: dp.estado === 'Cierre' ? T.success : dp.estado === 'Negociación' ? T.warning : T.teal, transition: 'width 0.5s ease' }} />
-                  </div>
-                </div>
+                ); })()}
                 {badge(dp.estado, T.sand, T.text)}
                 <button onClick={() => setProspectEdit(isEditing ? null : dp.id)} style={btnSecondary({ padding: '4px 12px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 6 })}>
                   {isEditing ? (
@@ -5102,6 +5549,11 @@ Responde SOLO con JSON sin bloques de código:
                 </button>
               </div>
             )}
+
+            {/* Fase E: Lead Score Card */}
+            <div style={{ marginBottom: 16 }}>
+              <LeadScoreCard p={dp} />
+            </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16, fontSize: 13 }}>
               <div>
@@ -5173,7 +5625,7 @@ Responde SOLO con JSON sin bloques de código:
               ) : (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {dp.proyectos_interes.map(pi => (
-                    <span key={pi} style={{ background: T.sand, padding: '4px 10px', borderRadius: 16, fontSize: 11, color: T.text }}>{pi}</span>
+                    <span key={pi} style={{ background: T.sand, padding: '4px 10px', borderRadius: 2, fontSize: 11, color: T.text }}>{pi}</span>
                   ))}
                 </div>
               )}
@@ -5513,7 +5965,7 @@ Responde SOLO con JSON sin bloques de código:
               const ALERT_ICONS: Record<string,string> = { critico: '🔴', frio: '🟠', tibio: '🟡', oportunidad: '🔵' };
               return (
                 <div key={stage} style={{
-                  background: `${T.sand}40`, borderRadius: 12, minWidth: 0,
+                  background: `${T.sand}40`, borderRadius: 4, minWidth: 0,
                   padding: 12, border: `1px solid ${T.border}`, minHeight: 400, display: 'flex', flexDirection: 'column'
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: `2px solid ${T.teal}20`, paddingBottom: 6 }}>
@@ -5689,7 +6141,7 @@ Responde SOLO con JSON sin bloques de código:
 
     const sStyle = {
       fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
-      headingFont: '"Playfair Display", "Times New Roman", serif',
+      headingFont: T.fontSerif,
       border: '#E5E7EB',
       bg: '#FFFFFF',
       text: '#111827',
@@ -5699,6 +6151,14 @@ Responde SOLO con JSON sin bloques de código:
 
     return (
       <div style={{ fontFamily: sStyle.fontFamily, color: sStyle.text, paddingBottom: 40 }}>
+        {expandedEvent !== null && (
+          <button
+            onClick={() => { setExpandedEvent(null); setActiveModule('dashboard'); }}
+            style={{ marginBottom: 16, background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: sStyle.textMuted, display: 'flex', alignItems: 'center', gap: 4, padding: 0, fontFamily: sStyle.fontFamily, textTransform: 'uppercase', letterSpacing: '1px' }}
+          >
+            ← Volver al Dashboard
+          </button>
+        )}
         <div style={{ borderBottom: `1px solid ${sStyle.border}`, paddingBottom: 20, marginBottom: 30, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
           <div>
             <h2 style={{ fontFamily: sStyle.headingFont, fontSize: 28, fontWeight: 400, margin: '0 0 8px 0', letterSpacing: '0.5px' }}>
@@ -8513,7 +8973,7 @@ Responde SOLO con JSON sin bloques de código:
             ...btnSecondary({ display: 'inline-flex', alignItems: 'center', gap: 6 }),
             background: faqActiveCategory === 'all' ? T.teal : 'transparent',
             color: faqActiveCategory === 'all' ? T.card : T.teal,
-            borderRadius: 16,
+            borderRadius: 2,
             padding: '5px 12px',
             fontSize: 12,
             fontWeight: 600,
@@ -8527,7 +8987,7 @@ Responde SOLO con JSON sin bloques de código:
                 ...btnSecondary({ display: 'inline-flex', alignItems: 'center', gap: 6 }),
                 background: faqActiveCategory === cat ? T.teal : 'transparent',
                 color: faqActiveCategory === cat ? T.card : T.teal,
-                borderRadius: 16,
+                borderRadius: 2,
                 padding: '5px 12px',
                 fontSize: 12,
                 fontWeight: 600,
@@ -8876,9 +9336,9 @@ Responde SOLO con JSON sin bloques de código:
         {/* PROJECT GRID — always visible, filtered */}
         <div style={{ ...cardStyle(), marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: T.text }}>
-              Portafolio ({filteredProjects.length} proyectos)
-              {calcProject && <span style={{ fontSize: 13, color: T.teal, marginLeft: 8, fontWeight: 500 }}>· Seleccionado: {calcProject}</span>}
+            <div style={{ fontSize: 18, fontWeight: 300, color: T.text, fontFamily: T.fontSerif }}>
+              Portafolio · {filteredProjects.length} proyectos
+              {calcProject && <span style={{ fontSize: 13, color: T.teal, marginLeft: 8, fontWeight: 400 }}>· {calcProject}</span>}
             </div>
             {calcProject && (
               <button onClick={() => setCalcProject(null)} style={{ fontSize: 11, color: T.coral, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>✕ Quitar selección</button>
@@ -8893,11 +9353,11 @@ Responde SOLO con JSON sin bloques de código:
                 <div key={pn} onClick={() => selectCalcProject(pn)}
                   onDoubleClick={() => { selectCalcProject(pn); setTimeout(() => { document.getElementById('calc-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80); }}
                   style={{
-                    borderRadius: 12, overflow: 'hidden', cursor: 'pointer',
-                    border: `2px solid ${sel ? T.teal : T.border}`,
-                    background: sel ? 'rgba(14,165,172,0.04)' : T.card,
+                    borderRadius: 4, overflow: 'hidden', cursor: 'pointer',
+                    border: `1.5px solid ${sel ? T.teal : T.border}`,
+                    background: sel ? '#FAF9F6' : T.card,
                     transition: 'all 0.15s',
-                    boxShadow: sel ? `0 0 0 3px ${T.teal}28` : '0 1px 4px rgba(0,0,0,0.06)',
+                    boxShadow: sel ? `0 0 0 3px ${T.teal}18` : '0 1px 2px rgba(0,0,0,0.04)',
                   }}
                   onMouseEnter={e => { if (!sel) { e.currentTarget.style.borderColor = T.teal + '70'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)'; } }}
                   onMouseLeave={e => { if (!sel) { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.06)'; } }}
@@ -8907,8 +9367,8 @@ Responde SOLO con JSON sin bloques de código:
                     {sel && <span style={{ fontSize: 9, fontWeight: 800, background: T.teal, color: '#fff', padding: '3px 8px', borderRadius: 5, letterSpacing: '0.05em' }}>SELECCIONADO</span>}
                   </div>
                   <div style={{ padding: '10px 12px 12px' }}>
-                    <div style={{ fontWeight: 700, fontSize: 12, color: T.text, marginBottom: 2, lineHeight: 1.3 }}>{pn}</div>
-                    <div style={{ fontSize: 10, color: T.teal, marginBottom: 6 }}>{pd.zoneShort}</div>
+                    <div style={{ fontWeight: 400, fontSize: 14, color: T.text, marginBottom: 2, lineHeight: 1.3, fontFamily: T.fontSerif }}>{pn}</div>
+                    <div style={{ fontSize: 9, color: T.textSec, marginBottom: 6, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>{pd.zoneShort}</div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
                       <span style={{ color: T.text, fontWeight: 600 }}>Desde {usd(pd.minPrice)}</span>
                       <span style={{ color: T.palm, fontWeight: 700 }}>{pd.capRateMin}–{pd.capRateMax}%</span>
@@ -9099,6 +9559,7 @@ Responde SOLO con JSON sin bloques de código:
                     <input type="number" step="1000"
                       value={calcValorFiscal > 0 ? calcValorFiscal : Math.round(calcPrecio * 0.70)}
                       onChange={e => setCalcValorFiscal(Number(e.target.value))}
+                      onFocus={e => e.target.select()}
                       style={inputStyle({ fontSize: 12, padding: '4px 10px', width: 120, fontWeight: 600 })} />
                   </div>
                   <span style={{ fontSize: 10, color: T.textSec, fontStyle: 'italic' }}>
@@ -9116,6 +9577,7 @@ Responde SOLO con JSON sin bloques de código:
                       <label style={{ fontSize: 10, color: T.textSec, display: 'block', marginBottom: 4 }}>Porcentaje (%)</label>
                       <input type="number" step="0.5" value={calcFeePM}
                         onChange={e => { setCalcFeePM(Number(e.target.value)); setCalcFeePMFixed(0); }}
+                        onFocus={e => e.target.select()}
                         style={inputStyle({ fontSize: 14, padding: '6px 10px', width: '100%', fontWeight: 700 })} />
                     </div>
                     <div>
@@ -9123,6 +9585,7 @@ Responde SOLO con JSON sin bloques de código:
                       <input type="number" step="10"
                         value={calcFeePMFixed > 0 ? calcFeePMFixed : Math.round(feePMMensual)}
                         onChange={e => { setCalcFeePMFixed(Number(e.target.value)); setCalcFeePM(0); }}
+                        onFocus={e => e.target.select()}
                         style={inputStyle({ fontSize: 14, padding: '6px 10px', width: '100%', fontWeight: 700 })} />
                     </div>
                   </div>
@@ -9135,6 +9598,7 @@ Responde SOLO con JSON sin bloques de código:
                   <div style={{ fontSize: 9, color: T.textSec, marginBottom: 6 }}>$/mes según coeficiente</div>
                   <input type="number" step="10" value={calcCondominio}
                     onChange={e => setCalcCondominio(Number(e.target.value))}
+                    onFocus={e => e.target.select()}
                     style={inputStyle({ fontSize: 14, padding: '6px 10px', width: '100%', fontWeight: 700 })} />
                   <div style={{ marginTop: 6, fontSize: 10, color: T.textSec }}>{usd(calcCondominio)}/mes · {usd(gastosCondominio)}/año</div>
                 </div>
@@ -9143,6 +9607,7 @@ Responde SOLO con JSON sin bloques de código:
                   <div style={{ fontSize: 9, color: T.textSec, marginBottom: 6 }}>% sobre valor fiscal</div>
                   <input type="number" step="0.05" value={calcSeguro}
                     onChange={e => setCalcSeguro(Number(e.target.value))}
+                    onFocus={e => e.target.select()}
                     style={inputStyle({ fontSize: 14, padding: '6px 10px', width: '100%', fontWeight: 700 })} />
                   <div style={{ marginTop: 6, fontSize: 10, color: T.textSec }}>{usd(Math.round(gastosSeguro))}/año</div>
                 </div>
@@ -9151,6 +9616,7 @@ Responde SOLO con JSON sin bloques de código:
                   <div style={{ fontSize: 9, color: T.textSec, marginBottom: 6 }}>% sobre valor fiscal</div>
                   <input type="number" step="0.1" value={calcPredial}
                     onChange={e => setCalcPredial(Number(e.target.value))}
+                    onFocus={e => e.target.select()}
                     style={inputStyle({ fontSize: 14, padding: '6px 10px', width: '100%', fontWeight: 700 })} />
                   <div style={{ marginTop: 6, fontSize: 10, color: T.textSec }}>{usd(Math.round(gastosPredial))}/año</div>
                 </div>
@@ -9391,8 +9857,15 @@ Responde SOLO con JSON sin bloques de código:
     try {
       const res = await fetch('http://localhost:3001/api/backup/historial');
       const data = await res.json();
-      if (data.success) { setGitHistorial(data.commits); setHistorialLoaded(true); }
-    } catch {}
+      if (data.success) {
+        setGitHistorial(data.commits);
+        setHistorialLoaded(true);
+        localStorage.setItem('glp_git_historial', JSON.stringify(data.commits));
+      }
+    } catch {
+      // Offline: usar historial guardado en localStorage (ya cargado en el estado inicial)
+      setHistorialLoaded(gitHistorial.length > 0);
+    }
   };
 
   useEffect(() => { loadGitHistorial(); }, []);
@@ -9450,7 +9923,7 @@ Responde SOLO con JSON sin bloques de código:
     return (
       <div style={{ maxWidth: 800, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-          <h2 style={{ fontSize: 24, fontWeight: 700, color: T.teal, margin: 0, fontFamily: 'Playfair Display, serif' }}>
+          <h2 style={{ fontSize: 22, fontWeight: 300, color: T.text, margin: 0, fontFamily: T.fontSerif, letterSpacing: '0.03em' }}>
             Backups y Restauración
           </h2>
         </div>
@@ -9487,7 +9960,7 @@ Responde SOLO con JSON sin bloques de código:
             </div>
           )}
 
-          {historialLoaded && gitHistorial.length > 0 && (
+          {gitHistorial.length > 0 && (
             <div style={{ marginTop: 24 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: T.textSec, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 }}>Historial de backups</div>
               {gitHistorial.map((c, i) => (
@@ -9633,8 +10106,8 @@ Responde SOLO con JSON sin bloques de código:
       <div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: T.text }}>Carga de Catálogo de Proyectos</div>
-            <div style={{ fontSize: 12, color: T.textSec }}>{catalogProjects.length} proyectos · {cats.slice(1).map(c => `${catalogProjects.filter(p=>p.category===c).length} ${c}`).join(' · ')}</div>
+            <div style={{ fontSize: 22, fontWeight: 300, color: T.text, fontFamily: T.fontSerif, letterSpacing: '0.03em' }}>Catálogo de Proyectos</div>
+            <div style={{ fontSize: 11, color: T.textSec, marginTop: 3, letterSpacing: '0.06em' }}>{catalogProjects.length} proyectos · {cats.slice(1).map(c => `${catalogProjects.filter(p=>p.category===c).length} ${c}`).join(' · ')}</div>
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: T.teal, color: T.card, borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
@@ -9670,7 +10143,7 @@ Responde SOLO con JSON sin bloques de código:
         {/* Filtro por categoría */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
           {cats.map(c => (
-            <button key={c} onClick={() => setCatalogFilter(c)} style={{ padding: '5px 14px', borderRadius: 16, border: `1px solid ${c === 'all' ? T.teal : catColors[c] || T.teal}`, background: catalogFilter === c ? (c === 'all' ? T.teal : catColors[c]) : 'transparent', color: catalogFilter === c ? '#fff' : T.text, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+            <button key={c} onClick={() => setCatalogFilter(c)} style={{ padding: '5px 14px', borderRadius: 2, border: `1px solid ${c === 'all' ? T.teal : catColors[c] || T.teal}`, background: catalogFilter === c ? (c === 'all' ? T.teal : catColors[c]) : 'transparent', color: catalogFilter === c ? '#fff' : T.text, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
               {c === 'all' ? 'Todos' : c} {c !== 'all' && `(${catalogProjects.filter(p=>p.category===c).length})`}
             </button>
           ))}
@@ -9756,7 +10229,7 @@ Responde SOLO con JSON sin bloques de código:
             {filtered.map((p, idx) => {
               const realIdx = catalogProjects.indexOf(p);
               return (
-                <div key={p.name} style={{ border: `1px solid ${T.border}`, borderRadius: 12, overflow: 'hidden', background: T.card }}>
+                <div key={p.name} style={{ border: `1px solid ${T.border}`, borderRadius: 4, overflow: 'hidden', background: T.card }}>
                   <div style={{ position: 'relative', height: 140, background: T.sand, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {p.imagen
                       ? <img src={p.imagen} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -9905,7 +10378,3000 @@ Responde SOLO con JSON sin bloques de código:
     );
   };
 
+  const renderReportes = () => {
+    const G = T.coral; const N = T.teal;
+    const CREAM = T.bg; const PARCH = T.parchment;
+    const SERIF = T.fontSerif; const SANS = T.fontSans;
+    const PALETTE = ['#4A6FA5','#B89047','#6B8F71','#8B6357','#7B7EA8','#A07850','#4E8098','#9B7B74','#5C7A6B','#7A6B8A'];
+    const FUNNEL_COLORS: Record<string,string> = { 'Post-venta':'#16a34a','Cierre':'#2563eb','Negociación':'#7c3aed','Presentación':'#d97706','Calificado':'#0891b2','Contacto Inicial':'#64748b','Lead Frío':'#94a3b8' };
+    const fmtUSD = (n: number) => n >= 1_000_000 ? `$${(n/1_000_000).toFixed(1)}M` : n >= 1_000 ? `$${(n/1_000).toFixed(0)}K` : `$${Math.round(n)}`;
+
+    // ── Helpers de layout ──────────────────────────────────────
+    const chartBox = (title: string, children: React.ReactNode, full = false) => (
+      <div style={{background:'#fff',border:`1px solid ${T.border}`,borderRadius:4,padding:'18px 20px 14px',gridColumn:full?'1/-1':undefined,borderTop:`3px solid ${G}`}}>
+        <div style={{fontFamily:SERIF,fontSize:15,fontWeight:600,color:N,marginBottom:14,letterSpacing:0.3}}>{title}</div>
+        {children}
+      </div>
+    );
+    const noData = () => <div style={{color:'#94a3b8',textAlign:'center',padding:'40px 0',fontSize:13,fontFamily:SANS}}>Sin datos para este período</div>;
+
+    // ── Exportar ───────────────────────────────────────────────
+    const exportExcel = () => {
+      import('xlsx').then(XLSX => {
+        const wb = XLSX.utils.book_new();
+        const add = (n:string,d:any[]) => { if(d.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(d), n); };
+        add('Resumen tiempo', analyticsTiempo); add('Funnel', analyticsFunnel);
+        add('Por proyecto', analyticsProyecto); add('Por canal', analyticsCanal);
+        add('Brokers', analyticsBroker); add('Broker×período', analyticsBrokerTiempo);
+        add('Proyecto×período', analyticsProyectoTiempo); add('Conversión canal', analyticsConversionCanal);
+        add('Velocidad cierre', analyticsVelocidad);
+        XLSX.writeFile(wb, `GLP_Reportes_${new Date().toISOString().slice(0,10)}.xlsx`);
+      });
+    };
+    const handlePrint = () => {
+      const el = document.getElementById('glp-rpt-content');
+      if (!el) return;
+      const w = window.open('', '_blank', 'width=1100,height=800');
+      if (!w) return;
+      w.document.write(`<!DOCTYPE html><html><head><title>GLP — Reportes Comerciales</title>
+        <style>
+          *{box-sizing:border-box;margin:0;padding:0}
+          body{font-family:'Inter',sans-serif;background:#F7F4EF;color:#001A37;padding:32px}
+          table{border-collapse:collapse;width:100%;font-size:12px}
+          th,td{padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:left}
+          th{background:#EDE8DF;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:0.5px}
+          h1{font-family:'Georgia',serif;font-size:22px;color:#001A37;margin-bottom:4px}
+          h2{font-family:'Georgia',serif;font-size:14px;color:#B89047;margin:20px 0 10px;border-bottom:1px solid #e2e8f0;padding-bottom:6px}
+          .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+          .kpi{background:#fff;border:1px solid #e2e8f0;border-top:3px solid #B89047;padding:14px 16px;border-radius:3px}
+          .kpi-label{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:6px}
+          .kpi-value{font-size:22px;font-weight:700;color:#001A37}
+          @media print{body{padding:16px}button{display:none}}
+        </style></head><body>
+        <h1>GLP — Análisis Comercial</h1>
+        <p style="font-size:11px;color:#64748b;margin-bottom:24px">Generado el ${new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'})} · Período: últimos ${rptDias} días</p>
+        ${el.innerHTML}
+        </body></html>`);
+      w.document.close();
+      setTimeout(() => w.print(), 400);
+    };
+    const exportPDF = () => handlePrint();
+
+    // ── Barra de filtros (compartida por todas las vistas) ─────
+    const periodos = [{d:7,l:'7d'},{d:30,l:'30d'},{d:90,l:'90d'},{d:180,l:'6m'},{d:365,l:'1a'}];
+    const agrupOpts: {k:'semana'|'mes'|'trimestre', l:string}[] = [{k:'semana',l:'Semana'},{k:'mes',l:'Mes'},{k:'trimestre',l:'Trimestre'}];
+    const showAgrup = rptSubView === 'brokers' || rptSubView === 'proyectos';
+
+    const selStyle = {border:`1px solid ${T.border}`,borderRadius:3,padding:'5px 9px',fontSize:11,color:N,background:'#fff',fontFamily:SANS,cursor:'pointer'};
+    const filterBar = (
+      <div style={{background:'#fff',border:`1px solid ${T.border}`,borderRadius:4,padding:'10px 16px',marginBottom:16,display:'flex',flexWrap:'wrap',gap:10,alignItems:'center'}}>
+        <span style={{fontSize:9,letterSpacing:2,color:G,fontWeight:700,textTransform:'uppercase',fontFamily:SANS}}>Período</span>
+        <div style={{display:'flex',gap:2,background:PARCH,borderRadius:3,padding:2}}>
+          {periodos.map(p=>(
+            <button key={p.d} onClick={()=>{setRptDias(p.d);setRptFechaInicio('');setRptFechaFin('');}} style={{padding:'4px 10px',borderRadius:2,border:'none',cursor:'pointer',fontSize:11,fontWeight:600,fontFamily:SANS,background:rptDias===p.d?N:'transparent',color:rptDias===p.d?'#fff':T.textSec,transition:'all 0.12s'}}>
+              {p.l}
+            </button>
+          ))}
+        </div>
+        {showAgrup && <>
+          <span style={{fontSize:9,letterSpacing:2,color:G,fontWeight:700,textTransform:'uppercase',fontFamily:SANS}}>Agrupar</span>
+          <div style={{display:'flex',gap:2,background:PARCH,borderRadius:3,padding:2}}>
+            {agrupOpts.map(a=>(
+              <button key={a.k} onClick={()=>setRptAgrup(a.k)} style={{padding:'4px 10px',borderRadius:2,border:'none',cursor:'pointer',fontSize:11,fontWeight:600,fontFamily:SANS,background:rptAgrup===a.k?G:'transparent',color:rptAgrup===a.k?'#fff':T.textSec,transition:'all 0.12s'}}>
+                {a.l}
+              </button>
+            ))}
+          </div>
+        </>}
+        <select value={rptProyecto} onChange={e=>setRptProyecto(e.target.value)} style={selStyle}>
+          <option value=''>Todos los proyectos</option>
+          {analyticsFiltros.proyectos.map(p=><option key={p} value={p}>{p}</option>)}
+        </select>
+        <select value={rptCanal} onChange={e=>setRptCanal(e.target.value)} style={selStyle}>
+          <option value=''>Todos los canales</option>
+          {analyticsFiltros.canales.map(c=><option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={rptBroker} onChange={e=>setRptBroker(e.target.value)} style={selStyle}>
+          <option value=''>Todos los brokers</option>
+          {analyticsFiltros.brokers.map(b=><option key={b} value={b}>{b}</option>)}
+        </select>
+        {/* ── Rango personalizado: solo visible si hay fechas activas o el usuario lo abre ── */}
+        {(rptFechaInicio||rptFechaFin) ? (
+          <div style={{display:'flex',alignItems:'center',gap:6,borderLeft:`2px solid ${G}`,paddingLeft:10}}>
+            <span style={{fontSize:9,letterSpacing:2,color:G,fontWeight:700,textTransform:'uppercase',fontFamily:SANS,whiteSpace:'nowrap'}}>Rango</span>
+            <input type="date" value={rptFechaInicio} onChange={e=>{setRptFechaInicio(e.target.value); if(e.target.value) setRptDias(0);}}
+              style={{fontSize:11,border:`1px solid ${G}`,borderRadius:3,padding:'3px 6px',fontFamily:SANS,color:N,outline:'none',background:`${G}0a`}}/>
+            <span style={{fontSize:11,color:T.textSec}}>—</span>
+            <input type="date" value={rptFechaFin} onChange={e=>{setRptFechaFin(e.target.value); if(e.target.value) setRptDias(0);}}
+              style={{fontSize:11,border:`1px solid ${G}`,borderRadius:3,padding:'3px 6px',fontFamily:SANS,color:N,outline:'none',background:`${G}0a`}}/>
+            <button onClick={()=>{setRptFechaInicio('');setRptFechaFin('');setRptDias(90);}} style={{fontSize:10,color:T.textSec,background:'none',border:'none',cursor:'pointer',padding:'2px 4px'}}>✕</button>
+          </div>
+        ) : (
+          <button onClick={()=>{
+            const hoy = new Date(); const hace90 = new Date(); hace90.setDate(hoy.getDate()-90);
+            setRptFechaInicio(hace90.toISOString().slice(0,10));
+            setRptFechaFin(hoy.toISOString().slice(0,10));
+            setRptDias(0);
+          }} style={{fontSize:10,color:T.textSec,background:'none',border:`1px dashed ${T.border}`,borderRadius:3,padding:'3px 8px',cursor:'pointer',fontFamily:SANS,whiteSpace:'nowrap'}}>+ Rango de fechas</button>
+        )}
+        {(rptCanal||rptBroker||rptProyecto) && (
+          <button onClick={()=>{setRptCanal('');setRptBroker('');setRptProyecto('');}} style={{fontSize:11,color:T.danger,background:'none',border:`1px solid ${T.danger}`,borderRadius:3,padding:'4px 10px',cursor:'pointer',fontWeight:600,fontFamily:SANS}}>✕ Limpiar filtros</button>
+        )}
+        {rptBroker && <span style={{fontSize:11,background:N,color:'#fff',padding:'3px 10px',borderRadius:3,fontFamily:SANS}}>📌 {rptBroker}</span>}
+        {rptLoading && <span style={{fontSize:11,color:G,fontWeight:600,marginLeft:'auto',fontFamily:SANS}}>Cargando…</span>}
+      </div>
+    );
+
+    // ── Vista: RESUMEN ─────────────────────────────────────────
+    const nuevosMes = Number(analyticsResumen?.nuevos_mes ?? 0);
+    const nuevosMesAnt = Number(analyticsResumen?.nuevos_mes_ant ?? 0);
+    const trendMes = nuevosMesAnt > 0 ? `${nuevosMes >= nuevosMesAnt ? '+' : ''}${Math.round((nuevosMes-nuevosMesAnt)/nuevosMesAnt*100)}%` : '';
+    const totalP = Number(analyticsResumen?.total_prospectos ?? 0);
+    const calif = Number(analyticsResumen?.calificados ?? 0);
+    const kpiCard = (label:string, value:string|number, sub:string, trend?:string) => (
+      <div style={{background:'#fff',border:`1px solid ${T.border}`,borderTop:`3px solid ${G}`,borderRadius:3,padding:'16px 18px'}}>
+        <div style={{fontSize:9,color:'#94a3b8',fontWeight:700,textTransform:'uppercase',letterSpacing:1.4,marginBottom:6,fontFamily:SANS}}>{label}</div>
+        <div style={{fontSize:24,fontWeight:700,color:N,lineHeight:1.1,fontFamily:SERIF}}>{rptLoading?'…':value}</div>
+        <div style={{fontSize:11,color:T.textSec,marginTop:5,display:'flex',gap:5,alignItems:'center',fontFamily:SANS}}>
+          {trend && <span style={{color:trend.startsWith('+')?T.success:T.danger,fontWeight:700}}>{trend}</span>}
+          {sub}
+        </div>
+      </div>
+    );
+
+    const vistaResumen = (
+      <div style={{display:'flex',flexDirection:'column',gap:14}}>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12}}>
+          {kpiCard('Total prospectos', totalP, `últimos ${rptDias} días`, trendMes||undefined)}
+          {kpiCard('Pipeline', fmtUSD(Number(analyticsResumen?.pipeline_total??0)), `Ticket prom. ${fmtUSD(Number(analyticsResumen?.ticket_promedio??0))}`)}
+          {kpiCard('Calificados', calif, `${totalP>0?Math.round(calif/totalP*100):0}% del total`)}
+          {kpiCard('Cerrados', analyticsResumen?.cerrados??'—', 'Estado Post-venta')}
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1.5fr 1fr',gap:14}}>
+          {chartBox('Prospectos en el tiempo',
+            analyticsTiempo.length===0 ? noData() : (() => {
+              let acum = 0;
+              const data = analyticsTiempo.map(r => { acum += Number(r.total); return {...r, total: Number(r.total), acumulado: acum}; });
+              return (
+                <ResponsiveContainer width="100%" height={190}>
+                  <ComposedChart data={data} margin={{left:0,right:24}}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false}/>
+                    <XAxis dataKey="periodo" tick={{fontSize:10,fill:'#94a3b8'}} tickLine={false} axisLine={false}/>
+                    <YAxis yAxisId="left" tick={{fontSize:10,fill:'#94a3b8'}} tickLine={false} axisLine={false} allowDecimals={false}/>
+                    <YAxis yAxisId="right" orientation="right" tick={{fontSize:10,fill:'#94a3b8'}} tickLine={false} axisLine={false} allowDecimals={false}/>
+                    <Tooltip contentStyle={{fontSize:12,borderRadius:8,border:'1px solid #e2e8f0'}} formatter={(v:any,n:string)=>[v, n==='total'?'Nuevos':'Acumulado']}/>
+                    <Legend wrapperStyle={{fontSize:11}} formatter={(v:string)=>v==='total'?'Nuevos del período':'Acumulado'}/>
+                    <Bar yAxisId="left" dataKey="total" fill={`${G}55`} radius={[3,3,0,0]} name="total">
+                      <LabelList dataKey="total" position="top" style={{fontSize:10,fill:'#64748b',fontFamily:SANS}} formatter={(v:any)=>v>0?v:''}/>
+                    </Bar>
+                    <Line yAxisId="right" type="monotone" dataKey="acumulado" stroke={N} strokeWidth={2} dot={false} activeDot={{r:4}} name="acumulado"/>
+                  </ComposedChart>
+                </ResponsiveContainer>
+              );
+            })()
+          )}
+          {chartBox('Funnel de conversión',
+            analyticsFunnel.length===0 ? noData() :
+            <ResponsiveContainer width="100%" height={190}>
+              <BarChart data={analyticsFunnel.map(r=>({...r,total:Number(r.total)}))} layout="vertical" margin={{left:0,right:12}}>
+                <XAxis type="number" tick={{fontSize:10,fill:'#94a3b8'}} tickLine={false} axisLine={false} allowDecimals={false}/>
+                <YAxis type="category" dataKey="estado" tick={{fontSize:10,fill:'#64748b'}} tickLine={false} axisLine={false} width={95}/>
+                <Tooltip contentStyle={{fontSize:12,borderRadius:8,border:'1px solid #e2e8f0'}}/>
+                <Bar dataKey="total" radius={[0,4,4,0]} name="Prospectos">
+                  {analyticsFunnel.map((r:any)=><Cell key={r.estado} fill={FUNNEL_COLORS[r.estado]||'#94a3b8'}/>)}
+                  <LabelList dataKey="total" position="right" style={{fontSize:10,fill:'#64748b',fontWeight:600,fontFamily:SANS}}/>
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+    );
+
+    // ── Vista: BROKERS ─────────────────────────────────────────
+    // Pivotear brokerTiempo: [{periodo, broker, total}] → [{periodo, broker1, broker2, ...}]
+    const brokersUnicos = [...new Set(analyticsBrokerTiempo.map((r:any)=>r.broker))].slice(0,8);
+    const brokerTiempoPivot = Object.values(
+      analyticsBrokerTiempo.reduce((acc:any, r:any) => {
+        if(!acc[r.periodo]) acc[r.periodo] = {periodo: r.periodo};
+        acc[r.periodo][r.broker] = Number(r.total);
+        return acc;
+      }, {})
+    ).sort((a:any,b:any)=>a.periodo.localeCompare(b.periodo));
+
+    const vistaBrokers = (
+      <div style={{display:'flex',flexDirection:'column',gap:14}}>
+        {chartBox(`Prospectos por broker × ${rptAgrup}`,
+          brokerTiempoPivot.length===0 ? noData() :
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={brokerTiempoPivot} margin={{left:0,right:8}}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false}/>
+              <XAxis dataKey="periodo" tick={{fontSize:10,fill:'#94a3b8'}} tickLine={false} axisLine={false}/>
+              <YAxis tick={{fontSize:10,fill:'#94a3b8'}} tickLine={false} axisLine={false} allowDecimals={false}/>
+              <Tooltip contentStyle={{fontSize:12,borderRadius:8,border:'1px solid #e2e8f0'}}/>
+              <Legend wrapperStyle={{fontSize:11}}/>
+              {brokersUnicos.map((b:any,i:number)=>(
+                <Bar key={b} dataKey={b} fill={PALETTE[i%PALETTE.length]} radius={[3,3,0,0]} stackId="a">
+                  {i===brokersUnicos.length-1 && <LabelList dataKey={b} position="top" style={{fontSize:10,fill:'#64748b',fontWeight:600,fontFamily:SANS}}/>}
+                </Bar>
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        , true)}
+        {chartBox('Ranking de brokers — clic para filtrar',
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,fontFamily:SANS}}>
+            <thead>
+              <tr style={{background:PARCH}}>
+                {['#','Broker','Prospectos','Calificados','Cerrados','Conv.%','Pipeline'].map((h,i)=>(
+                  <th key={h} style={{padding:'9px 12px',textAlign:i<=1?'left':'right',fontWeight:700,color:T.textSec,borderBottom:`1px solid ${T.border}`,fontSize:9,textTransform:'uppercase',letterSpacing:0.6}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {analyticsBroker.length===0
+                ? <tr><td colSpan={7} style={{textAlign:'center',padding:24,color:'#94a3b8'}}>Sin datos</td></tr>
+                : analyticsBroker.map((r:any,i:number)=>{
+                    const tasa = Number(r.total)>0?Math.round(Number(r.calificados)/Number(r.total)*100):0;
+                    const isActive = rptBroker === r.broker;
+                    return (
+                      <tr key={r.broker}
+                        onClick={()=>setRptBroker(isActive ? '' : r.broker)}
+                        style={{background:isActive?`${G}18`:i%2===0?'#fff':CREAM,borderBottom:`1px solid ${T.borderLight}`,cursor:'pointer',transition:'background 0.1s'}}
+                        onMouseEnter={e=>(e.currentTarget.style.background=isActive?`${G}28`:PARCH)}
+                        onMouseLeave={e=>(e.currentTarget.style.background=isActive?`${G}18`:i%2===0?'#fff':CREAM)}>
+                        <td style={{padding:'9px 12px',color:'#94a3b8',fontWeight:700,width:28}}>{i+1}</td>
+                        <td style={{padding:'9px 12px',color:N,fontWeight:isActive?700:600,display:'flex',alignItems:'center',gap:6}}>
+                          {isActive && <span style={{width:6,height:6,borderRadius:'50%',background:G,display:'inline-block'}}/>}
+                          {r.broker}
+                        </td>
+                        <td style={{padding:'9px 12px',textAlign:'right'}}>{r.total}</td>
+                        <td style={{padding:'9px 12px',textAlign:'right'}}>{r.calificados}</td>
+                        <td style={{padding:'9px 12px',textAlign:'right'}}>{r.cerrados}</td>
+                        <td style={{padding:'9px 12px',textAlign:'right'}}><span style={{fontWeight:700,color:tasa>50?T.success:tasa>25?G:'#94a3b8'}}>{tasa}%</span></td>
+                        <td style={{padding:'9px 12px',textAlign:'right',fontWeight:600,color:N}}>{fmtUSD(Number(r.presupuesto))}</td>
+                      </tr>
+                    );
+                  })
+              }
+            </tbody>
+          </table>
+        , true)}
+      </div>
+    );
+
+    // ── Vista: PROYECTOS ───────────────────────────────────────
+    const proyectosUnicos = [...new Set(analyticsProyectoTiempo.map((r:any)=>r.proyecto))].slice(0,8);
+    const proyectoTiempoPivot = Object.values(
+      analyticsProyectoTiempo.reduce((acc:any,r:any)=>{
+        if(!acc[r.periodo]) acc[r.periodo] = {periodo: r.periodo};
+        acc[r.periodo][r.proyecto] = Number(r.total);
+        return acc;
+      },{})
+    ).sort((a:any,b:any)=>a.periodo.localeCompare(b.periodo));
+
+    const vistaProyectos = (
+      <div style={{display:'flex',flexDirection:'column',gap:14}}>
+        {chartBox(`Prospectos por proyecto × ${rptAgrup} (apilado)`,
+          proyectoTiempoPivot.length===0 ? noData() :
+          <ResponsiveContainer width="100%" height={230}>
+            <BarChart data={proyectoTiempoPivot} margin={{left:0,right:8}}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false}/>
+              <XAxis dataKey="periodo" tick={{fontSize:10,fill:'#94a3b8'}} tickLine={false} axisLine={false}/>
+              <YAxis tick={{fontSize:10,fill:'#94a3b8'}} tickLine={false} axisLine={false} allowDecimals={false}/>
+              <Tooltip contentStyle={{fontSize:12,borderRadius:8,border:'1px solid #e2e8f0'}}/>
+              <Legend wrapperStyle={{fontSize:11}}/>
+              {proyectosUnicos.map((p:any,i:number)=>(
+                <Bar key={p} dataKey={p} stackId="a" fill={PALETTE[i%PALETTE.length]} name={p} radius={i===proyectosUnicos.length-1?[3,3,0,0]:[0,0,0,0]}>
+                  {i===proyectosUnicos.length-1 && <LabelList dataKey={p} position="top" style={{fontSize:10,fill:'#64748b',fontWeight:600,fontFamily:SANS}}/>}
+                </Bar>
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        , true)}
+        {chartBox('Prospectos por proyecto (acumulado)',
+          analyticsProyecto.length===0 ? noData() :
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={analyticsProyecto.map(r=>({...r,total:Number(r.total),presupuesto:Number(r.presupuesto)}))} margin={{left:0,right:8}}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false}/>
+              <XAxis dataKey="proyecto" tick={{fontSize:9,fill:'#94a3b8'}} tickLine={false} axisLine={false} interval={0} angle={-25} textAnchor="end" height={45}/>
+              <YAxis tick={{fontSize:10,fill:'#94a3b8'}} tickLine={false} axisLine={false} allowDecimals={false}/>
+              <Tooltip contentStyle={{fontSize:12,borderRadius:8,border:'1px solid #e2e8f0'}} formatter={(v:any,n:string)=>n==='presupuesto'?[fmtUSD(v),'Pipeline']:v}/>
+              <Bar dataKey="total" radius={[4,4,0,0]} name="Prospectos">
+                {analyticsProyecto.map((_:any,i:number)=>(
+                  <Cell key={i} fill={PALETTE[i%PALETTE.length]}/>
+                ))}
+                <LabelList dataKey="total" position="top" style={{fontSize:10,fill:'#64748b',fontWeight:600,fontFamily:SANS}}/>
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        , true)}
+        {chartBox('Ranking de proyectos — clic para filtrar',
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,fontFamily:SANS}}>
+            <thead>
+              <tr style={{background:PARCH}}>
+                {['#','Proyecto','Prospectos','Pipeline'].map((h,i)=>(
+                  <th key={h} style={{padding:'9px 12px',textAlign:i<=1?'left':'right',fontWeight:700,color:T.textSec,borderBottom:`1px solid ${T.border}`,fontSize:9,textTransform:'uppercase',letterSpacing:0.6}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {analyticsProyecto.length===0
+                ? <tr><td colSpan={4} style={{textAlign:'center',padding:24,color:'#94a3b8'}}>Sin datos</td></tr>
+                : analyticsProyecto.map((r:any,i:number)=>{
+                    const isActive = rptProyecto === r.proyecto;
+                    return (
+                      <tr key={r.proyecto}
+                        onClick={()=>setRptProyecto(isActive ? '' : r.proyecto)}
+                        style={{background:isActive?`${G}18`:i%2===0?'#fff':CREAM,borderBottom:`1px solid ${T.borderLight}`,cursor:'pointer',transition:'background 0.1s'}}
+                        onMouseEnter={e=>(e.currentTarget.style.background=isActive?`${G}28`:PARCH)}
+                        onMouseLeave={e=>(e.currentTarget.style.background=isActive?`${G}18`:i%2===0?'#fff':CREAM)}>
+                        <td style={{padding:'9px 12px',color:'#94a3b8',fontWeight:700,width:28}}>{i+1}</td>
+                        <td style={{padding:'9px 12px',color:N,fontWeight:isActive?700:600,display:'flex',alignItems:'center',gap:6}}>
+                          {isActive && <span style={{width:6,height:6,borderRadius:'50%',background:G,display:'inline-block'}}/>}
+                          {r.proyecto}
+                        </td>
+                        <td style={{padding:'9px 12px',textAlign:'right'}}>{r.total}</td>
+                        <td style={{padding:'9px 12px',textAlign:'right',fontWeight:600,color:N}}>{fmtUSD(Number(r.presupuesto))}</td>
+                      </tr>
+                    );
+                  })
+              }
+            </tbody>
+          </table>
+        , true)}
+        <div style={{gridColumn:'1/-1',background:'#fffbeb',border:'1px solid #fde68a',borderRadius:8,padding:'8px 14px',display:'flex',alignItems:'flex-start',gap:8,fontSize:11,color:'#92400e',fontFamily:SANS}}>
+          <span style={{fontSize:14,marginTop:1}}>ℹ️</span>
+          <span><strong>Nota:</strong> Los totales por proyecto pueden ser mayores que los totales por broker. Un prospecto con interés en 2 proyectos se cuenta <em>una vez por proyecto</em> aquí, pero <em>una sola vez</em> en la vista de Brokers. Esto es normal y esperado.</span>
+        </div>
+      </div>
+    );
+
+    // ── Vista: FUENTES ─────────────────────────────────────────
+    const vistaFuentes = (
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+        {chartBox('Distribución por canal',
+          analyticsCanal.length===0 ? noData() :
+          <ResponsiveContainer width="100%" height={220}>
+            <PieChart>
+              <Pie data={analyticsCanal.map(r=>({name:r.canal,value:Number(r.total)}))} cx="50%" cy="50%" outerRadius={85} innerRadius={42} dataKey="value" nameKey="name" label={({name,percent})=>`${name} ${Math.round(percent*100)}%`} labelLine={false} style={{fontSize:10}}>
+                {analyticsCanal.map((_:any,i:number)=><Cell key={i} fill={PALETTE[i%PALETTE.length]}/>)}
+              </Pie>
+              <Tooltip contentStyle={{fontSize:12,borderRadius:8,border:'1px solid #e2e8f0'}}/>
+            </PieChart>
+          </ResponsiveContainer>
+        )}
+        {chartBox('Tasa de conversión por canal',
+          analyticsConversionCanal.length===0 ? noData() :
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={analyticsConversionCanal.map(r=>({...r,tasa_calif:Number(r.tasa_calif),tasa_cierre:Number(r.tasa_cierre)}))} layout="vertical" margin={{left:0,right:16}}>
+              <XAxis type="number" tick={{fontSize:10,fill:'#94a3b8'}} tickLine={false} axisLine={false} tickFormatter={v=>`${v}%`} domain={[0,100]}/>
+              <YAxis type="category" dataKey="canal" tick={{fontSize:10,fill:'#64748b'}} tickLine={false} axisLine={false} width={90}/>
+              <Tooltip contentStyle={{fontSize:12,borderRadius:8,border:'1px solid #e2e8f0'}} formatter={(v:any)=>`${v}%`}/>
+              <Legend wrapperStyle={{fontSize:11}}/>
+              <Bar dataKey="tasa_calif" fill={G} radius={[0,3,3,0]} name="% Calificado">
+                <LabelList dataKey="tasa_calif" position="right" formatter={(v:any)=>`${v}%`} style={{fontSize:10,fill:'#64748b',fontWeight:600,fontFamily:SANS}}/>
+              </Bar>
+              <Bar dataKey="tasa_cierre" fill={N} radius={[0,3,3,0]} name="% Cerrado">
+                <LabelList dataKey="tasa_cierre" position="right" formatter={(v:any)=>`${v}%`} style={{fontSize:10,fill:'#64748b',fontWeight:600,fontFamily:SANS}}/>
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+        {chartBox('Detalle de conversión por canal',
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+            <thead>
+              <tr style={{background:'#f8fafc'}}>
+                {['Canal','Total','Calificados','Cerrados','% Calif.','% Cierre'].map((h,i)=>(
+                  <th key={h} style={{padding:'9px 10px',textAlign:i===0?'left':'right',fontWeight:600,color:'#64748b',borderBottom:'1px solid #e2e8f0',fontSize:10,textTransform:'uppercase'}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {analyticsConversionCanal.length===0
+                ? <tr><td colSpan={6} style={{textAlign:'center',padding:20,color:'#94a3b8'}}>Sin datos</td></tr>
+                : analyticsConversionCanal.map((r:any,i:number)=>(
+                    <tr key={r.canal} style={{background:i%2===0?'#fff':'#f8fafc',borderBottom:'1px solid #f1f5f9'}}>
+                      <td style={{padding:'9px 10px',color:N,fontWeight:600}}>{r.canal}</td>
+                      <td style={{padding:'9px 10px',textAlign:'right'}}>{r.total}</td>
+                      <td style={{padding:'9px 10px',textAlign:'right'}}>{r.calificados}</td>
+                      <td style={{padding:'9px 10px',textAlign:'right'}}>{r.cerrados}</td>
+                      <td style={{padding:'9px 10px',textAlign:'right'}}><span style={{fontWeight:700,color:Number(r.tasa_calif)>40?'#16a34a':G}}>{r.tasa_calif}%</span></td>
+                      <td style={{padding:'9px 10px',textAlign:'right'}}><span style={{fontWeight:700,color:Number(r.tasa_cierre)>20?'#16a34a':'#94a3b8'}}>{r.tasa_cierre}%</span></td>
+                    </tr>
+                  ))
+              }
+            </tbody>
+          </table>
+        , true)}
+      </div>
+    );
+
+    // ── Vista: VELOCIDAD ───────────────────────────────────────
+    const maxDias = Math.max(...analyticsVelocidad.map((r:any)=>Number(r.dias_en_estado)), 1);
+    const vistaVelocidad = (
+      <div style={{display:'flex',flexDirection:'column',gap:14}}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+          {chartBox('Días promedio en cada etapa',
+            analyticsVelocidad.length===0 ? noData() :
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={analyticsVelocidad.map(r=>({...r,dias:Number(r.dias_en_estado)}))} layout="vertical" margin={{left:0,right:40}}>
+                <XAxis type="number" tick={{fontSize:10,fill:'#94a3b8'}} tickLine={false} axisLine={false} tickFormatter={v=>`${v}d`}/>
+                <YAxis type="category" dataKey="estado" tick={{fontSize:10,fill:'#64748b'}} tickLine={false} axisLine={false} width={100}/>
+                <Tooltip contentStyle={{fontSize:12,borderRadius:8,border:'1px solid #e2e8f0'}} formatter={(v:any)=>[`${v} días`,'Promedio']}/>
+                <Bar dataKey="dias" radius={[0,4,4,0]} name="Días prom.">
+                  {analyticsVelocidad.map((r:any)=><Cell key={r.estado} fill={FUNNEL_COLORS[r.estado]||'#94a3b8'}/>)}
+                  <LabelList dataKey="dias" position="right" formatter={(v:any)=>`${v}d`} style={{fontSize:10,fill:'#64748b',fontWeight:600,fontFamily:SANS}}/>
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+          {chartBox('Funnel con tiempo de permanencia',
+            analyticsVelocidad.length===0 ? noData() :
+            <div style={{display:'flex',flexDirection:'column',gap:6,padding:'8px 0'}}>
+              {analyticsVelocidad.map((r:any,i:number)=>{
+                const pct = Math.max(20, Math.round((maxDias - Number(r.dias_en_estado)) / maxDias * 100));
+                const color = FUNNEL_COLORS[r.estado]||'#94a3b8';
+                return (
+                  <div key={r.estado} style={{display:'flex',alignItems:'center',gap:10}}>
+                    <div style={{width:90,fontSize:10,color:'#64748b',textAlign:'right',flexShrink:0}}>{r.estado}</div>
+                    <div style={{flex:1,height:28,background:'#f1f5f9',borderRadius:6,overflow:'hidden',position:'relative'}}>
+                      <div style={{width:`${pct}%`,height:'100%',background:color,borderRadius:6,display:'flex',alignItems:'center',paddingLeft:8}}>
+                        <span style={{fontSize:10,fontWeight:700,color:'#fff',whiteSpace:'nowrap'}}>{r.total} prosp.</span>
+                      </div>
+                    </div>
+                    <div style={{width:60,fontSize:11,color:color,fontWeight:700,flexShrink:0}}>⌀ {r.dias_en_estado}d</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        {chartBox('Detalle de velocidad por etapa',
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+            <thead>
+              <tr style={{background:'#f8fafc'}}>
+                {['Etapa','Prospectos','Días prom.','Días mín.','Días máx.'].map((h,i)=>(
+                  <th key={h} style={{padding:'9px 12px',textAlign:i===0?'left':'right',fontWeight:600,color:'#64748b',borderBottom:'1px solid #e2e8f0',fontSize:10,textTransform:'uppercase'}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {analyticsVelocidad.length===0
+                ? <tr><td colSpan={5} style={{textAlign:'center',padding:20,color:'#94a3b8'}}>Sin datos</td></tr>
+                : analyticsVelocidad.map((r:any,i:number)=>{
+                    const color = FUNNEL_COLORS[r.estado]||'#94a3b8';
+                    return (
+                      <tr key={r.estado} style={{background:i%2===0?'#fff':'#f8fafc',borderBottom:'1px solid #f1f5f9'}}>
+                        <td style={{padding:'9px 12px',display:'flex',alignItems:'center',gap:7}}>
+                          <span style={{width:8,height:8,borderRadius:'50%',background:color,display:'inline-block',flexShrink:0}}/>
+                          <span style={{color:N,fontWeight:600}}>{r.estado}</span>
+                        </td>
+                        <td style={{padding:'9px 12px',textAlign:'right'}}>{r.total}</td>
+                        <td style={{padding:'9px 12px',textAlign:'right',fontWeight:700,color}}>{r.dias_en_estado}d</td>
+                        <td style={{padding:'9px 12px',textAlign:'right',color:'#64748b'}}>{r.dias_min}d</td>
+                        <td style={{padding:'9px 12px',textAlign:'right',color:'#64748b'}}>{r.dias_max}d</td>
+                      </tr>
+                    );
+                  })
+              }
+            </tbody>
+          </table>
+        , true)}
+      </div>
+    );
+
+    // ── Nav items del panel lateral ────────────────────────────
+    const navItems: {id:typeof rptSubView, label:string, svgPath:string}[] = [
+      {id:'resumen',   label:'Resumen',   svgPath:'M3 3v18h18 M7 16l4-4 3 3 4-5'},
+      {id:'brokers',   label:'Brokers',   svgPath:'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2 M9 7a4 4 0 1 0 8 0 4 4 0 0 0-8 0 M23 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75'},
+      {id:'proyectos', label:'Proyectos', svgPath:'M3 21h18 M9 21V9a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v12 M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16'},
+      {id:'fuentes',   label:'Fuentes',   svgPath:'M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z M12 8v4l3 3'},
+      {id:'velocidad', label:'Velocidad', svgPath:'M13 2L3 14h9l-1 8 10-12h-9l1-8'},
+    ];
+    const vistaActual = rptSubView==='resumen' ? vistaResumen : rptSubView==='brokers' ? vistaBrokers : rptSubView==='proyectos' ? vistaProyectos : rptSubView==='fuentes' ? vistaFuentes : vistaVelocidad;
+
+    const navIcon = (path:string, active:boolean) => (
+      <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke={active?G:'#94a3b8'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}>
+        {path.split(' M').map((p,i)=><path key={i} d={i===0?p:'M'+p}/>)}
+      </svg>
+    );
+
+    const btnExport = (label:string, icon:string, onClick:()=>void, primary=false) => (
+      <button onClick={onClick} style={{flex:1,background:primary?N:'transparent',color:primary?'#fff':N,border:`1px solid ${primary?N:T.border}`,borderRadius:3,padding:'7px 4px',fontSize:10,fontWeight:600,cursor:'pointer',fontFamily:SANS,display:'flex',alignItems:'center',justifyContent:'center',gap:4,transition:'all 0.12s'}}>
+        <span>{icon}</span>{label}
+      </button>
+    );
+
+    return (
+      <div style={{display:'flex',height:'100%',background:CREAM}}>
+        {/* ── Sidebar de reportes ── */}
+        <div style={{width:180,flexShrink:0,background:'#fff',borderRight:`1px solid ${T.border}`,display:'flex',flexDirection:'column'}}>
+          <div style={{padding:'20px 16px 14px',borderBottom:`1px solid ${T.border}`}}>
+            <div style={{fontSize:8,letterSpacing:3,color:G,fontWeight:700,textTransform:'uppercase',marginBottom:4,fontFamily:SANS}}>GLP Analytics</div>
+            <div style={{fontSize:16,fontWeight:600,color:N,fontFamily:SERIF,lineHeight:1.2}}>Análisis<br/>Comercial</div>
+          </div>
+          <div style={{flex:1,paddingTop:6}}>
+            {navItems.map(item=>{
+              const active = rptSubView===item.id;
+              return (
+                <button key={item.id} onClick={()=>setRptSubView(item.id)}
+                  style={{display:'flex',alignItems:'center',gap:9,padding:'10px 14px',width:'100%',background:active?CREAM:'transparent',border:'none',cursor:'pointer',textAlign:'left',borderLeft:active?`3px solid ${G}`:'3px solid transparent',transition:'all 0.1s'}}>
+                  {navIcon(item.svgPath, active)}
+                  <span style={{fontSize:12,fontWeight:active?700:400,color:active?N:T.textSec,fontFamily:SANS,letterSpacing:0.2}}>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          {/* Exportar */}
+          <div style={{padding:'14px 12px',borderTop:`1px solid ${T.border}`}}>
+            <div style={{fontSize:8,letterSpacing:2,color:'#94a3b8',fontWeight:700,textTransform:'uppercase',marginBottom:8,fontFamily:SANS}}>Exportar</div>
+            <div style={{display:'flex',gap:5,marginBottom:6}}>
+              {btnExport('Excel','📊',exportExcel,true)}
+              {btnExport('PDF','📄',exportPDF)}
+            </div>
+            <button onClick={handlePrint} style={{width:'100%',background:'transparent',color:T.textSec,border:`1px solid ${T.border}`,borderRadius:3,padding:'6px 0',fontSize:10,fontWeight:500,cursor:'pointer',fontFamily:SANS,display:'flex',alignItems:'center',justifyContent:'center',gap:5}}>
+              🖨️ Imprimir
+            </button>
+          </div>
+        </div>
+        {/* ── Área de contenido ── */}
+        <div style={{flex:1,overflow:'auto',padding:'20px 24px'}}>
+          {filterBar}
+          <div id="glp-rpt-content">{vistaActual}</div>
+
+          {/* ── Drilldown: Prospectos del segmento ── */}
+          {(()=>{
+            const COLS = [
+              {key:'nombre',    label:'Nombre',      right:false},
+              {key:'estado',    label:'Estado',      right:false},
+              {key:'broker',    label:'Broker',      right:false},
+              {key:'proyectos', label:'Proyecto(s)', right:false},
+              {key:'canal',     label:'Canal',       right:false},
+              {key:'presupuesto',label:'Presupuesto',right:true},
+              {key:'fecha',     label:'Registro',    right:true},
+            ];
+
+            const FUNNEL_ORDER: Record<string,number> = {'Contacto Inicial':0,'Calificado':1,'Calificación':1,'Presentación':2,'Negociación':3,'Cierre':4,'Post-venta':5,'Lead Frío':6};
+            const estadosUnicos = [...new Set(rptDetalle.map((p:any)=>p.estado).filter(Boolean))].sort((a,b)=>(FUNNEL_ORDER[a]??99)-(FUNNEL_ORDER[b]??99));
+
+            const filtered = rptDetalle
+              .filter((p:any)=>{
+                const full = `${p.nombre} ${p.apellido} ${p.broker_asignado||''} ${p.canal||''} ${p.estado||''}`.toLowerCase();
+                const matchSearch = !dtSearch || full.includes(dtSearch.toLowerCase());
+                const matchEstado = !dtEstado || p.estado === dtEstado;
+                return matchSearch && matchEstado;
+              })
+              .sort((a:any,b:any)=>{
+                const STAGE_ORDER: Record<string,number> = {'Contacto Inicial':0,'Calificado':1,'Calificación':1,'Presentación':2,'Negociación':3,'Cierre':4,'Post-venta':5,'Lead Frío':6};
+                let av: any, bv: any;
+                if      (dtSort.col==='nombre')     { av=`${a.nombre} ${a.apellido}`; bv=`${b.nombre} ${b.apellido}`; }
+                else if (dtSort.col==='estado')     { return ((STAGE_ORDER[a.estado]??99)-(STAGE_ORDER[b.estado]??99))*dtSort.dir; }
+                else if (dtSort.col==='broker')     { av=a.broker_asignado||''; bv=b.broker_asignado||''; }
+                else if (dtSort.col==='proyectos')  { av=(a.proyectos_interes||[])[0]||''; bv=(b.proyectos_interes||[])[0]||''; }
+                else if (dtSort.col==='canal')      { av=a.canal||''; bv=b.canal||''; }
+                else if (dtSort.col==='presupuesto'){ av=Number(a.presupuesto_usd||0); bv=Number(b.presupuesto_usd||0); }
+                else                                { av=a.fecha_registro||''; bv=b.fecha_registro||''; }
+                if(typeof av==='number') return (av-bv)*dtSort.dir;
+                return av.localeCompare(bv)*dtSort.dir;
+              });
+
+            const toggleSort = (col:string) => {
+              setDtSort(prev => prev.col===col ? {col,dir:prev.dir===-1?1:-1} : {col,dir:-1});
+            };
+            const sortIcon = (col:string) => dtSort.col!==col ? ' ⇅' : dtSort.dir===-1 ? ' ↓' : ' ↑';
+
+            return (
+              <div style={{marginTop:16}}>
+                <button
+                  onClick={()=>setRptShowDetalle(v=>!v)}
+                  style={{display:'flex',alignItems:'center',gap:8,background:'none',border:`1px solid ${T.border}`,borderRadius:6,padding:'7px 14px',cursor:'pointer',fontSize:12,fontFamily:SANS,color:T.textSec,fontWeight:600,width:'100%',justifyContent:'space-between'}}
+                >
+                  <span>👥 Ver prospectos de este segmento ({rptDetalle.length})</span>
+                  <span style={{fontSize:10}}>{rptShowDetalle ? '▲ Ocultar' : '▼ Mostrar'}</span>
+                </button>
+                {rptShowDetalle && (
+                  <div style={{marginTop:8,border:`1px solid ${T.border}`,borderRadius:8,overflow:'hidden'}}>
+                    {/* Barra de búsqueda y filtros */}
+                    <div style={{display:'flex',gap:8,padding:'10px 12px',background:'#f8fafc',borderBottom:`1px solid ${T.borderLight}`,flexWrap:'wrap',alignItems:'center'}}>
+                      <input
+                        value={dtSearch} onChange={e=>setDtSearch(e.target.value)}
+                        placeholder="Buscar por nombre, broker, canal…"
+                        style={{flex:1,minWidth:160,padding:'5px 10px',border:`1px solid ${T.border}`,borderRadius:6,fontSize:11,fontFamily:SANS,outline:'none'}}
+                      />
+                      <select value={dtEstado} onChange={e=>setDtEstado(e.target.value)}
+                        style={{padding:'5px 8px',border:`1px solid ${T.border}`,borderRadius:6,fontSize:11,fontFamily:SANS,color:T.text,background:'#fff'}}>
+                        <option value=''>Todos los estados</option>
+                        {estadosUnicos.map(e=><option key={e} value={e}>{e}</option>)}
+                      </select>
+                      {(dtSearch||dtEstado) && (
+                        <button onClick={()=>{setDtSearch('');setDtEstado('');}}
+                          style={{fontSize:10,color:T.danger,background:'none',border:`1px solid ${T.danger}`,borderRadius:4,padding:'4px 8px',cursor:'pointer',fontFamily:SANS}}>
+                          ✕ Limpiar
+                        </button>
+                      )}
+                      <span style={{fontSize:11,color:T.textSec,fontFamily:SANS,marginLeft:'auto'}}>
+                        {filtered.length} de {rptDetalle.length}
+                      </span>
+                    </div>
+                    <div style={{overflowX:'auto'}}>
+                      <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,fontFamily:SANS}}>
+                        <thead>
+                          <tr style={{background:N,color:'#fff'}}>
+                            {COLS.map(c=>(
+                              <th key={c.key} onClick={()=>toggleSort(c.key)}
+                                style={{padding:'9px 12px',textAlign:c.right?'right':'left',fontWeight:600,fontSize:10,
+                                  textTransform:'uppercase',letterSpacing:0.5,cursor:'pointer',userSelect:'none',
+                                  whiteSpace:'nowrap',opacity:dtSort.col===c.key?1:0.8}}>
+                                {c.label}{sortIcon(c.key)}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filtered.length===0
+                            ? <tr><td colSpan={7} style={{textAlign:'center',padding:20,color:'#94a3b8',fontFamily:SANS}}>Sin resultados</td></tr>
+                            : filtered.map((p:any,i:number)=>{
+                                const proyectos = Array.isArray(p.proyectos_interes) ? p.proyectos_interes
+                                  : (typeof p.proyectos_interes==='string' ? JSON.parse(p.proyectos_interes||'[]') : []);
+                                return (
+                                  <tr key={p.id}
+                                    onClick={()=>{ setActiveModule('prospectos'); setProspectDetail(p.id); }}
+                                    style={{background:i%2===0?'#fff':CREAM,borderBottom:`1px solid ${T.borderLight}`,cursor:'pointer',transition:'background 0.1s'}}
+                                    onMouseEnter={e=>(e.currentTarget.style.background=PARCH)}
+                                    onMouseLeave={e=>(e.currentTarget.style.background=i%2===0?'#fff':CREAM)}>
+                                    <td style={{padding:'8px 12px',fontWeight:600,color:N}}>{p.nombre} {p.apellido}</td>
+                                    <td style={{padding:'8px 12px'}}>
+                                      <span style={{background:`${FUNNEL_COLORS[p.estado]||'#94a3b8'}22`,color:FUNNEL_COLORS[p.estado]||'#64748b',padding:'2px 7px',borderRadius:10,fontSize:10,fontWeight:700}}>
+                                        {p.estado}
+                                      </span>
+                                    </td>
+                                    <td style={{padding:'8px 12px',color:T.textSec}}>{p.broker_asignado||<span style={{color:'#cbd5e1'}}>—</span>}</td>
+                                    <td style={{padding:'8px 12px',color:T.textSec,maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{proyectos.join(', ')}</td>
+                                    <td style={{padding:'8px 12px',color:T.textSec}}>{p.canal}</td>
+                                    <td style={{padding:'8px 12px',textAlign:'right',fontWeight:600,color:N}}>{p.presupuesto_usd?fmtUSD(Number(p.presupuesto_usd)):'-'}</td>
+                                    <td style={{padding:'8px 12px',textAlign:'right',color:'#94a3b8',fontSize:11}}>{p.fecha_registro?p.fecha_registro.slice(0,10):'-'}</td>
+                                  </tr>
+                                );
+                              })
+                          }
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+      </div>
+    );
+  };
+
+  // ── MÓDULO CASOS — full-page, Sotheby's aesthetic ────────────────────────
+  const renderCasos = () => {
+    const SF = T.fontSerif;
+    const SS = T.fontSans;
+    const NAVY = T.teal;
+    const GOLD = T.coral;
+    const CREAM = '#FAF9F6';
+
+    const TIPO_COLOR: Record<string,string> = { consulta:'#1D3557', soporte:'#6B3FA0', reclamo:'#B5202A', tramite:'#0E6D8E' };
+    const TIPO_LABEL: Record<string,string> = { consulta:'Consulta', soporte:'Soporte', reclamo:'Reclamo', tramite:'Trámite' };
+    const PRIO_COLOR: Record<string,string> = { urgente:'#B5202A', alta:'#C07D00', normal:'#2D6A4F', baja:'#6B7280' };
+    const EST_COLOR:  Record<string,string> = { abierto:'#1D3557', en_gestion:'#C07D00', resuelto:'#2D6A4F', cerrado:'#6B7280' };
+    const EST_LABEL:  Record<string,string> = { abierto:'Abierto', en_gestion:'En gestión', resuelto:'Resuelto', cerrado:'Cerrado' };
+
+    const saveCaso = async (data: any) => {
+      const method = data.id ? 'PUT' : 'POST';
+      const url = data.id ? `${API}/casos/${data.id}` : `${API}/casos`;
+      await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
+      fetchCasos();
+      setCasoForm(false);
+      setCasoDetail(null);
+      setNewCaso({ titulo:'', descripcion:'', tipo:'consulta', prioridad:'normal', asignado_a:'', notas:'', prospecto_id:'' });
+    };
+    const deleteCaso = async (id: number) => {
+      await fetch(`${API}/casos/${id}`, { method:'DELETE' });
+      fetchCasos();
+      setCasoDetail(null);
+    };
+    const updateEstado = async (caso: any, estado: string) => {
+      await fetch(`${API}/casos/${caso.id}`, {
+        method:'PUT', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({...caso, estado}),
+      });
+      fetchCasos();
+      if (casoDetail?.id === caso.id) setCasoDetail({...casoDetail, estado});
+    };
+
+    const postventaProspects = prospects.filter(p => p.estado === 'Post-venta' || p.estado === 'Cierre');
+    const stats = casosStats;
+
+    const inputStyle: React.CSSProperties = {
+      width:'100%', padding:'9px 12px', border:`1px solid #D9D4CC`,
+      borderRadius:4, fontSize:13, fontFamily:SS, color:'#1a1a1a',
+      background:'#fff', boxSizing:'border-box', outline:'none',
+    };
+    const labelStyle: React.CSSProperties = {
+      fontSize:9, fontWeight:700, letterSpacing:1.4, textTransform:'uppercase',
+      color:'#8B8170', marginBottom:5, display:'block', fontFamily:SS,
+    };
+
+    return (
+      <div style={{display:'flex',height:'100%',background:CREAM,fontFamily:SS}}>
+
+        {/* ── COLUMNA PRINCIPAL ── */}
+        <div style={{flex:1,minWidth:0,overflowY:'auto',padding:'36px 40px'}}>
+
+          {/* Encabezado de sección */}
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:28,borderBottom:`1px solid #DDD8CE`,paddingBottom:20}}>
+            <div>
+              <div style={{fontSize:10,letterSpacing:2.5,color:GOLD,fontWeight:700,fontFamily:SS,textTransform:'uppercase',marginBottom:6}}>
+                GLP Wealth Management
+              </div>
+              <h1 style={{margin:0,fontSize:30,fontFamily:SF,fontWeight:400,color:NAVY,letterSpacing:0.5,lineHeight:1}}>
+                Casos & Postventa
+              </h1>
+              <p style={{margin:'6px 0 0',fontSize:12,color:'#8B8170',fontFamily:SS}}>
+                Gestión de consultas, soporte y trámites post-cierre
+              </p>
+            </div>
+            <button
+              onClick={()=>{setCasoForm(!casoForm);setCasoDetail(null);}}
+              style={{padding:'10px 22px',background:NAVY,color:'#fff',border:'none',borderRadius:3,
+                fontSize:11,fontWeight:700,letterSpacing:1.2,textTransform:'uppercase',cursor:'pointer',fontFamily:SS}}>
+              {casoForm ? '✕ Cancelar' : '+ Nuevo Caso'}
+            </button>
+          </div>
+
+          {/* KPIs */}
+          <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:16,marginBottom:32}}>
+            {[
+              { label:'Abiertos',   val:stats?.abiertos??0,   color:EST_COLOR.abierto },
+              { label:'En Gestión', val:stats?.en_gestion??0, color:EST_COLOR.en_gestion },
+              { label:'Resueltos',  val:stats?.resueltos??0,  color:EST_COLOR.resuelto },
+              { label:'Cerrados',   val:stats?.cerrados??0,   color:EST_COLOR.cerrado },
+              { label:'Urgentes',   val:stats?.urgentes??0,   color:PRIO_COLOR.urgente },
+            ].map(k=>(
+              <div key={k.label} style={{background:'#fff',border:'1px solid #E8E3DB',padding:'18px 20px',position:'relative',overflow:'hidden'}}>
+                <div style={{position:'absolute',top:0,left:0,width:3,height:'100%',background:k.color}}/>
+                <div style={{fontSize:28,fontWeight:300,color:k.color,fontFamily:SF,lineHeight:1,marginBottom:4}}>{k.val}</div>
+                <div style={{fontSize:9,letterSpacing:1.5,textTransform:'uppercase',color:'#8B8170',fontFamily:SS}}>{k.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Formulario nuevo/editar */}
+          {casoForm && (
+            <div style={{background:'#fff',border:'1px solid #DDD8CE',padding:'28px 32px',marginBottom:28}}>
+              <div style={{fontSize:12,letterSpacing:2,textTransform:'uppercase',color:GOLD,fontWeight:700,fontFamily:SS,marginBottom:20}}>
+                {newCaso.id ? 'Editar caso' : 'Registrar nuevo caso'}
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:16}}>
+                <div style={{gridColumn:'1/-1'}}>
+                  <label style={labelStyle}>Título *</label>
+                  <input value={newCaso.titulo} onChange={e=>setNewCaso({...newCaso,titulo:e.target.value})}
+                    placeholder="Describe brevemente el caso…" style={inputStyle}/>
+                </div>
+                <div>
+                  <label style={labelStyle}>Cliente vinculado</label>
+                  <select value={newCaso.prospecto_id} onChange={e => {
+                    const pid = e.target.value;
+                    const prosp = postventaProspects.find(p => String(p.id) === pid);
+                    setNewCaso({...newCaso, prospecto_id: pid, asignado_a: prosp?.broker_asignado || newCaso.asignado_a });
+                  }} style={inputStyle}>
+                    <option value=''>— Sin vincular —</option>
+                    {postventaProspects.map(p=><option key={p.id} value={p.id}>{p.nombre} {p.apellido}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>Asignado a</label>
+                  <select value={newCaso.asignado_a} onChange={e=>setNewCaso({...newCaso,asignado_a:e.target.value})} style={inputStyle}>
+                    <option value=''>— Sin asignar —</option>
+                    {(() => {
+                      const pid = newCaso.prospecto_id;
+                      const prosp = pid ? postventaProspects.find(p => String(p.id) === pid) : null;
+                      const suggested = prosp?.broker_asignado;
+                      return brokers.map(b => (
+                        <option key={b.id} value={b.nombre}>
+                          {b.nombre}{suggested === b.nombre ? ' ★ broker del cliente' : ''}
+                        </option>
+                      ));
+                    })()}
+                  </select>
+                  {newCaso.prospecto_id && (() => {
+                    const prosp = postventaProspects.find(p => String(p.id) === newCaso.prospecto_id);
+                    return prosp?.broker_asignado ? (
+                      <div style={{fontSize:11,color:'#6B8F71',marginTop:5,display:'flex',alignItems:'center',gap:5}}>
+                        <span>★</span>
+                        <span>Broker asignado al cliente: <strong>{prosp.broker_asignado}</strong></span>
+                      </div>
+                    ) : null;
+                  })()}
+                </div>
+                <div>
+                  <label style={labelStyle}>Tipo</label>
+                  <select value={newCaso.tipo} onChange={e=>setNewCaso({...newCaso,tipo:e.target.value})} style={inputStyle}>
+                    <option value='consulta'>Consulta</option>
+                    <option value='soporte'>Soporte</option>
+                    <option value='reclamo'>Reclamo</option>
+                    <option value='tramite'>Trámite</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>Prioridad</label>
+                  <select value={newCaso.prioridad} onChange={e=>setNewCaso({...newCaso,prioridad:e.target.value})} style={inputStyle}>
+                    <option value='normal'>Normal</option>
+                    <option value='urgente'>Urgente</option>
+                    <option value='alta'>Alta</option>
+                    <option value='baja'>Baja</option>
+                  </select>
+                </div>
+                <div style={{gridColumn:'1/-1'}}>
+                  <label style={labelStyle}>Descripción</label>
+                  <textarea value={newCaso.descripcion} onChange={e=>setNewCaso({...newCaso,descripcion:e.target.value})}
+                    placeholder="Detalla el contexto y requerimiento del caso…" rows={4}
+                    style={{...inputStyle,resize:'vertical'}}/>
+                </div>
+              </div>
+              <div style={{display:'flex',gap:10}}>
+                <button onClick={()=>saveCaso(newCaso)} disabled={!newCaso.titulo}
+                  style={{padding:'10px 24px',background:newCaso.titulo?NAVY:'#BDB9B2',color:'#fff',border:'none',borderRadius:3,
+                    fontSize:11,fontWeight:700,letterSpacing:1.2,textTransform:'uppercase',cursor:newCaso.titulo?'pointer':'not-allowed',fontFamily:SS}}>
+                  {newCaso.id ? 'Guardar cambios' : 'Crear caso'}
+                </button>
+                <button onClick={()=>{setCasoForm(false);setNewCaso({titulo:'',descripcion:'',tipo:'consulta',prioridad:'normal',asignado_a:'',notas:'',prospecto_id:''});}}
+                  style={{padding:'10px 20px',background:'transparent',color:NAVY,border:`1px solid ${NAVY}`,borderRadius:3,
+                    fontSize:11,fontWeight:700,letterSpacing:1.2,textTransform:'uppercase',cursor:'pointer',fontFamily:SS}}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Barra de filtros */}
+          <div style={{display:'flex',gap:8,marginBottom:16,alignItems:'center',flexWrap:'wrap'}}>
+            {[{val:'',label:'Todos'},{val:'abierto',label:'Abierto'},{val:'en_gestion',label:'En gestión'},
+              {val:'resuelto',label:'Resuelto'},{val:'cerrado',label:'Cerrado'}].map(f=>(
+              <button key={f.val} onClick={()=>setCasoFilterEstado(f.val)}
+                style={{padding:'5px 14px',border:`1px solid ${casoFilterEstado===f.val?NAVY:'#C8C3BB'}`,
+                  background:casoFilterEstado===f.val?NAVY:'transparent',
+                  color:casoFilterEstado===f.val?'#fff':'#5A5550',
+                  borderRadius:2,fontSize:11,fontWeight:600,letterSpacing:0.8,cursor:'pointer',fontFamily:SS,
+                  textTransform:'uppercase'}}>
+                {f.label}
+              </button>
+            ))}
+            <div style={{width:1,height:20,background:'#DDD8CE',margin:'0 4px'}}/>
+            <select value={casoFilterPrioridad} onChange={e=>setCasoFilterPrioridad(e.target.value)}
+              style={{padding:'5px 10px',border:'1px solid #C8C3BB',borderRadius:2,fontSize:11,fontFamily:SS,color:'#5A5550',background:'#fff'}}>
+              <option value=''>Prioridad</option>
+              <option value='urgente'>Urgente</option>
+              <option value='alta'>Alta</option>
+              <option value='normal'>Normal</option>
+              <option value='baja'>Baja</option>
+            </select>
+            <select value={casoFilterTipo} onChange={e=>setCasoFilterTipo(e.target.value)}
+              style={{padding:'5px 10px',border:'1px solid #C8C3BB',borderRadius:2,fontSize:11,fontFamily:SS,color:'#5A5550',background:'#fff'}}>
+              <option value=''>Tipo</option>
+              <option value='consulta'>Consulta</option>
+              <option value='soporte'>Soporte</option>
+              <option value='reclamo'>Reclamo</option>
+              <option value='tramite'>Trámite</option>
+            </select>
+            {(casoFilterEstado||casoFilterPrioridad||casoFilterTipo) && (
+              <button onClick={()=>{setCasoFilterEstado('');setCasoFilterPrioridad('');setCasoFilterTipo('');}}
+                style={{padding:'5px 10px',border:'none',background:'none',color:'#8B8170',fontSize:11,cursor:'pointer',fontFamily:SS}}>
+                ✕ Limpiar
+              </button>
+            )}
+          </div>
+
+          {/* Lista de casos */}
+          {casosLoading ? (
+            <div style={{textAlign:'center',padding:60,color:'#8B8170',fontFamily:SF,fontSize:16,fontWeight:300}}>
+              Cargando casos…
+            </div>
+          ) : casos.length === 0 ? (
+            <div style={{textAlign:'center',padding:'64px 0',borderTop:'1px solid #E8E3DB'}}>
+              <div style={{fontSize:40,marginBottom:16,opacity:0.25}}>📋</div>
+              <div style={{fontSize:22,fontFamily:SF,fontWeight:400,color:NAVY,marginBottom:8}}>Sin casos registrados</div>
+              <div style={{fontSize:12,color:'#8B8170',marginBottom:24,fontFamily:SS}}>
+                Los casos de soporte y postventa aparecerán aquí.
+              </div>
+              <button onClick={()=>setCasoForm(true)}
+                style={{padding:'10px 24px',background:NAVY,color:'#fff',border:'none',borderRadius:3,
+                  fontSize:11,fontWeight:700,letterSpacing:1.2,textTransform:'uppercase',cursor:'pointer',fontFamily:SS}}>
+                Registrar primer caso
+              </button>
+            </div>
+          ) : (
+            <div style={{borderTop:'1px solid #E8E3DB'}}>
+              {/* Cabecera tabla */}
+              <div style={{display:'grid',gridTemplateColumns:'3fr 1fr 1fr 1.5fr 1fr 100px',
+                padding:'10px 16px',background:'#F0EDE8',borderBottom:'1px solid #DDD8CE'}}>
+                {['Caso','Tipo','Prioridad','Cliente','Apertura','Estado'].map(h=>(
+                  <div key={h} style={{fontSize:8,letterSpacing:1.8,textTransform:'uppercase',color:'#8B8170',fontWeight:700,fontFamily:SS}}>{h}</div>
+                ))}
+              </div>
+              {casos.map((caso,i)=>{
+                const isActive = casoDetail?.id === caso.id;
+                const diasAbierto = Math.floor((Date.now()-new Date(caso.fecha_apertura).getTime())/86400000);
+                return (
+                  <div key={caso.id} onClick={()=>{setCasoDetail(isActive?null:caso);setCasoForm(false);}}
+                    style={{display:'grid',gridTemplateColumns:'3fr 1fr 1fr 1.5fr 1fr 100px',
+                      padding:'14px 16px',borderBottom:'1px solid #EEE9E1',cursor:'pointer',
+                      background:isActive?`${NAVY}06`:i%2===0?'#fff':'#FDFCFA',
+                      borderLeft:isActive?`3px solid ${GOLD}`:'3px solid transparent',
+                      transition:'background 0.1s'}}>
+                    <div style={{minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:600,color:NAVY,fontFamily:SS,
+                        whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{caso.titulo}</div>
+                      {caso.asignado_a && (
+                        <div style={{fontSize:10,color:'#8B8170',marginTop:2,fontFamily:SS}}>→ {caso.asignado_a}</div>
+                      )}
+                    </div>
+                    <div style={{display:'flex',alignItems:'center'}}>
+                      <span style={{fontSize:9,fontWeight:700,letterSpacing:0.8,textTransform:'uppercase',
+                        padding:'3px 8px',border:`1px solid ${TIPO_COLOR[caso.tipo]||'#ccc'}40`,
+                        color:TIPO_COLOR[caso.tipo]||'#666',fontFamily:SS}}>
+                        {TIPO_LABEL[caso.tipo]||caso.tipo}
+                      </span>
+                    </div>
+                    <div style={{display:'flex',alignItems:'center'}}>
+                      <span style={{fontSize:10,fontWeight:700,color:PRIO_COLOR[caso.prioridad]||'#666',fontFamily:SS,
+                        display:'flex',alignItems:'center',gap:4}}>
+                        {caso.prioridad==='urgente'?'● ':caso.prioridad==='alta'?'● ':''}
+                        {caso.prioridad.charAt(0).toUpperCase()+caso.prioridad.slice(1)}
+                      </span>
+                    </div>
+                    <div style={{display:'flex',alignItems:'center',fontSize:12,color:'#3D3730',fontFamily:SS}}>
+                      {caso.prospecto_nombre||<span style={{color:'#C8C3BB',fontStyle:'italic'}}>Sin vincular</span>}
+                    </div>
+                    <div style={{display:'flex',alignItems:'center'}}>
+                      <div>
+                        <div style={{fontSize:11,color:'#5A5550',fontFamily:SS}}>
+                          {new Date(caso.fecha_apertura).toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}
+                        </div>
+                        <div style={{fontSize:9,color:diasAbierto>7&&caso.estado==='abierto'?PRIO_COLOR.urgente:'#B0AA9F',fontFamily:SS}}>
+                          {diasAbierto}d
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{display:'flex',alignItems:'center'}} onClick={e=>e.stopPropagation()}>
+                      <select value={caso.estado}
+                        onChange={e=>{ e.stopPropagation(); updateEstado(caso, e.target.value); }}
+                        style={{fontSize:10,border:`1px solid ${EST_COLOR[caso.estado]}40`,borderRadius:2,
+                          padding:'4px 6px',color:EST_COLOR[caso.estado],
+                          background:`${EST_COLOR[caso.estado]}08`,fontFamily:SS,
+                          fontWeight:700,cursor:'pointer',letterSpacing:0.4,width:'100%'}}>
+                        <option value='abierto'>Abierto</option>
+                        <option value='en_gestion'>En gestión</option>
+                        <option value='resuelto'>Resuelto</option>
+                        <option value='cerrado'>Cerrado</option>
+                      </select>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* ── PANEL DETALLE ── */}
+        {casoDetail && (
+          <div style={{width:340,flexShrink:0,borderLeft:'1px solid #DDD8CE',background:'#fff',overflowY:'auto',padding:'32px 28px'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20}}>
+              <div style={{fontSize:9,letterSpacing:2,textTransform:'uppercase',color:GOLD,fontWeight:700,fontFamily:SS}}>
+                Detalle del caso
+              </div>
+              <button onClick={()=>setCasoDetail(null)}
+                style={{background:'none',border:'none',cursor:'pointer',color:'#8B8170',fontSize:16,lineHeight:1,padding:0}}>✕</button>
+            </div>
+
+            <h2 style={{margin:'0 0 16px',fontSize:20,fontFamily:SF,fontWeight:400,color:NAVY,lineHeight:1.3}}>
+              {casoDetail.titulo}
+            </h2>
+
+            <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:20}}>
+              <span style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:'4px 10px',
+                border:`1px solid ${TIPO_COLOR[casoDetail.tipo]||'#ccc'}`,
+                color:TIPO_COLOR[casoDetail.tipo]||NAVY,textTransform:'uppercase',fontFamily:SS}}>
+                {TIPO_LABEL[casoDetail.tipo]||casoDetail.tipo}
+              </span>
+              <span style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:'4px 10px',
+                border:`1px solid ${PRIO_COLOR[casoDetail.prioridad]||'#ccc'}`,
+                color:PRIO_COLOR[casoDetail.prioridad]||NAVY,textTransform:'uppercase',fontFamily:SS}}>
+                {casoDetail.prioridad}
+              </span>
+            </div>
+
+            {casoDetail.descripcion && (
+              <div style={{fontSize:13,color:'#3D3730',lineHeight:1.7,marginBottom:20,fontFamily:SS,
+                borderLeft:'2px solid #DDD8CE',paddingLeft:12}}>
+                {casoDetail.descripcion}
+              </div>
+            )}
+
+            <div style={{borderTop:'1px solid #EEE9E1',paddingTop:16,marginBottom:20}}>
+              {[
+                casoDetail.prospecto_nombre && { label:'Cliente', val:casoDetail.prospecto_nombre, link:true },
+                casoDetail.asignado_a       && { label:'Responsable', val:casoDetail.asignado_a },
+                { label:'Apertura', val:new Date(casoDetail.fecha_apertura).toLocaleDateString('es-CO',{year:'numeric',month:'long',day:'numeric'}) },
+                casoDetail.fecha_cierre     && { label:'Cierre', val:new Date(casoDetail.fecha_cierre).toLocaleDateString('es-CO',{year:'numeric',month:'long',day:'numeric'}) },
+              ].filter(Boolean).map((row:any)=>(
+                <div key={row.label} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',
+                  padding:'8px 0',borderBottom:'1px solid #F5F2EE'}}>
+                  <span style={{fontSize:10,letterSpacing:1,textTransform:'uppercase',color:'#8B8170',fontFamily:SS}}>{row.label}</span>
+                  <span style={{fontSize:12,color:row.link?NAVY:'#3D3730',fontWeight:600,fontFamily:SS,
+                    cursor:row.link?'pointer':'default',textDecoration:row.link?'underline':'none'}}
+                    onClick={()=>row.link&&casoDetail.prospecto_id&&(setProspectDetail(casoDetail.prospecto_id),setActiveModule('prospectos'))}>
+                    {row.val}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Actividades del caso */}
+            {(() => {
+              const ACTIVIDAD_TIPOS = [
+                { id:'llamada',    icon:'📞', label:'Llamada' },
+                { id:'email',      icon:'✉️', label:'Email' },
+                { id:'reunion',    icon:'🤝', label:'Reunión' },
+                { id:'documento',  icon:'📄', label:'Documento' },
+                { id:'gestion',    icon:'⚙️', label:'Gestión interna' },
+                { id:'otro',       icon:'📝', label:'Otro' },
+              ];
+              const ACTIVIDADES_SUGERIDAS: Record<string, string[]> = {
+                abierto:    ['Primer contacto con el cliente','Verificación de documentos iniciales','Confirmación del requerimiento','Asignación interna del caso'],
+                en_gestion: ['Coordinación con constructora','Gestión bancaria o notarial','Envío de documentos al cliente','Reunión de seguimiento','Respuesta a consulta legal'],
+                resuelto:   ['Envío de resolución al cliente','Confirmación de satisfacción del cliente','Cierre del trámite','Entrega de documentos finales'],
+                cerrado:    ['Archivo del expediente','Encuesta de satisfacción','Registro en historial del cliente'],
+              };
+              const actividades: any[] = casoDetail.actividades || [];
+              const estadoActual = casoDetail.estado || 'abierto';
+              const sugeridas = ACTIVIDADES_SUGERIDAS[estadoActual] || [];
+              const actTipo = casoActTipo;
+              const setActTipo = setCasoActTipo;
+              const actDesc = casoActDesc;
+              const setActDesc = setCasoActDesc;
+              const actOpen = casoActOpen;
+              const setActOpen = setCasoActOpen;
+              const guardarActividad = async () => {
+                if (!actDesc.trim()) return;
+                const tipoInfo = ACTIVIDAD_TIPOS.find(t => t.id === actTipo);
+                const nuevaAct = {
+                  id: Date.now(),
+                  tipo: actTipo,
+                  icono: tipoInfo?.icon || '📝',
+                  descripcion: actDesc.trim(),
+                  fecha: new Date().toLocaleDateString('es-CO', { day:'2-digit', month:'short', year:'numeric' }),
+                  hora: new Date().toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit' }),
+                };
+                const updatedActs = [nuevaAct, ...actividades];
+                const updatedCaso = { ...casoDetail, actividades: updatedActs };
+                await fetch(`${API}/casos/${casoDetail.id}`, {
+                  method:'PUT', headers:{'Content-Type':'application/json'},
+                  body: JSON.stringify({ ...updatedCaso }),
+                });
+                setCasoDetail(updatedCaso);
+                setCasoActDesc(''); setCasoActOpen(false);
+                fetchCasos();
+              };
+              return (
+                <div style={{marginBottom:20}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+                    <div style={{fontSize:9,letterSpacing:1.5,textTransform:'uppercase',color:'#8B8170',fontFamily:SS,fontWeight:700}}>
+                      Actividades ({actividades.length})
+                    </div>
+                    <button onClick={()=>setActOpen(o=>!o)}
+                      style={{fontSize:10,fontWeight:700,letterSpacing:0.8,textTransform:'uppercase',
+                        padding:'4px 10px',background:actOpen?NAVY:'transparent',color:actOpen?'#fff':NAVY,
+                        border:`1px solid ${NAVY}`,borderRadius:2,cursor:'pointer',fontFamily:SS}}>
+                      {actOpen ? '✕ Cancelar' : '+ Registrar'}
+                    </button>
+                  </div>
+
+                  {/* Sugerencias por etapa */}
+                  {sugeridas.length > 0 && (
+                    <div style={{marginBottom:10}}>
+                      <div style={{fontSize:9,color:'#B89047',fontFamily:SS,fontWeight:700,letterSpacing:1,textTransform:'uppercase',marginBottom:5}}>
+                        Actividades típicas · {EST_LABEL[estadoActual as keyof typeof EST_LABEL]}
+                      </div>
+                      <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                        {sugeridas.map(s=>(
+                          <span key={s} onClick={()=>{setActDesc(s);setActOpen(true);}}
+                            style={{fontSize:10,padding:'3px 8px',background:'#FEF9EC',border:'1px solid #E8D9A0',
+                              borderRadius:2,cursor:'pointer',color:'#7A5C00',fontFamily:SS}}>
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Formulario nueva actividad */}
+                  {actOpen && (
+                    <div style={{background:'#F9F7F4',border:'1px solid #E2DDD5',borderRadius:4,padding:12,marginBottom:10}}>
+                      <div style={{display:'flex',gap:4,flexWrap:'wrap',marginBottom:8}}>
+                        {ACTIVIDAD_TIPOS.map(t=>(
+                          <button key={t.id} onClick={()=>setActTipo(t.id)}
+                            style={{fontSize:10,padding:'4px 8px',border:`1px solid ${actTipo===t.id?NAVY:'#D5D0C8'}`,
+                              borderRadius:2,background:actTipo===t.id?NAVY:'#fff',
+                              color:actTipo===t.id?'#fff':'#3D3730',cursor:'pointer',fontFamily:SS,fontWeight:600}}>
+                            {t.icon} {t.label}
+                          </button>
+                        ))}
+                      </div>
+                      <textarea value={actDesc} onChange={e=>setActDesc(e.target.value)}
+                        placeholder="Describe qué se hizo, resultado y próximo paso…"
+                        rows={3} style={{width:'100%',padding:'8px 10px',border:'1px solid #D5D0C8',
+                          borderRadius:3,fontSize:12,fontFamily:SS,resize:'vertical',boxSizing:'border-box'}}/>
+                      <button onClick={guardarActividad} disabled={!actDesc.trim()}
+                        style={{marginTop:8,width:'100%',padding:'8px',background:actDesc.trim()?NAVY:'#BDB9B2',
+                          color:'#fff',border:'none',borderRadius:3,fontSize:11,fontWeight:700,
+                          letterSpacing:1,textTransform:'uppercase',cursor:actDesc.trim()?'pointer':'not-allowed',fontFamily:SS}}>
+                        Guardar actividad
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Lista de actividades */}
+                  {actividades.length > 0 ? (
+                    <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:200,overflowY:'auto'}}>
+                      {actividades.map((a:any)=>(
+                        <div key={a.id} style={{display:'flex',gap:8,padding:'8px 10px',
+                          background:'#fff',border:'1px solid #EEE9E1',borderRadius:3}}>
+                          <span style={{fontSize:16,flexShrink:0}}>{a.icono}</span>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:11,color:'#3D3730',fontFamily:SS,lineHeight:1.4}}>{a.descripcion}</div>
+                            <div style={{fontSize:9,color:'#8B8170',fontFamily:SS,marginTop:2,letterSpacing:0.5}}>
+                              {a.tipo?.toUpperCase()} · {a.fecha} {a.hora}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{fontSize:11,color:'#8B8170',fontFamily:SS,fontStyle:'italic',textAlign:'center',padding:'8px 0'}}>
+                      Sin actividades registradas. Usa las sugerencias o registra una actividad libre.
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Cambiar estado */}
+            <div style={{marginBottom:20}}>
+              <div style={{fontSize:9,letterSpacing:1.5,textTransform:'uppercase',color:'#8B8170',fontFamily:SS,marginBottom:10,fontWeight:700}}>
+                Estado del caso
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
+                {(['abierto','en_gestion','resuelto','cerrado'] as const).map(est=>(
+                  <button key={est} onClick={()=>updateEstado(casoDetail,est)}
+                    style={{padding:'8px 6px',border:`1px solid ${EST_COLOR[est]}`,borderRadius:2,
+                      background:casoDetail.estado===est?EST_COLOR[est]:'transparent',
+                      color:casoDetail.estado===est?'#fff':EST_COLOR[est],
+                      fontSize:10,fontWeight:700,letterSpacing:0.8,textTransform:'uppercase',
+                      cursor:'pointer',fontFamily:SS,transition:'all 0.1s'}}>
+                    {EST_LABEL[est]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Acciones */}
+            <div style={{display:'flex',gap:8,borderTop:'1px solid #EEE9E1',paddingTop:16}}>
+              <button onClick={()=>{setNewCaso({...casoDetail});setCasoForm(true);setCasoDetail(null);}}
+                style={{flex:1,padding:'9px 0',background:'transparent',color:NAVY,border:`1px solid ${NAVY}`,
+                  borderRadius:3,fontSize:10,fontWeight:700,letterSpacing:1,textTransform:'uppercase',cursor:'pointer',fontFamily:SS}}>
+                Editar
+              </button>
+              <button onClick={()=>{ if(confirm('¿Eliminar este caso?')) deleteCaso(casoDetail.id); }}
+                style={{padding:'9px 14px',background:'transparent',color:'#B5202A',border:'1px solid #B5202A',
+                  borderRadius:3,fontSize:10,fontWeight:700,letterSpacing:1,textTransform:'uppercase',cursor:'pointer',fontFamily:SS}}>
+                Eliminar
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // ══════════════════════════════════════════════════════════════
+  // MÓDULO CAMPAÑAS
+  // ══════════════════════════════════════════════════════════════
+  const renderCampanas = () => {
+    const GOLD = '#B89047';
+    const CREAM = '#FAF9F6';
+    const NAVY = T.text;
+    const GREEN = '#2A7B4F';
+
+    const totalEnviados = campanas.reduce((s, c) => s + c.enviados, 0);
+    const totalAbiertos = campanas.reduce((s, c) => s + c.abiertos, 0);
+    const totalCierres  = campanas.reduce((s, c) => s + c.cierres, 0);
+    const totalRevenue  = campanas.reduce((s, c) => s + c.revenue, 0);
+    const tasaApertura  = totalEnviados > 0 ? Math.round((totalAbiertos / totalEnviados) * 100) : 0;
+    const activas       = campanas.filter(c => c.estado === 'activa').length;
+
+    const estadoColor: Record<string, string> = {
+      activa: GREEN, pausada: GOLD, borrador: '#8B9AB0', completada: T.textSec,
+    };
+    const estadoBg: Record<string, string> = {
+      activa: '#EBF5F0', pausada: '#FBF6EC', borrador: '#F0F2F5', completada: '#F5F5F5',
+    };
+    const objetivoLabel: Record<string, string> = {
+      nurturing: 'Educación de Prospectos', reactivar: 'Reactivación', presentacion: 'Presentación de Proyecto', evento: 'Evento / Lanzamiento', cierre: 'Propuesta de Cierre',
+    };
+    const tipoLabel: Record<string, string> = { masiva: 'Envío Masivo', drip: 'Secuencia Automática' };
+    const fmtUSD = (n: number) => n >= 1000000 ? `$${(n/1000000).toFixed(2)}M` : n >= 1000 ? `$${(n/1000).toFixed(0)}K` : `$${n}`;
+    const pct = (a: number, b: number) => b > 0 ? Math.round((a/b)*100) : 0;
+
+    // ─ Segmentación inteligente: calcula cuántos prospectos calificarían
+    const calcSegmento = (nc: any) => {
+      return prospects.filter(p => {
+        const etapa = nc.segmentoEtapas.length === 0 || nc.segmentoEtapas.includes(p.estado);
+        const buget = Number(p.presupuesto_usd || 0);
+        const presup = buget >= nc.segmentoPresupMin && buget <= nc.segmentoPresupMax;
+        const proy = nc.segmentoProyectos.length === 0 || (p.proyectos_interes || []).some((pi: string) => nc.segmentoProyectos.includes(pi));
+        const lastAct = (p.emailHistory || []).reduce((d: number, e: any) => { const t = e.date ? new Date(e.date).getTime() : 0; return t > d ? t : d; }, 0) || (p.fecha_entrada ? new Date(p.fecha_entrada).getTime() : 0);
+        const dias = lastAct ? Math.floor((Date.now() - lastAct) / 86400000) : 999;
+        const inact = nc.segmentoInactividad === 0 || dias >= nc.segmentoInactividad;
+        const score = calcLeadScore(p).total >= nc.segmentoScore;
+        return etapa && presup && proy && inact && score;
+      });
+    };
+
+    // ─ Templates de email de lujo
+    const TEMPLATES = [
+      {
+        id: 'bienvenida', label: 'Bienvenida GLP', objetivo: 'nurturing',
+        asunto: '{{nombre}}, bienvenido a GLP — Propiedades de lujo en Bogotá',
+        cuerpo: `Estimado {{nombre}},\n\nEs un placer para nosotros darte la bienvenida a GLP, la firma líder en propiedades residenciales de lujo en Bogotá.\n\nSabemos que la búsqueda de un hogar o una inversión premium es una decisión trascendental, y queremos acompañarte en cada paso del proceso con la discreción y el servicio que mereces.\n\nNuestro equipo está disponible para:\n• Presentarte en exclusiva nuestro portafolio de proyectos\n• Diseñar una propuesta personalizada según tu presupuesto y estilo de vida\n• Agendar visitas privadas a las obras o salas de ventas\n\n¿Cuándo podríamos hablar 15 minutos?\n\nCon gusto,\n{{broker}}\nGLP — Propiedades de Lujo`,
+      },
+      {
+        id: 'presentacion_proyecto', label: 'Presentación de Proyecto', objetivo: 'presentacion',
+        asunto: '{{nombre}}, te presentamos {{proyecto}} — Diseñado para ti',
+        cuerpo: `Estimado {{nombre}},\n\nNos complace compartirte información exclusiva sobre {{proyecto}}, uno de nuestros desarrollos más destacados.\n\n✦ Ubicación privilegiada en el norte de Bogotá\n✦ Acabados de primera calidad — mármol, madera y acero importado\n✦ Áreas de {{area_min}} a {{area_max}} m² con terrazas panorámicas\n✦ Precio desde {{precio_desde}} USD\n✦ Rentabilidad estimada del {{rentabilidad}}% anual en arrendamiento\n\nEste proyecto tiene una disponibilidad limitada y deseamos darte prioridad de selección.\n\nTe adjunto el brochure completo y el estudio de rentabilidad. ¿Podemos agendar una visita a la sala de ventas esta semana?\n\nAtentamente,\n{{broker}}\nGLP — Propiedades de Lujo`,
+      },
+      {
+        id: 'reactivacion', label: 'Reactivación Lead Inactivo', objetivo: 'reactivar',
+        asunto: '{{nombre}}, han pasado unos meses — queremos ponernos al día',
+        cuerpo: `Estimado {{nombre}},\n\nHace un tiempo tuvimos la oportunidad de conocernos y conversar sobre tu búsqueda de propiedad. Desde entonces, el mercado ha evolucionado y queremos compartirte algunas novedades que podrían ser de tu interés.\n\n🏗️ Nuevas etapas disponibles en proyectos que te interesaron\n📈 Condiciones de financiación más favorables para 2026\n🎯 Propiedades con el perfil exacto que buscabas\n\nEntendemos que los tiempos y prioridades cambian. Si aún tienes interés en adquirir una propiedad de lujo en Bogotá, nos encantaría retomar la conversación sin ningún compromiso.\n\n¿Tienes 10 minutos esta semana?\n\nCon aprecio,\n{{broker}}\nGLP — Propiedades de Lujo`,
+      },
+      {
+        id: 'seguimiento_visita', label: 'Seguimiento Post-Visita', objetivo: 'nurturing',
+        asunto: 'Gracias por tu visita, {{nombre}} — Aquí el resumen de lo que viste',
+        cuerpo: `Estimado {{nombre}},\n\nFue un placer recibirte en nuestra sala de ventas. Esperamos que la experiencia haya superado tus expectativas y que hayas podido visualizarte disfrutando de este espacio.\n\nComo acordamos, te enviamos:\n• 📋 Cotización detallada del apartamento de tu interés\n• 🏦 Simulación de crédito hipotecario para tu perfil\n• 📐 Planos arquitectónicos y opciones de personalización\n• 📸 Galería fotográfica del proyecto terminado\n\nRecuerda que tienes 72 horas para ejercer tu derecho de primera selección sobre la unidad que reservamos para ti.\n\nEstaremos atentos a tus preguntas,\n{{broker}}\nGLP — Propiedades de Lujo`,
+      },
+      {
+        id: 'evento', label: 'Invitación a Evento Exclusivo', objetivo: 'evento',
+        asunto: 'Invitación privada — {{evento}} solo para clientes seleccionados',
+        cuerpo: `Estimado {{nombre}},\n\nTenemos el agrado de invitarte de manera exclusiva al evento de lanzamiento de {{proyecto}}, un momento único para quienes valoran el lujo, el diseño y la visión arquitectónica de Bogotá.\n\n📅 Fecha: {{fecha_evento}}\n🕖 Hora: 6:30 p.m.\n📍 Lugar: {{lugar_evento}}\n👔 Código de vestimenta: Formal\n\nEl evento incluye:\n• Recorrido privado por la obra o sala de ventas\n• Cóctel de bienvenida\n• Presentación exclusiva del arquitecto diseñador\n• Precios de lanzamiento disponibles solo ese día\n\nLos cupos son limitados. Por favor confirma tu asistencia respondiendo este mensaje o llamando a {{broker_telefono}}.\n\nTe esperamos,\n{{broker}}\nGLP — Propiedades de Lujo`,
+      },
+      {
+        id: 'oferta_cierre', label: 'Propuesta de Cierre', objetivo: 'cierre',
+        asunto: '{{nombre}}, hemos reservado una condición especial para ti',
+        cuerpo: `Estimado {{nombre}},\n\nDespués de nuestras conversaciones, hemos podido gestionar con la constructora una condición de pago especialmente diseñada para tu perfil:\n\n🏠 Unidad: {{unidad}} — {{area}} m²\n💰 Precio de lista: {{precio_lista}} USD\n✦ Precio especial para ti: {{precio_especial}} USD\n📅 Cuota inicial: {{cuota_inicial}} (disponible en cuotas)\n🏦 Saldo: financiado a {{plazo}} años al {{tasa}}% E.A.\n\nEsta propuesta está vigente hasta el {{fecha_vencimiento}}.\n\nSabemos que esta es una decisión importante. Nuestro equipo jurídico y financiero está listo para acompañarte en cada paso — promesa de compraventa, revisión de títulos y escrituración.\n\n¿Agendamos una reunión esta semana para avanzar?\n\nCon todo el respeto,\n{{broker}}\nGLP — Propiedades de Lujo`,
+      },
+    ];
+
+    // ────────── shared helpers ──────────
+    const inputS: React.CSSProperties = { width: '100%', padding: '9px 11px', border: `1px solid ${T.border}`, borderRadius: 2, fontSize: 13, color: NAVY, background: '#fff', outline: 'none', boxSizing: 'border-box' as const };
+    const labelS: React.CSSProperties = { fontSize: 10, fontWeight: 600, color: T.textSec, letterSpacing: '0.08em', textTransform: 'uppercase' as const, display: 'block', marginBottom: 6 };
+    const sectionCard = (title: string, children: React.ReactNode) => (
+      <div style={{ background: CREAM, border: `1px solid ${T.border}`, borderRadius: 4, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${T.border}`, fontSize: 11, fontWeight: 700, color: NAVY, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>{title}</div>
+        <div style={{ padding: '16px' }}>{children}</div>
+      </div>
+    );
+
+    // ────────── Tab: Dashboard ──────────
+    const renderDashboard = () => {
+      const totalCosto = campanas.reduce((s, c) => s + (c.costoTotal || 0), 0);
+      const roiGlobal  = totalCosto > 0 ? Math.round(((totalRevenue - totalCosto) / totalCosto) * 100) : 0;
+      const totalCitas = campanas.reduce((s, c) => s + c.citas, 0);
+      const totalClicks = campanas.reduce((s, c) => s + c.clicks, 0);
+      const alertas = campanas.flatMap(c => (c.alertas || []).map((a: string) => ({ campana: c.nombre, msg: a })));
+      const mejorROI = campanas.filter(c=>c.costoTotal>0).sort((a,b)=> ((b.revenue-b.costoTotal)/b.costoTotal) - ((a.revenue-a.costoTotal)/a.costoTotal))[0];
+
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* KPI row */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 12 }}>
+            {[
+              { label: 'Campañas activas', val: activas, color: GREEN, sub: `${campanas.length} total` },
+              { label: 'Leads alcanzados', val: totalEnviados.toLocaleString(), color: NAVY, sub: 'mensajes enviados' },
+              { label: 'Tasa apertura', val: `${tasaApertura}%`, color: tasaApertura >= 40 ? GREEN : tasaApertura >= 25 ? GOLD : '#c0392b', sub: 'promedio' },
+              { label: 'Tasa conversión', val: `${pct(totalCierres, totalEnviados)}%`, color: GREEN, sub: 'leads → cierres' },
+              { label: 'Revenue atribuido', val: fmtUSD(totalRevenue), color: GOLD, sub: `ROI ${roiGlobal}%` },
+              { label: 'Citas generadas', val: totalCitas, color: NAVY, sub: `${totalClicks} clicks` },
+            ].map(k => (
+              <div key={k.label} style={{ background: CREAM, border: `1px solid ${T.border}`, borderRadius: 4, padding: '14px 12px', textAlign: 'center' }}>
+                <div style={{ fontSize: 7, fontWeight: 700, color: T.textSec, letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 8 }}>{k.label}</div>
+                <div style={{ fontSize: 22, fontWeight: 300, color: k.color, fontFamily: T.fontSerif, lineHeight: 1 }}>{k.val}</div>
+                <div style={{ fontSize: 8, color: T.textSec, marginTop: 6 }}>{k.sub}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+            {/* Embudo global */}
+            {sectionCard('Embudo de conversión consolidado', (
+              <div>
+                {[
+                  { label: 'Mensajes enviados', val: totalEnviados, pct: 100, color: '#8B9AB0', nota: 'Base 100%' },
+                  { label: 'Emails abiertos', val: totalAbiertos, pct: pct(totalAbiertos, totalEnviados), color: '#4A90D9', nota: 'Tasa apertura' },
+                  { label: 'Clicks (interés)', val: totalClicks, pct: pct(totalClicks, totalEnviados), color: GOLD, nota: 'CTR real' },
+                  { label: 'Citas agendadas', val: totalCitas, pct: pct(totalCitas, totalEnviados), color: GREEN, nota: 'Calificados' },
+                  { label: 'Cierres realizados', val: totalCierres, pct: pct(totalCierres, totalEnviados), color: NAVY, nota: `${fmtUSD(Math.round(totalRevenue/(totalCierres||1)))} / cierre` },
+                ].map((row, i) => (
+                  <div key={row.label} style={{ marginBottom: i < 4 ? 14 : 0 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                      <span style={{ fontSize: 10, color: NAVY, fontWeight: i === 0 ? 400 : 400 }}>{row.label}</span>
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
+                        <span style={{ fontSize: 8, color: T.textSec }}>{row.nota}</span>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: row.color, fontFamily: T.fontSerif }}>{row.val.toLocaleString()} <span style={{fontSize:9,fontWeight:400}}>({row.pct}%)</span></span>
+                      </div>
+                    </div>
+                    <div style={{ background: '#E5E0D8', borderRadius: 1, height: 6, overflow: 'hidden' }}>
+                      <div style={{ width: `${row.pct}%`, height: '100%', background: row.color, transition: 'width 0.6s ease' }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+
+            {/* Campañas activas - estado */}
+            {sectionCard('Estado de campañas en curso', (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {campanas.filter(c => c.estado === 'activa' || c.estado === 'borrador').map(c => (
+                  <div key={c.id} style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 2, padding: '10px 12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 500, color: NAVY }}>{c.nombre}</div>
+                        <div style={{ fontSize: 8, color: T.textSec, marginTop: 1 }}>{tipoLabel[c.tipo]} · {c.canal} · {objetivoLabel[c.objetivo]}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: estadoColor[c.estado], background: estadoBg[c.estado], padding: '2px 8px', borderRadius: 2 }}>{c.estado.toUpperCase()}</div>
+                        {c.proximoEnvio && <div style={{ fontSize: 8, color: T.textSec, marginTop: 3 }}>Próximo: {c.proximoEnvio}</div>}
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6 }}>
+                      {[
+                        { l: 'Enviados', v: c.enviados },
+                        { l: 'Apertura', v: `${pct(c.abiertos,c.enviados)}%` },
+                        { l: 'Citas', v: c.citas },
+                        { l: 'Revenue', v: fmtUSD(c.revenue) },
+                      ].map(s => (
+                        <div key={s.l} style={{ textAlign: 'center' }}>
+                          <div style={{ fontSize: 7, color: T.textSec, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{s.l}</div>
+                          <div style={{ fontSize: 11, fontWeight: 500, color: NAVY, fontFamily: T.fontSerif }}>{s.v}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {(c.alertas || []).length > 0 && (
+                      <div style={{ marginTop: 8, padding: '5px 8px', background: '#FBF6EC', border: `1px solid ${GOLD}`, borderRadius: 2 }}>
+                        {c.alertas.map((a: string, i: number) => (
+                          <div key={i} style={{ fontSize: 9, color: '#8B6914' }}>⚠ {a}</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {campanas.filter(c => c.estado === 'activa' || c.estado === 'borrador').length === 0 && (
+                  <div style={{ textAlign: 'center', color: T.textSec, fontSize: 11, padding: '20px 0' }}>Sin campañas activas</div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 20 }}>
+            {/* Alertas y recomendaciones */}
+            {sectionCard('Alertas y recomendaciones inteligentes', (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {alertas.length === 0 && (
+                  <div style={{ color: GREEN, fontSize: 11, padding: '4px 0' }}>✓ Todas las campañas operan sin alertas críticas</div>
+                )}
+                {alertas.map((a, i) => (
+                  <div key={i} style={{ padding: '8px 12px', background: '#FBF6EC', border: `1px solid ${GOLD}`, borderRadius: 2 }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: GOLD, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>{a.campana}</div>
+                    <div style={{ fontSize: 10, color: '#8B6914' }}>{a.msg}</div>
+                  </div>
+                ))}
+                <div style={{ marginTop: 4, padding: '8px 12px', background: '#EBF5F0', border: `1px solid ${GREEN}`, borderRadius: 2 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: GREEN, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>Recomendación IA</div>
+                  <div style={{ fontSize: 10, color: '#1a5c38' }}>
+                    {totalEnviados > 0
+                      ? tasaApertura < 25
+                        ? `Tasa de apertura por debajo del 25%. Prueba asuntos más personalizados con {{nombre}} y envía los martes o jueves entre 9–11 AM.`
+                        : mejorROI
+                          ? `La campaña "${mejorROI.nombre}" tiene el mejor ROI. Replica su segmento y contenido en las próximas campañas.`
+                          : `Buen desempeño general. Considera crear una campaña de referidos para tus ${totalCierres} cierres recientes.`
+                      : 'Lanza tu primera campaña para comenzar a recibir recomendaciones personalizadas.'}
+                  </div>
+                </div>
+                <div style={{ padding: '8px 12px', background: '#F0F4FB', border: '1px solid #C5D5E8', borderRadius: 2 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: '#2C5282', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>Mejor horario de envío</div>
+                  <div style={{ fontSize: 10, color: '#2C5282' }}>Martes y jueves — 9:00 a 11:00 AM · Domingo — 7:00 PM (para leads con presupuesto &gt; $400K)</div>
+                </div>
+              </div>
+            ))}
+
+            {/* Mejores campañas */}
+            {sectionCard('Top campañas por ROI', (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {campanas.filter(c=>c.enviados>0).sort((a,b)=>b.revenue-a.revenue).slice(0,3).map((c,i) => (
+                  <div key={c.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0', borderBottom: i < 2 ? `1px solid ${T.border}` : 'none' }}>
+                    <div style={{ width: 22, height: 22, borderRadius: '50%', background: i===0?GOLD:i===1?'#C0C0C0':'#CD7F32', color:'#fff', fontSize: 9, fontWeight: 700, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{i+1}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 10, fontWeight: 500, color: NAVY }}>{c.nombre}</div>
+                      <div style={{ fontSize: 8, color: T.textSec }}>{pct(c.abiertos,c.enviados)}% apertura · {c.cierres} cierre(s)</div>
+                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: GOLD, fontFamily: T.fontSerif }}>{fmtUSD(c.revenue)}</div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    };
+
+    // ────────── Tab: Lista ──────────
+    const renderLista = () => {
+      if (campanaDetalle) {
+        const c = campanaDetalle;
+        const pasos = c.dripPasos || [];
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <button onClick={() => setCampanaDetalle(null)} style={{ background:'none', border:'none', color:GOLD, cursor:'pointer', fontSize:11, fontWeight:600, letterSpacing:'0.06em' }}>← VOLVER</button>
+              <div style={{ height: 14, width: 1, background: T.border }} />
+              <div style={{ fontSize: 18, fontWeight: 300, color: NAVY, fontFamily: T.fontSerif }}>{c.nombre}</div>
+              <div style={{ marginLeft: 'auto', display:'flex', gap:8 }}>
+                {c.estado === 'activa' && <button onClick={() => { setCampanas(p=>p.map(x=>x.id===c.id?{...x,estado:'pausada'}:x)); setCampanaDetalle({...c,estado:'pausada'}); }} style={{ padding:'6px 14px', background:'none', border:`1px solid ${T.border}`, borderRadius:2, color:T.textSec, fontSize:9, fontWeight:700, letterSpacing:'0.08em', cursor:'pointer' }}>PAUSAR</button>}
+                {c.estado === 'pausada' && <button onClick={() => { setCampanas(p=>p.map(x=>x.id===c.id?{...x,estado:'activa'}:x)); setCampanaDetalle({...c,estado:'activa'}); }} style={{ padding:'6px 14px', background:GOLD, border:'none', borderRadius:2, color:'#fff', fontSize:9, fontWeight:700, letterSpacing:'0.08em', cursor:'pointer' }}>REANUDAR</button>}
+                {c.estado === 'borrador' && <button onClick={() => { setCampanas(p=>p.map(x=>x.id===c.id?{...x,estado:'activa',fechaInicio:new Date().toISOString().slice(0,10)}:x)); setCampanaDetalle({...c,estado:'activa'}); }} style={{ padding:'6px 14px', background:NAVY, border:'none', borderRadius:2, color:CREAM, fontSize:9, fontWeight:700, letterSpacing:'0.08em', cursor:'pointer' }}>LANZAR</button>}
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12 }}>
+              {[
+                { l:'Enviados', v:c.enviados, color:NAVY },
+                { l:'Tasa Apertura', v:`${pct(c.abiertos,c.enviados)}%`, color: pct(c.abiertos,c.enviados)>=40?GREEN:pct(c.abiertos,c.enviados)>=25?GOLD:'#c0392b' },
+                { l:'CTR', v:`${pct(c.clicks,c.abiertos)}%`, color:GOLD },
+                { l:'Citas', v:c.citas, color:GREEN },
+                { l:'Revenue', v:fmtUSD(c.revenue), color:GOLD },
+              ].map(k=>(
+                <div key={k.l} style={{ background:CREAM, border:`1px solid ${T.border}`, borderRadius:4, padding:'14px 10px', textAlign:'center' }}>
+                  <div style={{ fontSize:7, fontWeight:700, color:T.textSec, letterSpacing:'0.14em', textTransform:'uppercase', marginBottom:6 }}>{k.l}</div>
+                  <div style={{ fontSize:20, fontWeight:300, color:k.color, fontFamily:T.fontSerif }}>{k.v}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              {sectionCard('Embudo de esta campaña', (
+                <div>
+                  {[
+                    { label:'Enviados', val:c.enviados, ref:c.enviados, color:'#8B9AB0' },
+                    { label:'Abiertos', val:c.abiertos, ref:c.enviados, color:'#4A90D9' },
+                    { label:'Clicks', val:c.clicks, ref:c.enviados, color:GOLD },
+                    { label:'Citas agendadas', val:c.citas, ref:c.enviados, color:GREEN },
+                    { label:'Cierres', val:c.cierres, ref:c.enviados, color:NAVY },
+                  ].map(row=>(
+                    <div key={row.label} style={{ marginBottom:10 }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
+                        <span style={{ fontSize:9, color:NAVY }}>{row.label}</span>
+                        <span style={{ fontSize:10, fontWeight:600, color:row.color, fontFamily:T.fontSerif }}>{row.val} <span style={{fontSize:8,color:T.textSec,fontWeight:400}}>({pct(row.val,row.ref)}%)</span></span>
+                      </div>
+                      <div style={{ background:'#E5E0D8', borderRadius:1, height:5 }}>
+                        <div style={{ width:`${pct(row.val,row.ref)}%`, height:'100%', background:row.color }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+
+              {sectionCard('Información de segmento y configuración', (
+                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                  {[
+                    ['Tipo', tipoLabel[c.tipo]],
+                    ['Canal', c.canal],
+                    ['Objetivo', objetivoLabel[c.objetivo]],
+                    ['Etapas objetivo', c.segmentoEtapas?.join(', ') || 'Todas'],
+                    ['Presupuesto mín.', fmtUSD(c.segmentoPresupMin||0)],
+                    ['Inactividad mín.', c.segmentoInactividad ? `${c.segmentoInactividad} días` : 'Sin filtro'],
+                    ['Score mínimo', c.segmentoScore ? `${c.segmentoScore} pts` : 'Sin filtro'],
+                    ['Proyectos', c.segmentoProyectos?.join(', ') || 'Todos'],
+                    ['Inicio', c.fechaInicio || '—'],
+                    ['Costo total', fmtUSD(c.costoTotal||0)],
+                    ['ROI', c.costoTotal>0 ? `${Math.round(((c.revenue-c.costoTotal)/c.costoTotal)*100)}%` : '—'],
+                  ].map(([k,v])=>(
+                    <div key={k as string} style={{ display:'flex', justifyContent:'space-between', padding:'4px 0', borderBottom:`1px solid ${T.border}` }}>
+                      <span style={{ fontSize:11, color:T.textSec, textTransform:'uppercase', letterSpacing:'0.06em' }}>{k}</span>
+                      <span style={{ fontSize:12, color:NAVY, fontWeight:500 }}>{v}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+
+            {pasos.length > 0 && sectionCard(`Secuencia drip — ${pasos.length} pasos`, (
+              <div style={{ display:'flex', flexDirection:'column', gap:0 }}>
+                {pasos.map((paso: any, i: number) => (
+                  <div key={i} style={{ display:'flex', gap:12, paddingBottom: i<pasos.length-1?16:0, marginBottom: i<pasos.length-1?16:0, borderBottom: i<pasos.length-1?`1px solid ${T.border}`:'none' }}>
+                    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:0 }}>
+                      <div style={{ width:28, height:28, borderRadius:'50%', background:GOLD, color:'#fff', fontSize:10, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{i+1}</div>
+                      {i<pasos.length-1 && <div style={{ width:1, flex:1, background:T.border, marginTop:4 }} />}
+                    </div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:8, fontWeight:700, color:T.textSec, textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:3 }}>{i===0?'Día 0 — Envío inmediato':`Día +${paso.dias}`}</div>
+                      <div style={{ fontSize:11, fontWeight:500, color:NAVY, marginBottom:4 }}>{paso.asunto || 'Sin asunto'}</div>
+                      {paso.cuerpo && <div style={{ fontSize:10, color:T.textSec, lineHeight:1.5, whiteSpace:'pre-wrap', maxHeight:60, overflow:'hidden' }}>{paso.cuerpo.slice(0,150)}{paso.cuerpo.length>150?'…':''}</div>}
+                      {paso.enviados > 0 && (
+                        <div style={{ display:'flex', gap:14, marginTop:6 }}>
+                          <span style={{ fontSize:8, color:T.textSec }}>Enviados: <strong style={{color:NAVY}}>{paso.enviados}</strong></span>
+                          <span style={{ fontSize:8, color:T.textSec }}>Apertura: <strong style={{color:pct(paso.abiertos,paso.enviados)>=40?GREEN:GOLD}}>{pct(paso.abiertos,paso.enviados)}%</strong></span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        );
+      }
+
+      return (
+        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+          {campanas.map(c => {
+            const hasAlerts = (c.alertas||[]).length > 0;
+            return (
+              <div key={c.id} style={{ background:CREAM, border:`1px solid ${hasAlerts?GOLD:T.border}`, borderRadius:4, padding:'16px 18px', cursor:'pointer' }} onClick={()=>setCampanaDetalle(c)}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
+                  <div>
+                    <div style={{ fontSize:14, fontWeight:400, color:NAVY, fontFamily:T.fontSerif, marginBottom:2 }}>{c.nombre}</div>
+                    <div style={{ fontSize:8, color:T.textSec, letterSpacing:'0.08em', textTransform:'uppercase' }}>
+                      {tipoLabel[c.tipo]} · {c.canal} · Objetivo: {objetivoLabel[c.objetivo]}
+                      {c.segmentoEtapas?.length>0 && ` · ${c.segmentoEtapas.join(', ')}`}
+                    </div>
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                    {hasAlerts && <span style={{ fontSize:9, color:GOLD }}>⚠ {c.alertas.length} alerta(s)</span>}
+                    <div style={{ fontSize:9, fontWeight:700, color:estadoColor[c.estado], background:estadoBg[c.estado], padding:'3px 10px', borderRadius:2 }}>{c.estado.toUpperCase()}</div>
+                    <div style={{ display:'flex', gap:6 }}>
+                      {c.estado==='activa' && <button onClick={e=>{e.stopPropagation();setCampanas(p=>p.map(x=>x.id===c.id?{...x,estado:'pausada'}:x));}} style={{ padding:'4px 10px', background:'none', border:`1px solid ${T.border}`, borderRadius:2, color:T.textSec, fontSize:8, fontWeight:700, cursor:'pointer' }}>PAUSAR</button>}
+                      {c.estado==='pausada' && <button onClick={e=>{e.stopPropagation();setCampanas(p=>p.map(x=>x.id===c.id?{...x,estado:'activa'}:x));}} style={{ padding:'4px 10px', background:GOLD, border:'none', borderRadius:2, color:'#fff', fontSize:8, fontWeight:700, cursor:'pointer' }}>REANUDAR</button>}
+                      {c.estado==='borrador' && <button onClick={e=>{e.stopPropagation();setCampanas(p=>p.map(x=>x.id===c.id?{...x,estado:'activa',fechaInicio:new Date().toISOString().slice(0,10)}:x));}} style={{ padding:'4px 10px', background:NAVY, border:'none', borderRadius:2, color:CREAM, fontSize:8, fontWeight:700, cursor:'pointer' }}>LANZAR</button>}
+                      <button onClick={e=>{e.stopPropagation();setCampanas(p=>p.filter(x=>x.id!==c.id));}} style={{ padding:'4px 8px', background:'none', border:`1px solid ${T.border}`, borderRadius:2, color:'#c0392b', fontSize:10, cursor:'pointer' }}>×</button>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:8 }}>
+                  {[
+                    { l:'Enviados', v:c.enviados.toLocaleString() },
+                    { l:'Abiertos', v:`${pct(c.abiertos,c.enviados)}%` },
+                    { l:'Clicks / CTR', v:`${pct(c.clicks,c.abiertos)}%` },
+                    { l:'Citas', v:c.citas },
+                    { l:'Cierres', v:c.cierres },
+                    { l:'Revenue', v:fmtUSD(c.revenue) },
+                    { l:'ROI', v: c.costoTotal>0?`${Math.round(((c.revenue-c.costoTotal)/c.costoTotal)*100)}%`:'—' },
+                  ].map(s=>(
+                    <div key={s.l} style={{ background:'#fff', border:`1px solid ${T.border}`, borderRadius:2, padding:'6px 8px', textAlign:'center' }}>
+                      <div style={{ fontSize:7, color:T.textSec, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:3 }}>{s.l}</div>
+                      <div style={{ fontSize:12, fontWeight:400, color:NAVY, fontFamily:T.fontSerif }}>{s.v}</div>
+                    </div>
+                  ))}
+                </div>
+                {c.tipo==='drip' && c.dripPasos?.length>0 && (
+                  <div style={{ marginTop:10, display:'flex', gap:6, alignItems:'center' }}>
+                    <span style={{ fontSize:8, color:T.textSec, textTransform:'uppercase', letterSpacing:'0.08em' }}>Secuencia:</span>
+                    {c.dripPasos.map((paso: any, i: number) => (
+                      <div key={i} style={{ display:'flex', alignItems:'center', gap:4 }}>
+                        <div style={{ width:18, height:18, borderRadius:'50%', background:paso.enviados>0?GOLD:'#E5E0D8', color:paso.enviados>0?'#fff':T.textSec, fontSize:8, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center' }}>{i+1}</div>
+                        {i<c.dripPasos.length-1 && <div style={{ width:16, height:1, background:T.border }} />}
+                      </div>
+                    ))}
+                    {c.proximoEnvio && <span style={{ marginLeft:8, fontSize:8, color:GREEN }}>Próximo envío: {c.proximoEnvio}</span>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          <div onClick={()=>{setCampanaDetalle(null);setCampanaTab('nueva');setCampanaWizardStep(1);}}
+            style={{ border:`1.5px dashed ${T.border}`, borderRadius:4, padding:'32px', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', gap:12, color:T.textSec }}>
+            <span style={{ fontSize:18, fontWeight:300, fontFamily:T.fontSerif }}>+ Crear nueva campaña</span>
+          </div>
+        </div>
+      );
+    };
+
+    // ────────── Tab: Nueva Campaña (wizard 4 pasos) ──────────
+    const segmentoCalc = calcSegmento(nuevaCampana);
+    const wizardSteps = ['Objetivo y tipo', 'Segmentación', 'Contenido', 'Revisar y lanzar'];
+
+    const renderNueva = () => (
+      <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+        {/* Progress bar */}
+        <div style={{ display:'flex', gap:0, alignItems:'center' }}>
+          {wizardSteps.map((s, i) => (
+            <React.Fragment key={s}>
+              <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
+                <div style={{ width:28, height:28, borderRadius:'50%', background:campanaWizardStep>i+1?GREEN:campanaWizardStep===i+1?NAVY:'#E5E0D8', color:campanaWizardStep>=i+1?'#fff':T.textSec, fontSize:10, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer' }} onClick={()=>i<campanaWizardStep&&setCampanaWizardStep(i+1)}>
+                  {campanaWizardStep>i+1?'✓':i+1}
+                </div>
+                <div style={{ fontSize:8, color:campanaWizardStep===i+1?NAVY:T.textSec, fontWeight:campanaWizardStep===i+1?700:400, letterSpacing:'0.06em', whiteSpace:'nowrap' }}>{s}</div>
+              </div>
+              {i<wizardSteps.length-1 && <div style={{ flex:1, height:1, background:campanaWizardStep>i+1?GREEN:T.border, margin:'0 4px', marginBottom:16 }} />}
+            </React.Fragment>
+          ))}
+        </div>
+
+        {/* Step 1: Objetivo y tipo */}
+        {campanaWizardStep === 1 && (
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
+            {sectionCard('Objetivo de la campaña', (
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {([
+                  { id:'nurturing', label:'Educación de Prospectos', desc:'Compartir contenido de valor para guiar al prospecto desde el primer contacto hasta la decisión de compra' },
+                  { id:'presentacion', label:'Presentación de Proyecto', desc:'Presentar un proyecto específico a prospectos calificados con presupuesto alineado' },
+                  { id:'reactivar', label:'Reactivación', desc:'Despertar leads inactivos más de 45 días con propuesta renovada' },
+                  { id:'evento', label:'Evento / Lanzamiento', desc:'Invitación exclusiva a eventos, lanzamientos y visitas privadas' },
+                  { id:'cierre', label:'Propuesta de Cierre', desc:'Prospectos en negociación con propuesta económica personalizada' },
+                ] as {id:string,label:string,desc:string}[]).map(o=>(
+                  <div key={o.id} onClick={()=>setNuevaCampana((p:any)=>({...p,objetivo:o.id}))}
+                    style={{ padding:'10px 12px', border:`1.5px solid ${nuevaCampana.objetivo===o.id?GOLD:T.border}`, borderRadius:2, cursor:'pointer', background:nuevaCampana.objetivo===o.id?'#FBF6EC':'#fff' }}>
+                    <div style={{ fontSize:13, fontWeight:600, color:NAVY, marginBottom:4 }}>{o.label}</div>
+                    <div style={{ fontSize:11, color:T.textSec, lineHeight:1.6 }}>{o.desc}</div>
+                  </div>
+                ))}
+              </div>
+            ))}
+            {sectionCard('Tipo y canal', (
+              <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+                <div>
+                  <label style={labelS}>Nombre de la campaña</label>
+                  <input style={inputS} value={nuevaCampana.nombre} onChange={e=>setNuevaCampana((p:any)=>({...p,nombre:e.target.value}))} placeholder="Ej: Reactivación Leads Frío — Julio 2026" />
+                </div>
+                <div>
+                  <label style={labelS}>Tipo de campaña</label>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                    {[
+                      { id:'drip', label:'Secuencia Automática', desc:'Serie de correos que se envían automáticamente con días de espera entre cada uno. Ideal para acompañar al prospecto paso a paso.' },
+                      { id:'masiva', label:'Envío Masivo', desc:'Un solo correo enviado a toda la audiencia al mismo tiempo. Ideal para eventos, lanzamientos y anuncios importantes.' },
+                    ].map(t=>(
+                      <div key={t.id} onClick={()=>setNuevaCampana((p:any)=>({...p,tipo:t.id}))}
+                        style={{ padding:'10px 10px', border:`1.5px solid ${nuevaCampana.tipo===t.id?NAVY:T.border}`, borderRadius:2, cursor:'pointer', background:nuevaCampana.tipo===t.id?'#F0F2F8':'#fff' }}>
+                        <div style={{ fontSize:10, fontWeight:700, color:NAVY, marginBottom:3 }}>{t.label}</div>
+                        <div style={{ fontSize:8, color:T.textSec, lineHeight:1.5 }}>{t.desc}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label style={labelS}>Canal de comunicación</label>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:6 }}>
+                    {['Email','WhatsApp','SMS','Multi-canal'].map(c=>(
+                      <div key={c} onClick={()=>setNuevaCampana((p:any)=>({...p,canal:c}))}
+                        style={{ padding:'7px 10px', border:`1px solid ${nuevaCampana.canal===c?GOLD:T.border}`, borderRadius:2, cursor:'pointer', textAlign:'center', background:nuevaCampana.canal===c?'#FBF6EC':'#fff', fontSize:10, color:NAVY, fontWeight:nuevaCampana.canal===c?600:400 }}>
+                        {c}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <button onClick={()=>setCampanaWizardStep(2)} disabled={!nuevaCampana.nombre}
+                  style={{ marginTop:8, padding:'10px 0', background:nuevaCampana.nombre?NAVY:'#ccc', border:'none', borderRadius:2, color:CREAM, fontSize:10, fontWeight:700, letterSpacing:'0.1em', cursor:nuevaCampana.nombre?'pointer':'not-allowed' }}>
+                  SIGUIENTE → SEGMENTACIÓN
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Step 2: Segmentación */}
+        {campanaWizardStep === 2 && (
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
+            {sectionCard('Filtros de segmento', (
+              <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+                <div>
+                  <label style={labelS}>Etapa de venta (selección múltiple)</label>
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                    {['Contacto Inicial','Calificado','Presentación','Negociación','Cierre','Lead Frío','Post-venta'].map(e=>{
+                      const sel = nuevaCampana.segmentoEtapas.includes(e);
+                      return <div key={e} onClick={()=>setNuevaCampana((p:any)=>({...p, segmentoEtapas: sel?p.segmentoEtapas.filter((x:string)=>x!==e):[...p.segmentoEtapas,e]}))}
+                        style={{ padding:'4px 10px', border:`1px solid ${sel?GOLD:T.border}`, borderRadius:2, cursor:'pointer', fontSize:9, fontWeight:sel?700:400, color:sel?GOLD:T.textSec, background:sel?'#FBF6EC':'#fff' }}>{e}</div>;
+                    })}
+                    <div onClick={()=>setNuevaCampana((p:any)=>({...p,segmentoEtapas:[]}))}
+                      style={{ padding:'4px 10px', border:`1px solid ${nuevaCampana.segmentoEtapas.length===0?GREEN:T.border}`, borderRadius:2, cursor:'pointer', fontSize:9, fontWeight:nuevaCampana.segmentoEtapas.length===0?700:400, color:nuevaCampana.segmentoEtapas.length===0?GREEN:T.textSec, background:nuevaCampana.segmentoEtapas.length===0?'#EBF5F0':'#fff' }}>Todas las etapas</div>
+                  </div>
+                </div>
+                <div>
+                  <label style={labelS}>Presupuesto mínimo (USD)</label>
+                  <input type="number" style={inputS} value={nuevaCampana.segmentoPresupMin} onFocus={e=>e.target.select()} onChange={e=>setNuevaCampana((p:any)=>({...p,segmentoPresupMin:Number(e.target.value)}))} placeholder="0" />
+                </div>
+                <div>
+                  <label style={labelS}>Inactividad mínima (días sin contacto, 0 = sin filtro)</label>
+                  <input type="number" style={inputS} value={nuevaCampana.segmentoInactividad} onFocus={e=>e.target.select()} onChange={e=>setNuevaCampana((p:any)=>({...p,segmentoInactividad:Number(e.target.value)}))} placeholder="0" />
+                </div>
+                <div>
+                  <label style={labelS}>Puntaje mínimo del prospecto (0 = incluir todos)</label>
+                  <input type="number" style={inputS} value={nuevaCampana.segmentoScore} onFocus={e=>e.target.select()} onChange={e=>setNuevaCampana((p:any)=>({...p,segmentoScore:Number(e.target.value)}))} placeholder="0" min="0" max="99" />
+                </div>
+                <div>
+                  <label style={labelS}>Proyectos de interés (dejar vacío = todos)</label>
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                    {catalogProjects.map(pr=>pr.name).map(pr=>{
+                      const sel = nuevaCampana.segmentoProyectos.includes(pr);
+                      return <div key={pr} onClick={()=>setNuevaCampana((p:any)=>({...p, segmentoProyectos: sel?p.segmentoProyectos.filter((x:string)=>x!==pr):[...p.segmentoProyectos,pr]}))}
+                        style={{ padding:'4px 10px', border:`1px solid ${sel?NAVY:T.border}`, borderRadius:2, cursor:'pointer', fontSize:9, fontWeight:sel?700:400, color:sel?NAVY:T.textSec, background:sel?'#F0F2F8':'#fff' }}>{pr}</div>;
+                    })}
+                  </div>
+                </div>
+              </div>
+            ))}
+            <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+              {sectionCard(`${segmentoCalc.length} prospectos calificarían`, (
+                <div>
+                  <div style={{ fontSize:36, fontWeight:300, color:segmentoCalc.length>0?GREEN:'#c0392b', fontFamily:T.fontSerif, textAlign:'center', marginBottom:8 }}>{segmentoCalc.length}</div>
+                  <div style={{ fontSize:12, color:T.textSec, textAlign:'center', marginBottom:16 }}>prospectos que cumplen todos los filtros</div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:4, maxHeight:200, overflowY:'auto' }}>
+                    {segmentoCalc.slice(0,8).map((p:any)=>(
+                      <div key={p.id} style={{ padding:'6px 10px', background:'#fff', border:`1px solid ${T.border}`, borderRadius:2, fontSize:12, color:NAVY }}>
+                        {p.nombre} {p.apellido} · <span style={{color:T.textSec}}>{p.estado}</span> · <span style={{color:GOLD}}>{p.presupuesto_usd?`$${Number(p.presupuesto_usd).toLocaleString()}`:'sin presupuesto'}</span>
+                      </div>
+                    ))}
+                    {segmentoCalc.length>8 && <div style={{ fontSize:12, color:T.textSec, textAlign:'center', padding:'4px 0' }}>+{segmentoCalc.length-8} más</div>}
+                    {segmentoCalc.length===0 && <div style={{ fontSize:10, color:T.textSec, textAlign:'center', padding:'12px 0' }}>Ajusta los filtros para incluir prospectos</div>}
+                  </div>
+                </div>
+              ))}
+              <div style={{ display:'flex', gap:10 }}>
+                <button onClick={()=>setCampanaWizardStep(1)} style={{ flex:1, padding:'9px 0', background:'none', border:`1px solid ${T.border}`, borderRadius:2, color:T.textSec, fontSize:9, fontWeight:700, cursor:'pointer' }}>← ATRÁS</button>
+                <button onClick={()=>setCampanaWizardStep(3)} disabled={segmentoCalc.length===0}
+                  style={{ flex:2, padding:'9px 0', background:segmentoCalc.length>0?NAVY:'#ccc', border:'none', borderRadius:2, color:CREAM, fontSize:9, fontWeight:700, letterSpacing:'0.08em', cursor:segmentoCalc.length>0?'pointer':'not-allowed' }}>
+                  SIGUIENTE → CONTENIDO
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Contenido */}
+        {campanaWizardStep === 3 && (
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
+            <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+              {sectionCard('Templates de email profesionales', (
+                <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                  <div style={{ fontSize:12, color:T.textSec, marginBottom:8 }}>Haz clic en un template para cargarlo en el editor</div>
+                  {TEMPLATES.filter(t=>nuevaCampana.objetivo==='nurturing'||t.objetivo===nuevaCampana.objetivo||nuevaCampana.objetivo==='').map(t=>(
+                    <div key={t.id} onClick={()=>setNuevaCampana((p:any)=>({...p, asunto:t.asunto, cuerpo:t.cuerpo, ...(nuevaCampana.tipo==='drip'?{dripPasos:p.dripPasos.map((d:any,i:number)=>i===0?{...d,asunto:t.asunto,cuerpo:t.cuerpo}:d)}:{})}))}
+                      style={{ padding:'9px 12px', border:`1px solid ${T.border}`, borderRadius:2, cursor:'pointer', background:'#fff' }}>
+                      <div style={{ fontSize:12, fontWeight:600, color:NAVY }}>{t.label}</div>
+                      <div style={{ fontSize:11, color:T.textSec, marginTop:2 }}>{t.asunto.slice(0,55)}…</div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+              {nuevaCampana.tipo==='drip' && sectionCard('Pasos de la secuencia drip', (
+                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                  {nuevaCampana.dripPasos.map((paso:any, i:number)=>(
+                    <div key={i} style={{ background: campanaEditPaso===i?'#FBF6EC':'#fff', border:`1.5px solid ${campanaEditPaso===i?GOLD:T.border}`, borderRadius:2, padding:'8px 10px', cursor:'pointer' }} onClick={()=>setCampanaEditPaso(campanaEditPaso===i?null:i)}>
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                          <div style={{ width:18,height:18,borderRadius:'50%',background:GOLD,color:'#fff',fontSize:8,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center' }}>{i+1}</div>
+                          <span style={{ fontSize:9,fontWeight:600,color:T.textSec,textTransform:'uppercase',letterSpacing:'0.08em' }}>{i===0?'Inmediato':`+${paso.dias} días`}</span>
+                        </div>
+                        <span style={{ fontSize:8, color:GOLD, fontWeight:600 }}>{campanaEditPaso===i?'▲ CERRAR':'▼ EDITAR'}</span>
+                      </div>
+                      <div style={{ fontSize:9, color:paso.asunto?NAVY:T.textSec, marginTop:3 }}>{paso.asunto||'Sin asunto'}</div>
+                      {campanaEditPaso===i && (
+                        <div style={{ marginTop:10, display:'flex', flexDirection:'column', gap:6 }}>
+                          {i>0 && <div><label style={labelS}>Días desde el paso anterior</label><input type="number" style={inputS} value={paso.dias} min={1} onFocus={e=>e.target.select()} onChange={e=>setNuevaCampana((p:any)=>{const d=[...p.dripPasos];d[i]={...d[i],dias:Number(e.target.value)};return{...p,dripPasos:d};})} /></div>}
+                          <div><label style={labelS}>Asunto</label><input style={inputS} value={paso.asunto} onChange={e=>setNuevaCampana((p:any)=>{const d=[...p.dripPasos];d[i]={...d[i],asunto:e.target.value};return{...p,dripPasos:d};})} placeholder="{{nombre}}, asunto personalizado…" /></div>
+                          <div><label style={labelS}>Cuerpo del email</label><textarea style={{...inputS,minHeight:90,resize:'vertical',fontFamily:'inherit',lineHeight:1.5}} value={paso.cuerpo} onChange={e=>setNuevaCampana((p:any)=>{const d=[...p.dripPasos];d[i]={...d[i],cuerpo:e.target.value};return{...p,dripPasos:d};})} placeholder="Usa {{nombre}}, {{broker}}, {{proyecto}}, {{presupuesto}}…" /></div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  <button onClick={()=>setNuevaCampana((p:any)=>({...p,dripPasos:[...p.dripPasos,{dias:7,asunto:'',cuerpo:'',enviados:0,abiertos:0}]}))}
+                    style={{ padding:'6px 0',background:'none',border:`1px dashed ${T.border}`,borderRadius:2,color:T.textSec,fontSize:8,fontWeight:700,letterSpacing:'0.08em',cursor:'pointer' }}>
+                    + AGREGAR PASO
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+              {sectionCard(nuevaCampana.tipo==='drip'?'Primer mensaje':'Contenido del email', (
+                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                  <div><label style={labelS}>Asunto</label><input style={inputS} value={nuevaCampana.asunto} onChange={e=>setNuevaCampana((p:any)=>({...p,asunto:e.target.value,...(p.tipo==='drip'?{dripPasos:p.dripPasos.map((d:any,i:number)=>i===0?{...d,asunto:e.target.value}:d)}:{})}))} placeholder="Usa {{nombre}} para personalizar" /></div>
+                  <div><label style={labelS}>Cuerpo del email</label><textarea style={{...inputS,minHeight:220,resize:'vertical',fontFamily:'inherit',lineHeight:1.6}} value={nuevaCampana.cuerpo} onChange={e=>setNuevaCampana((p:any)=>({...p,cuerpo:e.target.value,...(p.tipo==='drip'?{dripPasos:p.dripPasos.map((d:any,i:number)=>i===0?{...d,cuerpo:e.target.value}:d)}:{})}))} placeholder="Cuerpo del mensaje. Variables disponibles:&#10;{{nombre}}, {{apellido}}, {{proyecto}}, {{presupuesto}}, {{broker}}, {{fecha_evento}}, {{precio_especial}}" /></div>
+                  <div style={{ padding:'8px 10px', background:'#F0F4FB', border:'1px solid #C5D5E8', borderRadius:2, fontSize:8, color:'#2C5282', lineHeight:1.7 }}>
+                    <strong>Variables automáticas disponibles:</strong><br/>
+                    {'{{nombre}}'} · {'{{apellido}}'} · {'{{broker}}'} · {'{{proyecto}}'} · {'{{presupuesto}}'} · {'{{fecha_evento}}'} · {'{{precio_especial}}'} · {'{{unidad}}'} · {'{{area}}'} · {'{{tasa}}'}
+                  </div>
+                </div>
+              ))}
+              <div style={{ display:'flex', gap:10 }}>
+                <button onClick={()=>setCampanaWizardStep(2)} style={{ flex:1,padding:'9px 0',background:'none',border:`1px solid ${T.border}`,borderRadius:2,color:T.textSec,fontSize:9,fontWeight:700,cursor:'pointer' }}>← ATRÁS</button>
+                <button onClick={()=>setCampanaWizardStep(4)} style={{ flex:2,padding:'9px 0',background:NAVY,border:'none',borderRadius:2,color:CREAM,fontSize:9,fontWeight:700,letterSpacing:'0.08em',cursor:'pointer' }}>SIGUIENTE → REVISIÓN</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 4: Revisión y lanzamiento */}
+        {campanaWizardStep === 4 && (
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
+            {sectionCard('Resumen de la campaña', (
+              <div style={{ display:'flex', flexDirection:'column', gap:0 }}>
+                {[
+                  ['Nombre', nuevaCampana.nombre],
+                  ['Objetivo', objetivoLabel[nuevaCampana.objetivo]],
+                  ['Tipo', tipoLabel[nuevaCampana.tipo]],
+                  ['Canal', nuevaCampana.canal],
+                  ['Etapas objetivo', nuevaCampana.segmentoEtapas.length>0?nuevaCampana.segmentoEtapas.join(', '):'Todas'],
+                  ['Presupuesto mín.', nuevaCampana.segmentoPresupMin>0?fmtUSD(nuevaCampana.segmentoPresupMin):'Sin filtro'],
+                  ['Inactividad mín.', nuevaCampana.segmentoInactividad>0?`${nuevaCampana.segmentoInactividad} días`:'Sin filtro'],
+                  ['Score mínimo', nuevaCampana.segmentoScore>0?`${nuevaCampana.segmentoScore} pts`:'Sin filtro'],
+                  ['Proyectos', nuevaCampana.segmentoProyectos.length>0?nuevaCampana.segmentoProyectos.join(', '):'Todos'],
+                  ['Prospectos en segmento', segmentoCalc.length.toString()],
+                  nuevaCampana.tipo==='drip'?['Pasos drip', nuevaCampana.dripPasos.length.toString()]:['Asunto', nuevaCampana.asunto||'—'],
+                ].map(([k,v])=>(
+                  <div key={k} style={{ display:'flex', justifyContent:'space-between', padding:'7px 0', borderBottom:`1px solid ${T.border}` }}>
+                    <span style={{ fontSize:9,color:T.textSec,textTransform:'uppercase',letterSpacing:'0.08em' }}>{k}</span>
+                    <span style={{ fontSize:10,color:NAVY,fontWeight:500 }}>{v}</span>
+                  </div>
+                ))}
+                <div style={{ marginTop:12, padding:'10px', background:'#EBF5F0', border:`1px solid ${GREEN}`, borderRadius:2 }}>
+                  <div style={{ fontSize:9, fontWeight:700, color:GREEN, marginBottom:3 }}>ALCANCE ESTIMADO</div>
+                  <div style={{ fontSize:20, fontWeight:300, color:GREEN, fontFamily:T.fontSerif }}>{segmentoCalc.length} prospectos</div>
+                  {nuevaCampana.tipo==='drip' && <div style={{ fontSize:8,color:T.textSec,marginTop:3 }}>Secuencia de {nuevaCampana.dripPasos.length} emails en {nuevaCampana.dripPasos.reduce((s:number,p:any)=>s+p.dias,0)} días</div>}
+                </div>
+              </div>
+            ))}
+            <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+              {sectionCard('Vista previa del primer mensaje', (
+                <div style={{ background:'#fff', border:`1px solid ${T.border}`, borderRadius:2, padding:'14px', minHeight:180 }}>
+                  {nuevaCampana.asunto ? (
+                    <>
+                      <div style={{ fontSize:8,color:T.textSec,marginBottom:6,letterSpacing:'0.08em',textTransform:'uppercase' }}>Para: {segmentoCalc[0]?`${segmentoCalc[0].nombre} ${segmentoCalc[0].apellido||''}`:'Prospecto ejemplo'}</div>
+                      <div style={{ fontSize:13,fontWeight:500,color:NAVY,marginBottom:10,fontFamily:T.fontSerif }}>{nuevaCampana.asunto.replace('{{nombre}}',segmentoCalc[0]?.nombre||'[Nombre]')}</div>
+                      <div style={{ width:30,height:1,background:GOLD,marginBottom:10 }} />
+                      <div style={{ fontSize:10,color:T.text,lineHeight:1.7,whiteSpace:'pre-wrap',maxHeight:200,overflow:'hidden' }}>
+                        {(nuevaCampana.cuerpo||'').replace(/{{nombre}}/g,segmentoCalc[0]?.nombre||'[Nombre]').replace(/{{broker}}/g,'Tu broker GLP').slice(0,400)}
+                        {(nuevaCampana.cuerpo||'').length>400?'…':''}
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ color:T.textSec,fontSize:10,textAlign:'center',marginTop:50 }}>Sin contenido — regresa al paso 3</div>
+                  )}
+                </div>
+              ))}
+              <button onClick={()=>setCampanaWizardStep(3)} style={{ padding:'9px 0',background:'none',border:`1px solid ${T.border}`,borderRadius:2,color:T.textSec,fontSize:9,fontWeight:700,cursor:'pointer' }}>← EDITAR CONTENIDO</button>
+              <button
+                onClick={()=>{
+                  if(!nuevaCampana.nombre) return;
+                  const id = Date.now();
+                  setCampanas(prev=>[...prev, {...nuevaCampana, id, estado:'borrador', enviados:0, abiertos:0, clicks:0, citas:0, cierres:0, revenue:0, fechaInicio:null, fechaFin:null, proximoEnvio:null, prospectosTotales:segmentoCalc.length, prospectosPaso:[], costoTotal:0, alertas:[] }]);
+                  setNuevaCampana({nombre:'',tipo:'drip',canal:'Email',objetivo:'nurturing',segmentoEtapas:[],segmentoPresupMin:0,segmentoPresupMax:9999999,segmentoProyectos:[],segmentoInactividad:0,segmentoScore:0,asunto:'',cuerpo:'',dripPasos:[{dias:0,asunto:'',cuerpo:'',enviados:0,abiertos:0},{dias:3,asunto:'',cuerpo:'',enviados:0,abiertos:0},{dias:7,asunto:'',cuerpo:'',enviados:0,abiertos:0}],costoTotal:0});
+                  setCampanaWizardStep(1);
+                  setCampanaTab('lista');
+                }}
+                style={{ padding:'12px 0',background:'#6B7280',border:'none',borderRadius:2,color:'#fff',fontSize:10,fontWeight:700,letterSpacing:'0.1em',cursor:'pointer' }}>
+                GUARDAR COMO BORRADOR
+              </button>
+              <button
+                onClick={()=>{
+                  if(!nuevaCampana.nombre||segmentoCalc.length===0) return;
+                  const id = Date.now();
+                  const hoy = new Date().toISOString().slice(0,10);
+                  setCampanas(prev=>[...prev, {...nuevaCampana, id, estado:'activa', enviados:0, abiertos:0, clicks:0, citas:0, cierres:0, revenue:0, fechaInicio:hoy, fechaFin:null, proximoEnvio:hoy, prospectosTotales:segmentoCalc.length, prospectosPaso:[], costoTotal:0, alertas:[] }]);
+                  setNuevaCampana({nombre:'',tipo:'drip',canal:'Email',objetivo:'nurturing',segmentoEtapas:[],segmentoPresupMin:0,segmentoPresupMax:9999999,segmentoProyectos:[],segmentoInactividad:0,segmentoScore:0,asunto:'',cuerpo:'',dripPasos:[{dias:0,asunto:'',cuerpo:'',enviados:0,abiertos:0},{dias:3,asunto:'',cuerpo:'',enviados:0,abiertos:0},{dias:7,asunto:'',cuerpo:'',enviados:0,abiertos:0}],costoTotal:0});
+                  setCampanaWizardStep(1);
+                  setCampanaTab('lista');
+                }}
+                disabled={!nuevaCampana.nombre||segmentoCalc.length===0}
+                style={{ padding:'12px 0',background:nuevaCampana.nombre&&segmentoCalc.length>0?GOLD:'#ccc',border:'none',borderRadius:2,color:'#fff',fontSize:11,fontWeight:700,letterSpacing:'0.1em',cursor:nuevaCampana.nombre&&segmentoCalc.length>0?'pointer':'not-allowed' }}>
+                LANZAR CAMPAÑA AHORA →
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+
+    // ────────── Tab: ROI ──────────
+    const renderROI = () => {
+      const totalCosto = campanas.reduce((s,c)=>s+(c.costoTotal||0),0);
+      const roiGlobal  = totalCosto>0?Math.round(((totalRevenue-totalCosto)/totalCosto)*100):0;
+      const costoXCierre = totalCierres>0?Math.round(totalCosto/totalCierres):0;
+      const costoXCita   = campanas.reduce((s,c)=>s+c.citas,0)>0?Math.round(totalCosto/campanas.reduce((s,c)=>s+c.citas,0)):0;
+      const totalClicks2 = campanas.reduce((s,c)=>s+c.clicks,0);
+      const totalCitas2  = campanas.reduce((s,c)=>s+c.citas,0);
+
+      return (
+        <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+          {/* Métricas de eficiencia */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:12 }}>
+            {[
+              { label:'ROI Total', val:`${roiGlobal}%`, color:roiGlobal>0?GREEN:'#c0392b', sub:`${fmtUSD(totalRevenue)} generados` },
+              { label:'Inversión total', val:fmtUSD(totalCosto), color:NAVY, sub:'costo de campañas' },
+              { label:'Costo / Cita', val:costoXCita>0?fmtUSD(costoXCita):'—', color:GOLD, sub:'eficiencia prospección' },
+              { label:'Costo / Cierre', val:costoXCierre>0?fmtUSD(costoXCierre):'—', color:GOLD, sub:'costo de adquisición' },
+              { label:'Revenue / Enviado', val:totalEnviados>0?fmtUSD(Math.round(totalRevenue/totalEnviados)):'—', color:GREEN, sub:'valor por email' },
+            ].map(k=>(
+              <div key={k.label} style={{ background:CREAM,border:`1px solid ${T.border}`,borderRadius:4,padding:'14px 12px',textAlign:'center' }}>
+                <div style={{ fontSize:7,fontWeight:700,color:T.textSec,letterSpacing:'0.14em',textTransform:'uppercase',marginBottom:6 }}>{k.label}</div>
+                <div style={{ fontSize:20,fontWeight:300,color:k.color,fontFamily:T.fontSerif,lineHeight:1 }}>{k.val}</div>
+                <div style={{ fontSize:8,color:T.textSec,marginTop:5 }}>{k.sub}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
+            {/* Embudo consolidado */}
+            {sectionCard('Embudo de conversión — todos los canales', (
+              <div>
+                {[
+                  { label:'Mensajes enviados', val:totalEnviados, color:'#8B9AB0', desc:'Base total de alcance' },
+                  { label:'Emails abiertos', val:totalAbiertos, color:'#4A90D9', desc:`${pct(totalAbiertos,totalEnviados)}% tasa apertura` },
+                  { label:'Clicks / Interés real', val:totalClicks2, color:GOLD, desc:`${pct(totalClicks2,totalAbiertos)}% CTR sobre abiertos` },
+                  { label:'Citas agendadas', val:totalCitas2, color:GREEN, desc:`${pct(totalCitas2,totalClicks2)}% conv. click → cita` },
+                  { label:'Cierres de venta', val:totalCierres, color:NAVY, desc:`${pct(totalCierres,totalCitas2)}% conv. cita → cierre` },
+                ].map((row,i)=>(
+                  <div key={row.label} style={{ display:'flex', gap:10, alignItems:'center', padding:'8px 0', borderBottom:i<4?`1px solid ${T.border}`:'none' }}>
+                    <div style={{ width:32,height:32,borderRadius:'50%',background:row.color,color:'#fff',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0 }}>{row.val}</div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:10,color:NAVY,fontWeight:500 }}>{row.label}</div>
+                      <div style={{ fontSize:8,color:T.textSec }}>{row.desc}</div>
+                    </div>
+                    <div style={{ width:80 }}>
+                      <div style={{ background:'#E5E0D8',borderRadius:1,height:4 }}>
+                        <div style={{ width:`${pct(row.val,totalEnviados)}%`,height:'100%',background:row.color }} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+
+            {/* Tabla por campaña */}
+            {sectionCard('Rendimiento y ROI por campaña', (
+              <div style={{ overflowX:'auto' }}>
+                <table style={{ width:'100%',borderCollapse:'collapse',fontSize:10 }}>
+                  <thead>
+                    <tr style={{ background:'#F0EDE6' }}>
+                      {['Campaña','Tipo','Apertura','CTR','Cierres','Revenue','ROI'].map(h=>(
+                        <th key={h} style={{ padding:'6px 8px',textAlign:'left',fontSize:7,fontWeight:700,color:T.textSec,letterSpacing:'0.1em',textTransform:'uppercase',borderBottom:`1px solid ${T.border}` }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {campanas.map((c,i)=>{
+                      const roi = c.costoTotal>0?Math.round(((c.revenue-c.costoTotal)/c.costoTotal)*100):null;
+                      return (
+                        <tr key={c.id} style={{ background:i%2===0?'#fff':CREAM,borderBottom:`1px solid ${T.border}` }}>
+                          <td style={{ padding:'7px 8px',color:NAVY,fontWeight:500,maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{c.nombre}</td>
+                          <td style={{ padding:'7px 8px',color:T.textSec,fontSize:8 }}>{tipoLabel[c.tipo]}</td>
+                          <td style={{ padding:'7px 8px',color:pct(c.abiertos,c.enviados)>=40?GREEN:pct(c.abiertos,c.enviados)>=25?GOLD:'#c0392b',fontWeight:600 }}>{c.enviados>0?`${pct(c.abiertos,c.enviados)}%`:'—'}</td>
+                          <td style={{ padding:'7px 8px',color:'#4A90D9' }}>{c.abiertos>0?`${pct(c.clicks,c.abiertos)}%`:'—'}</td>
+                          <td style={{ padding:'7px 8px',color:NAVY }}>{c.cierres}</td>
+                          <td style={{ padding:'7px 8px',color:GOLD,fontWeight:600 }}>{fmtUSD(c.revenue)}</td>
+                          <td style={{ padding:'7px 8px',color:roi!==null?(roi>0?GREEN:'#c0392b'):T.textSec,fontWeight:600 }}>{roi!==null?`${roi}%`:'—'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
+
+          {/* Benchmarks parametrizados por mercado */}
+          {(() => {
+            const MERCADOS: Record<string, { label: string; fuente: string; nota: string; items: { label: string; min: number; max: number; fmt: (v:number)=>string; val: number; desc: string }[] }> = {
+              colombia: {
+                label: 'Colombia — Lujo Bogotá / Medellín',
+                fuente: 'Fuente: HubSpot LATAM 2025, benchmarks sector inmobiliario premium Colombia',
+                nota: 'Mercado con ciclo de venta 3–9 meses, ticket promedio $250K–$900K USD. Alta penetración email B2C en estratos 5–6.',
+                items: [
+                  { label: 'Tasa de apertura', min: 28, max: 45, fmt: v=>`${v}%`, val: tasaApertura, desc: 'Emails en horario martes–jueves 9–11 AM superan el rango' },
+                  { label: 'CTR (clicks / abiertos)', min: 8, max: 15, fmt: v=>`${v}%`, val: pct(totalClicks2, totalAbiertos), desc: 'CTAs con nombre del proyecto y precio mejoran CTR' },
+                  { label: 'Conv. lead → cita', min: 3, max: 7, fmt: v=>`${v}%`, val: pct(totalCitas2, totalEnviados), desc: 'Llamada de seguimiento dentro de 24h duplica esta tasa' },
+                  { label: 'Conv. cita → cierre', min: 20, max: 40, fmt: v=>`${v}%`, val: pct(totalCierres, totalCitas2), desc: 'Proyectos en planos tienen mayor tasa que entrega inmediata' },
+                  { label: 'Tasa de baja (unsubscribe)', min: 0, max: 2, fmt: v=>`${v}%`, val: 0, desc: 'Por encima del 2% indica sobreenvío o segmento mal definido' },
+                  { label: 'Revenue por email enviado', min: 800, max: 3000, fmt: v=>`$${v.toLocaleString()}`, val: totalEnviados>0?Math.round(totalRevenue/totalEnviados):0, desc: 'Refleja calidad del segmento y ticket promedio' },
+                ],
+              },
+              panama: {
+                label: 'Panamá — Lujo Ciudad de Panamá / Punta Pacífica',
+                fuente: 'Fuente: Mailchimp Real Estate Report 2025, estimados mercado inmobiliario Panamá premium',
+                nota: 'Mercado con alta proporción de compradores internacionales (40–60%). Ciclo de venta 4–12 meses. Ticket promedio $300K–$1.5M USD. WhatsApp tiene mayor penetración que email para clientes locales.',
+                items: [
+                  { label: 'Tasa de apertura', min: 22, max: 38, fmt: v=>`${v}%`, val: tasaApertura, desc: 'Compradores internacionales abren más en horario EST (8–10 AM). Clientes locales prefieren WhatsApp.' },
+                  { label: 'CTR (clicks / abiertos)', min: 6, max: 12, fmt: v=>`${v}%`, val: pct(totalClicks2, totalAbiertos), desc: 'Links a renders 3D y videos de obra aumentan CTR notablemente' },
+                  { label: 'Conv. lead → cita', min: 2, max: 5, fmt: v=>`${v}%`, val: pct(totalCitas2, totalEnviados), desc: 'Ciclo más largo; citas virtuales tienen 2× tasa que presenciales para compradores en el exterior' },
+                  { label: 'Conv. cita → cierre', min: 15, max: 35, fmt: v=>`${v}%`, val: pct(totalCierres, totalCitas2), desc: 'Clientes internacionales cierran en 1–2 visitas; locales requieren más seguimiento' },
+                  { label: 'Tasa de baja (unsubscribe)', min: 0, max: 2, fmt: v=>`${v}%`, val: 0, desc: 'Base internacional es más sensible al sobreenvío — máximo 1 email/semana' },
+                  { label: 'Revenue por email enviado', min: 1200, max: 5000, fmt: v=>`$${v.toLocaleString()}`, val: totalEnviados>0?Math.round(totalRevenue/totalEnviados):0, desc: 'Ticket más alto que Colombia; un solo cierre puede representar $800K+' },
+                ],
+              },
+              latam: {
+                label: 'LATAM — Benchmark regional lujo',
+                fuente: 'Fuente: NAR International 2025, Mailchimp Industry Report, estimados GLP',
+                nota: 'Promedio regional para mercados inmobiliarios premium en América Latina. Úsalo cuando tu base de prospectos sea mixta (Colombia + Panamá + exterior).',
+                items: [
+                  { label: 'Tasa de apertura', min: 25, max: 42, fmt: v=>`${v}%`, val: tasaApertura, desc: 'Varía significativamente por país; segmentar por mercado mejora precisión' },
+                  { label: 'CTR (clicks / abiertos)', min: 7, max: 13, fmt: v=>`${v}%`, val: pct(totalClicks2, totalAbiertos), desc: 'Contenido visual (renders, videos) supera siempre al texto plano' },
+                  { label: 'Conv. lead → cita', min: 2, max: 6, fmt: v=>`${v}%`, val: pct(totalCitas2, totalEnviados), desc: 'Referidos convierten 3× más que leads fríos en toda la región' },
+                  { label: 'Conv. cita → cierre', min: 18, max: 38, fmt: v=>`${v}%`, val: pct(totalCierres, totalCitas2), desc: 'Propuestas personalizadas con financiación elevan esta tasa' },
+                  { label: 'Tasa de baja (unsubscribe)', min: 0, max: 2, fmt: v=>`${v}%`, val: 0, desc: 'Estándar global — por encima del 2% activa filtros de spam' },
+                  { label: 'Revenue por email enviado', min: 1000, max: 4000, fmt: v=>`$${v.toLocaleString()}`, val: totalEnviados>0?Math.round(totalRevenue/totalEnviados):0, desc: 'Proxy de la calidad combinada del segmento y el ticket' },
+                ],
+              },
+            };
+            const m = MERCADOS[campanasMercado];
+            return sectionCard(
+              `Benchmarks — ${m.label}`,
+              <div>
+                {/* Selector de mercado */}
+                <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' as const, alignItems:'center' }}>
+                  <span style={{ fontSize:8,fontWeight:700,color:T.textSec,textTransform:'uppercase' as const,letterSpacing:'0.1em' }}>Mercado:</span>
+                  {([['colombia','🇨🇴 Colombia'],['panama','🇵🇦 Panamá'],['latam','🌎 LATAM']] as [string,string][]).map(([id,lbl])=>(
+                    <button key={id} onClick={()=>setCampanasMercado(id as any)}
+                      style={{ padding:'4px 12px',background:campanasMercado===id?NAVY:'#fff',border:`1px solid ${campanasMercado===id?NAVY:T.border}`,borderRadius:2,color:campanasMercado===id?CREAM:T.textSec,fontSize:9,fontWeight:campanasMercado===id?700:400,cursor:'pointer',letterSpacing:'0.04em' }}>
+                      {lbl}
+                    </button>
+                  ))}
+                  <span style={{ marginLeft:'auto',fontSize:8,color:T.textSec,fontStyle:'italic' as const }}>{m.fuente}</span>
+                </div>
+
+                {/* Nota del mercado */}
+                <div style={{ padding:'8px 12px',background:'#F0F4FB',border:'1px solid #C5D5E8',borderRadius:2,marginBottom:16 }}>
+                  <div style={{ fontSize:9,color:'#2C5282',lineHeight:1.6 }}>{m.nota}</div>
+                </div>
+
+                {/* Tarjetas de benchmark */}
+                <div style={{ display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12 }}>
+                  {m.items.map(b=>{
+                    const ok = b.val >= b.min && b.val <= b.max;
+                    const above = b.val > b.max;
+                    const noData = b.val === 0 && b.label.includes('baja');
+                    const statusColor = noData ? T.textSec : above ? GREEN : ok ? GREEN : GOLD;
+                    const statusBg = noData ? '#F5F5F5' : above ? '#EBF5F0' : ok ? '#EBF5F0' : '#FBF6EC';
+                    const statusBorder = noData ? T.border : above ? GREEN : ok ? GREEN : GOLD;
+                    const statusMsg = noData ? 'Sin datos aún' : above ? '✓ Por encima del benchmark' : ok ? '✓ Dentro del rango óptimo' : '⚠ Por debajo — oportunidad de mejora';
+                    return (
+                      <div key={b.label} style={{ background:statusBg,border:`1.5px solid ${statusBorder}`,borderRadius:4,padding:'12px 14px' }}>
+                        <div style={{ fontSize:8,fontWeight:700,color:T.textSec,textTransform:'uppercase' as const,letterSpacing:'0.1em',marginBottom:8 }}>{b.label}</div>
+                        <div style={{ display:'flex',alignItems:'baseline',gap:8,marginBottom:6 }}>
+                          <div style={{ fontSize:22,fontWeight:300,color:statusColor,fontFamily:T.fontSerif }}>{b.fmt(b.val)}</div>
+                          <div style={{ fontSize:9,color:T.textSec }}>benchmark: {b.fmt(b.min)}–{b.fmt(b.max)}</div>
+                        </div>
+                        <div style={{ background:'#E5E0D8',borderRadius:1,height:4,marginBottom:6,overflow:'hidden' }}>
+                          <div style={{ width:`${Math.min((b.val/b.max)*100,100)}%`,height:'100%',background:statusColor,transition:'width 0.5s ease' }} />
+                        </div>
+                        <div style={{ fontSize:8,fontWeight:700,color:statusColor,marginBottom:4 }}>{statusMsg}</div>
+                        <div style={{ fontSize:8,color:T.textSec,lineHeight:1.5 }}>{b.desc}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      );
+    };
+
+    return (
+      <div style={{ padding:'24px 28px', overflowY:'auto', flex:1, background:T.bg }}>
+        <div style={{ maxWidth:1200, margin:'0 auto' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginBottom:20 }}>
+            <div>
+              <h2 style={{ fontSize:26,fontWeight:300,color:NAVY,fontFamily:T.fontSerif,margin:0,letterSpacing:'0.02em' }}>Campañas de Marketing</h2>
+              <div style={{ fontSize:10,color:T.textSec,letterSpacing:'0.1em',textTransform:'uppercase',marginTop:4 }}>Gestión · Correos Automáticos · Retorno de Inversión · Referencias del Mercado</div>
+            </div>
+            <button onClick={()=>{setCampanaDetalle(null);setCampanaTab('nueva');setCampanaWizardStep(1);}}
+              style={{ padding:'9px 18px',background:GOLD,border:'none',borderRadius:2,color:'#fff',fontSize:9,fontWeight:700,letterSpacing:'0.1em',cursor:'pointer' }}>
+              + NUEVA CAMPAÑA
+            </button>
+          </div>
+
+          {/* Tab nav */}
+          <div style={{ display:'flex', borderBottom:`1px solid ${T.border}`, marginBottom:24 }}>
+            {([['dashboard','Dashboard'],['lista','Campañas'],['nueva','Nueva Campaña'],['roi','Análisis ROI']] as [string,string][]).map(([id,lbl])=>(
+              <button key={id} onClick={()=>{setCampanaTab(id as any);if(id!=='lista')setCampanaDetalle(null);if(id==='nueva')setCampanaWizardStep(1);}}
+                style={{ padding:'9px 20px',background:'none',border:'none',borderBottom:campanaTab===id?`2px solid ${GOLD}`:'2px solid transparent',color:campanaTab===id?NAVY:T.textSec,fontSize:11,fontWeight:campanaTab===id?600:400,letterSpacing:'0.06em',cursor:'pointer',marginBottom:-1 }}>
+                {lbl}
+              </button>
+            ))}
+          </div>
+
+          {campanaTab === 'dashboard' && renderDashboard()}
+          {campanaTab === 'lista' && renderLista()}
+          {campanaTab === 'nueva' && renderNueva()}
+          {campanaTab === 'roi' && renderROI()}
+        </div>
+      </div>
+    );
+  };
+
+  // ══════════════════════════════════════════════════════════════
+  // VISTA MOBILE — BROKER EN CAMPO
+  // ══════════════════════════════════════════════════════════════
+  const renderMobileView = () => {
+    const NAVY = '#001A37';
+    const GOLD = '#B89047';
+    const CREAM = '#FAF9F6';
+    const WHITE = '#FFFFFF';
+    const BORDER = '#E5E0D8';
+    const SF = '"Cormorant Garamond", serif';
+    const SS = 'Inter, sans-serif';
+
+    const ETAPA_COLOR: Record<string, string> = {
+      'Contacto Inicial': '#4A6FA5', 'Calificación': '#6B8F71',
+      'Presentación': '#B89047', 'Negociación': '#8B6357',
+      'Cierre': '#001A37', 'Post-venta': '#10B981', 'Lead Frío': '#9CA3AF',
+    };
+
+    const myProspects = currentUserRole === 'broker'
+      ? visibleProspects
+      : prospects;
+
+    // ── TAB: PROSPECTOS ──
+    const tabProspectos = () => {
+      if (mobileProspect) {
+        const p = mobileProspect;
+        const waNum = (p.telefono || '').replace(/\D/g, '');
+        return (
+          <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+            <button onClick={() => setMobileProspect(null)}
+              style={{ background: 'none', border: 'none', color: GOLD, fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '0 0 16px 0', fontFamily: SS, display: 'flex', alignItems: 'center', gap: 6 }}>
+              ← Volver
+            </button>
+            {/* Card principal */}
+            <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, overflow: 'hidden', marginBottom: 12 }}>
+              <div style={{ background: NAVY, padding: '16px 20px' }}>
+                <div style={{ fontSize: 10, letterSpacing: 2, textTransform: 'uppercase' as const, color: GOLD, fontWeight: 700, marginBottom: 4 }}>Prospecto</div>
+                <div style={{ fontSize: 22, fontFamily: SF, fontWeight: 300, color: WHITE }}>{p.nombre} {p.apellido}</div>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>{p.ocupacion || '—'} · {p.empresa || '—'}</div>
+              </div>
+              <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 10, color: '#8B8170', textTransform: 'uppercase' as const, letterSpacing: 1 }}>Etapa</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: ETAPA_COLOR[p.estado] || NAVY }}>{p.estado}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 10, color: '#8B8170', textTransform: 'uppercase' as const, letterSpacing: 1 }}>Presupuesto</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: GOLD }}>USD ${Number(p.presupuesto_usd || 0).toLocaleString('en-US')}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 10, color: '#8B8170', textTransform: 'uppercase' as const, letterSpacing: 1 }}>Proyecto</span>
+                  <span style={{ fontSize: 12, color: NAVY }}>{(p.proyectos_interes || []).join(', ') || '—'}</span>
+                </div>
+                {p.notas && (
+                  <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 10 }}>
+                    <div style={{ fontSize: 10, color: '#8B8170', textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 4 }}>Notas</div>
+                    <div style={{ fontSize: 12, color: NAVY, lineHeight: 1.6 }}>{p.notas}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Botones de contacto */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
+              <a href={`tel:${p.telefono}`}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: NAVY, color: WHITE, borderRadius: 6, padding: '14px 0', textDecoration: 'none', fontFamily: SS, fontSize: 13, fontWeight: 600 }}>
+                📞 Llamar
+              </a>
+              <a href={`https://wa.me/${waNum}?text=Hola%20${encodeURIComponent(p.nombre)}%2C%20te%20contacto%20de%20GLP%20Wealth%20Management.`}
+                target="_blank" rel="noreferrer"
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#25D366', color: WHITE, borderRadius: 6, padding: '14px 0', textDecoration: 'none', fontFamily: SS, fontSize: 13, fontWeight: 600 }}>
+                WhatsApp
+              </a>
+            </div>
+
+            {/* Cambiar etapa */}
+            <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, padding: 16, marginBottom: 12 }}>
+              <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: GOLD, fontWeight: 700, marginBottom: 10 }}>Cambiar Etapa</div>
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 6 }}>
+                {['Contacto Inicial','Calificación','Presentación','Negociación','Cierre','Post-venta'].map(est => (
+                  <button key={est} onClick={async () => {
+                    await fetch(`${API}/prospects/${p.id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({...p, estado: est}) });
+                    setMobileProspect({...p, estado: est});
+                    fetchProspects();
+                  }}
+                    style={{ padding: '10px 14px', background: p.estado === est ? NAVY : WHITE, color: p.estado === est ? WHITE : NAVY, border: `1px solid ${p.estado === est ? NAVY : BORDER}`, borderRadius: 4, fontSize: 12, fontWeight: p.estado === est ? 700 : 400, cursor: 'pointer', fontFamily: SS, textAlign: 'left' as const }}>
+                    {p.estado === est ? '● ' : '○ '}{est}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Registrar actividad rápida */}
+            <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, padding: 16 }}>
+              <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: GOLD, fontWeight: 700, marginBottom: 10 }}>Registrar Actividad</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, marginBottom: 10 }}>
+                {['llamada','email','reunión','whatsapp'].map(t => (
+                  <button key={t} onClick={() => setMobileActTipo(t)}
+                    style={{ padding: '6px 12px', background: mobileActTipo === t ? GOLD : WHITE, color: mobileActTipo === t ? WHITE : '#8B8170', border: `1px solid ${mobileActTipo === t ? GOLD : BORDER}`, borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' as const }}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+              <textarea value={mobileActDesc} onChange={e => setMobileActDesc(e.target.value)}
+                placeholder="¿Qué ocurrió? Resultado y próximo paso…"
+                rows={3}
+                style={{ width: '100%', border: `1px solid ${BORDER}`, borderRadius: 4, padding: '10px 12px', fontSize: 13, fontFamily: SS, resize: 'none' as const, boxSizing: 'border-box' as const, outline: 'none' }} />
+              <button onClick={async () => {
+                if (!mobileActDesc.trim()) return;
+                const act = { id: Date.now(), tipo: mobileActTipo, descripcion: mobileActDesc.trim(), fecha: new Date().toLocaleDateString('es-CO', {day:'2-digit',month:'short',year:'numeric'}), hora: new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}) };
+                const updatedActs = [act, ...(p.actividades || [])];
+                await fetch(`${API}/prospects/${p.id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({...p, actividades: updatedActs}) });
+                setMobileProspect({...p, actividades: updatedActs});
+                setMobileActDesc('');
+                fetchProspects();
+              }} style={{ marginTop: 10, width: '100%', padding: '12px 0', background: NAVY, color: WHITE, border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: SS, letterSpacing: '0.05em' }}>
+                Guardar Actividad
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+          <div style={{ fontSize: 10, letterSpacing: 2, textTransform: 'uppercase' as const, color: GOLD, fontWeight: 700, marginBottom: 4 }}>Mis Prospectos</div>
+          <div style={{ fontSize: 18, fontFamily: SF, fontWeight: 300, color: NAVY, marginBottom: 16 }}>{myProspects.length} en pipeline</div>
+          {myProspects.length === 0 && (
+            <div style={{ textAlign: 'center' as const, color: '#8B8170', padding: '40px 0', fontSize: 13 }}>Sin prospectos asignados</div>
+          )}
+          {myProspects.map(p => (
+            <div key={p.id} onClick={() => setMobileProspect(p)}
+              style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '14px 16px', marginBottom: 10, cursor: 'pointer' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                <div>
+                  <div style={{ fontSize: 15, fontFamily: SF, fontWeight: 400, color: NAVY }}>{p.nombre} {p.apellido}</div>
+                  <div style={{ fontSize: 11, color: '#8B8170', marginTop: 2 }}>{p.telefono || 'Sin teléfono'}</div>
+                </div>
+                <span style={{ fontSize: 10, fontWeight: 700, color: ETAPA_COLOR[p.estado] || NAVY, background: `${ETAPA_COLOR[p.estado] || NAVY}15`, padding: '3px 8px', borderRadius: 12, whiteSpace: 'nowrap' as const }}>{p.estado}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: 11, color: '#8B8170' }}>{(p.proyectos_interes || []).join(', ') || '—'}</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: GOLD }}>USD ${Number(p.presupuesto_usd || 0).toLocaleString('en-US')}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    };
+
+    // ── TAB: PORTAFOLIO ──
+    const tabPortafolio = () => {
+      // Vista detalle del proyecto
+      if (mobileProject) {
+        const proj = mobileProject;
+        const imgs: string[] = [];
+        const piSrc = projectImageOverrides[proj.name] || proj.imagen || PROJECT_IMAGES[proj.name]?.main;
+        if (piSrc) imgs.push(piSrc);
+        const piGallery = PROJECT_IMAGES[proj.name]?.gallery || proj.galeria || [];
+        piGallery.forEach((u: string) => { if (u && !imgs.includes(u)) imgs.push(u); });
+        const mainImg = imgs[0] || null;
+        const spec = (label: string, val: string) => val ? (
+          <div key={label} style={{ paddingBottom: 10, marginBottom: 10, borderBottom: `1px solid ${BORDER}` }}>
+            <div style={{ fontSize: 9, letterSpacing: 1, textTransform: 'uppercase' as const, color: '#8B8170', marginBottom: 3 }}>{label}</div>
+            <div style={{ fontSize: 13, color: NAVY, fontFamily: SF, fontWeight: 300 }}>{val}</div>
+          </div>
+        ) : null;
+        return (
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            <button onClick={() => setMobileProject(null)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: GOLD, fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '12px 16px', fontFamily: SS }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#B89047" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+              Portafolio
+            </button>
+            {/* Hero image */}
+            {mainImg ? (
+              <div style={{ height: 220, background: `url(${mainImg}) center/cover no-repeat`, position: 'relative', margin: '0 0 0 0' }}>
+                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,26,55,0.85) 0%, transparent 55%)' }} />
+                <div style={{ position: 'absolute', bottom: 16, left: 16, right: 16 }}>
+                  <div style={{ fontSize: 9, letterSpacing: 2, color: GOLD, fontWeight: 700, textTransform: 'uppercase' as const, marginBottom: 4 }}>{proj.category}</div>
+                  <div style={{ fontSize: 24, fontFamily: SF, fontWeight: 300, color: WHITE }}>{proj.name}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>{proj.zone}</div>
+                </div>
+              </div>
+            ) : (
+              <div style={{ height: 140, background: NAVY, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <div style={{ fontSize: 22, fontFamily: SF, color: GOLD }}>{proj.name}</div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: 1 }}>{proj.zone}</div>
+              </div>
+            )}
+            <div style={{ height: 2, background: `linear-gradient(to right, ${GOLD}, transparent)` }} />
+            {/* Galería miniaturas */}
+            {imgs.length > 1 && (
+              <div style={{ display: 'flex', gap: 6, padding: '10px 16px', overflowX: 'auto' as const }}>
+                {imgs.slice(1).map((src, i) => (
+                  <div key={i} style={{ width: 72, height: 52, flexShrink: 0, borderRadius: 4, background: `url(${src}) center/cover no-repeat`, border: `1px solid ${BORDER}` }} />
+                ))}
+              </div>
+            )}
+            {/* Precio destacado */}
+            <div style={{ padding: '14px 16px 0' }}>
+              <div style={{ background: NAVY, borderRadius: 8, padding: '12px 16px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', letterSpacing: 1, marginBottom: 3 }}>PRECIO DESDE</div>
+                  <div style={{ fontSize: 22, fontFamily: SF, fontWeight: 300, color: WHITE }}>USD ${(proj.minPrice||0).toLocaleString('en-US')}</div>
+                </div>
+                {proj.capRateMin && <div style={{ textAlign: 'right' as const }}>
+                  <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', letterSpacing: 1, marginBottom: 3 }}>CAP RATE</div>
+                  <div style={{ fontSize: 16, fontFamily: SF, color: GOLD }}>{proj.capRateMin}–{proj.capRateMax}%</div>
+                </div>}
+              </div>
+              {/* Specs */}
+              <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '14px 16px', marginBottom: 14 }}>
+                <div style={{ fontSize: 9, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: GOLD, fontWeight: 700, marginBottom: 12 }}>Ficha Técnica</div>
+                {spec('Habitaciones', proj.bedrooms)}
+                {spec('Área', proj.areaMin ? `${proj.areaMin}${proj.areaMax && proj.areaMax !== proj.areaMin ? `–${proj.areaMax}` : ''} m²` : '')}
+                {spec('Zona', proj.zone)}
+                {spec('Tipo', proj.tipo)}
+                {spec('Entrega', proj.entrega)}
+                {spec('Precio m²', proj.priceM2Min ? `USD $${proj.priceM2Min.toLocaleString('en-US')}${proj.priceM2Max ? `–$${proj.priceM2Max.toLocaleString('en-US')}` : ''}` : '')}
+                {spec('Renta sugerida/m²', proj.rentSuggest ? `USD $${proj.rentSuggest}/m²/mes` : '')}
+                {proj.notaValorizacion && <div style={{ fontSize: 12, color: '#8B8170', lineHeight: 1.7, paddingTop: 4 }}>{proj.notaValorizacion}</div>}
+              </div>
+              {/* Amenidades */}
+              {proj.amenities && proj.amenities.length > 0 && (
+                <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '14px 16px', marginBottom: 14 }}>
+                  <div style={{ fontSize: 9, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: GOLD, fontWeight: 700, marginBottom: 10 }}>Amenidades</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>
+                    {proj.amenities.map((a: string) => (
+                      <span key={a} style={{ fontSize: 10, background: '#F5F3EF', border: `1px solid ${BORDER}`, borderRadius: 12, padding: '4px 10px', color: NAVY }}>{a}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* CTA */}
+              <button onClick={() => { setCalcProject(proj.name); setCalcPrecio(proj.minPrice || 300000); setCalcArea(proj.areaMin || 60); setMobileTab('calculadora'); }}
+                style={{ width: '100%', padding: '14px 0', background: NAVY, color: WHITE, border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: SS, letterSpacing: '0.05em', marginBottom: 24 }}>
+                Calcular ROI →
+              </button>
+            </div>
+          </div>
+        );
+      }
+      // Vista lista
+      return (
+        <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+          <div style={{ fontSize: 10, letterSpacing: 2, textTransform: 'uppercase' as const, color: GOLD, fontWeight: 700, marginBottom: 4 }}>Portafolio GLP</div>
+          <div style={{ fontSize: 18, fontFamily: SF, fontWeight: 300, color: NAVY, marginBottom: 16 }}>Proyectos de Inversión</div>
+          {editableProjects.map(proj => {
+            const imgSrc = projectImageOverrides[proj.name] || proj.imagen || PROJECT_IMAGES[proj.name]?.main;
+            return (
+              <div key={proj.name} onClick={() => setMobileProject(proj)}
+                style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, overflow: 'hidden', marginBottom: 14, cursor: 'pointer' }}>
+                {imgSrc ? (
+                  <div style={{ height: 150, background: `url(${imgSrc}) center/cover no-repeat`, position: 'relative' }}>
+                    <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,26,55,0.75) 0%, transparent 55%)' }} />
+                    <div style={{ position: 'absolute', bottom: 12, left: 14, right: 14 }}>
+                      <div style={{ fontSize: 17, fontFamily: SF, fontWeight: 300, color: WHITE }}>{proj.name}</div>
+                      <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.6)', letterSpacing: 1, textTransform: 'uppercase' as const }}>{proj.zoneShort || proj.zone}</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ height: 100, background: `linear-gradient(135deg, ${NAVY} 0%, #0F3460 100%)`, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                    <span style={{ fontSize: 17, fontFamily: SF, color: GOLD, textAlign: 'center' as const, padding: '0 12px' }}>{proj.name}</span>
+                    <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', letterSpacing: 1, textTransform: 'uppercase' as const }}>{proj.zoneShort || proj.category}</span>
+                  </div>
+                )}
+                <div style={{ height: 2, background: `linear-gradient(to right, ${GOLD}, transparent)` }} />
+                <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: 8, color: '#8B8170', textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 2 }}>Precio desde</div>
+                    <div style={{ fontSize: 14, fontFamily: SF, color: NAVY }}>USD ${(proj.minPrice||0).toLocaleString('en-US')}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' as const }}>
+                    <div style={{ fontSize: 8, color: '#8B8170', textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 2 }}>{proj.bedrooms ? 'Hab.' : 'Área'}</div>
+                    <div style={{ fontSize: 13, fontFamily: SF, color: NAVY }}>{proj.bedrooms || (proj.areaMin ? `${proj.areaMin}–${proj.areaMax} m²` : '—')}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      );
+    };
+
+    // ── TAB: ACTIVIDAD ──
+    const tabActividad = () => (
+      <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+        <div style={{ fontSize: 10, letterSpacing: 2, textTransform: 'uppercase' as const, color: GOLD, fontWeight: 700, marginBottom: 4 }}>Registrar Actividad</div>
+        <div style={{ fontSize: 18, fontFamily: SF, fontWeight: 300, color: NAVY, marginBottom: 20 }}>¿Qué pasó hoy?</div>
+
+        <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, padding: 16, marginBottom: 14 }}>
+          <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: '#8B8170', marginBottom: 8 }}>Prospecto</div>
+          <select value={mobileActProspId} onChange={e => setMobileActProspId(e.target.value)}
+            style={{ width: '100%', padding: '11px 12px', border: `1px solid ${BORDER}`, borderRadius: 4, fontSize: 13, fontFamily: SS, background: CREAM, outline: 'none' }}>
+            <option value=''>— Selecciona un prospecto —</option>
+            {myProspects.map(p => <option key={p.id} value={String(p.id)}>{p.nombre} {p.apellido}</option>)}
+          </select>
+        </div>
+
+        <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, padding: 16, marginBottom: 14 }}>
+          <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: '#8B8170', marginBottom: 8 }}>Tipo de actividad</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            {[{id:'llamada',label:'📞 Llamada'},{id:'whatsapp',label:'💬 WhatsApp'},{id:'reunión',label:'🤝 Reunión'},{id:'email',label:'✉️ Email'}].map(t => (
+              <button key={t.id} onClick={() => setMobileActTipo(t.id)}
+                style={{ padding: '12px 0', background: mobileActTipo === t.id ? NAVY : WHITE, color: mobileActTipo === t.id ? WHITE : NAVY, border: `1px solid ${mobileActTipo === t.id ? NAVY : BORDER}`, borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: SS }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, padding: 16, marginBottom: 20 }}>
+          <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: '#8B8170', marginBottom: 8 }}>Descripción y resultado</div>
+          <textarea value={mobileActDesc} onChange={e => setMobileActDesc(e.target.value)}
+            placeholder="¿Qué ocurrió? ¿Cuál es el siguiente paso?"
+            rows={4}
+            style={{ width: '100%', border: `1px solid ${BORDER}`, borderRadius: 4, padding: '10px 12px', fontSize: 13, fontFamily: SS, resize: 'none' as const, outline: 'none', boxSizing: 'border-box' as const }} />
+        </div>
+
+        {mobileActSaved && <div style={{ background: '#F0FDF4', border: '1px solid #6EE7B7', borderRadius: 6, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#166534', fontWeight: 600 }}>✓ Actividad registrada correctamente</div>}
+
+        <button onClick={async () => {
+          if (!mobileActProspId || !mobileActDesc.trim()) return;
+          const prosp = prospects.find(p => String(p.id) === mobileActProspId);
+          if (!prosp) return;
+          const act = { id: Date.now(), tipo: mobileActTipo, descripcion: mobileActDesc.trim(), fecha: new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'}), hora: new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}) };
+          const updatedActs = [act, ...(prosp.actividades || [])];
+          await fetch(`${API}/prospects/${prosp.id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({...prosp, actividades: updatedActs}) });
+          setMobileActDesc(''); setMobileActProspId(''); setMobileActSaved(true);
+          setTimeout(() => setMobileActSaved(false), 3000);
+          fetchProspects();
+        }} style={{ width: '100%', padding: '14px 0', background: NAVY, color: WHITE, border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: SS, letterSpacing: '0.05em' }}>
+          Guardar Actividad
+        </button>
+      </div>
+    );
+
+    // ── TAB: NUEVO PROSPECTO ──
+    const tabNuevo = () => (
+      <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+        <div style={{ fontSize: 10, letterSpacing: 2, textTransform: 'uppercase' as const, color: GOLD, fontWeight: 700, marginBottom: 4 }}>Nuevo Prospecto</div>
+        <div style={{ fontSize: 18, fontFamily: SF, fontWeight: 300, color: NAVY, marginBottom: 20 }}>Registrar desde campo</div>
+
+        {mobileNewSaved && <div style={{ background: '#F0FDF4', border: '1px solid #6EE7B7', borderRadius: 6, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#166534', fontWeight: 600 }}>✓ Prospecto creado correctamente</div>}
+
+        {[
+          { label: 'Nombre', key: 'nombre', type: 'text', placeholder: 'Nombre' },
+          { label: 'Apellido', key: 'apellido', type: 'text', placeholder: 'Apellido' },
+          { label: 'Teléfono / WhatsApp', key: 'telefono', type: 'tel', placeholder: '+57 300 000 0000' },
+          { label: 'Email', key: 'email', type: 'email', placeholder: 'correo@ejemplo.com' },
+          { label: 'Presupuesto USD', key: 'presupuesto_usd', type: 'number', placeholder: '300000' },
+        ].map(f => (
+          <div key={f.key} style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: '#8B8170', marginBottom: 6 }}>{f.label}</div>
+            <input type={f.type} placeholder={f.placeholder}
+              value={(mobileNewProsp as any)[f.key]}
+              onChange={e => setMobileNewProsp(prev => ({...prev, [f.key]: e.target.value}))}
+              style={{ width: '100%', padding: '11px 12px', border: `1px solid ${BORDER}`, borderRadius: 4, fontSize: 13, fontFamily: SS, outline: 'none', boxSizing: 'border-box' as const }} />
+          </div>
+        ))}
+
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: '#8B8170', marginBottom: 6 }}>Fuente de contacto</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            {['WhatsApp','Referido','Evento','Redes Sociales','Web','Llamada'].map(f => (
+              <button key={f} onClick={() => setMobileNewProsp(prev => ({...prev, forma_contacto: f}))}
+                style={{ padding: '10px 0', background: mobileNewProsp.forma_contacto === f ? NAVY : WHITE, color: mobileNewProsp.forma_contacto === f ? WHITE : NAVY, border: `1px solid ${mobileNewProsp.forma_contacto === f ? NAVY : BORDER}`, borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: SS }}>
+                {f}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button onClick={async () => {
+          if (!mobileNewProsp.nombre.trim() || !mobileNewProsp.apellido.trim()) return;
+          const users = getAdminUsers();
+          const u = users.find((x:any) => x.username === currentUser);
+          const brokerName = u?.nombre || u?.name || '';
+          const body = { ...mobileNewProsp, broker_asignado: brokerName, presupuesto_usd: parseFloat(mobileNewProsp.presupuesto_usd) || 0 };
+          await fetch(`${API}/prospects`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+          setMobileNewProsp({ nombre:'', apellido:'', telefono:'', email:'', presupuesto_usd:'', estado:'Contacto Inicial', broker_asignado:'', proyectos_interes:[], forma_contacto:'WhatsApp' });
+          setMobileNewSaved(true);
+          setTimeout(() => setMobileNewSaved(false), 3000);
+          fetchProspects();
+        }} style={{ width: '100%', padding: '14px 0', background: GOLD, color: WHITE, border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: SS, letterSpacing: '0.05em' }}>
+          Crear Prospecto
+        </button>
+      </div>
+    );
+
+    const TABS = [
+      { id: 'portafolio',  label: 'Portafolio', icon: (active: boolean) => (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#B89047' : 'rgba(255,255,255,0.6)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+      )},
+      { id: 'calculadora', label: 'Calcular', icon: (active: boolean) => (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#B89047' : 'rgba(255,255,255,0.6)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="11" x2="11" y2="11"/><line x1="13" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="11" y2="15"/><line x1="13" y1="15" x2="16" y2="15"/>
+        </svg>
+      )},
+      { id: 'prospectos',  label: 'Clientes', icon: (active: boolean) => (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#B89047' : 'rgba(255,255,255,0.6)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>
+        </svg>
+      )},
+      { id: 'actividad',   label: 'Actividad', icon: (active: boolean) => (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#B89047' : 'rgba(255,255,255,0.6)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+      )},
+      { id: 'nuevo',       label: 'Nuevo', icon: (active: boolean) => (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#B89047' : 'rgba(255,255,255,0.6)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+        </svg>
+      )},
+    ];
+
+    const tabs = mobileTab as string;
+
+    return (
+      <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: CREAM, display: 'flex', flexDirection: 'column' as const, fontFamily: SS, maxWidth: forceMobileView ? 390 : '100%', margin: forceMobileView ? '0 auto' : 0, boxShadow: forceMobileView ? '0 0 60px rgba(0,0,0,0.25)' : 'none' }}>
+        {/* Header */}
+        <div style={{ background: NAVY, padding: '12px 16px 10px', flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 8, letterSpacing: 2, textTransform: 'uppercase' as const, color: GOLD, fontWeight: 700 }}>GLP Wealth Management</div>
+            <div style={{ fontSize: 14, fontFamily: SF, fontWeight: 300, color: WHITE, marginTop: 1 }}>
+              {getAdminUsers().find((u:any) => u.username === currentUser)?.name || currentUser}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            {forceMobileView && (
+              <button onClick={() => setForceMobileView(false)}
+                style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: WHITE, borderRadius: 4, padding: '5px 10px', fontSize: 11, cursor: 'pointer', fontFamily: SS }}>
+                ✕ Cerrar
+              </button>
+            )}
+            {forceMobileView && currentUser !== 'pvargas' && (
+              <button onClick={() => { sessionStorage.setItem('glp_crm_logged_user', 'pvargas'); setCurrentUser('pvargas'); }}
+                style={{ background: 'rgba(184,144,71,0.15)', border: '1px solid rgba(184,144,71,0.5)', color: GOLD, borderRadius: 4, padding: '5px 10px', fontSize: 10, cursor: 'pointer', fontFamily: SS, whiteSpace: 'nowrap' as const }}>
+                Demo Broker ›
+              </button>
+            )}
+            {forceMobileView && currentUser === 'pvargas' && (
+              <button onClick={() => { sessionStorage.setItem('glp_crm_logged_user', SUPERADMIN_USERNAME); setCurrentUser(SUPERADMIN_USERNAME); }}
+                style={{ background: 'rgba(184,144,71,0.15)', border: '1px solid rgba(184,144,71,0.5)', color: GOLD, borderRadius: 4, padding: '5px 10px', fontSize: 10, cursor: 'pointer', fontFamily: SS, whiteSpace: 'nowrap' as const }}>
+                ← Admin
+              </button>
+            )}
+            <button onClick={() => { sessionStorage.removeItem('glp_crm_logged_user'); setCurrentUser(null); }}
+              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', fontSize: 11, cursor: 'pointer', fontFamily: SS }}>
+              Salir
+            </button>
+          </div>
+        </div>
+        <div style={{ height: 2, background: `linear-gradient(to right, ${GOLD}, transparent)`, flexShrink: 0 }} />
+
+        {/* Content */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' }}>
+          {tabs === 'portafolio'  && tabPortafolio()}
+          {tabs === 'calculadora' && (
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' as const }}>
+              {/* Barra de navegación cuando hay proyecto */}
+              <div style={{ padding: '10px 16px', background: WHITE, borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                <button onClick={() => { setCalcProject(null); setMobileTab('portafolio'); }}
+                  style={{ background: 'none', border: 'none', color: GOLD, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: SS, display: 'flex', alignItems: 'center', gap: 4, padding: 0 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#B89047" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+                  Portafolio
+                </button>
+                {calcProject && <>
+                  <span style={{ fontSize: 11, color: '#C5BDB0' }}>›</span>
+                  <span style={{ fontSize: 12, color: NAVY, fontFamily: SF }}>{calcProject}</span>
+                </>}
+              </div>
+              {/* Sin proyecto: pide seleccionar desde portafolio */}
+              {!calcProject ? (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 16 }}>
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#C5BDB0" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+                  </svg>
+                  <div style={{ fontSize: 16, fontFamily: SF, fontWeight: 300, color: NAVY, textAlign: 'center' as const }}>Selecciona un proyecto</div>
+                  <div style={{ fontSize: 12, color: '#8B8170', textAlign: 'center' as const, lineHeight: 1.6 }}>Ve al Portafolio, toca un proyecto y se abrirá aquí listo para calcular.</div>
+                  <button onClick={() => setMobileTab('portafolio')}
+                    style={{ marginTop: 8, background: NAVY, color: WHITE, border: 'none', borderRadius: 6, padding: '12px 28px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: SS }}>
+                    Ver Portafolio
+                  </button>
+                </div>
+              ) : (() => {
+                const proj = PROJECTS.find(p => p.name === calcProject);
+                const minP = proj?.minPrice ?? 150000;
+                const maxP = proj?.maxPrice ?? 800000;
+                const minA = proj?.areaMin ?? 30;
+                const maxA = proj?.areaMax ?? 200;
+                const cuotaInicialUSD = calcPrecio * (calcCuotaInicial / 100);
+                const montoFin = calcPrecio - cuotaInicialUSD;
+
+                const fmt$ = (v: number) => `$${Math.round(v).toLocaleString('en-US')}`;
+                const fmtPct = (v: number) => `${v.toFixed(1)}%`;
+
+                const slider = (label: string, val: number, setVal: (v: number) => void, min: number, max: number, step: number, display: string) => (
+                  <div style={{ marginBottom: 18 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, color: '#8B8170', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' as const }}>{label}</span>
+                      <span style={{ fontSize: 16, fontFamily: SF, color: NAVY }}>{display}</span>
+                    </div>
+                    <input type="range" min={min} max={max} step={step} value={val} onChange={e => setVal(Number(e.target.value))}
+                      style={{ width: '100%', accentColor: GOLD, cursor: 'pointer' }} />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: '#C5BDB0', marginTop: 2 }}>
+                      <span>{min.toLocaleString('en-US')}</span><span>{max.toLocaleString('en-US')}</span>
+                    </div>
+                  </div>
+                );
+
+                // ── Pestaña Cuota Inicial ──
+                const cuotaMesesVal = mobileCalcMesesCustom ? mobileCalcMeses : mobileCalcMeses;
+                const cuotaMensual = cuotaMesesVal > 0 ? cuotaInicialUSD / cuotaMesesVal : 0;
+
+                // ── Pestaña Hipotecaria ──
+                const n = calcPlazo * 12;
+                const r = calcTasaHip / 100 / 12;
+                const cuotaHip = r > 0 ? montoFin * (r * Math.pow(1+r,n)) / (Math.pow(1+r,n)-1) : montoFin / n;
+
+                const tabBtn = (id: 'cuota'|'hipoteca', label: string) => (
+                  <button key={id} onClick={() => setMobileCalcTab(id)}
+                    style={{ flex: 1, padding: '12px 0', background: WHITE, color: mobileCalcTab === id ? NAVY : '#B0A898', border: 'none', borderBottom: `2px solid ${mobileCalcTab === id ? GOLD : 'transparent'}`, fontSize: 12, fontWeight: mobileCalcTab === id ? 700 : 500, cursor: 'pointer', fontFamily: SS }}>
+                    {label}
+                  </button>
+                );
+
+                return (
+                  <div style={{ padding: '0 0 24px' }}>
+                    {/* Tab switcher */}
+                    <div style={{ display: 'flex', borderBottom: `1px solid ${BORDER}`, marginBottom: 16, background: WHITE }}>
+                      {tabBtn('cuota', 'Cuota Inicial')}
+                      {tabBtn('hipoteca', 'Hipotecaria')}
+                    </div>
+
+                    <div style={{ padding: '0 16px' }}>
+                    {mobileCalcTab === 'cuota' ? (<>
+                      {/* Sliders comunes */}
+                      <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '16px 16px 8px', marginBottom: 12 }}>
+                        <div style={{ fontSize: 9, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: GOLD, fontWeight: 700, marginBottom: 14 }}>Activo</div>
+                        {slider('Precio del activo', calcPrecio, setCalcPrecio, minP, maxP, 5000, fmt$(calcPrecio))}
+                        {slider('Cuota inicial %', calcCuotaInicial, setCalcCuotaInicial, 10, 100, 5, `${calcCuotaInicial}%`)}
+                      </div>
+                      {/* Selector de plazo */}
+                      <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '16px', marginBottom: 16 }}>
+                        <div style={{ fontSize: 9, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: GOLD, fontWeight: 700, marginBottom: 12 }}>Plazo de pago</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 10 }}>
+                          {[24, 36, 48].map(m => (
+                            <button key={m} onClick={() => { setMobileCalcMeses(m); setMobileCalcMesesCustom(false); }}
+                              style={{ padding: '10px 0', background: !mobileCalcMesesCustom && mobileCalcMeses === m ? NAVY : WHITE, color: !mobileCalcMesesCustom && mobileCalcMeses === m ? WHITE : NAVY, border: `1px solid ${!mobileCalcMesesCustom && mobileCalcMeses === m ? NAVY : BORDER}`, borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: SS }}>
+                              {m} meses
+                            </button>
+                          ))}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <button onClick={() => setMobileCalcMesesCustom(true)}
+                            style={{ padding: '8px 14px', background: mobileCalcMesesCustom ? GOLD : WHITE, color: mobileCalcMesesCustom ? WHITE : '#8B8170', border: `1px solid ${mobileCalcMesesCustom ? GOLD : BORDER}`, borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: SS, whiteSpace: 'nowrap' as const }}>
+                            Personalizado
+                          </button>
+                          {mobileCalcMesesCustom && (
+                            <input type="number" min={6} max={120} value={mobileCalcMeses} onChange={e => setMobileCalcMeses(Number(e.target.value))}
+                              style={{ flex: 1, padding: '8px 10px', border: `1px solid ${BORDER}`, borderRadius: 6, fontSize: 14, fontFamily: SS, outline: 'none', textAlign: 'center' as const }} />
+                          )}
+                          {mobileCalcMesesCustom && <span style={{ fontSize: 11, color: '#8B8170' }}>meses</span>}
+                        </div>
+                      </div>
+                      {/* Resultado cuota inicial */}
+                      {(() => {
+                        const selPD = calcProject ? PROJECTS.find(p => p.name === calcProject) : null;
+                        const yB = selPD ? ((selPD.capRateMin + selPD.capRateMax) / 2).toFixed(1) : '6.5';
+                        return (
+                          <div style={{ borderRadius: 8, overflow: 'hidden', boxShadow: '0 2px 12px rgba(0,26,55,0.10)' }}>
+                            <div style={{ background: NAVY, padding: '20px 20px 18px' }}>
+                              <div style={{ fontSize: 8, letterSpacing: 2, color: GOLD, fontWeight: 700, textTransform: 'uppercase' as const, marginBottom: 6 }}>Cuota mensual</div>
+                              <div style={{ fontSize: 40, fontFamily: SF, fontWeight: 300, color: WHITE, lineHeight: 1 }}>{fmt$(cuotaMensual)}</div>
+                              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 6 }}>durante {cuotaMesesVal} meses</div>
+                            </div>
+                            <div style={{ background: CREAM, border: `1px solid ${BORDER}`, borderTop: 'none', padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <div>
+                                <div style={{ fontSize: 8, letterSpacing: 1.5, color: '#8B8170', fontWeight: 700, textTransform: 'uppercase' as const, marginBottom: 4 }}>Yield Bruto s/ Inversión</div>
+                                <div style={{ fontSize: 30, fontFamily: SF, fontWeight: 300, color: NAVY }}>{yB}<span style={{ fontSize: 16 }}>%</span></div>
+                              </div>
+                              <div style={{ textAlign: 'right' as const }}>
+                                <div style={{ fontSize: 9, color: '#B0A898', marginBottom: 3 }}>Renta anual est.</div>
+                                <div style={{ fontSize: 15, fontFamily: SF, color: NAVY }}>{fmt$(calcPrecio * parseFloat(yB) / 100)}</div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </>) : (<>
+                      {/* Hipotecaria */}
+                      <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '16px 16px 8px', marginBottom: 12 }}>
+                        <div style={{ fontSize: 9, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: GOLD, fontWeight: 700, marginBottom: 14 }}>Activo</div>
+                        {slider('Precio del activo', calcPrecio, setCalcPrecio, minP, maxP, 5000, fmt$(calcPrecio))}
+                        {slider('Cuota inicial %', calcCuotaInicial, setCalcCuotaInicial, 10, 100, 5, `${calcCuotaInicial}% · ${fmt$(cuotaInicialUSD)}`)}
+                        <div style={{ padding: '8px 0 10px', borderTop: `1px solid ${BORDER}`, marginTop: 4 }}>
+                          <div style={{ fontSize: 10, color: '#8B8170', marginBottom: 2 }}>Monto a financiar</div>
+                          <div style={{ fontSize: 20, fontFamily: SF, color: NAVY }}>{fmt$(montoFin)}</div>
+                        </div>
+                      </div>
+                      <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '16px 16px 8px', marginBottom: 12 }}>
+                        <div style={{ fontSize: 9, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: GOLD, fontWeight: 700, marginBottom: 14 }}>Crédito</div>
+                        {slider('Tasa anual', calcTasaHip, setCalcTasaHip, 4, 14, 0.25, fmtPct(calcTasaHip))}
+                        {slider('Plazo', calcPlazo, setCalcPlazo, 5, 30, 1, `${calcPlazo} años`)}
+                      </div>
+                      {/* Resultado hipoteca */}
+                      {(() => {
+                        const selPD = calcProject ? PROJECTS.find(p => p.name === calcProject) : null;
+                        const yB = selPD ? ((selPD.capRateMin + selPD.capRateMax) / 2).toFixed(1) : '6.5';
+                        return (
+                          <div style={{ borderRadius: 8, overflow: 'hidden', boxShadow: '0 2px 12px rgba(0,26,55,0.10)' }}>
+                            <div style={{ background: NAVY, padding: '20px 20px 18px', textAlign: 'center' as const }}>
+                              <div style={{ fontSize: 8, letterSpacing: 2, color: GOLD, fontWeight: 700, textTransform: 'uppercase' as const, marginBottom: 6 }}>Cuota mensual hipotecaria</div>
+                              <div style={{ fontSize: 44, fontFamily: SF, fontWeight: 300, color: WHITE, lineHeight: 1 }}>{fmt$(cuotaHip)}</div>
+                              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 6 }}>{calcTasaHip}% anual · {calcPlazo} años</div>
+                            </div>
+                            <div style={{ background: CREAM, border: `1px solid ${BORDER}`, borderTop: 'none', padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <div>
+                                <div style={{ fontSize: 8, letterSpacing: 1.5, color: '#8B8170', fontWeight: 700, textTransform: 'uppercase' as const, marginBottom: 4 }}>Yield Bruto s/ Inversión</div>
+                                <div style={{ fontSize: 30, fontFamily: SF, fontWeight: 300, color: NAVY }}>{yB}<span style={{ fontSize: 16 }}>%</span></div>
+                              </div>
+                              <div style={{ textAlign: 'right' as const }}>
+                                <div style={{ fontSize: 9, color: '#B0A898', marginBottom: 3 }}>Renta anual est.</div>
+                                <div style={{ fontSize: 15, fontFamily: SF, color: NAVY }}>{fmt$(calcPrecio * parseFloat(yB) / 100)}</div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </>)}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+          {tabs === 'prospectos'  && tabProspectos()}
+          {tabs === 'actividad'   && tabActividad()}
+          {tabs === 'nuevo'       && tabNuevo()}
+        </div>
+
+        {/* Bottom tab bar */}
+        <div style={{ background: NAVY, borderTop: `1px solid rgba(255,255,255,0.08)`, display: 'flex', flexShrink: 0 }}>
+          {TABS.map(t => {
+            const active = tabs === t.id;
+            return (
+              <button key={t.id} onClick={() => { setMobileTab(t.id as any); setMobileProspect(null); }}
+                style={{ flex: 1, padding: '10px 0 8px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 3, position: 'relative' as const }}>
+                {active && <div style={{ position: 'absolute', top: 0, left: '20%', right: '20%', height: 2, background: GOLD, borderRadius: 1 }} />}
+                {t.icon(active)}
+                <span style={{ fontSize: 10, fontWeight: active ? 700 : 400, color: active ? GOLD : 'rgba(255,255,255,0.6)', letterSpacing: 0.3, fontFamily: SS }}>{t.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  // ══════════════════════════════════════════════════════════════
+  // DASHBOARD EJECUTIVO — PRESIDENCIA
+  // ══════════════════════════════════════════════════════════════
+  const renderPresidencia = () => {
+    const NAVY = '#001A37';
+    const GOLD = '#B89047';
+    const CREAM = '#FAF9F6';
+    const SS = 'Inter, sans-serif';
+    const SF = '"Cormorant Garamond", serif';
+
+    const usd = (p: any) => Math.round(parseFloat(p.presupuesto_usd) || 0);
+    const fmt = (n: number) => {
+      const clean = Math.round(n);
+      if (clean >= 1_000_000) return `USD $${(clean / 1_000_000).toFixed(1)}M`;
+      if (clean >= 1_000)     return `USD $${(clean / 1_000).toFixed(0)}K`;
+      return `USD $${clean.toLocaleString('en-US')}`;
+    };
+
+    // ── KPIs base ──
+    const activeProspects = prospects.filter(p => p.estado !== 'Lead Frío' && p.estado !== 'Post-venta');
+    const pipelineTotal = activeProspects.reduce((s, p) => s + usd(p), 0);
+    const nearClose = prospects.filter(p => ['Negociación', 'Cierre'].includes(p.estado));
+    const nearClosePipeline = nearClose.reduce((s, p) => s + usd(p), 0);
+    const avgDeal = activeProspects.length > 0 ? Math.round(pipelineTotal / activeProspects.length) : 0;
+    const conversionRate = prospects.length > 0
+      ? Math.round((prospects.filter(p => p.estado === 'Post-venta').length / prospects.length) * 100) : 0;
+
+    // ── Funnel con valor ──
+    const STAGES = ['Contacto Inicial', 'Calificación', 'Presentación', 'Negociación', 'Cierre'];
+    const STAGE_COLORS = ['#4A6FA5', '#6B8F71', '#B89047', '#8B6357', '#001A37'];
+    const funnelData = STAGES.map((st, i) => {
+      const ps = prospects.filter(p => p.estado === st || (st === 'Contacto Inicial' && p.estado === 'Contacto'));
+      return {
+        stage: st === 'Contacto Inicial' ? 'Contacto' : st,
+        count: ps.length,
+        value: ps.reduce((s, p) => s + usd(p), 0),
+        color: STAGE_COLORS[i],
+      };
+    });
+
+    // ── Brokers ──
+    const brokerStats = brokers.map(b => {
+      const bp = prospects.filter(p => p.broker_asignado === b.nombre);
+      const pipeline = bp.reduce((s, p) => s + usd(p), 0);
+      const calificados = bp.filter(p => ['Calificación', 'Presentación', 'Negociación', 'Cierre'].includes(p.estado)).length;
+      return { nombre: b.nombre.split(' ')[0], pipeline, total: bp.length, calificados };
+    }).filter(b => b.total > 0).sort((a, b) => b.pipeline - a.pipeline).slice(0, 8);
+
+    // ── Portafolio ──
+    const projMap: Record<string, number> = {};
+    prospects.forEach(p => {
+      (p.proyectos_interes || []).forEach((proj: string) => {
+        projMap[proj] = (projMap[proj] || 0) + usd(p);
+      });
+    });
+    const portfolioData = Object.entries(projMap)
+      .map(([name, value]) => ({ name: name.length > 18 ? name.slice(0, 16) + '…' : name, value }))
+      .sort((a, b) => b.value - a.value).slice(0, 6);
+    const PIE_COLORS = ['#001A37', '#B89047', '#4A6FA5', '#6B8F71', '#8B6357', '#7B7EA8'];
+
+    // ── Categorías portafolio ──
+    const catMap: Record<string, number> = {};
+    editableProjects.forEach(proj => {
+      const pval = projMap[proj.name] || 0;
+      catMap[proj.category] = (catMap[proj.category] || 0) + pval;
+    });
+    const catData = Object.entries(catMap).map(([name, value]) => ({ name, value }));
+
+    const kpiCard = (label: string, value: string, sub: string, color: string = GOLD) => (
+      <div style={{ background: '#fff', border: `1px solid #E5E0D8`, borderRadius: 6, padding: '20px 24px', flex: 1, minWidth: 160 }}>
+        <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: '#8B8170', fontFamily: SS, marginBottom: 8 }}>{label}</div>
+        <div style={{ fontSize: 28, fontWeight: 300, color: NAVY, fontFamily: SF, lineHeight: 1, marginBottom: 6 }}>{value}</div>
+        <div style={{ fontSize: 11, color: '#8B8170', fontFamily: SS }}>{sub}</div>
+        <div style={{ height: 2, background: `linear-gradient(to right, ${color}, transparent)`, marginTop: 12, borderRadius: 1 }} />
+      </div>
+    );
+
+    return (
+      <div style={{ maxWidth: 1200, margin: '0 auto', fontFamily: SS }}>
+        {/* Header ejecutivo */}
+        <div style={{ marginBottom: 28 }}>
+          <div style={{ fontSize: 9, letterSpacing: 2, textTransform: 'uppercase' as const, color: GOLD, fontWeight: 700, marginBottom: 6 }}>GLP Wealth Management · Vista Ejecutiva</div>
+          <div style={{ fontSize: 26, fontWeight: 300, color: NAVY, fontFamily: SF, letterSpacing: '0.02em' }}>Estado del Pipeline Comercial</div>
+          <div style={{ fontSize: 12, color: '#8B8170', marginTop: 4 }}>{new Date().toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+        </div>
+
+        {/* KPI Cards */}
+        <div style={{ display: 'flex', gap: 16, marginBottom: 28, flexWrap: 'wrap' as const }}>
+          {kpiCard('Pipeline Total Activo', fmt(pipelineTotal), `${activeProspects.length} prospectos en curso`, GOLD)}
+          {kpiCard('En Cierre Inmediato', fmt(nearClosePipeline), `${nearClose.length} en Negociación o Cierre`, '#6B8F71')}
+          {kpiCard('Deal Promedio', fmt(avgDeal), 'Presupuesto promedio por prospecto', '#4A6FA5')}
+          {kpiCard('Tasa de Conversión', `${conversionRate}%`, 'Prospectos llegados a Post-venta', '#8B6357')}
+        </div>
+
+        {/* Fila principal */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 20, marginBottom: 20 }}>
+          {/* Brokers ranking */}
+          <div style={{ background: '#fff', border: `1px solid #E5E0D8`, borderRadius: 6, padding: '20px 24px' }}>
+            <div style={{ fontSize: 9, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: GOLD, fontWeight: 700, fontFamily: SS, marginBottom: 4 }}>Performance por Broker</div>
+            <div style={{ fontSize: 13, color: NAVY, fontFamily: SF, fontWeight: 300, marginBottom: 16 }}>Pipeline USD por asesor comercial</div>
+            {brokerStats.length === 0 ? (
+              <div style={{ color: '#8B8170', fontSize: 12, textAlign: 'center' as const, padding: '40px 0' }}>Sin datos de brokers aún</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={brokerStats} layout="vertical" margin={{ left: 0, right: 20, top: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F0EDE8" />
+                  <XAxis type="number" tickFormatter={v => fmt(v)} tick={{ fontSize: 9, fill: '#8B8170' }} axisLine={false} tickLine={false} />
+                  <YAxis dataKey="nombre" type="category" tick={{ fontSize: 11, fill: NAVY, fontFamily: SS }} axisLine={false} tickLine={false} width={72} />
+                  <Tooltip formatter={(v: any) => [fmt(v), 'Pipeline']} contentStyle={{ fontSize: 11, borderRadius: 4, border: '1px solid #E5E0D8' }} />
+                  <Bar dataKey="pipeline" radius={[0, 3, 3, 0]} fill={GOLD}>
+                    {brokerStats.map((_, i) => <Cell key={i} fill={i === 0 ? NAVY : i === 1 ? GOLD : '#4A6FA5'} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+            {/* Tabla resumen */}
+            <div style={{ marginTop: 16, borderTop: '1px solid #F0EDE8', paddingTop: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 60px 60px', gap: 4, marginBottom: 6 }}>
+                {['Broker', 'Pipeline', 'Leads', 'Calif.'].map(h => (
+                  <div key={h} style={{ fontSize: 8, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' as const, color: '#8B8170' }}>{h}</div>
+                ))}
+              </div>
+              {brokerStats.map((b, i) => (
+                <div key={b.nombre} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 60px 60px', gap: 4, padding: '5px 0', borderBottom: '1px solid #FAF9F6' }}>
+                  <div style={{ fontSize: 12, color: NAVY, fontWeight: i === 0 ? 700 : 400 }}>{b.nombre}</div>
+                  <div style={{ fontSize: 12, color: GOLD, fontWeight: 600 }}>{fmt(b.pipeline)}</div>
+                  <div style={{ fontSize: 12, color: '#8B8170' }}>{b.total}</div>
+                  <div style={{ fontSize: 12, color: '#6B8F71', fontWeight: 600 }}>{b.calificados}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Portafolio */}
+          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 16 }}>
+            <div style={{ background: '#fff', border: `1px solid #E5E0D8`, borderRadius: 6, padding: '20px 24px', flex: 1 }}>
+              <div style={{ fontSize: 9, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: GOLD, fontWeight: 700, fontFamily: SS, marginBottom: 4 }}>Interés por Proyecto</div>
+              <div style={{ fontSize: 13, color: NAVY, fontFamily: SF, fontWeight: 300, marginBottom: 12 }}>Pipeline concentrado en portafolio</div>
+              {portfolioData.length === 0 ? (
+                <div style={{ color: '#8B8170', fontSize: 12, textAlign: 'center' as const, padding: '30px 0' }}>Sin datos</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={180}>
+                  <PieChart>
+                    <Pie data={portfolioData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={2} dataKey="value">
+                      {portfolioData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip formatter={(v: any) => [fmt(v), 'Pipeline']} contentStyle={{ fontSize: 11, borderRadius: 4, border: '1px solid #E5E0D8' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+              <div style={{ marginTop: 8 }}>
+                {portfolioData.map((p, i) => (
+                  <div key={p.name} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: 2, background: PIE_COLORS[i % PIE_COLORS.length], flexShrink: 0 }} />
+                    <div style={{ fontSize: 11, color: NAVY, flex: 1 }}>{p.name}</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: GOLD }}>{fmt(p.value)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Funnel con valor */}
+        <div style={{ background: '#fff', border: `1px solid #E5E0D8`, borderRadius: 6, padding: '20px 24px', marginBottom: 20 }}>
+          <div style={{ fontSize: 9, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: GOLD, fontWeight: 700, fontFamily: SS, marginBottom: 4 }}>Embudo de Ventas · Pipeline USD</div>
+          <div style={{ fontSize: 13, color: NAVY, fontFamily: SF, fontWeight: 300, marginBottom: 16 }}>Distribución de valor por etapa</div>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+            {funnelData.map((f, i) => {
+              const maxVal = Math.max(...funnelData.map(x => x.value), 1);
+              const heightPct = Math.max(20, Math.round((f.value / maxVal) * 100));
+              return (
+                <div key={f.stage} style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 6 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: GOLD }}>{fmt(f.value)}</div>
+                  <div style={{ width: '100%', height: 120, display: 'flex', alignItems: 'flex-end' }}>
+                    <div style={{ width: '100%', height: `${heightPct}%`, background: f.color, borderRadius: '3px 3px 0 0', opacity: 0.85 + i * 0.03 }} />
+                  </div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: NAVY, textAlign: 'center' as const }}>{f.stage}</div>
+                  <div style={{ fontSize: 10, color: '#8B8170' }}>{f.count} prospectos</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Footer insight */}
+        <div style={{ background: NAVY, borderRadius: 6, padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 9, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: GOLD, fontWeight: 700, marginBottom: 4 }}>Insight Ejecutivo</div>
+            <div style={{ fontSize: 13, color: '#fff', fontFamily: SF, fontWeight: 300 }}>
+              {nearClose.length > 0
+                ? `${nearClose.length} oportunidad${nearClose.length > 1 ? 'es' : ''} en etapa final · ${fmt(nearClosePipeline)} en cierre potencial`
+                : 'Sin oportunidades en etapa de cierre actualmente'}
+            </div>
+          </div>
+          <div style={{ textAlign: 'right' as const }}>
+            <div style={{ fontSize: 9, color: '#8B8170', letterSpacing: 1 }}>PIPELINE ACTIVO TOTAL</div>
+            <div style={{ fontSize: 22, fontFamily: SF, fontWeight: 300, color: GOLD }}>{fmt(pipelineTotal)}</div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderModule = () => {
+    if (currentUserRole === 'presidencia') {
+      if (activeModule === 'kpis' || activeModule === 'dashboard') return renderPresidencia();
+    }
     switch (activeModule) {
       case 'portafolio': return renderPortafolio();
       case 'catalogo': return renderCatalogo();
@@ -9916,6 +13382,9 @@ Responde SOLO con JSON sin bloques de código:
       case 'agentes': return renderAgentes();
       case 'faqs': return renderFAQs();
       case 'calculadora': return renderCalculadora();
+      case 'reportes': return renderReportes();
+      case 'casos': return renderCasos();
+      case 'campanas': return renderCampanas();
       case 'configuracion': return renderConfiguracion();
       default: return renderKPIs();
     }
@@ -9929,18 +13398,29 @@ Responde SOLO con JSON sin bloques de código:
   // CONTEXTUAL RIGHT PANEL
   // ══════════════════════════════════════════════════════════════
   const renderRightPanel = () => {
+    const GOLD = '#B89047';
+    const PANEL_BG = '#FAF9F6';
     const panelHeader = (label: string, sub?: string) => (
-      <div style={{ background: T.teal, padding: '14px 14px 12px', flexShrink: 0 }}>
-        <div style={{ fontSize: 9, letterSpacing: 2, color: T.coral, fontWeight: 700, textTransform: 'uppercase' as const, marginBottom: sub ? 6 : 0 }}>{label}</div>
-        {sub && <div style={{ fontSize: 12, color: '#fff', fontWeight: 700 }}>{sub}</div>}
+      <div style={{ background: PANEL_BG, padding: '16px 14px 12px', flexShrink: 0, borderBottom: `1px solid #E5E0D8` }}>
+        <div style={{ fontSize: 8, letterSpacing: '0.14em', color: GOLD, fontWeight: 600, textTransform: 'uppercase' as const, marginBottom: sub ? 5 : 0 }}>{label}</div>
+        {sub && <div style={{ fontSize: 15, color: T.text, fontWeight: 300, fontFamily: T.fontSerif, letterSpacing: '0.02em', marginTop: 3 }}>{sub}</div>}
+      </div>
+    );
+    const panelSectionLabel = (text: string) => (
+      <div style={{ fontSize: 8, fontWeight: 600, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.12em', marginBottom: 8 }}>{text}</div>
+    );
+    const panelStatCard = (label: string, val: React.ReactNode, color: string) => (
+      <div style={{ background: '#fff', padding: '8px 10px', borderRadius: 4, border: `1px solid #E5E0D8`, textAlign: 'center' as const }}>
+        <div style={{ fontSize: 8, color: T.textSec, marginBottom: 4, letterSpacing: '0.1em', textTransform: 'uppercase' as const }}>{label}</div>
+        <div style={{ fontSize: 16, fontWeight: 300, color, fontFamily: T.fontSerif }}>{val}</div>
       </div>
     );
     const panelEmpty = (icon: string, msg: string, btnLabel?: string, btnAction?: () => void) => (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', padding: 20, gap: 10 }}>
-        <div style={{ fontSize: 28, opacity: 0.2 }}>{icon}</div>
-        <div style={{ fontSize: 11, color: T.textSec, textAlign: 'center' as const, lineHeight: 1.5 }}>{msg}</div>
+        <div style={{ fontSize: 24, opacity: 0.15 }}>{icon}</div>
+        <div style={{ fontSize: 11, color: T.textSec, textAlign: 'center' as const, lineHeight: 1.6 }}>{msg}</div>
         {btnLabel && btnAction && (
-          <button onClick={btnAction} style={{ marginTop: 8, padding: '7px 14px', background: T.teal, color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>{btnLabel}</button>
+          <button onClick={btnAction} style={{ marginTop: 8, padding: '6px 14px', background: T.text, color: '#fff', border: 'none', borderRadius: 2, cursor: 'pointer', fontSize: 10, fontWeight: 600, letterSpacing: '0.08em' }}>{btnLabel}</button>
         )}
       </div>
     );
@@ -9984,9 +13464,9 @@ Responde SOLO con JSON sin bloques de código:
                     { label: 'Consultas CRM', val: fromCrm, color: T.coral },
                     { label: 'Temas únicos', val: Object.keys(qCount).length, color: T.sky },
                   ].map(item => (
-                    <div key={item.label} style={{ background: T.bg, padding: '8px 9px', borderRadius: 7, border: `1px solid ${T.borderLight}`, textAlign: 'center' as const }}>
-                      <div style={{ fontSize: 20, fontWeight: 800, color: item.color }}>{item.val}</div>
-                      <div style={{ fontSize: 9, color: T.textSec, marginTop: 2 }}>{item.label}</div>
+                    <div key={item.label} style={{ background: '#fff', padding: '8px 9px', borderRadius: 4, border: `1px solid #E5E0D8`, textAlign: 'center' as const }}>
+                      <div style={{ fontSize: 22, fontWeight: 300, color: item.color, fontFamily: T.fontSerif }}>{item.val}</div>
+                      <div style={{ fontSize: 8, color: T.textSec, marginTop: 4, letterSpacing: '0.09em', textTransform: 'uppercase' as const }}>{item.label}</div>
                     </div>
                   ))}
                 </div>
@@ -10117,8 +13597,8 @@ Responde SOLO con JSON sin bloques de código:
       );
     }
 
-    // ── REPORTES (Fase D) ─────────────────────────────────────
-    if (activeModule === 'reportes') {
+    // ── REPORTES: moved to renderReportes() ───────────────────
+    if (false) {
       const G = '#B89047'; const N = '#001A37';
       const fmtUSD = (n: number) => n >= 1_000_000 ? `$${(n/1_000_000).toFixed(1)}M` : n >= 1_000 ? `$${(n/1_000).toFixed(0)}K` : `$${Math.round(n)}`;
       const CANAL_COLORS = ['#B89047','#001A37','#2563eb','#16a34a','#7c3aed','#d97706','#0891b2','#dc2626'];
@@ -10172,7 +13652,7 @@ Responde SOLO con JSON sin bloques de código:
             {/* Período */}
             <div style={{display:'flex',gap:4,background:'#f1f5f9',borderRadius:8,padding:3}}>
               {periodos.map(p => (
-                <button key={p.d} onClick={()=>setRptDias(p.d)} style={{padding:'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:11,fontWeight:600,background:rptDias===p.d?N:'transparent',color:rptDias===p.d?'#fff':'#64748b',transition:'all 0.15s'}}>
+                <button key={p.d} onClick={()=>{setRptDias(p.d);setRptFechaInicio('');setRptFechaFin('');}} style={{padding:'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:11,fontWeight:600,background:rptDias===p.d?N:'transparent',color:rptDias===p.d?'#fff':'#64748b',transition:'all 0.15s'}}>
                   {p.l}
                 </button>
               ))}
@@ -10215,7 +13695,7 @@ Responde SOLO con JSON sin bloques de código:
                 : <ResponsiveContainer width="100%" height={200}>
                     <LineChart data={analyticsTiempo.map(r=>({...r,total:Number(r.total)}))}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                      <XAxis dataKey="label" tick={{fontSize:10,fill:'#94a3b8'}} tickLine={false} axisLine={false} />
+                      <XAxis dataKey="periodo" tick={{fontSize:10,fill:'#94a3b8'}} tickLine={false} axisLine={false} />
                       <YAxis tick={{fontSize:10,fill:'#94a3b8'}} tickLine={false} axisLine={false} allowDecimals={false} />
                       <Tooltip contentStyle={{fontSize:12,borderRadius:8,border:'1px solid #e2e8f0'}} />
                       <Line type="monotone" dataKey="total" stroke={G} strokeWidth={2.5} dot={{r:4,fill:G,strokeWidth:0}} activeDot={{r:6}} name="Prospectos" />
@@ -10253,7 +13733,9 @@ Responde SOLO con JSON sin bloques de código:
                       <XAxis dataKey="proyecto" tick={{fontSize:9,fill:'#94a3b8'}} tickLine={false} axisLine={false} interval={0} angle={-30} textAnchor="end" height={50} />
                       <YAxis tick={{fontSize:10,fill:'#94a3b8'}} tickLine={false} axisLine={false} allowDecimals={false} />
                       <Tooltip contentStyle={{fontSize:12,borderRadius:8,border:'1px solid #e2e8f0'}} formatter={(v:any,n:string)=>n==='presupuesto'?[fmtUSD(v),'Pipeline']:v} />
-                      <Bar dataKey="total" fill={N} radius={[4,4,0,0]} name="Prospectos" />
+                      <Bar dataKey="total" fill={N} radius={[4,4,0,0]} name="Prospectos">
+                        <LabelList dataKey="total" position="top" style={{fontSize:10,fill:'#64748b',fontWeight:600,fontFamily:SANS}}/>
+                      </Bar>
                       <Bar dataKey="presupuesto" fill={G} radius={[4,4,0,0]} name="presupuesto" hide />
                     </BarChart>
                   </ResponsiveContainer>
@@ -10458,6 +13940,7 @@ Responde SOLO con JSON sin bloques de código:
     }
 
     // ── BROKERS: métricas del broker seleccionado ─────────────
+
     if (activeModule === 'brokers') {
       const drillB = brokerDrilldown ? brokers.find(b => b.id === brokerDrilldown) : null;
       if (!drillB) return (
@@ -10473,18 +13956,13 @@ Responde SOLO con JSON sin bloques de código:
       const comEarned  = bClosed.reduce((sum, s) => sum + s.value * 0.02, 0);
       const totalVentasBroker = bClosed.reduce((sum, s) => sum + s.value, 0);
       const activeBrokerProspects = prospects.filter(p => p.broker_asignado === drillB.nombre && p.estado !== 'Cierre' && p.estado !== 'Post-venta');
-      const kpiCard = (label: string, val: string, color: string) => (
-        <div style={{ background: T.bg, padding: '8px 10px', borderRadius: 6, border: `1px solid ${T.borderLight}`, textAlign: 'center' as const }}>
-          <div style={{ fontSize: 9, color: T.textSec, marginBottom: 3 }}>{label}</div>
-          <div style={{ fontSize: 13, fontWeight: 700, color }}>{val}</div>
-        </div>
-      );
+      const kpiCard = (label: string, val: string, color: string) => panelStatCard(label, val, color);
       return (
         <>
-          <div style={{ background: T.teal, padding: '14px 14px 12px', flexShrink: 0 }}>
-            <div style={{ fontSize: 9, letterSpacing: 2, color: T.coral, fontWeight: 700, textTransform: 'uppercase' as const, marginBottom: 5 }}>Desempeño Broker</div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', lineHeight: 1.3 }}>{drillB.nombre}</div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', marginTop: 2 }}>{drillB.empresa}</div>
+          <div style={{ background: '#FAF9F6', padding: '16px 14px 12px', flexShrink: 0, borderBottom: '1px solid #E5E0D8' }}>
+            <div style={{ fontSize: 8, letterSpacing: '0.14em', color: '#B89047', fontWeight: 600, textTransform: 'uppercase' as const, marginBottom: 5 }}>Desempeño Broker</div>
+            <div style={{ fontSize: 15, fontWeight: 300, color: T.text, fontFamily: T.fontSerif, letterSpacing: '0.02em', lineHeight: 1.3 }}>{drillB.nombre}</div>
+            <div style={{ fontSize: 10, color: T.textSec, marginTop: 3 }}>{drillB.empresa}</div>
           </div>
           <div style={{ flex: 1, overflowY: 'auto' as const, padding: '12px 12px', display: 'flex', flexDirection: 'column' as const, gap: 12 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -10493,10 +13971,7 @@ Responde SOLO con JSON sin bloques de código:
               {kpiCard('Cerrados', `${bClosed.length}`, T.success)}
               {kpiCard('Caídos', `${bLost.length}`, T.danger)}
             </div>
-            <div style={{ background: T.bg, padding: '8px 10px', borderRadius: 6, border: `1px solid ${T.borderLight}`, textAlign: 'center' as const }}>
-              <div style={{ fontSize: 9, color: T.textSec, marginBottom: 3 }}>Vol. Total Ventas</div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: T.teal }}>{usd(totalVentasBroker)}</div>
-            </div>
+            {panelStatCard('Vol. Total Ventas', usd(totalVentasBroker), T.teal)}
             <div>
               <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 6 }}>
                 Prospectos activos ({activeBrokerProspects.length})
@@ -10562,13 +14037,13 @@ Responde SOLO con JSON sin bloques de código:
         );
         return (
           <>
-            <div style={{ background: T.teal, padding: '12px 14px', flexShrink: 0 }}>
-              <div style={{ fontSize: 9, letterSpacing: 2, color: T.coral, fontWeight: 700, textTransform: 'uppercase' as const, marginBottom: 5 }}>Proyecto Seleccionado</div>
-              <div style={{ fontSize: 14, fontWeight: 800, color: '#fff', lineHeight: 1.3 }}>{selProj.name}</div>
-              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', marginTop: 2 }}>{selProj.category}</div>
+            <div style={{ background: '#FAF9F6', padding: '16px 14px 12px', flexShrink: 0, borderBottom: '1px solid #E5E0D8' }}>
+              <div style={{ fontSize: 8, letterSpacing: '0.14em', color: '#B89047', fontWeight: 600, textTransform: 'uppercase' as const, marginBottom: 5 }}>Proyecto Seleccionado</div>
+              <div style={{ fontSize: 16, fontWeight: 300, color: T.text, fontFamily: T.fontSerif, letterSpacing: '0.02em', lineHeight: 1.3 }}>{selProj.name}</div>
+              <div style={{ fontSize: 9, color: T.textSec, marginTop: 3, letterSpacing: '0.07em', textTransform: 'uppercase' as const }}>{selProj.category}</div>
               {isInterest && (
-                <div style={{ marginTop: 5, fontSize: 9, background: `${T.coral}30`, color: T.coral, padding: '2px 8px', borderRadius: 3, fontWeight: 700, display: 'inline-block' }}>
-                  ★ Interés de {activeProspect?.nombre?.split(' ')[0]}
+                <div style={{ marginTop: 6, fontSize: 9, background: '#B8904715', color: '#B89047', padding: '2px 8px', borderRadius: 2, fontWeight: 600, display: 'inline-block', letterSpacing: '0.06em' }}>
+                  Interés de {activeProspect?.nombre?.split(' ')[0]}
                 </div>
               )}
             </div>
@@ -10626,15 +14101,15 @@ Responde SOLO con JSON sin bloques de código:
       );
       return (
         <>
-          <div style={{ background: T.teal, padding: '14px 14px 12px', flexShrink: 0 }}>
-            <div style={{ fontSize: 9, letterSpacing: 2, color: T.coral, fontWeight: 700, textTransform: 'uppercase' as const, marginBottom: 6 }}>Prospecto Activo</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ width: 30, height: 30, borderRadius: '50%', background: `${T.coral}30`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: T.coral, flexShrink: 0 }}>
+          <div style={{ background: '#FAF9F6', padding: '16px 14px 12px', flexShrink: 0, borderBottom: '1px solid #E5E0D8' }}>
+            <div style={{ fontSize: 8, letterSpacing: '0.14em', color: '#B89047', fontWeight: 600, textTransform: 'uppercase' as const, marginBottom: 8 }}>Prospecto Activo</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#E5E0D8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, color: T.text, flexShrink: 0 }}>
                 {activeProspect.nombre[0]}{activeProspect.apellido[0]}
               </div>
               <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>{activeProspect.nombre} {activeProspect.apellido}</div>
-                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)' }}>{usd(activeProspect.presupuesto_usd)} · {activeProspect.estado}</div>
+                <div style={{ fontSize: 14, fontWeight: 300, color: T.text, fontFamily: T.fontSerif }}>{activeProspect.nombre} {activeProspect.apellido}</div>
+                <div style={{ fontSize: 10, color: T.textSec, marginTop: 2 }}>{usd(activeProspect.presupuesto_usd)} · {activeProspect.estado}</div>
               </div>
             </div>
           </div>
@@ -10661,9 +14136,9 @@ Responde SOLO con JSON sin bloques de código:
               ))
             }
             <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column' as const, gap: 6, paddingTop: 8, borderTop: `1px solid ${T.borderLight}` }}>
-              <button onClick={() => { setActiveModule('prospectos'); setProspectDetail(activeProspect.id); }}
-                style={{ padding: '7px', background: T.teal, color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>
-                Ver ficha completa
+              <button onClick={() => { setPreviousModule('portafolio'); setActiveModule('prospectos'); setProspectDetail(activeProspect.id); }}
+                style={{ padding: '7px', background: T.text, color: '#FAF9F6', border: 'none', borderRadius: 2, cursor: 'pointer', fontSize: 10, fontWeight: 600, letterSpacing: '0.08em' }}>
+                Ver ficha en Prospectos →
               </button>
               <button onClick={() => setActiveProspect(null)}
                 style={{ padding: '6px', background: 'transparent', color: T.textSec, border: `1px solid ${T.borderLight}`, borderRadius: 6, cursor: 'pointer', fontSize: 10 }}>
@@ -10696,13 +14171,13 @@ Responde SOLO con JSON sin bloques de código:
               : (
                 <>
                   {/* Nombre + zona */}
-                  <div style={{ paddingBottom: 8, borderBottom: `1px solid ${T.borderLight}` }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: T.teal }}>{calcProject}</div>
-                    {(() => { const pd = editableProjects.find(p => p.name === calcProject); return pd ? <div style={{ fontSize: 10, color: T.textSec, marginTop: 2 }}>{pd.zone}</div> : null; })()}
+                  <div style={{ paddingBottom: 10, borderBottom: `1px solid #E5E0D8` }}>
+                    <div style={{ fontSize: 15, fontWeight: 300, color: T.text, fontFamily: T.fontSerif }}>{calcProject}</div>
+                    {(() => { const pd = editableProjects.find(p => p.name === calcProject); return pd ? <div style={{ fontSize: 9, color: T.textSec, marginTop: 3, letterSpacing: '0.07em' }}>{pd.zone}</div> : null; })()}
                   </div>
 
                   {/* Specs del activo — grid 2 col */}
-                  <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1 }}>Especificaciones</div>
+                  {panelSectionLabel('Especificaciones')}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
                     {(() => {
                       const pd = editableProjects.find(p => p.name === calcProject);
@@ -10718,39 +14193,40 @@ Responde SOLO con JSON sin bloques de código:
                         { label: 'Precio/m²',       val: pd ? `${usd(pd.priceM2Min)}–${usd(pd.priceM2Max)}` : '—', color: T.text },
                         { label: 'Condominio/m²',   val: pd ? `${usd(pd.condominioMes)}/m²·mes` : '—',           color: T.textSec },
                       ].map(item => (
-                        <div key={item.label} style={{ background: T.bg, padding: '7px 9px', borderRadius: 6, border: `1px solid ${T.borderLight}` }}>
-                          <div style={{ fontSize: 9, color: T.textSec, marginBottom: 2 }}>{item.label}</div>
-                          <div style={{ fontSize: 11, fontWeight: 700, color: item.color }}>{item.val}</div>
+                        <div key={item.label} style={{ background: '#fff', padding: '7px 9px', borderRadius: 4, border: `1px solid #E5E0D8` }}>
+                          <div style={{ fontSize: 8, color: T.textSec, marginBottom: 3, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>{item.label}</div>
+                          <div style={{ fontSize: 11, fontWeight: 400, color: item.color, fontFamily: T.fontSerif }}>{item.val}</div>
                         </div>
                       ));
                     })()}
                   </div>
 
                   {/* Yield Bruto — grande */}
-                  <div style={{ background: `${T.palm}12`, border: `1.5px solid ${T.palm}40`, borderRadius: 10, padding: '14px 12px', textAlign: 'center' as const }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, color: T.palm, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 4 }}>Yield Bruto sobre Inversión</div>
-                    <div style={{ fontSize: 34, fontWeight: 800, color: T.palm, lineHeight: 1 }}>{yieldBruto.toFixed(1)}%</div>
-                    <div style={{ fontSize: 10, color: T.textSec, marginTop: 5 }}>{usd(Math.round(rentaBrutaAnual))} / año · sobre {usd(Math.round(cuotaInicialUSD))}</div>
+                  <div style={{ background: '#fff', border: `1px solid #E5E0D8`, borderRadius: 4, padding: '16px 12px', textAlign: 'center' as const }}>
+                    <div style={{ fontSize: 8, fontWeight: 600, color: '#B89047', textTransform: 'uppercase' as const, letterSpacing: '0.13em', marginBottom: 6 }}>Yield Bruto sobre Inversión</div>
+                    <div style={{ fontSize: 38, fontWeight: 300, color: T.text, lineHeight: 1, fontFamily: T.fontSerif }}>{yieldBruto.toFixed(1)}%</div>
+                    <div style={{ width: 24, height: 1, background: '#B89047', margin: '10px auto 8px' }} />
+                    <div style={{ fontSize: 9, color: T.textSec }}>{usd(Math.round(rentaBrutaAnual))} / año · sobre {usd(Math.round(cuotaInicialUSD))}</div>
                   </div>
 
                   {/* Cuota inicial + ROI equity — solo si hay financiación */}
                   {hayFinanciacion && (
-                    <div style={{ background: `${T.teal}10`, border: `1.5px solid ${T.teal}40`, borderRadius: 10, padding: '14px 12px', textAlign: 'center' as const }}>
-                      <div style={{ fontSize: 9, fontWeight: 700, color: T.teal, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 4 }}>Cuota Inicial ({calcCuotaInicial}%)</div>
-                      <div style={{ fontSize: 28, fontWeight: 800, color: T.teal, lineHeight: 1 }}>{usd(Math.round(cuotaInicialUSD))}</div>
-                      <div style={{ fontSize: 10, color: T.textSec, marginTop: 5 }}>Sobre {usd(calcPrecio)}</div>
+                    <div style={{ background: '#fff', border: `1px solid #E5E0D8`, borderRadius: 4, padding: '16px 12px', textAlign: 'center' as const }}>
+                      <div style={{ fontSize: 8, fontWeight: 600, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.13em', marginBottom: 6 }}>Cuota Inicial ({calcCuotaInicial}%)</div>
+                      <div style={{ fontSize: 30, fontWeight: 300, color: T.text, lineHeight: 1, fontFamily: T.fontSerif }}>{usd(Math.round(cuotaInicialUSD))}</div>
+                      <div style={{ fontSize: 9, color: T.textSec, marginTop: 6 }}>Sobre {usd(calcPrecio)}</div>
                     </div>
                   )}
 
                   {/* Flujo libre mensual */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
-                    <div style={{ background: T.bg, padding: '7px 9px', borderRadius: 6, border: `1px solid ${T.borderLight}` }}>
-                      <div style={{ fontSize: 9, color: T.textSec, marginBottom: 2 }}>Flujo libre/mes</div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: flujoLibre >= 0 ? T.success : T.coral }}>{usd(Math.round(flujoLibre))}</div>
+                    <div style={{ background: '#fff', padding: '8px 10px', borderRadius: 4, border: `1px solid #E5E0D8` }}>
+                      <div style={{ fontSize: 8, color: T.textSec, marginBottom: 3, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>Flujo libre/mes</div>
+                      <div style={{ fontSize: 13, fontWeight: 300, color: flujoLibre >= 0 ? T.success : T.coral, fontFamily: T.fontSerif }}>{usd(Math.round(flujoLibre))}</div>
                     </div>
-                    <div style={{ background: T.bg, padding: '7px 9px', borderRadius: 6, border: `1px solid ${T.borderLight}` }}>
-                      <div style={{ fontSize: 9, color: T.textSec, marginBottom: 2 }}>Cuota hipoteca/mes</div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: T.text }}>{hayFinanciacion ? usd(Math.round(cuotaMesP)) : '—'}</div>
+                    <div style={{ background: '#fff', padding: '8px 10px', borderRadius: 4, border: `1px solid #E5E0D8` }}>
+                      <div style={{ fontSize: 8, color: T.textSec, marginBottom: 3, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>Cuota hipoteca/mes</div>
+                      <div style={{ fontSize: 13, fontWeight: 300, color: T.text, fontFamily: T.fontSerif }}>{hayFinanciacion ? usd(Math.round(cuotaMesP)) : '—'}</div>
                     </div>
                   </div>
                 </>
@@ -10768,24 +14244,24 @@ Responde SOLO con JSON sin bloques de código:
           {panelHeader('Agentes IA', 'Sara · Camilo · Max')}
           <div style={{ flex: 1, overflowY: 'auto' as const, padding: '12px 12px', display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
             {activeProspect && (
-              <div style={{ background: `${T.teal}08`, border: `1px solid ${T.teal}20`, borderRadius: 6, padding: '8px 10px', fontSize: 11 }}>
-                <div style={{ fontSize: 9, color: T.textSec, marginBottom: 3, textTransform: 'uppercase' as const, letterSpacing: 1 }}>Prospecto activo</div>
-                <div style={{ fontWeight: 700, color: T.teal }}>{activeProspect.nombre} {activeProspect.apellido}</div>
-                <div style={{ color: T.textSec, marginTop: 2 }}>{activeProspect.estado} · {usd(activeProspect.presupuesto_usd)}</div>
+              <div style={{ background: '#fff', border: `1px solid #E5E0D8`, borderRadius: 4, padding: '10px 12px' }}>
+                <div style={{ fontSize: 8, color: '#B89047', marginBottom: 4, textTransform: 'uppercase' as const, letterSpacing: '0.12em', fontWeight: 600 }}>Prospecto activo</div>
+                <div style={{ fontWeight: 300, color: T.text, fontFamily: T.fontSerif, fontSize: 14 }}>{activeProspect.nombre} {activeProspect.apellido}</div>
+                <div style={{ color: T.textSec, marginTop: 2, fontSize: 10 }}>{activeProspect.estado} · {usd(activeProspect.presupuesto_usd)}</div>
               </div>
             )}
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1 }}>Estado de agentes</div>
+            {panelSectionLabel('Estado de agentes')}
             {[
               { name: 'Sara',   desc: 'Correos y seguimiento',    status: 'Activa', color: T.success },
               { name: 'Camilo', desc: 'Minería de prospectos',    status: 'Activo', color: T.success },
               { name: 'Max',    desc: 'Análisis de objeciones',   status: 'Activo', color: T.success },
             ].map(a => (
-              <div key={a.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', background: T.bg, borderRadius: 6, border: `1px solid ${T.borderLight}` }}>
+              <div key={a.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: '#fff', borderRadius: 4, border: `1px solid #E5E0D8` }}>
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: T.text }}>{a.name}</div>
-                  <div style={{ fontSize: 10, color: T.textSec }}>{a.desc}</div>
+                  <div style={{ fontSize: 12, fontWeight: 300, color: T.text, fontFamily: T.fontSerif }}>{a.name}</div>
+                  <div style={{ fontSize: 9, color: T.textSec, marginTop: 2 }}>{a.desc}</div>
                 </div>
-                <span style={{ fontSize: 9, background: `${a.color}20`, color: a.color, padding: '2px 6px', borderRadius: 3, fontWeight: 700 }}>● {a.status}</span>
+                <span style={{ fontSize: 8, background: `${a.color}15`, color: a.color, padding: '2px 7px', borderRadius: 2, fontWeight: 600, letterSpacing: '0.07em' }}>{a.status}</span>
               </div>
             ))}
           </div>
@@ -10936,6 +14412,9 @@ Responde SOLO con JSON sin bloques de código:
   // ══════════════════════════════════════════════════════════════
   // MAIN LAYOUT
   // ══════════════════════════════════════════════════════════════
+  const showMobile = isMobileScreen || forceMobileView;
+  if (showMobile) return renderMobileView();
+
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', width: '100%', background: T.bg, fontFamily: 'Inter, sans-serif', color: T.text }}>
       {/* LEFT SIDEBAR */}
@@ -10948,10 +14427,18 @@ Responde SOLO con JSON sin bloques de código:
         <div style={{ padding: '18px 16px 14px', borderBottom: `1px solid rgba(255,255,255,0.1)` }}>
           <div style={{ fontSize: 20, fontWeight: 800, color: T.coral, letterSpacing: 1 }}>GLP</div>
           <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', letterSpacing: 2, textTransform: 'uppercase' as const }}>Control Comercial</div>
+          {/* Badge de rol */}
+          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const,
+              color: currentUserRole === 'superadmin' ? '#B89047' : currentUserRole === 'presidencia' ? '#93C5FD' : currentUserRole === 'gerencia' ? '#6EE7B7' : '#FCA5A5',
+              background: 'rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: 2 }}>
+              {ROLE_LABELS[currentUserRole]}
+            </span>
+          </div>
         </div>
         {/* Primary nav */}
         <div style={{ display: 'flex', flexDirection: 'column', padding: '8px 0' }}>
-          {MODULES_PRIMARY.map(m => (
+          {MODULES_PRIMARY.filter(m => allowedModules === null || allowedModules.includes(m.id)).map(m => (
             <button key={m.id} onClick={() => setActiveModule(m.id)} style={sidebarBtn(m.id)}>
               {renderSidebarIcon(m.id, activeModule === m.id ? T.teal : T.coral)}
               <span>{m.label}</span>
@@ -10959,15 +14446,23 @@ Responde SOLO con JSON sin bloques de código:
           ))}
         </div>
         {/* Secondary nav */}
-        <div style={{ borderTop: `1px solid rgba(255,255,255,0.08)`, padding: '8px 0', marginTop: 4 }}>
-          <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', letterSpacing: 2, textTransform: 'uppercase' as const, padding: '4px 16px 6px' }}>Más</div>
-          {MODULES_SECONDARY.map(m => (
-            <button key={m.id} onClick={() => setActiveModule(m.id)} style={{ ...sidebarBtn(m.id), opacity: activeModule === m.id ? 1 : 0.65 }}>
-              {renderSidebarIcon(m.id, activeModule === m.id ? T.teal : 'rgba(255,255,255,0.7)')}
-              <span style={{ fontSize: 12 }}>{m.label}</span>
-            </button>
-          ))}
-        </div>
+        {(() => {
+          const secVisible = MODULES_SECONDARY.filter(m => {
+            if (m.id === 'configuracion' && !isSuperAdmin) return false;
+            return allowedModules === null || allowedModules.includes(m.id);
+          });
+          return secVisible.length > 0 ? (
+            <div style={{ borderTop: `1px solid rgba(255,255,255,0.08)`, padding: '8px 0', marginTop: 4 }}>
+              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', letterSpacing: 2, textTransform: 'uppercase' as const, padding: '4px 16px 6px' }}>Más</div>
+              {secVisible.map(m => (
+                <button key={m.id} onClick={() => setActiveModule(m.id)} style={{ ...sidebarBtn(m.id), opacity: activeModule === m.id ? 1 : 0.65 }}>
+                  {renderSidebarIcon(m.id, activeModule === m.id ? T.teal : 'rgba(255,255,255,0.7)')}
+                  <span style={{ fontSize: 12 }}>{m.label}</span>
+                </button>
+              ))}
+            </div>
+          ) : null;
+        })()}
         {/* Logout */}
         <button
           onClick={() => { if (confirm('¿Desea cerrar la sesión?')) { sessionStorage.removeItem('glp_crm_logged_user'); setCurrentUser(null); } }}
@@ -10983,7 +14478,7 @@ Responde SOLO con JSON sin bloques de código:
       </div>
 
       {/* MAIN AREA */}
-      <div style={{ flex: 1, marginLeft: 210, marginRight: (activeModule === 'configuracion' || activeModule === 'reportes') ? 0 : 280, display: 'flex', flexDirection: 'column' as const }}>
+      <div style={{ flex: 1, marginLeft: 210, marginRight: (activeModule === 'configuracion' || activeModule === 'reportes' || activeModule === 'campanas') ? 0 : 280, display: 'flex', flexDirection: 'column' as const }}>
         {/* TOP HEADER */}
         <div style={{ background: T.teal, padding: '10px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky' as const, top: 0, zIndex: 5, borderBottom: `1px solid rgba(255,255,255,0.1)` }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', letterSpacing: 0.3 }}>
@@ -10994,18 +14489,22 @@ Responde SOLO con JSON sin bloques de código:
               <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981', display: 'inline-block' }} />
               <span style={{ fontSize: 11, fontWeight: 600, color: '#fff' }}>IA Activa</span>
             </div>
+            <button onClick={() => setForceMobileView(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: 20, padding: '3px 12px', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
+              📱 Vista Mobile
+            </button>
             <a href="/" style={{ fontSize: 12, color: T.coral, textDecoration: 'none', fontWeight: 600 }}>← Landing</a>
           </div>
         </div>
         {/* CONTENT */}
-        <div id="crm-content" style={{ padding: activeModule === 'reportes' ? 0 : '24px 28px', overflowY: 'auto' as const, flex: 1 }}>
+        <div id="crm-content" style={{ padding: (activeModule === 'reportes' || activeModule === 'casos' || activeModule === 'campanas') ? 0 : '24px 28px', overflowY: 'auto' as const, flex: 1 }}>
           {renderModule()}
         </div>
       </div>
 
       {/* RIGHT PANEL — Contextual */}
-      {activeModule !== 'configuracion' && activeModule !== 'reportes' && (
-        <div style={{ width: 280, position: 'fixed' as const, top: 0, right: 0, bottom: 0, zIndex: 9, background: '#fff', borderLeft: `1px solid ${T.borderLight}`, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' }}>
+      {activeModule !== 'configuracion' && activeModule !== 'reportes' && activeModule !== 'casos' && activeModule !== 'campanas' && (
+        <div style={{ width: 280, position: 'fixed' as const, top: 0, right: 0, bottom: 0, zIndex: 9, background: '#FAF9F6', borderLeft: `1px solid #E5E0D8`, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' }}>
           {renderRightPanel()}
         </div>
       )}
@@ -11061,9 +14560,10 @@ const CRMLogin: React.FC<CRMLoginProps> = ({ setCurrentUser }) => {
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const users = getAdminUsers();
-    const found = users.find((u: any) => u.username === usernameInput && u.password === passwordInput);
+    const found = users.find((u: any) => u.username.toLowerCase() === usernameInput.toLowerCase() && u.password === passwordInput);
     if (found) {
       sessionStorage.setItem('glp_crm_logged_user', found.username);
+      sessionStorage.setItem('glp_crm_user_role', found.rol || 'gerencia');
       setCurrentUser(found.username);
       setLoginError('');
     } else {
@@ -11160,6 +14660,7 @@ const CRMAcceso: React.FC<CRMAccesoProps> = ({ currentUser }) => {
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newName, setNewName] = useState('');
+  const [newRol, setNewRol] = useState<UserRole>('gerencia');
   const [newUserError, setNewUserError] = useState('');
   const [newUserSuccess, setNewUserSuccess] = useState('');
 
@@ -11168,6 +14669,13 @@ const CRMAcceso: React.FC<CRMAccesoProps> = ({ currentUser }) => {
   const [confirmPass, setConfirmPass] = useState('');
   const [changePassError, setChangePassError] = useState('');
   const [changePassSuccess, setChangePassSuccess] = useState('');
+
+  const ROL_COLOR: Record<string, string> = {
+    superadmin: '#B89047', presidencia: '#1D4ED8', gerencia: '#166534', broker: '#9A3412',
+  };
+  const ROL_BG: Record<string, string> = {
+    superadmin: '#FEF9EC', presidencia: '#EFF6FF', gerencia: '#F0FDF4', broker: '#FFF7ED',
+  };
 
   const handleAddUser = (e: React.FormEvent) => {
     e.preventDefault();
@@ -11179,32 +14687,32 @@ const CRMAcceso: React.FC<CRMAccesoProps> = ({ currentUser }) => {
       setNewUserError('El nombre de usuario ya está registrado.');
       return;
     }
-
     const updated = [...userList, {
       username: newUsername.trim(),
       password: newPassword.trim(),
-      name: newName.trim()
+      name: newName.trim(),
+      rol: newRol,
     }];
     localStorage.setItem('glp_crm_users', JSON.stringify(updated));
     setUserList(updated);
-    setNewUsername('');
-    setNewPassword('');
-    setNewName('');
+    setNewUsername(''); setNewPassword(''); setNewName(''); setNewRol('gerencia');
     setNewUserError('');
     setNewUserSuccess('Usuario creado con éxito.');
     setTimeout(() => setNewUserSuccess(''), 4000);
   };
 
+  const handleChangeRol = (uname: string, rol: UserRole) => {
+    if (uname === SUPERADMIN_USERNAME) return; // ahortua siempre superadmin
+    const updated = userList.map((u: any) => u.username === uname ? { ...u, rol } : u);
+    localStorage.setItem('glp_crm_users', JSON.stringify(updated));
+    setUserList(updated);
+  };
+
   const handleDeleteUser = (uname: string) => {
-    if (uname === currentUser) {
-      alert('No puedes eliminar tu propio usuario en uso.');
-      return;
-    }
-    if (userList.length <= 1) {
-      alert('Debe haber al menos un usuario administrador registrado.');
-      return;
-    }
-    if (confirm(`¿Está seguro de que desea eliminar el usuario ${uname}?`)) {
+    if (uname === currentUser) { alert('No puedes eliminar tu propio usuario en uso.'); return; }
+    if (uname === SUPERADMIN_USERNAME) { alert('El superadmin no puede eliminarse.'); return; }
+    if (userList.length <= 1) { alert('Debe haber al menos un usuario registrado.'); return; }
+    if (confirm(`¿Eliminar el usuario ${uname}?`)) {
       const updated = userList.filter((u: any) => u.username !== uname);
       localStorage.setItem('glp_crm_users', JSON.stringify(updated));
       setUserList(updated);
@@ -11213,31 +14721,14 @@ const CRMAcceso: React.FC<CRMAccesoProps> = ({ currentUser }) => {
 
   const handleChangePassword = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!oldPass || !newPass || !confirmPass) {
-      setChangePassError('Complete todos los campos de contraseña.');
-      return;
-    }
+    if (!oldPass || !newPass || !confirmPass) { setChangePassError('Complete todos los campos.'); return; }
     const current = userList.find((u: any) => u.username === currentUser);
-    if (!current || current.password !== oldPass) {
-      setChangePassError('La contraseña actual es incorrecta.');
-      return;
-    }
-    if (newPass !== confirmPass) {
-      setChangePassError('La nueva contraseña y su confirmación no coinciden.');
-      return;
-    }
-
-    const updated = userList.map((u: any) => {
-      if (u.username === currentUser) {
-        return { ...u, password: newPass };
-      }
-      return u;
-    });
+    if (!current || current.password !== oldPass) { setChangePassError('La contraseña actual es incorrecta.'); return; }
+    if (newPass !== confirmPass) { setChangePassError('La nueva contraseña y su confirmación no coinciden.'); return; }
+    const updated = userList.map((u: any) => u.username === currentUser ? { ...u, password: newPass } : u);
     localStorage.setItem('glp_crm_users', JSON.stringify(updated));
     setUserList(updated);
-    setOldPass('');
-    setNewPass('');
-    setConfirmPass('');
+    setOldPass(''); setNewPass(''); setConfirmPass('');
     setChangePassError('');
     setChangePassSuccess('Contraseña actualizada con éxito.');
     setTimeout(() => setChangePassSuccess(''), 4000);
@@ -11245,116 +14736,91 @@ const CRMAcceso: React.FC<CRMAccesoProps> = ({ currentUser }) => {
 
   return (
     <div style={{ animation: 'fadeIn 0.3s ease' }}>
-      <div style={{ fontSize: 22, fontWeight: 800, color: T.teal, marginBottom: 20 }}>
-        🔐 Control de Accesos y Seguridad
+      <div style={{ fontSize: 22, fontWeight: 300, color: T.text, fontFamily: T.fontSerif, letterSpacing: '0.03em', marginBottom: 20, borderBottom: `1px solid ${T.border}`, paddingBottom: 10 }}>
+        Control de Accesos y Seguridad
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 24 }}>
-        {/* Left Column: Admin list & change password */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 24 }}>
+        {/* Left: User list */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          {/* List of Admins */}
           <div style={cardStyle()}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 14 }}>
-              👥 Administradores Autorizados
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 14 }}>👥 Usuarios del Sistema</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {userList.map((u: any) => (
-                <div key={u.username} style={{
-                  background: T.bg, borderRadius: 10, padding: '12px 16px',
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  border: `1px solid ${T.borderLight}`
-                }}>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: '0.9rem', color: T.text }}>{u.name}</div>
-                    <div style={{ fontSize: '0.78rem', color: T.textSec }}>
-                      Usuario: <strong>{u.username}</strong> {u.username === currentUser && ' (Tú)'}
+                <div key={u.username} style={{ background: T.bg, borderRadius: 6, padding: '12px 14px', border: `1px solid ${T.borderLight}` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: T.text }}>{u.name}</div>
+                      <div style={{ fontSize: 11, color: T.textSec }}>@{u.username}{u.username === currentUser ? ' · Tú' : ''}</div>
                     </div>
+                    {u.username !== SUPERADMIN_USERNAME && u.username !== currentUser && (
+                      <button onClick={() => handleDeleteUser(u.username)}
+                        style={{ fontSize: 10, padding: '3px 10px', background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FECACA', borderRadius: 3, cursor: 'pointer', fontWeight: 700 }}>
+                        Eliminar
+                      </button>
+                    )}
                   </div>
-                  {u.username !== currentUser && (
-                    <button
-                      onClick={() => handleDeleteUser(u.username)}
-                      style={btnSecondary({ padding: '6px 12px', fontSize: 11, background: '#FDE8E8', color: '#E02424', border: '1px solid #F8B4B4' })}
-                      onMouseEnter={e => e.currentTarget.style.background = '#FBD5D5'}
-                      onMouseLeave={e => e.currentTarget.style.background = '#FDE8E8'}
-                    >
-                      Eliminar
-                    </button>
-                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase' as const,
+                      color: ROL_COLOR[u.rol || 'gerencia'], background: ROL_BG[u.rol || 'gerencia'],
+                      padding: '2px 8px', borderRadius: 2 }}>
+                      {ROLE_LABELS[u.rol as UserRole] || 'Gerencia Comercial'}
+                    </span>
+                    {u.username !== SUPERADMIN_USERNAME && (
+                      <select value={u.rol || 'gerencia'} onChange={e => handleChangeRol(u.username, e.target.value as UserRole)}
+                        style={{ fontSize: 11, padding: '2px 6px', border: `1px solid ${T.border}`, borderRadius: 3, color: T.textSec, background: '#fff' }}>
+                        <option value="presidencia">Presidencia</option>
+                        <option value="gerencia">Gerencia Comercial</option>
+                        <option value="broker">Broker / Asesor</option>
+                      </select>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Change Password Form */}
+          {/* Change Password */}
           <div style={cardStyle()}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 14 }}>
-              🔑 Cambiar Mi Contraseña
-            </div>
-            {changePassError && (
-              <div style={{ background: '#FDE8E8', color: '#E02424', padding: '10px 12px', borderRadius: 8, fontSize: '0.8rem', marginBottom: 14, fontWeight: 600 }}>
-                {changePassError}
-              </div>
-            )}
-            {changePassSuccess && (
-              <div style={{ background: '#DEF7EC', color: '#03543F', padding: '10px 12px', borderRadius: 8, fontSize: '0.8rem', marginBottom: 14, fontWeight: 600 }}>
-                {changePassSuccess}
-              </div>
-            )}
-            <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div>
-                <label style={labelStyle}>Contraseña Actual</label>
-                <input type="password" value={oldPass} onChange={e => setOldPass(e.target.value)} style={inputStyle()} placeholder="••••••••" required />
-              </div>
-              <div>
-                <label style={labelStyle}>Nueva Contraseña</label>
-                <input type="password" value={newPass} onChange={e => setNewPass(e.target.value)} style={inputStyle()} placeholder="Mínimo 6 caracteres" required />
-              </div>
-              <div>
-                <label style={labelStyle}>Confirmar Nueva Contraseña</label>
-                <input type="password" value={confirmPass} onChange={e => setConfirmPass(e.target.value)} style={inputStyle()} placeholder="••••••••" required />
-              </div>
-              <button type="submit" style={btnPrimary({ width: '100%', marginTop: 8 })}>
-                Actualizar Contraseña
-              </button>
+            <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 14 }}>🔑 Cambiar Mi Contraseña</div>
+            {changePassError && <div style={{ background: '#FDE8E8', color: '#E02424', padding: '8px 12px', borderRadius: 6, fontSize: 12, marginBottom: 12, fontWeight: 600 }}>{changePassError}</div>}
+            {changePassSuccess && <div style={{ background: '#DEF7EC', color: '#03543F', padding: '8px 12px', borderRadius: 6, fontSize: 12, marginBottom: 12, fontWeight: 600 }}>{changePassSuccess}</div>}
+            <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div><label style={labelStyle}>Contraseña Actual</label><input type="password" value={oldPass} onChange={e => setOldPass(e.target.value)} style={inputStyle()} placeholder="••••••••" required /></div>
+              <div><label style={labelStyle}>Nueva Contraseña</label><input type="password" value={newPass} onChange={e => setNewPass(e.target.value)} style={inputStyle()} placeholder="Mínimo 6 caracteres" required /></div>
+              <div><label style={labelStyle}>Confirmar Nueva Contraseña</label><input type="password" value={confirmPass} onChange={e => setConfirmPass(e.target.value)} style={inputStyle()} placeholder="••••••••" required /></div>
+              <button type="submit" style={btnPrimary({ width: '100%', marginTop: 4 })}>Actualizar Contraseña</button>
             </form>
           </div>
         </div>
 
-        {/* Right Column: Register new admin */}
+        {/* Right: Create user */}
         <div>
           <div style={cardStyle()}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 14 }}>
-              ➕ Registrar Nuevo Administrador
-            </div>
-            <p style={{ fontSize: '0.82rem', color: T.textSec, marginBottom: 18 }}>
-              Crea un nuevo perfil administrativo para delegar el control comercial del CRM de GLP.
+            <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 6 }}>➕ Nuevo Usuario</div>
+            <p style={{ fontSize: 12, color: T.textSec, marginBottom: 14, lineHeight: 1.5 }}>
+              Crea un acceso con el rol y permisos apropiados para cada miembro del equipo.
             </p>
-            {newUserError && (
-              <div style={{ background: '#FDE8E8', color: '#E02424', padding: '10px 12px', borderRadius: 8, fontSize: '0.8rem', marginBottom: 14, fontWeight: 600 }}>
-                {newUserError}
-              </div>
-            )}
-            {newUserSuccess && (
-              <div style={{ background: '#DEF7EC', color: '#03543F', padding: '10px 12px', borderRadius: 8, fontSize: '0.8rem', marginBottom: 14, fontWeight: 600 }}>
-                {newUserSuccess}
-              </div>
-            )}
-            <form onSubmit={handleAddUser} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div>
-                <label style={labelStyle}>Nombre Completo</label>
-                <input type="text" value={newName} onChange={e => setNewName(e.target.value)} style={inputStyle()} placeholder="Ej. Carlos Martínez" required />
-              </div>
-              <div>
-                <label style={labelStyle}>Nombre de Usuario (Login)</label>
-                <input type="text" value={newUsername} onChange={e => setNewUsername(e.target.value)} style={inputStyle()} placeholder="Ej. carlosm" required />
-              </div>
-              <div>
-                <label style={labelStyle}>Contraseña de Acceso</label>
-                <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} style={inputStyle()} placeholder="••••••••" required />
-              </div>
-              <button type="submit" style={btnPrimary({ width: '100%', marginTop: 8 })}>
-                Registrar Administrador
-              </button>
+            {/* Role cards */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
+              {(['presidencia','gerencia','broker'] as UserRole[]).map(r => (
+                <div key={r} onClick={() => setNewRol(r)} style={{ padding: '8px 12px', border: `1.5px solid ${newRol===r ? ROL_COLOR[r] : T.border}`, borderRadius: 4, cursor: 'pointer', background: newRol===r ? ROL_BG[r] : '#fff', transition: 'all 0.1s' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: newRol===r ? ROL_COLOR[r] : T.text }}>{ROLE_LABELS[r]}</div>
+                  <div style={{ fontSize: 10, color: T.textSec, marginTop: 1 }}>
+                    {r==='presidencia' && 'Dashboard ejecutivo, reportes y portafolio. Sin datos de clientes.'}
+                    {r==='gerencia' && 'Gestión completa del equipo comercial, campañas y agentes IA.'}
+                    {r==='broker' && 'Solo sus propios prospectos, calculadora y portafolio.'}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {newUserError && <div style={{ background: '#FDE8E8', color: '#E02424', padding: '8px 12px', borderRadius: 6, fontSize: 12, marginBottom: 12, fontWeight: 600 }}>{newUserError}</div>}
+            {newUserSuccess && <div style={{ background: '#DEF7EC', color: '#03543F', padding: '8px 12px', borderRadius: 6, fontSize: 12, marginBottom: 12, fontWeight: 600 }}>{newUserSuccess}</div>}
+            <form onSubmit={handleAddUser} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div><label style={labelStyle}>Nombre Completo</label><input type="text" value={newName} onChange={e => setNewName(e.target.value)} style={inputStyle()} placeholder="Ej. Patricia Vargas" required /></div>
+              <div><label style={labelStyle}>Usuario de Login</label><input type="text" value={newUsername} onChange={e => setNewUsername(e.target.value)} style={inputStyle()} placeholder="Ej. pvargas" required /></div>
+              <div><label style={labelStyle}>Contraseña</label><input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} style={inputStyle()} placeholder="••••••••" required /></div>
+              <button type="submit" style={btnPrimary({ width: '100%' })}>Crear Usuario</button>
             </form>
           </div>
         </div>
