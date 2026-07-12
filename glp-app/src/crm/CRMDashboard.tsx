@@ -31,6 +31,75 @@ const T = {
   fontSans: '"Inter", sans-serif',
 };
 
+// ── INFO TIP — tooltip contextual en indicadores ─────────────
+const InfoTip = ({ text, benchmark }: { text: string; benchmark?: string }) => {
+  const [visible, setVisible] = React.useState(false);
+  const [above, setAbove] = React.useState(false);
+  const [horizOffset, setHorizOffset] = React.useState(0); // px offset para no salir por la derecha
+  const [arrowOffset, setArrowOffset] = React.useState(0); // compensa la flecha
+  const ref = React.useRef<HTMLSpanElement>(null);
+  const TIP_W = 240;
+  const handleEnter = () => {
+    if (ref.current) {
+      const rect = ref.current.getBoundingClientRect();
+      setAbove(rect.top > 220);
+      // Calcula si el tooltip se sale por la derecha
+      const iconCenterX = rect.left + rect.width / 2;
+      const tooltipLeft = iconCenterX - TIP_W / 2;
+      const tooltipRight = iconCenterX + TIP_W / 2;
+      const vpW = window.innerWidth;
+      const MARGIN = 10;
+      if (tooltipRight > vpW - MARGIN) {
+        const shift = tooltipRight - vpW + MARGIN;
+        setHorizOffset(-shift);
+        setArrowOffset(shift);
+      } else if (tooltipLeft < MARGIN) {
+        const shift = MARGIN - tooltipLeft;
+        setHorizOffset(shift);
+        setArrowOffset(-shift);
+      } else {
+        setHorizOffset(0);
+        setArrowOffset(0);
+      }
+    }
+    setVisible(true);
+  };
+  return (
+    <span ref={ref} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', marginLeft: 5, verticalAlign: 'middle' }}
+      onMouseEnter={handleEnter} onMouseLeave={() => setVisible(false)}>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"
+        strokeLinecap="round" strokeLinejoin="round" style={{ cursor: 'help', flexShrink: 0 }}>
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+      </svg>
+      {visible && (
+        <div style={{
+          position: 'absolute',
+          ...(above ? { bottom: '130%' } : { top: '130%' }),
+          left: `calc(50% + ${horizOffset}px)`, transform: 'translateX(-50%)',
+          background: '#1A2942', color: '#fff', borderRadius: 8, padding: '10px 14px',
+          fontSize: 12, lineHeight: 1.5, width: TIP_W, zIndex: 9999,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.25)', pointerEvents: 'none',
+          fontFamily: '"Inter", sans-serif', fontWeight: 400,
+        }}>
+          <div style={{ marginBottom: benchmark ? 8 : 0 }}>{text}</div>
+          {benchmark && (
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.15)', paddingTop: 7, fontSize: 11, color: '#B89047', fontWeight: 600 }}>
+              📊 {benchmark}
+            </div>
+          )}
+          {/* flecha apuntando al ícono, compensada horizontalmente */}
+          <div style={{
+            position: 'absolute',
+            ...(above ? { bottom: -5 } : { top: -5 }),
+            left: `calc(50% + ${arrowOffset}px)`, transform: 'translateX(-50%)',
+            width: 10, height: 10, background: '#1A2942', rotate: '45deg', borderRadius: 1,
+          }} />
+        </div>
+      )}
+    </span>
+  );
+};
+
 // ── ELEGANT SVG ICON LIBRARY ─────────────────────────────────
 const Icon = ({ name, size = 24, color = 'currentColor', style = {} }: { name: string; size?: number; color?: string; style?: React.CSSProperties }) => {
   const s = { width: size, height: size, display: 'inline-block', flexShrink: 0, ...style };
@@ -878,6 +947,7 @@ const INITIAL_FAQS: FAQ[] = [
 const MODULES_PRIMARY = [
   { id: 'kpis',         label: 'Dashboard' },
   { id: 'prospectos',   label: 'Prospectos' },
+  { id: 'gerencial',    label: 'Análisis Gerencial' },
   { id: 'reportes',     label: 'Reportes' },
   { id: 'campanas',     label: 'Campañas' },
   { id: 'portafolio',   label: 'Portafolio GLP' },
@@ -907,8 +977,8 @@ const ROLE_LABELS: Record<UserRole, string> = {
 // Módulos accesibles por rol (superadmin siempre tiene todos)
 const ROLE_MODULES: Record<UserRole, string[]> = {
   superadmin:  [], // vacío = todos
-  presidencia: ['dashboard','reportes','portafolio','kpis'],
-  gerencia:    ['dashboard','prospectos','reportes','campanas','portafolio','calculadora','agentes','casos','brokers','faqs','eventos','catalogo'],
+  presidencia: ['dashboard','reportes','portafolio','kpis','gerencial'],
+  gerencia:    ['dashboard','prospectos','reportes','gerencial','campanas','portafolio','calculadora','agentes','casos','brokers','faqs','eventos','catalogo'],
   broker:      ['prospectos','portafolio','calculadora','casos','faqs'],
 };
 
@@ -1925,7 +1995,7 @@ Sin markdown, solo el JSON array.`;
     ]).then(results => {
       const val = (i: number) => results[i].status === 'fulfilled' ? results[i].value : null;
       const res = val(0); if(res && !res.error) setAnalyticsResumen(res);
-      const tiempo = val(1);     if(Array.isArray(tiempo))    setAnalyticsTiempo(tiempo);
+      const tiempo = val(1);     if(Array.isArray(tiempo))    setAnalyticsTiempo(tiempo.map((r:any) => ({...r, periodo: r.periodo ?? r.label ?? r.dia})));
       const proyecto = val(2);   if(Array.isArray(proyecto))  setAnalyticsProyecto(proyecto);
       const funnel = val(3);     if(Array.isArray(funnel))    setAnalyticsFunnel(funnel);
       const canal = val(4);      if(Array.isArray(canal))     setAnalyticsCanal(canal);
@@ -3310,6 +3380,15 @@ Responde SOLO con JSON sin bloques de código:
             <line x1="12" y1="18" x2="12" y2="18.01" />
           </svg>
         );
+      case 'gerencial':
+        return (
+          <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <path d="M2 20h20"/>
+            <path d="M5 20V8l7-6 7 6v12"/>
+            <path d="M9 20v-5h6v5"/>
+            <path d="M9 8h1M14 8h1M9 12h1M14 12h1"/>
+          </svg>
+        );
       case 'reportes':
         return (
           <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -4227,15 +4306,28 @@ Responde SOLO con JSON sin bloques de código:
           const nextEvent = events.filter(e => new Date(e.fecha) > today).sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())[0];
           const eventosProximos = events.filter(e => new Date(e.fecha) > today).length;
           const diasNextEvent = nextEvent ? Math.ceil((new Date(nextEvent.fecha).getTime() - today.getTime()) / 86400000) : null;
-          const kpiCard = (type: string, _icon: string, value: React.ReactNode, label: string, sub: string, color: string) => (
+          const DASH_TIPS: Record<string,{tip:string;benchmark?:string}> = {
+            'ticket':         { tip:'Suma total de ingresos por ventas cerradas (estado Post-venta) registradas en el sistema.', benchmark:'Meta sugerida: acumulado ≥ presupuesto mensual × meses transcurridos' },
+            'conversion':     { tip:'Porcentaje de prospectos totales que llegaron a un cierre exitoso. Es el indicador más importante de la eficiencia del proceso comercial.', benchmark:'Inmobiliario premium: 10–20% · Top performers: >25%' },
+            'prospects_total':{ tip:'Total de prospectos registrados en el CRM. Incluye todos los estados. Haz clic para ver el detalle por etapa.', benchmark:'Volumen mínimo para estadísticas confiables: ≥50 prospectos' },
+            'brokers_active': { tip:'Número de brokers con estado activo. Un broker activo debe gestionar entre 15 y 25 prospectos simultáneamente para ser productivo.', benchmark:'Ratio óptimo: 1 broker por cada 20–25 prospectos activos' },
+            'camilo_prospects':{ tip:'Prospectos que el Agente Camilo está investigando o ha calificado automáticamente. Camilo pre-califica leads antes de asignarlos a un broker.', benchmark:undefined },
+            'sara_history':   { tip:'Número de correos gestionados por Sara, la agente de seguimiento por email. Un alto volumen indica buena automatización del nurturing.', benchmark:undefined },
+            'next_event':     { tip:'Días hasta el próximo evento comercial programado. Los eventos son una fuente clave de prospectos nuevos.', benchmark:'Frecuencia recomendada: al menos 1 evento comercial por mes' },
+          };
+          const kpiCard = (type: string, _icon: string, value: React.ReactNode, label: string, sub: string, color: string) => {
+            const tipData = DASH_TIPS[type];
+            return (
             <div onClick={() => setActiveDrilldown(activeDrilldown?.type === type ? null : { type } as any)}
               style={cardStyle({ textAlign: 'center' as const, cursor: 'pointer', background: '#FAF9F6', border: activeDrilldown?.type === type ? `1.5px solid ${color}` : `1px solid ${T.border}`, transition: 'all 0.2s', padding: '24px 20px' })}>
-              <div style={{ fontSize: 8, fontWeight: 600, color: T.textSec, letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginBottom: 12 }}>{label}</div>
+              <div style={{ fontSize: 8, fontWeight: 600, color: T.textSec, letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
+                {label}{tipData && <InfoTip text={tipData.tip} benchmark={tipData.benchmark}/>}
+              </div>
               <div style={{ fontSize: 34, fontWeight: 300, color: T.text, lineHeight: 1.05, fontFamily: T.fontSerif }}>{value}</div>
               <div style={{ width: 28, height: 1, background: color, margin: '12px auto 10px' }} />
               <div style={{ fontSize: 8, color, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase' as const }}>{sub}</div>
             </div>
-          );
+          );};
           return (
             <>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12, marginBottom: 16, width: '100%' }}>
@@ -6603,6 +6695,20 @@ Responde SOLO con JSON sin bloques de código:
       }));
     };
 
+    const AGENT_STAT_TIPS: Record<string, { tip: string; benchmark?: string }> = {
+      'Prospectos generados':  { tip: 'Número de nuevos prospectos que Camilo identificó y agregó al CRM mediante búsqueda en fuentes externas (LinkedIn, cámaras de comercio, prensa). Ya están pre-calificados por capacidad financiera.', benchmark: 'Meta: 3–8 prospectos calificados por ciclo de investigación' },
+      'Insights producidos':   { tip: 'Reportes de inteligencia generados por Camilo: tendencias de mercado, alertas de crisis, oportunidades de inversión y análisis de audiencia. Se usan para ajustar mensajes y timing comercial.', benchmark: undefined },
+      'Tareas en flujo':       { tip: 'Tareas que Camilo envió a otros agentes (Sara, Valeria, Isabella) a través del Flujo de Trabajo colaborativo. Indica cuántos insights están siendo procesados por el equipo.', benchmark: undefined },
+      'Mensajes analizados':   { tip: 'Total de mensajes entrantes procesados por Sara: WhatsApp, emails y DMs de Instagram. Sara los clasifica, prioriza y prepara respuestas para aprobación.', benchmark: 'Tiempo de respuesta objetivo: <5 minutos en canales calientes' },
+      'Alertas activas':       { tip: 'Consultas o situaciones que Sara marcó como urgentes y que requieren atención humana. Incluye preguntas complejas, solicitudes de precio o prospectos con señales de compra inminente.', benchmark: 'Regla de oro: responder alertas en <30 minutos aumenta conversión 3×' },
+      'Tiempo resp. prom.':    { tip: 'Tiempo promedio desde que llega un mensaje hasta que Sara genera una respuesta lista para enviar. Incluye análisis del contexto del prospecto y redacción personalizada.', benchmark: 'Estándar premium: <5 min en mensajería instantánea · <2h en email' },
+      'Contenidos generados':  { tip: 'Piezas de contenido creadas por Valeria: publicaciones en redes, email newsletters, copies para anuncios y presentaciones de proyectos. Listos para revisión y publicación.', benchmark: 'Frecuencia óptima: 3–5 publicaciones semanales por canal activo' },
+      'Plantillas activas':    { tip: 'Plantillas de comunicación que Valeria tiene disponibles para reutilizar: emails de seguimiento, respuestas a objeciones frecuentes, propuestas de valor por proyecto.', benchmark: undefined },
+      'Engagement promedio':   { tip: 'Tasa de interacción (likes, comentarios, compartidos) sobre el total de alcance en redes sociales. Mide si el contenido es relevante para la audiencia objetivo.', benchmark: 'LinkedIn premium: >3% · Instagram: >2% · <1%: revisar formato y audiencia' },
+      'Contenidos producidos': { tip: 'Videos, reels y materiales audiovisuales generados por Isabella para presentar proyectos, testimonios y eventos. Incluye guiones, storyboards y sugerencias de producción.', benchmark: undefined },
+      'Plataformas activas':   { tip: 'Canales digitales donde Isabella tiene presencia activa con contenido audiovisual: YouTube, Instagram Reels, TikTok, presentaciones en sala de ventas.', benchmark: 'Prioridad: Instagram Reels y YouTube Shorts para alcance orgánico inmobiliario' },
+      'Views estimadas':       { tip: 'Estimación de reproducciones acumuladas del contenido audiovisual producido por Isabella en todas las plataformas. Indica el alcance potencial de la estrategia de video.', benchmark: undefined },
+    };
     const agents = [
       {
         name: 'CAMILO', emoji: '🕵️‍♂️', role: 'VP de Investigación y Mercados',
@@ -8663,7 +8769,10 @@ Responde SOLO con JSON sin bloques de código:
                           background: isSelected ? `rgba(184,144,71,0.05)` : 'transparent',
                           transition: 'background 0.15s' }}>
                         <div style={{ fontSize: 22, fontFamily: T.fontSerif, fontWeight: 300, color: isSelected ? GOLD : NAVY, letterSpacing: 0.5 }}>{s.value}</div>
-                        <div style={{ fontSize: 8, letterSpacing: 2, color: isSelected ? GOLD : '#9CA3AF', textTransform: 'uppercase', marginTop: 4, fontWeight: 600 }}>{s.label}</div>
+                        <div style={{ fontSize: 8, letterSpacing: 2, color: isSelected ? GOLD : '#9CA3AF', textTransform: 'uppercase', marginTop: 4, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
+                          {s.label}
+                          {AGENT_STAT_TIPS[s.label] && <InfoTip text={AGENT_STAT_TIPS[s.label].tip} benchmark={AGENT_STAT_TIPS[s.label].benchmark} />}
+                        </div>
                       </div>
                     );
                   })}
@@ -10387,12 +10496,28 @@ Responde SOLO con JSON sin bloques de código:
     const fmtUSD = (n: number) => n >= 1_000_000 ? `$${(n/1_000_000).toFixed(1)}M` : n >= 1_000 ? `$${(n/1_000).toFixed(0)}K` : `$${Math.round(n)}`;
 
     // ── Helpers de layout ──────────────────────────────────────
-    const chartBox = (title: string, children: React.ReactNode, full = false) => (
+    const CHART_TIPS: Record<string,{tip:string;benchmark?:string}> = {
+      'Prospectos en el tiempo':       { tip:'Evolución mensual de nuevos prospectos (barras) y el acumulado total (línea). Permite ver si la captación es estable, creciente o estacional.', benchmark:'Crecimiento sostenido: ≥10% mensual' },
+      'Funnel de conversión':          { tip:'Distribución de prospectos por etapa del pipeline en el período. Un funnel sano tiene más volumen en la base (Contacto Inicial) y decrece gradualmente hacia el cierre.', benchmark:'Ratio calificado/contacto saludable: ≥40%' },
+      'Prospectos por broker × período':{ tip:'Muestra cuántos prospectos gestionó cada broker mes a mes. Identifica picos de actividad y caídas que requieren atención.', benchmark:'Capacidad óptima por broker: 15–25 prospectos activos' },
+      'Ranking de brokers':            { tip:'Clasifica a los brokers por volumen total de prospectos en el período y su presupuesto de pipeline. El color indica la tasa de conversión.', benchmark:'Tasa de cierre individual saludable: ≥15%' },
+      'Prospectos por proyecto × período':{ tip:'Distribución mensual de interés por proyecto. Permite identificar qué proyectos están generando más tracción y cuáles necesitan más impulso de marketing.', benchmark:undefined },
+      'Distribución por proyecto':     { tip:'Acumulado de prospectos interesados en cada proyecto. Útil para balancear el inventario y priorizar esfuerzos comerciales por unidad.', benchmark:undefined },
+      'Prospectos por canal':          { tip:'Muestra cuántos prospectos llegaron por cada fuente o canal de contacto. Permite calcular el ROI de cada canal de adquisición.', benchmark:'Canal más eficiente: el que mayor tasa de cierre produce' },
+      'Tasa de conversión por canal':  { tip:'Compara la tasa de calificación y cierre entre canales. Un canal puede traer volumen pero baja calidad, o poco volumen pero alta conversión.', benchmark:'Referidos suelen tener tasa de cierre 2–3× mayor que digital' },
+      'Días promedio en cada etapa':   { tip:'Tiempo promedio que pasan los prospectos en cada etapa antes de avanzar o caerse. Identifica los cuellos de botella del proceso comercial.', benchmark:'Negociación >60 días: señal de objeción no resuelta' },
+      'Funnel con tiempo de permanencia':{ tip:'Combina el volumen del funnel con el tiempo de permanencia por etapa. Las etapas más anchas y largas son las que más necesitan optimización de proceso.', benchmark:undefined },
+    };
+    const chartBox = (title: string, children: React.ReactNode, full = false) => {
+      const tipData = CHART_TIPS[title];
+      return (
       <div style={{background:'#fff',border:`1px solid ${T.border}`,borderRadius:4,padding:'18px 20px 14px',gridColumn:full?'1/-1':undefined,borderTop:`3px solid ${G}`}}>
-        <div style={{fontFamily:SERIF,fontSize:15,fontWeight:600,color:N,marginBottom:14,letterSpacing:0.3}}>{title}</div>
+        <div style={{fontFamily:SERIF,fontSize:15,fontWeight:600,color:N,marginBottom:14,letterSpacing:0.3,display:'flex',alignItems:'center'}}>
+          {title}{tipData && <InfoTip text={tipData.tip} benchmark={tipData.benchmark}/>}
+        </div>
         {children}
       </div>
-    );
+    );};
     const noData = () => <div style={{color:'#94a3b8',textAlign:'center',padding:'40px 0',fontSize:13,fontFamily:SANS}}>Sin datos para este período</div>;
 
     // ── Exportar ───────────────────────────────────────────────
@@ -10508,16 +10633,26 @@ Responde SOLO con JSON sin bloques de código:
     const trendMes = nuevosMesAnt > 0 ? `${nuevosMes >= nuevosMesAnt ? '+' : ''}${Math.round((nuevosMes-nuevosMesAnt)/nuevosMesAnt*100)}%` : '';
     const totalP = Number(analyticsResumen?.total_prospectos ?? 0);
     const calif = Number(analyticsResumen?.calificados ?? 0);
-    const kpiCard = (label:string, value:string|number, sub:string, trend?:string) => (
+    const RPT_TIPS: Record<string,{tip:string;benchmark?:string}> = {
+      'Total prospectos': { tip:'Número de prospectos que ingresaron al CRM en el período seleccionado. Un crecimiento sostenido indica que las acciones de captación están funcionando.', benchmark:'Crecimiento saludable: +10–20% mes a mes' },
+      'Pipeline':         { tip:'Valor total en USD de todos los negocios activos en el pipeline, sin ponderar por probabilidad. Representa el techo de ingresos potenciales si se cerraran todas las oportunidades.', benchmark:'Pipeline saludable: 3–5× la meta de ventas del período' },
+      'Calificados':      { tip:'Prospectos que pasaron la etapa de Contacto Inicial y están activamente en el proceso de venta (Calificado, Presentación, Negociación, Cierre). Indica la eficiencia del filtro inicial.', benchmark:'Tasa de calificación saludable: ≥40% del total de entradas' },
+      'Cerrados':         { tip:'Prospectos que llegaron a estado Post-venta, es decir, negocios efectivamente cerrados en el período. Es el indicador más directo del resultado comercial.', benchmark:'Tasa de cierre global inmobiliaria: 10–20%' },
+    };
+    const kpiCard = (label:string, value:string|number, sub:string, trend?:string) => {
+      const tipData = RPT_TIPS[label];
+      return (
       <div style={{background:'#fff',border:`1px solid ${T.border}`,borderTop:`3px solid ${G}`,borderRadius:3,padding:'16px 18px'}}>
-        <div style={{fontSize:9,color:'#94a3b8',fontWeight:700,textTransform:'uppercase',letterSpacing:1.4,marginBottom:6,fontFamily:SANS}}>{label}</div>
+        <div style={{fontSize:9,color:'#94a3b8',fontWeight:700,textTransform:'uppercase',letterSpacing:1.4,marginBottom:6,fontFamily:SANS,display:'flex',alignItems:'center'}}>
+          {label}{tipData && <InfoTip text={tipData.tip} benchmark={tipData.benchmark}/>}
+        </div>
         <div style={{fontSize:24,fontWeight:700,color:N,lineHeight:1.1,fontFamily:SERIF}}>{rptLoading?'…':value}</div>
         <div style={{fontSize:11,color:T.textSec,marginTop:5,display:'flex',gap:5,alignItems:'center',fontFamily:SANS}}>
           {trend && <span style={{color:trend.startsWith('+')?T.success:T.danger,fontWeight:700}}>{trend}</span>}
           {sub}
         </div>
       </div>
-    );
+    );};
 
     const vistaResumen = (
       <div style={{display:'flex',flexDirection:'column',gap:14}}>
@@ -11660,9 +11795,18 @@ Responde SOLO con JSON sin bloques de código:
     // ────────── shared helpers ──────────
     const inputS: React.CSSProperties = { width: '100%', padding: '9px 11px', border: `1px solid ${T.border}`, borderRadius: 2, fontSize: 13, color: NAVY, background: '#fff', outline: 'none', boxSizing: 'border-box' as const };
     const labelS: React.CSSProperties = { fontSize: 10, fontWeight: 600, color: T.textSec, letterSpacing: '0.08em', textTransform: 'uppercase' as const, display: 'block', marginBottom: 6 };
-    const sectionCard = (title: string, children: React.ReactNode) => (
+    const CAMP_SECTION_TIPS: Record<string,{tip:string;benchmark?:string}> = {
+      'Embudo de conversión consolidado': { tip:'Muestra el recorrido completo desde el envío hasta el cierre: enviados → abiertos → clicks → citas → cierres. Cada paso mide la efectividad de la etapa anterior.', benchmark:'Benchmark inmobiliario: Apertura 40% → CTR 15% → Cita 5% → Cierre 2%' },
+      'Campañas — rendimiento comparado': { tip:'Compara cada campaña por tasa de apertura, conversión y ROI. Permite identificar qué tipo de campaña (reactivación, presentación, evento) genera mejores resultados.', benchmark:undefined },
+      'Segmentación inteligente':         { tip:'Define a qué prospectos se envía esta campaña usando filtros combinados: etapa del pipeline, presupuesto declarado, proyecto de interés, días de inactividad y lead score mínimo.', benchmark:'Campañas segmentadas tienen 3× más apertura que envíos masivos sin filtro' },
+      'Secuencia drip (pasos)':           { tip:'Una secuencia drip envía emails automáticamente con intervalos de días definidos. Cada paso puede tener su propio asunto y cuerpo. El prospecto avanza solo si no responde antes.', benchmark:'Secuencia óptima: 3–5 pasos · Intervalo: 3–7 días entre cada uno' },
+      'Vista previa del email':           { tip:'Previsualiza cómo recibirá el prospecto el email de esta campaña. Las variables {{nombre}}, {{broker}} y {{proyecto}} se reemplazarán automáticamente al enviar.', benchmark:undefined },
+    };
+    const sectionCard = (title: string, children: React.ReactNode, tip?: string, benchmark?: string) => (
       <div style={{ background: CREAM, border: `1px solid ${T.border}`, borderRadius: 4, overflow: 'hidden' }}>
-        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${T.border}`, fontSize: 11, fontWeight: 700, color: NAVY, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>{title}</div>
+        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${T.border}`, fontSize: 11, fontWeight: 700, color: NAVY, letterSpacing: '0.08em', textTransform: 'uppercase' as const, display: 'flex', alignItems: 'center' }}>
+          {title}{(tip || CAMP_SECTION_TIPS[title]) && <InfoTip text={tip || CAMP_SECTION_TIPS[title]?.tip} benchmark={benchmark || CAMP_SECTION_TIPS[title]?.benchmark}/>}
+        </div>
         <div style={{ padding: '16px' }}>{children}</div>
       </div>
     );
@@ -11681,15 +11825,17 @@ Responde SOLO con JSON sin bloques de código:
           {/* KPI row */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 12 }}>
             {[
-              { label: 'Campañas activas', val: activas, color: GREEN, sub: `${campanas.length} total` },
-              { label: 'Leads alcanzados', val: totalEnviados.toLocaleString(), color: NAVY, sub: 'mensajes enviados' },
-              { label: 'Tasa apertura', val: `${tasaApertura}%`, color: tasaApertura >= 40 ? GREEN : tasaApertura >= 25 ? GOLD : '#c0392b', sub: 'promedio' },
-              { label: 'Tasa conversión', val: `${pct(totalCierres, totalEnviados)}%`, color: GREEN, sub: 'leads → cierres' },
-              { label: 'Revenue atribuido', val: fmtUSD(totalRevenue), color: GOLD, sub: `ROI ${roiGlobal}%` },
-              { label: 'Citas generadas', val: totalCitas, color: NAVY, sub: `${totalClicks} clicks` },
+              { label: 'Campañas activas', val: activas, color: GREEN, sub: `${campanas.length} total`, tip: 'Número de campañas en ejecución actualmente. Una campaña activa está enviando mensajes automáticamente según su secuencia drip o su envío masivo programado.', benchmark: 'Recomendado: 2–4 activas simultáneamente para no saturar al prospecto' },
+              { label: 'Leads alcanzados', val: totalEnviados.toLocaleString(), color: NAVY, sub: 'mensajes enviados', tip: 'Total de mensajes enviados a prospectos en todas las campañas. Incluye emails de secuencias drip y envíos masivos. No equivale a número de personas únicas.', benchmark: undefined },
+              { label: 'Tasa apertura', val: `${tasaApertura}%`, color: tasaApertura >= 40 ? GREEN : tasaApertura >= 25 ? GOLD : '#c0392b', sub: 'promedio', tip: 'Porcentaje de emails enviados que fueron abiertos por el destinatario. Es el primer indicador de relevancia del asunto y la confianza en el remitente.', benchmark: 'Inmobiliario premium: 35–50% · General: 20–30% · <20%: revisar asunto y lista' },
+              { label: 'Tasa conversión', val: `${pct(totalCierres, totalEnviados)}%`, color: GREEN, sub: 'leads → cierres', tip: 'Porcentaje de mensajes enviados que resultaron en un cierre de venta. Mide el impacto real de las campañas en los ingresos.', benchmark: 'Email inmobiliario: 1–3% es excelente · <0.5%: revisar segmentación y oferta' },
+              { label: 'Revenue atribuido', val: fmtUSD(totalRevenue), color: GOLD, sub: `ROI ${roiGlobal}%`, tip: 'Ingresos generados por ventas que se atribuyen a las campañas. El ROI compara este revenue con el costo total de las campañas para calcular la rentabilidad.', benchmark: 'ROI email marketing: 3,600% promedio industria ($1 invertido → $36 retorno)' },
+              { label: 'Citas generadas', val: totalCitas, color: NAVY, sub: `${totalClicks} clicks`, tip: 'Número de reuniones o visitas agendadas como resultado directo de las campañas. Es el puente entre el email y la venta. Los clicks miden el interés inicial.', benchmark: 'Ratio cita/enviado saludable: 2–5% · Ratio click/apertura (CTR): 10–20%' },
             ].map(k => (
               <div key={k.label} style={{ background: CREAM, border: `1px solid ${T.border}`, borderRadius: 4, padding: '14px 12px', textAlign: 'center' }}>
-                <div style={{ fontSize: 7, fontWeight: 700, color: T.textSec, letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 8 }}>{k.label}</div>
+                <div style={{ fontSize: 7, fontWeight: 700, color: T.textSec, letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {k.label}{k.tip && <InfoTip text={k.tip} benchmark={k.benchmark}/>}
+                </div>
                 <div style={{ fontSize: 22, fontWeight: 300, color: k.color, fontFamily: T.fontSerif, lineHeight: 1 }}>{k.val}</div>
                 <div style={{ fontSize: 8, color: T.textSec, marginTop: 6 }}>{k.sub}</div>
               </div>
@@ -13368,6 +13514,479 @@ Responde SOLO con JSON sin bloques de código:
     );
   };
 
+  // ══════════════════════════════════════════════════════════════
+  // ANÁLISIS GERENCIAL — Módulo ejecutivo premium
+  // ══════════════════════════════════════════════════════════════
+  const renderAnalisisGerencial = () => {
+    const NAVY2 = '#1A2942';
+    const GOLD2 = '#B89047';
+    const G_GER = T.coral;
+    const N_GER = T.teal;
+    const SF2 = T.fontSerif;
+    const SS2 = T.fontSans;
+    const FUNNEL_COLORS_GER: Record<string,string> = {
+      'Post-venta':'#16a34a','Cierre':'#2563eb','Negociación':'#7c3aed',
+      'Presentación':'#d97706','Calificado':'#0891b2','Contacto Inicial':'#64748b','Lead Frío':'#94a3b8'
+    };
+    const fmtUSD2 = (v: number) => v >= 1000000 ? `$${(v/1000000).toFixed(1)}M` : v >= 1000 ? `$${(v/1000).toFixed(0)}K` : `$${v.toFixed(0)}`;
+
+    const today = new Date();
+
+    // ── Probabilidades por etapa (Revenue Forecast) ──
+    const STAGE_PROB: Record<string, number> = {
+      'Contacto Inicial': 0.05, 'Calificado': 0.15, 'Presentación': 0.30,
+      'Negociación': 0.60, 'Cierre': 0.85, 'Post-venta': 1.0, 'Lead Frío': 0.02,
+    };
+    const STAGE_PROB_LABEL: Record<string, string> = {
+      'Contacto Inicial': '5%', 'Calificado': '15%', 'Presentación': '30%',
+      'Negociación': '60%', 'Cierre': '85%', 'Post-venta': '100%', 'Lead Frío': '2%',
+    };
+
+    // Pipeline ponderado total
+    const pipelineTotal2 = prospects.filter(p => p.estado !== 'Post-venta' && p.estado !== 'Lead Frío')
+      .reduce((s, p) => s + Number(p.presupuesto_usd || 0) * (STAGE_PROB[p.estado] || 0.05), 0);
+
+    // Forecast por mes (próximos 3 meses)
+    const forecastMeses = [0, 1, 2].map(offset => {
+      const d = new Date(today.getFullYear(), today.getMonth() + offset, 1);
+      const label = d.toLocaleString('es', { month: 'short', year: '2-digit' });
+      const inMonth = prospects.filter(p => {
+        const prob = STAGE_PROB[p.estado] || 0;
+        if (prob === 0) return false;
+        const daysToClose = p.estado === 'Cierre' ? 15 : p.estado === 'Negociación' ? 45 : p.estado === 'Presentación' ? 90 : 180;
+        const fe = new Date(p.fecha_entrada || today.toISOString());
+        const expectedClose = new Date(fe.getTime() + daysToClose * 86400000);
+        return expectedClose.getMonth() === d.getMonth() && expectedClose.getFullYear() === d.getFullYear();
+      });
+      const ponderado = inMonth.reduce((s, p) => s + Number(p.presupuesto_usd || 0) * (STAGE_PROB[p.estado] || 0.05), 0);
+      const optimista = inMonth.reduce((s, p) => s + Number(p.presupuesto_usd || 0) * Math.min((STAGE_PROB[p.estado] || 0.05) * 1.3, 1), 0);
+      return { label, ponderado, optimista, count: inMonth.length };
+    });
+
+    // ── Alertas de stagnation ──
+    const AVG_DAYS_PER_STAGE: Record<string, number> = {
+      'Contacto Inicial': 14, 'Calificado': 21, 'Presentación': 30,
+      'Negociación': 45, 'Cierre': 20, 'Lead Frío': 60,
+    };
+    const stagnated = prospects
+      .filter(p => p.estado !== 'Post-venta')
+      .map(p => {
+        const fe = new Date(p.fecha_entrada || today.toISOString());
+        const dias = Math.floor((today.getTime() - fe.getTime()) / 86400000);
+        const limit = AVG_DAYS_PER_STAGE[p.estado] || 30;
+        const pct = dias / limit;
+        return { ...p, diasEnEstado: dias, limit, pct };
+      })
+      .filter(p => p.pct >= 0.8)
+      .sort((a, b) => b.pct - a.pct)
+      .slice(0, 8);
+
+    const criticos = stagnated.filter(p => p.pct >= 1.2);
+    const enRiesgo = stagnated.filter(p => p.pct >= 0.8 && p.pct < 1.2);
+
+    // ── Broker Performance Scorecard ──
+    const brokerScores = (() => {
+      const m = new Map<string, { nombre: string; total: number; cerrados: number; pipeline: number; dias: number[]; }>();
+      prospects.forEach(p => {
+        const k = (p.broker_asignado as any) || 'Sin asignar';
+        const c = m.get(k) || { nombre: k, total: 0, cerrados: 0, pipeline: 0, dias: [] };
+        const dias = Math.floor((today.getTime() - new Date(p.fecha_entrada || today.toISOString()).getTime()) / 86400000);
+        m.set(k, {
+          ...c,
+          total: c.total + 1,
+          cerrados: c.cerrados + (p.estado === 'Post-venta' ? 1 : 0),
+          pipeline: c.pipeline + Number(p.presupuesto_usd || 0) * (STAGE_PROB[p.estado] || 0.05),
+          dias: [...c.dias, dias],
+        });
+      });
+      return Array.from(m.values())
+        .filter(b => b.total >= 1)
+        .map(b => ({
+          ...b,
+          tasaCierre: b.total > 0 ? Math.round(b.cerrados / b.total * 100) : 0,
+          diasPromedio: b.dias.length > 0 ? Math.round(b.dias.reduce((s, d) => s + d, 0) / b.dias.length) : 0,
+          score: Math.round(
+            (b.cerrados / Math.max(b.total, 1)) * 40 +
+            Math.min(b.total / 10, 1) * 30 +
+            Math.min(b.pipeline / 500000, 1) * 30
+          ),
+        }))
+        .sort((a, b) => b.score - a.score);
+    })();
+
+    // ── Mapa de calor de presupuestos ──
+    const budgetBuckets = [
+      { label: '<$100K',    min: 0,       max: 100000 },
+      { label: '$100-300K', min: 100000,  max: 300000 },
+      { label: '$300-500K', min: 300000,  max: 500000 },
+      { label: '$500K-1M',  min: 500000,  max: 1000000 },
+      { label: '>$1M',      min: 1000000, max: Infinity },
+    ];
+    const heatData = budgetBuckets.map(b => {
+      const ps2 = prospects.filter(p => {
+        const v = Number(p.presupuesto_usd || 0);
+        return v >= b.min && v < b.max;
+      });
+      const totalVal = ps2.reduce((s, p) => s + Number(p.presupuesto_usd || 0), 0);
+      const cerrados = ps2.filter(p => p.estado === 'Post-venta').length;
+      return { ...b, count: ps2.length, totalVal, cerrados, tasa: ps2.length > 0 ? Math.round(cerrados / ps2.length * 100) : 0 };
+    });
+    const heatMax = Math.max(...heatData.map(h => h.count), 1);
+
+    // ── Cohort Analysis ──
+    const cohortData = (() => {
+      const m = new Map<string, { label: string; total: number; calificados: number; cerrados: number; }>();
+      prospects.forEach(p => {
+        const fe = new Date(p.fecha_entrada || today.toISOString());
+        const key = `${fe.getFullYear()}-${String(fe.getMonth() + 1).padStart(2, '0')}`;
+        const label = fe.toLocaleString('es', { month: 'short', year: '2-digit' });
+        const c = m.get(key) || { label, total: 0, calificados: 0, cerrados: 0 };
+        const isQual = ['Calificado','Presentación','Negociación','Cierre','Post-venta'].includes(p.estado || '');
+        m.set(key, { ...c, total: c.total + 1, calificados: c.calificados + (isQual ? 1 : 0), cerrados: c.cerrados + (p.estado === 'Post-venta' ? 1 : 0) });
+      });
+      return Array.from(m.entries()).sort((a, b) => a[0].localeCompare(b[0])).slice(-6).map(([, v]) => ({
+        ...v,
+        tasaCalif: v.total > 0 ? Math.round(v.calificados / v.total * 100) : 0,
+        tasaCierre: v.total > 0 ? Math.round(v.cerrados / v.total * 100) : 0,
+      }));
+    })();
+
+    // ── Agenda comercial — próximos seguimientos ──
+    const agendaItems = prospects
+      .filter(p => ['Calificado','Presentación','Negociación','Cierre'].includes(p.estado || ''))
+      .map(p => {
+        const diasEnEstado = Math.floor((today.getTime() - new Date(p.fecha_entrada || today.toISOString()).getTime()) / 86400000);
+        const limit = AVG_DAYS_PER_STAGE[p.estado] || 30;
+        const urgency = diasEnEstado / limit;
+        return { ...p, diasEnEstado, urgency };
+      })
+      .sort((a, b) => b.urgency - a.urgency)
+      .slice(0, 10);
+
+    // ── Estilos compartidos ──
+    const card = (children: React.ReactNode, style: any = {}) => (
+      <div style={{ background: '#fff', border: '1px solid #E8E3DB', borderRadius: 14, padding: '24px 28px', ...style }}>
+        {children}
+      </div>
+    );
+    const kpiTitle = (txt: string, sub?: string, tip?: string, benchmark?: string) => (
+      <div style={{ marginBottom: 18 }}>
+        <div style={{ fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase' as const, color: GOLD2, fontWeight: 700, fontFamily: SS2, marginBottom: 4, display: 'flex', alignItems: 'center' }}>
+          {txt}{tip && <InfoTip text={tip} benchmark={benchmark} />}
+        </div>
+        {sub && <div style={{ fontSize: 12, color: '#94a3b8', fontFamily: SS2 }}>{sub}</div>}
+      </div>
+    );
+    const bigNum = (val: string, sub?: string, color = NAVY2) => (
+      <div>
+        <div style={{ fontSize: 36, fontWeight: 300, fontFamily: SF2, color, letterSpacing: '-0.02em', lineHeight: 1 }}>{val}</div>
+        {sub && <div style={{ fontSize: 11, color: '#94a3b8', fontFamily: SS2, marginTop: 6 }}>{sub}</div>}
+      </div>
+    );
+    const alertBadge = (txt: string, color: string, bg: string) => (
+      <span style={{ background: bg, color, fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '2px 8px', fontFamily: SS2, letterSpacing: '0.04em' }}>{txt}</span>
+    );
+
+    const totalProspects = prospects.length;
+    const closedProspects = prospects.filter(p => p.estado === 'Post-venta').length;
+    const tasaGlobal = totalProspects > 0 ? Math.round(closedProspects / totalProspects * 100) : 0;
+    const pipelineActivo = prospects
+      .filter(p => !['Post-venta', 'Lead Frío'].includes(p.estado || ''))
+      .reduce((s, p) => s + Number(p.presupuesto_usd || 0), 0);
+
+    return (
+      <div style={{ padding: '28px 32px', maxWidth: 1200, margin: '0 auto', fontFamily: SS2 }}>
+
+        {/* Header ejecutivo */}
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 32, paddingBottom: 20, borderBottom: `1px solid #E8E3DB` }}>
+          <div>
+            <div style={{ fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase' as const, color: GOLD2, fontWeight: 700, marginBottom: 8 }}>GLP Bogotá · Análisis Gerencial</div>
+            <h1 style={{ margin: 0, fontSize: 28, fontWeight: 300, fontFamily: SF2, color: NAVY2, letterSpacing: '0.02em' }}>
+              Inteligencia Comercial
+            </h1>
+            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>
+              {today.toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 24, textAlign: 'right' as const }}>
+            <div>
+              <div style={{ fontSize: 9, color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '0.1em', marginBottom: 4 }}>Pipeline activo</div>
+              <div style={{ fontSize: 22, fontWeight: 300, fontFamily: SF2, color: NAVY2 }}>{fmtUSD2(pipelineActivo)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 9, color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '0.1em', marginBottom: 4 }}>Tasa de cierre</div>
+              <div style={{ fontSize: 22, fontWeight: 300, fontFamily: SF2, color: tasaGlobal >= 20 ? '#10b981' : tasaGlobal >= 10 ? GOLD2 : '#ef4444' }}>{tasaGlobal}%</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 9, color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '0.1em', marginBottom: 4 }}>Prospectos</div>
+              <div style={{ fontSize: 22, fontWeight: 300, fontFamily: SF2, color: NAVY2 }}>{totalProspects}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Fila 1: Revenue Forecast + Alertas */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+
+          {/* Revenue Forecast */}
+          {card(
+            <>
+              {kpiTitle('Revenue Forecast', 'Pipeline ponderado × probabilidad de cierre por etapa',
+                'Multiplica el valor de cada oportunidad por su probabilidad de cierre según la etapa del pipeline. Suma todos los resultados para obtener el ingreso esperado real, más conservador que el pipeline bruto.',
+                'Diferencia típica pipeline bruto vs. ponderado: 3×–5×')}
+              <div style={{ display: 'flex', gap: 20, marginBottom: 20 }}>
+                {bigNum(fmtUSD2(pipelineTotal2), 'Forecast ponderado total')}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                {forecastMeses.map((m, i) => (
+                  <div key={m.label} style={{ background: i === 0 ? NAVY2 : '#f8fafc', borderRadius: 10, padding: '14px 16px' }}>
+                    <div style={{ fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: i === 0 ? GOLD2 : '#94a3b8', marginBottom: 6 }}>{m.label}</div>
+                    <div style={{ fontSize: 20, fontWeight: 300, fontFamily: SF2, color: i === 0 ? '#fff' : NAVY2 }}>{fmtUSD2(m.ponderado)}</div>
+                    <div style={{ fontSize: 10, color: i === 0 ? 'rgba(255,255,255,0.5)' : '#94a3b8', marginTop: 4 }}>
+                      {m.count} oportunidad{m.count !== 1 ? 'es' : ''} · opt. {fmtUSD2(m.optimista)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {/* Barra de probabilidades por etapa */}
+              <div style={{ marginTop: 20, borderTop: '1px solid #f1f5f9', paddingTop: 16 }}>
+                <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 10, textTransform: 'uppercase' as const, letterSpacing: '0.08em' }}>Probabilidad por etapa</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+                  {Object.entries(STAGE_PROB_LABEL).filter(([k]) => k !== 'Lead Frío').map(([etapa, prob]) => (
+                    <div key={etapa} style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#f8fafc', borderRadius: 6, padding: '4px 10px' }}>
+                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: FUNNEL_COLORS_GER[etapa] || '#94a3b8' }} />
+                      <span style={{ fontSize: 10, color: '#64748b', fontFamily: SS2 }}>{etapa}</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: NAVY2 }}>{prob}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Alertas de Stagnation */}
+          {card(
+            <>
+              {kpiTitle('Alertas de Estancamiento', 'Prospectos que superan el tiempo esperado en su etapa',
+                'Compara los días que lleva cada prospecto en su etapa actual vs. el tiempo promedio histórico. Prospectos que superan el 120% del tiempo esperado tienen 3× más probabilidad de caerse del pipeline.',
+                'Tiempo óptimo en Negociación: ≤45 días · En Presentación: ≤30 días')}
+              <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
+                <div style={{ background: criticos.length > 0 ? '#fef2f2' : '#f0fdf4', borderRadius: 10, padding: '12px 18px', flex: 1, textAlign: 'center' as const }}>
+                  <div style={{ fontSize: 28, fontWeight: 700, fontFamily: SF2, color: criticos.length > 0 ? '#ef4444' : '#10b981' }}>{criticos.length}</div>
+                  <div style={{ fontSize: 10, color: criticos.length > 0 ? '#ef4444' : '#10b981', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>Críticos</div>
+                  <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>&gt;120% del tiempo esperado</div>
+                </div>
+                <div style={{ background: enRiesgo.length > 0 ? '#fffbeb' : '#f0fdf4', borderRadius: 10, padding: '12px 18px', flex: 1, textAlign: 'center' as const }}>
+                  <div style={{ fontSize: 28, fontWeight: 700, fontFamily: SF2, color: enRiesgo.length > 0 ? '#f59e0b' : '#10b981' }}>{enRiesgo.length}</div>
+                  <div style={{ fontSize: 10, color: enRiesgo.length > 0 ? '#f59e0b' : '#10b981', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>En Riesgo</div>
+                  <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>80–120% del tiempo esperado</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8, maxHeight: 240, overflowY: 'auto' as const }}>
+                {stagnated.length === 0 ? (
+                  <div style={{ textAlign: 'center' as const, padding: '24px 0', color: '#94a3b8', fontSize: 13 }}>✓ Todos los prospectos dentro del tiempo esperado</div>
+                ) : stagnated.map((p: any) => (
+                  <div key={p.id} onClick={() => { setProspectDetail(p.id); setActiveProspect(p); setActiveModule('prospectos'); }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: p.pct >= 1.2 ? '#fef2f2' : '#fffbeb', borderRadius: 8, cursor: 'pointer', border: `1px solid ${p.pct >= 1.2 ? '#fecaca' : '#fde68a'}` }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: NAVY2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{p.nombre}</div>
+                      <div style={{ fontSize: 11, color: '#64748b' }}>{p.estado} · {p.broker_asignado || 'Sin broker'}</div>
+                    </div>
+                    <div style={{ textAlign: 'right' as const, flexShrink: 0 }}>
+                      {alertBadge(`${p.diasEnEstado}d`, p.pct >= 1.2 ? '#dc2626' : '#92400e', p.pct >= 1.2 ? '#fee2e2' : '#fef3c7')}
+                      <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 3 }}>límite {p.limit}d</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Fila 2: Broker Scorecard + Cohort */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+
+          {/* Broker Performance Scorecard */}
+          {card(
+            <>
+              {kpiTitle('Broker Performance Scorecard', 'Ranking compuesto: cierre, volumen, pipeline ponderado',
+                'Score compuesto 0–100 que combina: tasa de cierre (40%), volumen de prospectos (30%) y pipeline ponderado generado (30%). Permite comparar brokers más allá del simple número de ventas.',
+                'Score >70: alto rendimiento · 40–70: estándar · <40: requiere atención')}
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
+                {brokerScores.slice(0, 6).map((b, i) => (
+                  <div key={b.nombre} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: i === 0 ? NAVY2 : '#f8fafc', borderRadius: 10 }}>
+                    <div style={{ width: 24, height: 24, borderRadius: '50%', background: i === 0 ? GOLD2 : '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: i === 0 ? NAVY2 : '#64748b', flexShrink: 0 }}>
+                      {i + 1}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: i === 0 ? '#fff' : NAVY2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{b.nombre}</div>
+                      <div style={{ fontSize: 10, color: i === 0 ? 'rgba(255,255,255,0.6)' : '#94a3b8' }}>{b.total} prospectos · {b.diasPromedio}d promedio</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 16, flexShrink: 0, textAlign: 'right' as const }}>
+                      <div>
+                        <div style={{ fontSize: 15, fontWeight: 600, fontFamily: SF2, color: i === 0 ? GOLD2 : '#10b981' }}>{b.tasaCierre}%</div>
+                        <div style={{ fontSize: 9, color: i === 0 ? 'rgba(255,255,255,0.5)' : '#94a3b8', textTransform: 'uppercase' as const }}>Cierre</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 15, fontWeight: 600, fontFamily: SF2, color: i === 0 ? '#fff' : NAVY2 }}>{fmtUSD2(b.pipeline)}</div>
+                        <div style={{ fontSize: 9, color: i === 0 ? 'rgba(255,255,255,0.5)' : '#94a3b8', textTransform: 'uppercase' as const }}>Pipeline</div>
+                      </div>
+                      <div style={{ width: 38, height: 38, borderRadius: '50%', background: i === 0 ? 'rgba(184,144,71,0.2)' : '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: i === 0 ? GOLD2 : '#64748b' }}>{b.score}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Cohort Analysis */}
+          {card(
+            <>
+              {kpiTitle('Cohort Analysis', 'Tasa de conversión por cohorte mensual de entrada',
+                'Agrupa los prospectos por el mes en que entraron al CRM y mide qué porcentaje avanzó a calificado y a cierre. Permite identificar si la calidad de leads ha mejorado o empeorado con el tiempo.',
+                'Tasa de calificación saludable: ≥40% · Tasa de cierre saludable: ≥15%')}
+              {cohortData.length === 0 ? (
+                <div style={{ textAlign: 'center' as const, padding: '40px 0', color: '#94a3b8', fontSize: 13 }}>Sin datos suficientes para análisis de cohortes</div>
+              ) : (
+                <>
+                  <div style={{ overflowX: 'auto' as const }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' as const, fontSize: 12 }}>
+                      <thead>
+                        <tr>
+                          {['Cohorte','Ingresos','Calificados','Tasa Calif.','Cerrados','Tasa Cierre'].map((h, i) => (
+                            <th key={h} style={{ padding: '8px 10px', textAlign: (i === 0 ? 'left' : 'center') as any, fontSize: 10, textTransform: 'uppercase' as const, letterSpacing: '0.08em', color: '#94a3b8', fontWeight: 600, borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' as const }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {cohortData.map((c, i) => (
+                          <tr key={c.label} style={{ background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                            <td style={{ padding: '10px', fontWeight: 600, color: NAVY2 }}>{c.label}</td>
+                            <td style={{ padding: '10px', textAlign: 'center' as const, color: '#64748b' }}>{c.total}</td>
+                            <td style={{ padding: '10px', textAlign: 'center' as const, color: '#64748b' }}>{c.calificados}</td>
+                            <td style={{ padding: '10px', textAlign: 'center' as const }}>
+                              <span style={{ background: c.tasaCalif >= 50 ? '#dcfce7' : c.tasaCalif >= 30 ? '#fef3c7' : '#fee2e2', color: c.tasaCalif >= 50 ? '#166534' : c.tasaCalif >= 30 ? '#92400e' : '#991b1b', borderRadius: 4, padding: '2px 8px', fontWeight: 700, fontSize: 11 }}>{c.tasaCalif}%</span>
+                            </td>
+                            <td style={{ padding: '10px', textAlign: 'center' as const, color: '#64748b' }}>{c.cerrados}</td>
+                            <td style={{ padding: '10px', textAlign: 'center' as const }}>
+                              <span style={{ background: c.tasaCierre >= 20 ? '#dcfce7' : c.tasaCierre >= 10 ? '#fef3c7' : '#fee2e2', color: c.tasaCierre >= 20 ? '#166534' : c.tasaCierre >= 10 ? '#92400e' : '#991b1b', borderRadius: 4, padding: '2px 8px', fontWeight: 700, fontSize: 11 }}>{c.tasaCierre}%</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
+                    <ResponsiveContainer width="100%" height={80}>
+                      <BarChart data={cohortData} margin={{ left: 0, right: 0, top: 4, bottom: 0 }}>
+                        <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#94a3b8' }} tickLine={false} axisLine={false} />
+                        <Tooltip contentStyle={{ fontSize: 11, borderRadius: 6 }} formatter={(v: any, n: string) => [`${v}%`, n === 'tasaCalif' ? 'Calificación' : 'Cierre']} />
+                        <Bar dataKey="tasaCalif" fill={G_GER} radius={[3, 3, 0, 0]} name="tasaCalif">
+                          <LabelList dataKey="tasaCalif" position="top" formatter={(v: any) => `${v}%`} style={{ fontSize: 9, fill: '#64748b', fontWeight: 600 }} />
+                        </Bar>
+                        <Bar dataKey="tasaCierre" fill={N_GER} radius={[3, 3, 0, 0]} name="tasaCierre">
+                          <LabelList dataKey="tasaCierre" position="top" formatter={(v: any) => `${v}%`} style={{ fontSize: 9, fill: '#64748b', fontWeight: 600 }} />
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Fila 3: Mapa de calor presupuestos + Agenda comercial */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+
+          {/* Mapa de calor de presupuestos */}
+          {card(
+            <>
+              {kpiTitle('Mapa de Calor — Presupuestos', 'Concentración de valor por rango de inversión',
+                'Muestra dónde se concentran los prospectos según su capacidad de inversión declarada. La intensidad del color indica densidad. Permite enfocar esfuerzos en los rangos con mayor volumen y mejor tasa de cierre.',
+                'Segmento ideal: el rango con mayor producto de (cantidad × tasa de cierre)')}
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+                {heatData.map(h => {
+                  const intensity = h.count / heatMax;
+                  const bg = intensity > 0.7 ? '#1A2942' : intensity > 0.4 ? '#2d4a6e' : intensity > 0.2 ? '#3d6494' : intensity > 0 ? '#e8f0fa' : '#f8fafc';
+                  const txtColor = intensity > 0.2 ? '#fff' : '#1A2942';
+                  return (
+                    <div key={h.label} style={{ display: 'flex', alignItems: 'center', gap: 12, background: bg, borderRadius: 10, padding: '12px 16px', transition: 'all 0.2s' }}>
+                      <div style={{ width: 80, fontSize: 12, fontWeight: 700, color: txtColor, flexShrink: 0 }}>{h.label}</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ height: 6, background: intensity > 0.2 ? 'rgba(255,255,255,0.2)' : '#e2e8f0', borderRadius: 3, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${Math.max(intensity * 100, 2)}%`, background: intensity > 0.2 ? GOLD2 : '#3d6494', borderRadius: 3 }} />
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' as const, flexShrink: 0 }}>
+                        <div style={{ fontSize: 16, fontWeight: 700, fontFamily: SF2, color: txtColor }}>{h.count}</div>
+                        <div style={{ fontSize: 9, color: intensity > 0.2 ? 'rgba(255,255,255,0.6)' : '#94a3b8', textTransform: 'uppercase' as const }}>prospectos</div>
+                      </div>
+                      <div style={{ textAlign: 'right' as const, flexShrink: 0, minWidth: 70 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, fontFamily: SF2, color: intensity > 0.2 ? GOLD2 : NAVY2 }}>{fmtUSD2(h.totalVal)}</div>
+                        <div style={{ fontSize: 9, color: intensity > 0.2 ? 'rgba(255,255,255,0.6)' : '#94a3b8', textTransform: 'uppercase' as const }}>{h.tasa}% cierre</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ marginTop: 16, borderTop: '1px solid #f1f5f9', paddingTop: 14, display: 'flex', justifyContent: 'space-between' as const, alignItems: 'center' }}>
+                <div style={{ fontSize: 11, color: '#94a3b8' }}>Intensidad de color = concentración de prospectos</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: NAVY2 }}>
+                  Total: {fmtUSD2(heatData.reduce((s, h) => s + h.totalVal, 0))} en pipeline
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Agenda Comercial */}
+          {card(
+            <>
+              {kpiTitle('Agenda Comercial', 'Prospectos activos priorizados por urgencia de seguimiento',
+                'Lista de prospectos en etapas activas ordenados por urgencia: qué tan cerca están de superar su tiempo esperado en la etapa. Rojo = acción inmediata requerida. Haz clic en cualquiera para abrir su ficha.',
+                'Contactar prospectos en amarillo antes de que pasen a rojo reduce la caída en un 60%')}
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8, maxHeight: 380, overflowY: 'auto' as const }}>
+                {agendaItems.length === 0 ? (
+                  <div style={{ textAlign: 'center' as const, padding: '40px 0', color: '#94a3b8', fontSize: 13 }}>Sin prospectos activos en seguimiento</div>
+                ) : agendaItems.map((p: any) => {
+                  const urgColor = p.urgency >= 1 ? '#ef4444' : p.urgency >= 0.7 ? '#f59e0b' : '#10b981';
+                  const urgBg = p.urgency >= 1 ? '#fef2f2' : p.urgency >= 0.7 ? '#fffbeb' : '#f0fdf4';
+                  return (
+                    <div key={p.id}
+                      onClick={() => { setProspectDetail(p.id); setActiveProspect(p); setActiveModule('prospectos'); }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', background: '#f8fafc', borderRadius: 10, cursor: 'pointer', border: '1px solid #f1f5f9', transition: 'all 0.15s' }}>
+                      <div style={{ width: 4, height: 36, borderRadius: 2, background: urgColor, flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: NAVY2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{p.nombre}</div>
+                        <div style={{ fontSize: 11, color: '#64748b' }}>
+                          {p.estado} · {p.broker_asignado || 'Sin broker'}
+                          {p.presupuesto_usd ? ` · ${fmtUSD2(Number(p.presupuesto_usd))}` : ''}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' as const, flexShrink: 0 }}>
+                        <div style={{ background: urgBg, color: urgColor, fontSize: 11, fontWeight: 700, borderRadius: 6, padding: '3px 10px', fontFamily: SS2 }}>
+                          {p.diasEnEstado}d en etapa
+                        </div>
+                        <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 3 }}>
+                          {p.urgency >= 1 ? '⚠ Acción urgente' : p.urgency >= 0.7 ? '● Seguimiento pronto' : '✓ En tiempo'}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ marginTop: 14, borderTop: '1px solid #f1f5f9', paddingTop: 12, display: 'flex', justifyContent: 'space-between' as const }}>
+                <div style={{ fontSize: 11, color: '#94a3b8' }}>Click en cualquier prospecto para abrir ficha</div>
+                <div style={{ fontSize: 11, color: NAVY2, fontWeight: 600 }}>{agendaItems.length} en seguimiento activo</div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const renderModule = () => {
     if (currentUserRole === 'presidencia') {
       if (activeModule === 'kpis' || activeModule === 'dashboard') return renderPresidencia();
@@ -13382,6 +14001,7 @@ Responde SOLO con JSON sin bloques de código:
       case 'agentes': return renderAgentes();
       case 'faqs': return renderFAQs();
       case 'calculadora': return renderCalculadora();
+      case 'gerencial': return renderAnalisisGerencial();
       case 'reportes': return renderReportes();
       case 'casos': return renderCasos();
       case 'campanas': return renderCampanas();
@@ -14419,9 +15039,10 @@ Responde SOLO con JSON sin bloques de código:
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', width: '100%', background: T.bg, fontFamily: 'Inter, sans-serif', color: T.text }}>
       {/* LEFT SIDEBAR */}
       <div style={{
-        width: 210, minHeight: '100vh', background: T.teal, borderRight: `1px solid ${T.tealDark}`,
+        width: 210, height: '100vh', background: T.teal, borderRight: `1px solid ${T.tealDark}`,
         display: 'flex', flexDirection: 'column' as const,
         position: 'fixed' as const, top: 0, left: 0, zIndex: 10,
+        overflowY: 'auto', overflowX: 'hidden',
       }}>
         {/* Logo */}
         <div style={{ padding: '18px 16px 14px', borderBottom: `1px solid rgba(255,255,255,0.1)` }}>
@@ -14478,7 +15099,7 @@ Responde SOLO con JSON sin bloques de código:
       </div>
 
       {/* MAIN AREA */}
-      <div style={{ flex: 1, marginLeft: 210, marginRight: (activeModule === 'configuracion' || activeModule === 'reportes' || activeModule === 'campanas') ? 0 : 280, display: 'flex', flexDirection: 'column' as const }}>
+      <div style={{ flex: 1, marginLeft: 210, marginRight: (activeModule === 'configuracion' || activeModule === 'reportes' || activeModule === 'campanas' || activeModule === 'gerencial') ? 0 : 280, display: 'flex', flexDirection: 'column' as const }}>
         {/* TOP HEADER */}
         <div style={{ background: T.teal, padding: '10px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky' as const, top: 0, zIndex: 5, borderBottom: `1px solid rgba(255,255,255,0.1)` }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', letterSpacing: 0.3 }}>
@@ -14497,13 +15118,13 @@ Responde SOLO con JSON sin bloques de código:
           </div>
         </div>
         {/* CONTENT */}
-        <div id="crm-content" style={{ padding: (activeModule === 'reportes' || activeModule === 'casos' || activeModule === 'campanas') ? 0 : '24px 28px', overflowY: 'auto' as const, flex: 1 }}>
+        <div id="crm-content" style={{ padding: (activeModule === 'reportes' || activeModule === 'casos' || activeModule === 'campanas' || activeModule === 'gerencial') ? 0 : '24px 28px', overflowY: 'auto' as const, flex: 1 }}>
           {renderModule()}
         </div>
       </div>
 
       {/* RIGHT PANEL — Contextual */}
-      {activeModule !== 'configuracion' && activeModule !== 'reportes' && activeModule !== 'casos' && activeModule !== 'campanas' && (
+      {activeModule !== 'configuracion' && activeModule !== 'reportes' && activeModule !== 'casos' && activeModule !== 'campanas' && activeModule !== 'gerencial' && (
         <div style={{ width: 280, position: 'fixed' as const, top: 0, right: 0, bottom: 0, zIndex: 9, background: '#FAF9F6', borderLeft: `1px solid #E5E0D8`, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' }}>
           {renderRightPanel()}
         </div>
