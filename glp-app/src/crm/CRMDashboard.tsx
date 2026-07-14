@@ -8044,7 +8044,7 @@ Responde SOLO con JSON sin bloques de código:
                             <div style={{ fontSize:10, color:'#6B7280', marginTop:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.motivo}</div>
                           </div>
                           <div style={{ display:'flex', flexDirection:'column', gap:4, flexShrink:0 }}>
-                            <button onClick={() => { setProspectDetail(a.prospecto_id); setActiveModule('prospectos'); }}
+                            <button onClick={() => { setProspectDetail(a.prospecto_id); setPreviousModule('agentes'); setActiveModule('prospectos'); }}
                               style={{ background:ALERT_ACCENT[a.nivel]||S_NAVY, color:'#fff', border:'none', borderRadius:2, padding:'3px 8px', fontSize:9, fontWeight:700, cursor:'pointer', letterSpacing:0.5 }}>Ficha</button>
                             <button onClick={() => dismissAlert(a.id)}
                               style={{ background:'transparent', color:'#9CA3AF', border:'1px solid #E5E7EB', borderRadius:2, padding:'3px 8px', fontSize:9, cursor:'pointer' }}>✓</button>
@@ -8125,6 +8125,7 @@ Responde SOLO con JSON sin bloques de código:
                             {isDraft && <span style={{ fontSize:8, letterSpacing:2, fontWeight:700, color:S_GOLD, background:`${S_GOLD}18`, padding:'2px 8px', textTransform:'uppercase' }}>Pendiente aprobación</span>}
                             {isSent && <span style={{ fontSize:8, letterSpacing:2, fontWeight:700, color:'#10B981', background:'#F0FDF4', padding:'2px 8px', textTransform:'uppercase' }}>Enviado</span>}
                             {(msg as any).prioridad === 'alta' && <span style={{ fontSize:8, letterSpacing:2, fontWeight:700, color:'#B91C1C', background:'#FEF2F2', padding:'2px 8px', textTransform:'uppercase' }}>Alta prioridad</span>}
+                            {(() => { const sp = msg.prospectId > 0 ? liveProfiles.find(p => p.prospectId === msg.prospectId) : null; if (!sp) return null; const ARQC: Record<string,string> = { estatus:'#6D28D9', legado:'#1D4ED8', racional:'#047857', aspiracional:'#B45309' }; const c = ARQC[sp.arquetipo] || '#B89047'; return (<span style={{ display:'inline-flex', alignItems:'center', gap:4, background:`${c}10`, border:`1px solid ${c}40`, padding:'2px 8px' }}><span style={{ width:5, height:5, borderRadius:'50%', background:'#B89047', flexShrink:0, display:'inline-block' }}/><span style={{ fontSize:8, fontWeight:800, letterSpacing:1.5, color:'#B89047', textTransform:'uppercase' }}>Sofía</span><span style={{ fontSize:8, color:c, fontWeight:700, letterSpacing:1 }}>· {sp.arquetipo.toUpperCase()}</span></span>); })()}
                             <span style={{ fontSize:11, color:'#374151', fontWeight:500 }}>{isIncoming?'De:':'Para:'} <span style={{ fontWeight:700, color:S_NAVY }}>{msg.to}</span></span>
                           </div>
                           <div style={{ fontSize:10, color:'#9CA3AF', flexShrink:0 }}>
@@ -8133,9 +8134,24 @@ Responde SOLO con JSON sin bloques de código:
                         </div>
 
                         {/* Row 2: subject */}
-                        <div style={{ fontSize:13, fontWeight:600, color:S_NAVY, fontFamily:T.fontSerif, marginBottom:10, letterSpacing:0.2 }}>
-                          {msg.subject}
-                        </div>
+                        {isDraft ? (
+                          <input
+                            value={msg.subject}
+                            onChange={e => {
+                              const newSubject = e.target.value;
+                              if ((msg as any).isApi) {
+                                setApiDrafts(prev => prev.map(d => d.id === msg.id ? { ...d, subject: newSubject } : d));
+                              } else {
+                                setProspects(prev => prev.map(p => p.id === msg.prospectId ? { ...p, emailHistory: (p.emailHistory||[]).map(eh => eh.id === msg.id ? { ...eh, subject: newSubject } : eh) } : p));
+                              }
+                            }}
+                            style={{ width:'100%', boxSizing:'border-box' as const, fontSize:13, fontWeight:600, color:S_NAVY, fontFamily:T.fontSerif, marginBottom:10, letterSpacing:0.2, background:'transparent', border:'none', borderBottom:`1px solid ${S_GOLD}40`, outline:'none', padding:'2px 0' }}
+                          />
+                        ) : (
+                          <div style={{ fontSize:13, fontWeight:600, color:S_NAVY, fontFamily:T.fontSerif, marginBottom:10, letterSpacing:0.2 }}>
+                            {msg.subject}
+                          </div>
+                        )}
 
                         {/* Row 3: body */}
                         {isIncoming ? (
@@ -8150,7 +8166,7 @@ Responde SOLO con JSON sin bloques de código:
                               if ((msg as any).isApi) {
                                 setApiDrafts(prev => prev.map(d => d.id === msg.id ? { ...d, body: newBody } : d));
                               } else {
-                                // update in prospect emailHistory
+                                setProspects(prev => prev.map(p => p.id === msg.prospectId ? { ...p, emailHistory: (p.emailHistory||[]).map(eh => eh.id === msg.id ? { ...eh, body: newBody } : eh) } : p));
                               }
                             }}
                             style={{ width:'100%', boxSizing:'border-box' as const, fontSize:11, color:'#374151', lineHeight:1.7, background:S_PARCH, padding:'12px 14px', borderLeft:`2px solid #D6CEBC`, border:`1px solid #D6CEBC`, marginBottom:12, minHeight:120, resize:'vertical' as const, fontFamily:'inherit', outline:'none' }}
