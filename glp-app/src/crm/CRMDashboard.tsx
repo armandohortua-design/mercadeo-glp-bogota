@@ -549,6 +549,7 @@ export type AgentDraft = {
   fecha_aprobacion?: string;
   notas_admin?: string;
   origen_agentivo?: string;
+  sofia_arquetipo?: string;
 };
 
 type GlpBrandProfile = {
@@ -2878,7 +2879,8 @@ Responde SOLO con JSON sin bloques de código markdown:
         contexto: parsed.contexto_generacion || '',
         status: 'pending',
         notas_admin: '',
-        origen_agentivo: insightOrigin
+        origen_agentivo: insightOrigin,
+        sofia_arquetipo: sofiaToValeriaContext?.arquetipo,
       };
 
       setValeriaDrafts(prev => [newDraft, ...prev]);
@@ -2901,7 +2903,8 @@ Responde SOLO con JSON sin bloques de código markdown:
         tags: ['GLP', 'Panama', 'InversionInmobiliaria'],
         contexto: 'Generado sin IA — API no disponible',
         status: 'pending',
-        notas_admin: ''
+        notas_admin: '',
+        sofia_arquetipo: sofiaToValeriaContext?.arquetipo,
       };
       setValeriaDrafts(prev => [fallback, ...prev]);
       dbPost(`${API}/valeria/drafts`, fallback);
@@ -2959,7 +2962,8 @@ Responde SOLO con JSON sin bloques de código:
         content: `🔗 Basado en: "${valeriaDraft.asunto}" (Valeria)\n\nDURACIÓN: ${parsed.duracion}\n\n${parsed.contenido}\n\n---\n📋 NOTAS DE PRODUCCIÓN:\n${parsed.notas_produccion}\n\n🎬 ASSETS:\n${(parsed.assets_requeridos||[]).map((a:string)=>`• ${a}`).join('\n')}`,
         tags: ['Isabella','Valeria','Coordinado','Reel'],
         contexto: `Adaptado desde contenido de Valeria: ${valeriaDraft.asunto}`,
-        status: 'pending', notas_admin: ''
+        status: 'pending', notas_admin: '',
+        sofia_arquetipo: valeriaDraft.sofia_arquetipo,
       };
       setIsabellaScripts(prev => [newScript, ...prev]);
       dbPost(`${API}/isabella/scripts`, newScript);
@@ -8614,6 +8618,17 @@ Responde SOLO con JSON sin bloques de código:
                               <span style={{ fontSize:8, color:'#6B7280', marginLeft:2 }}>· {item.origen_agentivo}</span>
                             </div>
                           )}
+                          {item.sofia_arquetipo && (() => {
+                            const ARQC: Record<string,string> = { estatus:'#6D28D9', legado:'#1D4ED8', racional:'#047857', aspiracional:'#B45309' };
+                            const c = ARQC[item.sofia_arquetipo] || '#B89047';
+                            return (
+                              <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:6, background:`${c}10`, border:`1px solid ${c}40`, padding:'4px 9px' }}>
+                                <div style={{ width:6, height:6, borderRadius:'50%', background:'#B89047', flexShrink:0 }} />
+                                <span style={{ fontSize:8, fontWeight:800, letterSpacing:1.5, color:'#B89047', textTransform:'uppercase' as const }}>Sofía</span>
+                                <span style={{ fontSize:8, color:c, fontWeight:700, letterSpacing:1 }}>· {item.sofia_arquetipo.toUpperCase()}</span>
+                              </div>
+                            );
+                          })()}
                         </div>
                         <span style={{ fontSize:8, letterSpacing:2, fontWeight:700, color:statusColor, background:`${statusColor}12`, padding:'4px 10px', flexShrink:0, textTransform:'uppercase' }}>{statusLabel}</span>
                       </div>
@@ -8842,6 +8857,17 @@ Responde SOLO con JSON sin bloques de código:
                             <span style={{ fontSize:8, color:'#6B7280', marginLeft:2 }}>· {item.origen_agentivo}</span>
                           </div>
                         )}
+                        {item.sofia_arquetipo && (() => {
+                          const ARQC: Record<string,string> = { estatus:'#6D28D9', legado:'#1D4ED8', racional:'#047857', aspiracional:'#B45309' };
+                          const c = ARQC[item.sofia_arquetipo] || '#B89047';
+                          return (
+                            <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:6, background:`${c}10`, border:`1px solid ${c}40`, padding:'4px 9px' }}>
+                              <div style={{ width:6, height:6, borderRadius:'50%', background:'#B89047', flexShrink:0 }} />
+                              <span style={{ fontSize:8, fontWeight:800, letterSpacing:1.5, color:'#B89047', textTransform:'uppercase' as const }}>Sofía</span>
+                              <span style={{ fontSize:8, color:c, fontWeight:700, letterSpacing:1 }}>· {item.sofia_arquetipo.toUpperCase()}</span>
+                            </div>
+                          );
+                        })()}
                       </div>
                       <span style={{ fontSize:8, letterSpacing:2, fontWeight:700, color:sColor, background:`${sColor}12`, padding:'4px 10px', textTransform:'uppercase', flexShrink:0 }}>{sLabel}</span>
                     </div>
@@ -10083,6 +10109,19 @@ Responde SOLO con JSON sin bloques de código:
                           {script.contexto && (
                             <div style={{ fontSize: 9, color: '#9CA3AF', fontStyle: 'italic', marginTop: 4 }}>{script.contexto}</div>
                           )}
+
+                          {/* Badge Sofía */}
+                          {script.sofia_arquetipo && (() => {
+                            const ARQC: Record<string,string> = { estatus:'#6D28D9', legado:'#1D4ED8', racional:'#047857', aspiracional:'#B45309' };
+                            const c = ARQC[script.sofia_arquetipo] || '#B89047';
+                            return (
+                              <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:6, background:`${c}10`, border:`1px solid ${c}40`, padding:'4px 9px' }}>
+                                <div style={{ width:6, height:6, borderRadius:'50%', background:'#B89047', flexShrink:0 }} />
+                                <span style={{ fontSize:8, fontWeight:800, letterSpacing:1.5, color:'#B89047', textTransform:'uppercase' as const }}>Sofía</span>
+                                <span style={{ fontSize:8, color:c, fontWeight:700, letterSpacing:1 }}>· {script.sofia_arquetipo.toUpperCase()}</span>
+                              </div>
+                            );
+                          })()}
 
                           {/* Acciones */}
                           <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
