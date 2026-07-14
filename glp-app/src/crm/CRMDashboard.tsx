@@ -11295,7 +11295,8 @@ Responde SOLO con JSON sin bloques de código:
       }
     } catch (err: any) {
       setGitStatus('error');
-      setGitMsg(err.message || 'No se pudo conectar con el servidor.');
+      const isOffline = err.message === 'Failed to fetch' || err.name === 'TypeError';
+      setGitMsg(isOffline ? 'El servidor local no está corriendo. Ejecuta "npm run server" en la carpeta glp-app para habilitar el backup a GitHub.' : (err.message || 'No se pudo conectar con el servidor.'));
     }
   };
 
