@@ -634,6 +634,13 @@ type Prospect = {
   emailHistory?: EmailThreadItem[];
 };
 
+type SofiaProfile = {
+  prospectId: number; prospectName: string; ocupacion: string; presupuesto: number;
+  arquetipo: 'estatus' | 'legado' | 'racional' | 'aspiracional';
+  confianza: number; senales: string[];
+  recomendacion_sara: string; recomendacion_valeria: string; fecha: string;
+};
+
 const FUNNEL_STAGES = ['Contacto Inicial', 'Calificado', 'Presentación', 'Negociación', 'Cierre', 'Post-venta'];
 const CONTACT_FORMS = ['Broker', 'Pagina Web', 'LinkedIn', 'TikTok', 'Instagram', 'WhatsApp', 'Evento', 'Referido'];
 
@@ -818,8 +825,22 @@ const generateSampleProspects = (): Prospect[] => {
     const email = `${fn.toLowerCase().replace(/\s+/g, '')}.${ln.toLowerCase().replace(/\s+/g, '').replace('ñ', 'n')}@${i % 2 === 0 ? 'gmail.com' : 'outlook.com'}`;
     const phone = `+57 31${i % 10} ${Math.floor(100 + (i * 9.7) % 900)} ${Math.floor(1000 + (i * 13.3) % 9000)}`;
 
-    const entryDate = `2026-05-${String((i % 28) + 1).padStart(2, '0')}`;
-    
+    // Distribute entry dates realistically across the last 18 months
+    // More prospects in recent months (weighted toward recent), fewer older
+    const today0 = new Date('2026-07-13');
+    // Use a weighted distribution: ~30% last 30d, ~25% 30-90d, ~20% 90-180d, ~25% 180-365d+
+    const weightedDaysAgo = (() => {
+      const seed = (i * 17 + 3) % 100;
+      if (seed < 5)  return (i % 5) + 1;          // 5%: last 7 days
+      if (seed < 22) return 8 + (i % 22);          // 17%: 8–29 days
+      if (seed < 45) return 30 + (i % 60);         // 23%: 30–89 days
+      if (seed < 65) return 90 + (i % 90);         // 20%: 90–179 days
+      if (seed < 85) return 180 + (i % 120);       // 20%: 180–299 days
+      return 300 + (i % 180);                       // 15%: 300–479 days
+    })();
+    const entryD = new Date(today0.getTime() - weightedDaysAgo * 86400000);
+    const entryDate = entryD.toISOString().split('T')[0];
+
     const hist = [
       { fecha: entryDate, accion: 'Contacto Inicial', detalle: `Registrado vía ${source}` }
     ];
@@ -889,11 +910,17 @@ type EventData = {
   prospect_ids: number[];
   proyectos_interes: string[]; presupuesto_asignado: number;
   presupuesto_ejecutado: number; items_costo: EventCost[];
+  categoria?: 'comercial' | 'agenda';
+  hora?: string;
+  duracion?: number;
+  tipo_cita?: string;
+  nota?: string;
+  broker?: string;
 };
 
 const INITIAL_EVENTS: EventData[] = [
-  { id: 1, titulo: 'GLP Investment Evening #1', venue: 'Club El Nogal, Bogotá', fecha: '2026-05-10', proyectos_presentados: ['Ocean Reef Park', 'The Palms', 'Panamáa Viejo Residences', 'The Tides – Playa Caracol'], asistentes: ['Carlos Gutiérrez', 'María Isabel Rodríguez', 'Andrés Felipe Martínez'], prospect_ids: [], proyectos_interes: ['Ocean Reef Park', 'The Palms', 'Panamáa Viejo Residences'], presupuesto_asignado: 15000, presupuesto_ejecutado: 12800, items_costo: [{ concepto: 'Salón y montaje', valor: 4500 }, { concepto: 'Catering premium (60 pax)', valor: 3600 }, { concepto: 'Audiovisual y pantallas', valor: 1800 }, { concepto: 'Material impreso y brochures', valor: 1200 }, { concepto: 'Vinos y bebidas premium', valor: 1200 }, { concepto: 'Fotografía y video', valor: 500 }] },
-  { id: 2, titulo: 'Seminario Inversión Dolarizada', venue: 'Hotel JW Marriott Bogotá', fecha: '2026-07-15', proyectos_presentados: ['Oceana Residences & Skyhomes', 'Bosco di Santa María', 'Ipanema Panamá', 'Surfside'], asistentes: ['Laura Sánchez', 'Roberto Castaño'], prospect_ids: [], proyectos_interes: ['Oceana Residences & Skyhomes', 'Surfside'], presupuesto_asignado: 20000, presupuesto_ejecutado: 8500, items_costo: [{ concepto: 'Salón conferencias (100 pax)', valor: 5500 }, { concepto: 'Coffee break y almuerzo', valor: 4200 }, { concepto: 'Speaker internacional (viáticos)', valor: 3500 }, { concepto: 'Material técnico impreso', valor: 1500 }, { concepto: 'Publicidad digital pre-evento', valor: 2800 }, { concepto: 'Señalización y decoración', valor: 1000 }, { concepto: 'Registro y tecnología', valor: 1500 }] },
+  { id: 1, categoria: 'comercial', titulo: 'GLP Investment Evening #1', venue: 'Club El Nogal, Bogotá', fecha: '2026-05-10', proyectos_presentados: ['Ocean Reef Park', 'The Palms', 'Panamáa Viejo Residences', 'The Tides – Playa Caracol'], asistentes: ['Carlos Gutiérrez', 'María Isabel Rodríguez', 'Andrés Felipe Martínez'], prospect_ids: [], proyectos_interes: ['Ocean Reef Park', 'The Palms', 'Panamáa Viejo Residences'], presupuesto_asignado: 15000, presupuesto_ejecutado: 12800, items_costo: [{ concepto: 'Salón y montaje', valor: 4500 }, { concepto: 'Catering premium (60 pax)', valor: 3600 }, { concepto: 'Audiovisual y pantallas', valor: 1800 }, { concepto: 'Material impreso y brochures', valor: 1200 }, { concepto: 'Vinos y bebidas premium', valor: 1200 }, { concepto: 'Fotografía y video', valor: 500 }] },
+  { id: 2, categoria: 'comercial', titulo: 'Seminario Inversión Dolarizada', venue: 'Hotel JW Marriott Bogotá', fecha: '2026-07-15', proyectos_presentados: ['Oceana Residences & Skyhomes', 'Bosco di Santa María', 'Ipanema Panamá', 'Surfside'], asistentes: ['Laura Sánchez', 'Roberto Castaño'], prospect_ids: [], proyectos_interes: ['Oceana Residences & Skyhomes', 'Surfside'], presupuesto_asignado: 20000, presupuesto_ejecutado: 8500, items_costo: [{ concepto: 'Salón conferencias (100 pax)', valor: 5500 }, { concepto: 'Coffee break y almuerzo', valor: 4200 }, { concepto: 'Speaker internacional (viáticos)', valor: 3500 }, { concepto: 'Material técnico impreso', valor: 1500 }, { concepto: 'Publicidad digital pre-evento', valor: 2800 }, { concepto: 'Señalización y decoración', valor: 1000 }, { concepto: 'Registro y tecnología', valor: 1500 }] },
 ];
 
 // ── FAQ DATA ──────────────────────────────────────────────────
@@ -944,25 +971,49 @@ const INITIAL_FAQS: FAQ[] = [
 ];
 
 // ── MODULE DEFINITIONS ────────────────────────────────────────
-const MODULES_PRIMARY = [
-  { id: 'kpis',         label: 'Dashboard' },
-  { id: 'prospectos',   label: 'Prospectos' },
-  { id: 'gerencial',    label: 'Análisis Gerencial' },
-  { id: 'reportes',     label: 'Reportes' },
-  { id: 'campanas',     label: 'Campañas' },
-  { id: 'portafolio',   label: 'Portafolio GLP' },
-  { id: 'calculadora',  label: 'Calculadora' },
-  { id: 'agentes',      label: 'Agentes IA' },
-  { id: 'eventos',      label: 'Eventos' },
-];
-const MODULES_SECONDARY = [
-  { id: 'brokers',      label: 'Brokers' },
-  { id: 'casos',        label: 'PQRs' },
-  { id: 'faqs',         label: 'FAQs' },
-  { id: 'catalogo',     label: 'Catálogo' },
-  { id: 'configuracion',label: 'Configuración' },
-];
-const MODULES = [...MODULES_PRIMARY, ...MODULES_SECONDARY];
+const NAV_SECTIONS = [
+  {
+    label: 'Comercial',
+    items: [
+      { id: 'kpis',       label: 'Dashboard' },
+      { id: 'prospectos', label: 'Prospectos' },
+      { id: 'brokers',    label: 'Brokers' },
+      { id: 'reportes',   label: 'Reportes' },
+      { id: 'gerencial',  label: 'Análisis Gerencial' },
+    ],
+  },
+  {
+    label: 'Operaciones',
+    items: [
+      { id: 'portafolio',  label: 'Portafolio GLP' },
+      { id: 'calculadora', label: 'Calculadora' },
+      { id: 'legal',       label: 'Legal & Cierre' },
+      { id: 'eventos',     label: 'Eventos' },
+      { id: 'casos',       label: 'PQRs' },
+      { id: 'faqs',        label: 'FAQs' },
+    ],
+  },
+  {
+    label: 'Marketing & IA',
+    items: [
+      { id: 'campanas',      label: 'Campañas' },
+      { id: 'agentes',       label: 'Agentes IA' },
+      { id: 'integraciones', label: 'Integraciones' },
+    ],
+  },
+  {
+    label: 'Configuración',
+    items: [
+      { id: 'catalogo',     label: 'Catálogo' },
+      { id: 'configuracion',label: 'Configuración', superadminOnly: true },
+    ],
+  },
+] as const;
+
+// Flat lists for compatibility
+const MODULES_PRIMARY = NAV_SECTIONS.flatMap(s => s.items.filter((i: any) => !i.superadminOnly));
+const MODULES_SECONDARY: { id: string; label: string }[] = [];
+const MODULES = NAV_SECTIONS.flatMap(s => s.items as any[]);
 
 // Roles: superadmin | presidencia | gerencia | broker
 type UserRole = 'superadmin' | 'presidencia' | 'gerencia' | 'broker';
@@ -977,8 +1028,8 @@ const ROLE_LABELS: Record<UserRole, string> = {
 // Módulos accesibles por rol (superadmin siempre tiene todos)
 const ROLE_MODULES: Record<UserRole, string[]> = {
   superadmin:  [], // vacío = todos
-  presidencia: ['dashboard','reportes','portafolio','kpis','gerencial'],
-  gerencia:    ['dashboard','prospectos','reportes','gerencial','campanas','portafolio','calculadora','agentes','casos','brokers','faqs','eventos','catalogo'],
+  presidencia: ['dashboard','reportes','portafolio','kpis','gerencial','integraciones'],
+  gerencia:    ['dashboard','kpis','prospectos','reportes','gerencial','campanas','portafolio','calculadora','agentes','legal','integraciones','casos','brokers','faqs','eventos','catalogo'],
   broker:      ['prospectos','portafolio','calculadora','casos','faqs'],
 };
 
@@ -1090,6 +1141,30 @@ export default function CRMDashboard() {
   const [activeModule, setActiveModule] = useState('kpis');
   const [activeProspect, setActiveProspect] = useState<Prospect | null>(null);
 
+  // ── Modal Agendar Cita ──
+  const [citaModal, setCitaModal] = useState<Prospect|null>(null);
+  const [citaFecha, setCitaFecha] = useState('');
+  const [citaHora, setCitaHora] = useState('10:00');
+  const [citaDuracion, setCitaDuracion] = useState(60);
+  const [citaTipo, setCitaTipo] = useState('Visita de proyecto');
+  const [citaNota, setCitaNota] = useState('');
+  const [citaConfirmada, setCitaConfirmada] = useState(false);
+
+  // ── Calendario Eventos State ──
+  const [eventosTab, setEventosTab] = useState<'comercial'|'agenda'>('comercial');
+  const [eventosVista, setEventosVista] = useState<'lista'|'calendario'>('lista');
+  const [agendaVista, setAgendaVista] = useState<'lista'|'calendario'>('lista');
+  const [agendaFiltroBroker, setAgendaFiltroBroker] = useState<string>('todos');
+  const [calFiltrobroker, setCalFiltrobroker] = useState<string>('todos');
+  const [calMes, setCalMes] = useState<{year:number;month:number}>(() => { const d=new Date(); return {year:d.getFullYear(),month:d.getMonth()}; });
+
+  // ── Integraciones State ──
+  const [integSetupModal, setIntegSetupModal] = useState<string|null>(null);
+  const [integConfigValues, setIntegConfigValues] = useState<Record<string,string>>({});
+  const [integConfig, setIntegConfig] = useState<Record<string,{active:boolean;fields:Record<string,string>}>>(() => {
+    try { return JSON.parse(localStorage.getItem('glp_integrations') || '{}'); } catch { return {}; }
+  });
+
   // ── Analytics State (Fase D) ──
   const [analyticsResumen, setAnalyticsResumen] = useState<any>(null);
   const [analyticsTiempo, setAnalyticsTiempo] = useState<any[]>([]);
@@ -1142,7 +1217,7 @@ export default function CRMDashboard() {
     stage?: string;
     source?: string;
     id?: number;
-  } | null>(null);
+  } | null>({ type: 'ticket' });
   const [showBudgetDetail, setShowBudgetDetail] = useState(false);
 
   // Portafolio
@@ -1272,18 +1347,30 @@ export default function CRMDashboard() {
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
-          setProspects(data.map((p: any) => ({
+          const loaded = data.map((p: any) => ({
             ...p,
             emailHistory: p.emailHistory || [],
             estado: FUNNEL_STAGES.includes(p.estado) ? p.estado : 'Contacto Inicial',
             proyectos_interes: Array.isArray(p.proyectos_interes) ? p.proyectos_interes : (typeof p.proyectos_interes === 'string' ? JSON.parse(p.proyectos_interes || '[]') : []),
             historial: Array.isArray(p.historial) ? p.historial : (typeof p.historial === 'string' ? JSON.parse(p.historial || '[]') : []),
-          })));
+          }));
+          setProspects(loaded);
+          try { localStorage.setItem('glp_crm_prospects', JSON.stringify(loaded)); } catch {}
         }
       })
       .catch(e => {
         console.error('Error fetching prospects:', e);
-        // Backend offline: usar datos demo para que los módulos tengan contenido
+        // Backend offline: intentar restaurar desde localStorage, luego usar datos demo
+        try {
+          const saved = localStorage.getItem('glp_crm_prospects');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setProspects(applyMigration(parsed));
+              return;
+            }
+          }
+        } catch {}
         setProspects(applyMigration(INITIAL_PROSPECTS));
       });
   }, []);
@@ -1314,7 +1401,11 @@ export default function CRMDashboard() {
     }).then(() => setProspectAlerts(prev => prev.filter(a => a.id !== alertId)));
   };
 
-  // localStorage desactivado — fuente de verdad es Supabase
+  // Persistencia offline: guardar prospectos en localStorage cuando el backend no está disponible
+  useEffect(() => {
+    if (prospects.length === 0) return;
+    try { localStorage.setItem('glp_crm_prospects', JSON.stringify(prospects)); } catch {}
+  }, [prospects]);
 
   const postNewProspectBackend = (p: Prospect) => {
     fetch('http://localhost:3001/api/prospectos', {
@@ -1456,7 +1547,12 @@ export default function CRMDashboard() {
   const [newCaso, setNewCaso] = useState<any>({ titulo:'', descripcion:'', tipo:'consulta', prioridad:'normal', asignado_a:'', notas:'', prospecto_id:'' });
 
   // Events
-  const [events, setEvents] = useState<EventData[]>(INITIAL_EVENTS);
+  const [events, setEvents] = useState<EventData[]>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('glp_agenda_events') || '[]') as EventData[];
+      return [...INITIAL_EVENTS, ...saved];
+    } catch { return INITIAL_EVENTS; }
+  });
   const [expandedEvent, setExpandedEvent] = useState<number | null>(null);
   const [showEventForm, setShowEventForm] = useState(false);
   const [eventProspectSearch, setEventProspectSearch] = useState<Record<number, string>>({});
@@ -1550,6 +1646,18 @@ export default function CRMDashboard() {
   });
   const [historialLoaded, setHistorialLoaded] = useState(false);
   const [agentSaraActive, setAgentSaraActive] = useState(false);
+  const [agentSofiaActive, setAgentSofiaActive] = useState(false);
+  const [sofiaProfiles, setSofiaProfiles] = useState<SofiaProfile[]>(() => {
+    try { return JSON.parse(localStorage.getItem('glp_sofia_profiles') || '[]'); } catch { return []; }
+  });
+  const [sofiaToValeriaContext, setSofiaToValeriaContext] = useState<SofiaProfile | null>(null);
+  const [sofiaToSaraContext, setSofiaToSaraContext] = useState<SofiaProfile | null>(null);
+  const [sofiaChatState, setSofiaChatState] = useState<{
+    open: boolean; step: number; name: string; ocupacion: string; presupuesto: number;
+    scores: { estatus: number; legado: number; racional: number; aspiracional: number };
+    signals: string[]; messages: { from: 'sofia' | 'user'; text: string }[]; result: SofiaProfile | null;
+  }>({ open: false, step: 0, name: '', ocupacion: '', presupuesto: 300000,
+    scores: { estatus: 0, legado: 0, racional: 0, aspiracional: 0 }, signals: [], messages: [], result: null });
   const [agentValeriaActive, setAgentValeriaActive] = useState(false);
   const [agentIsabellaActive, setAgentIsabellaActive] = useState(false);
   const [agentCamiloLastRun, setAgentCamiloLastRun] = useState('2026-06-05 08:00');
@@ -2037,13 +2145,27 @@ Sin markdown, solo el JSON array.`;
     }).finally(()=>setRptLoading(false));
   }, [activeModule, rptDias, rptCanal, rptBroker, rptProyecto, rptAgrup, rptFechaInicio, rptFechaFin]);
 
-  // Si los prospectos se cargaron después de que se calcularon los analytics (race condition offline),
-  // recalcular cuando hay datos reales pero el resumen está vacío o sin prospectos
+  // Race-condition fallback: solo actúa si analyticsResumen es null (nunca cargó),
+  // aplica el mismo filtro de período que el useEffect principal
   useEffect(() => {
     if (activeModule !== 'reportes') return;
     if (prospects.length === 0) return;
-    if (analyticsResumen !== null && Number(analyticsResumen.total_prospectos) > 0) return;
-    const local = computeAnalyticsFromProspects(prospects);
+    if (analyticsResumen !== null) return; // si ya hay datos (incluso 0), no sobreescribir
+    const cutoffDate = rptFechaInicio ? new Date(rptFechaInicio)
+      : rptDias > 0 ? new Date(Date.now() - rptDias * 86400000) : null;
+    const endDate = rptFechaFin ? new Date(rptFechaFin + 'T23:59:59') : null;
+    const filtered = prospects.filter(p => {
+      if (rptBroker && (p.broker_asignado as any) !== rptBroker) return false;
+      if (rptCanal && (p.forma_contacto as any) !== rptCanal) return false;
+      if (rptProyecto && !(Array.isArray(p.proyectos_interes) ? p.proyectos_interes : []).includes(rptProyecto)) return false;
+      if (cutoffDate || endDate) {
+        const d = new Date(p.fecha_entrada || '');
+        if (cutoffDate && d < cutoffDate) return false;
+        if (endDate && d > endDate) return false;
+      }
+      return true;
+    });
+    const local = computeAnalyticsFromProspects(filtered);
     setAnalyticsResumen(local.resumen);
     setAnalyticsTiempo(local.tiempo);
     setAnalyticsProyecto(local.byProject);
@@ -2436,6 +2558,97 @@ Los proyectos en proyectos_interes DEBEN ser exactamente de esta lista: ${PROJEC
   };
 
 
+  const handleSofia = async (isSwarm = false, silent = false) => {
+    setAgentSofiaActive(true);
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const logMsg = (msg: string) => {
+      if (!silent) setSwarmLogs(prev => [...prev, { time: timeStr, agent: 'SOFÍA', msg }]);
+    };
+    logMsg('Sofía iniciando análisis psicográfico de prospectos activos...');
+
+    const classify = (p: Prospect): Pick<SofiaProfile, 'arquetipo' | 'confianza' | 'senales'> => {
+      const scores = { estatus: 0, legado: 0, racional: 0, aspiracional: 0 };
+      const senales: string[] = [];
+      const occ   = (p.ocupacion   || '').toLowerCase();
+      const notas = (p.notas       || '').toLowerCase();
+      const pres  = p.presupuesto_usd || 0;
+      const cont  = (p.forma_contacto || '').toLowerCase();
+
+      // Presupuesto
+      if (pres >= 600000) { scores.estatus += 2; scores.legado += 2; senales.push('Presupuesto UHNWI (>$600K)'); }
+      else if (pres >= 400000) { scores.legado += 2; scores.racional += 1; senales.push('Presupuesto HNW ($400K–$600K)'); }
+      else if (pres >= 200000) { scores.racional += 1; scores.aspiracional += 1; senales.push('Presupuesto calificado ($200K–$400K)'); }
+      else { scores.aspiracional += 2; senales.push('Segmento entry luxury (<$200K)'); }
+
+      // Ocupación
+      if (/ceo|presidente|director|socio|fundador|empresari/i.test(occ)) { scores.estatus += 3; senales.push('Liderazgo corporativo C-level'); }
+      if (/ingenier|financi|contador|analist|abogad|médic|doctor/i.test(occ)) { scores.racional += 3; senales.push('Perfil analítico-profesional'); }
+      if (/artista|creativ|diseñ|influenc|emprendedor/i.test(occ)) { scores.aspiracional += 3; senales.push('Perfil creativo/aspiracional'); }
+
+      // Canal de contacto
+      if (/evento/i.test(cont)) { scores.estatus += 2; senales.push('Captado en evento exclusivo'); }
+      if (/referido/i.test(cont)) { scores.legado += 1; scores.racional += 1; senales.push('Ingresó por referencia de confianza'); }
+      if (/instagram|tiktok/i.test(cont)) { scores.aspiracional += 2; senales.push('Canal de captación social media'); }
+      if (/linkedin/i.test(cont)) { scores.racional += 1; scores.estatus += 1; senales.push('Canal LinkedIn profesional'); }
+
+      // Notas
+      if (/exclusiv|único|privado|selecto/i.test(notas)) { scores.estatus += 2; senales.push('Busca exclusividad y distinción'); }
+      if (/inversión|rentab|valoriz|roi|rendim/i.test(notas)) { scores.racional += 2; senales.push('Orientado a retorno de inversión'); }
+      if (/familia|patrimon|herenci|legado/i.test(notas)) { scores.legado += 3; senales.push('Menciona familia, herencia o legado'); }
+      if (/sueño|aspirac|quiero|vida|estilo/i.test(notas)) { scores.aspiracional += 2; senales.push('Motivación aspiracional en notas'); }
+
+      const winner = (Object.entries(scores).sort((a, b) => b[1] - a[1])[0][0]) as SofiaProfile['arquetipo'];
+      const total  = Object.values(scores).reduce((a, b) => a + b, 0) || 1;
+      const max    = scores[winner];
+      const confianza = Math.min(94, Math.round(52 + (max / total) * 42));
+      return { arquetipo: winner, confianza, senales: senales.slice(0, 4) };
+    };
+
+    const RECS: Record<SofiaProfile['arquetipo'], { sara: string; valeria: string }> = {
+      estatus: {
+        sara:    'Destacar exclusividad y pertenencia a comunidad UHNWI. No mencionar precio primero. Invitar a evento privado de propietarios.',
+        valeria: 'Prueba social de élite, escasez real de unidades, copy en primera persona del plural ("quienes ya son parte de..."). Evitar lenguaje promocional.',
+      },
+      legado: {
+        sara:    'Enfatizar valorización histórica, estabilidad del mercado panameño y beneficios de transmisión patrimonial. Ofrecer asesoría de fideicomiso.',
+        valeria: 'Ángulo intergeneracional: "El activo que tus hijos heredarán". ROI a 10+ años, comparativo con instrumentos de preservación patrimonial.',
+      },
+      racional: {
+        sara:    'Enviar comparativo con métricas: precio/m², valorización anual histórica, costo de oportunidad vs. alternativas. Responder con datos, no con emociones.',
+        valeria: 'Copy orientado a datos: tablas de valorización, índices de ocupación, beneficios fiscales cuantificados. Tono directo sin adjetivos emocionales.',
+      },
+      aspiracional: {
+        sara:    'Construir el sueño antes del cierre: lifestyle content, testimoniales de propietarios jóvenes, plan de pago accesible. Crear urgencia suave.',
+        valeria: 'Storytelling visual: "Así se ve tu vida en GLP". Reels de lifestyle, FOMO con escasez de unidades en ese rango de precio.',
+      },
+    };
+
+    await new Promise(r => setTimeout(r, 900));
+    const fecha = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const activePs = prospects.filter(p => !['Post-venta', 'Perdido'].includes(p.estado || ''));
+
+    const newProfiles: SofiaProfile[] = activePs.map(p => {
+      const { arquetipo, confianza, senales } = classify(p);
+      return {
+        prospectId: p.id, prospectName: `${p.nombre} ${p.apellido}`,
+        ocupacion: p.ocupacion, presupuesto: p.presupuesto_usd,
+        arquetipo, confianza, senales,
+        recomendacion_sara: RECS[arquetipo].sara,
+        recomendacion_valeria: RECS[arquetipo].valeria,
+        fecha,
+      };
+    });
+
+    const dist = newProfiles.reduce((acc, p) => { acc[p.arquetipo] = (acc[p.arquetipo] || 0) + 1; return acc; }, {} as Record<string, number>);
+    const distStr = Object.entries(dist).map(([k, v]) => `${v} ${k}`).join(' · ');
+    logMsg(`${newProfiles.length} prospectos clasificados → ${distStr}`);
+    logMsg('Briefs conductuales entregados a Sara y Valeria para cada prospecto.');
+
+    setSofiaProfiles(newProfiles);
+    localStorage.setItem('glp_sofia_profiles', JSON.stringify(newProfiles));
+    setAgentSofiaActive(false);
+  };
+
   const handleValeria = async (isSwarm = false, silent = false, reportTextSrc?: string, canalOverride?: string, insightOrigin?: string) => {
     setAgentValeriaActive(true);
     setValeriaGenerating(true);
@@ -2631,7 +2844,15 @@ ${prospectosActivos}
 
 CONTEXTO OPERATIVO (Reporte SARA):
 ${saraCtx}
-
+${sofiaToValeriaContext ? `
+PERFIL CONDUCTUAL DEL PROSPECTO (Análisis Sofía — PRIORIDAD ALTA):
+Nombre: ${sofiaToValeriaContext.prospectName}
+Ocupación: ${sofiaToValeriaContext.ocupacion} · Presupuesto: USD ${(sofiaToValeriaContext.presupuesto||0).toLocaleString()}
+Arquetipo: ${sofiaToValeriaContext.arquetipo.toUpperCase()} — ${sofiaToValeriaContext.confianza}% confianza
+Señales conductuales detectadas: ${sofiaToValeriaContext.senales.join(' · ')}
+Estrategia recomendada por Sofía: ${sofiaToValeriaContext.recomendacion_valeria}
+INSTRUCCIÓN: El contenido debe estar TOTALMENTE orientado a este arquetipo y a este prospecto. Adapta el tono, los argumentos y el CTA al perfil psicográfico descrito.
+` : ''}
 REGLAS ABSOLUTAS:
 - USA datos REALES del portafolio (nombres exactos de proyectos, precios reales, zonas reales)
 - NUNCA escribas "[Proyecto X]" ni "[precio]" — usa los datos del portafolio arriba
@@ -3270,18 +3491,20 @@ Responde SOLO con JSON sin bloques de código:
     alignItems: 'center' as const,
     gap: 10,
     width: '100%',
-    padding: '10px 16px',
+    padding: '10px 18px',
     border: 'none',
-    borderRadius: 8,
+    borderLeft: activeModule === moduleId ? '2px solid #0F2542' : '2px solid transparent',
+    borderRadius: 0,
     cursor: 'pointer' as const,
-    fontSize: 13,
-    fontWeight: activeModule === moduleId ? 700 : 400,
+    fontSize: 12,
+    fontWeight: activeModule === moduleId ? 600 : 400,
     fontFamily: 'Inter, sans-serif',
-    color: activeModule === moduleId ? T.teal : 'rgba(255,255,255,0.82)',
-    background: activeModule === moduleId ? T.coral : 'transparent',
+    letterSpacing: activeModule === moduleId ? '0.02em' : '0em',
+    color: activeModule === moduleId ? '#0F2542' : '#4A6A8A',
+    background: activeModule === moduleId ? '#EBF2FB' : 'transparent',
     transition: 'all 0.2s',
     textAlign: 'left' as const,
-    marginBottom: 4,
+    marginBottom: 2,
   });
 
 
@@ -3289,6 +3512,16 @@ Responde SOLO con JSON sin bloques de código:
   const sectionTitle = (text: string) => (
     <h3 style={{ fontSize: 22, fontWeight: 300, color: T.text, margin: '0 0 20px 0', fontFamily: T.fontSerif, letterSpacing: '0.03em', borderBottom: `1px solid ${T.border}`, paddingBottom: 10 }}>{text}</h3>
   );
+
+  const registrarActividad = (prospectId: number, accion: string, detalle: string) => {
+    const entry: HistEntry = { fecha: new Date().toISOString().slice(0,10), accion, detalle };
+    setProspects(prev => prev.map(p => {
+      if (p.id !== prospectId) return p;
+      const updated = { ...p, historial: [...(p.historial||[]), entry], fecha_ultima_actividad: entry.fecha };
+      updateProspectBackend(updated);
+      return updated;
+    }));
+  };
 
   const renderSidebarIcon = (id: string, color: string) => {
     const size = 16;
@@ -3401,6 +3634,23 @@ Responde SOLO con JSON sin bloques de código:
         return (
           <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
             <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        );
+      case 'legal':
+        return (
+          <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <line x1="10" y1="9" x2="8" y2="9"/>
+          </svg>
+        );
+      case 'integraciones':
+        return (
+          <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
           </svg>
         );
       default:
@@ -4373,9 +4623,11 @@ Responde SOLO con JSON sin bloques de código:
                   <div style={{ fontSize: 20, fontWeight: 700, color: T.coral, lineHeight: 1.2 }}>
                     {diasNextEvent !== null ? `${diasNextEvent}d` : '—'}
                   </div>
-                  <div style={{ fontSize: 11, color: T.textSec, marginTop: 4 }}>Próximo Evento</div>
+                  <div style={{ fontSize: 11, color: T.textSec, marginTop: 4 }}>En Agenda</div>
                   <div style={{ fontSize: 10, color: T.coral, marginTop: 5, fontWeight: 600, lineHeight: 1.3 }}>
-                    {nextEvent ? nextEvent.titulo.slice(0, 22) + (nextEvent.titulo.length > 22 ? '…' : '') : 'Sin eventos'}
+                    {nextEvent
+                      ? `${new Date(nextEvent.fecha).toLocaleDateString('es-CO', {month:'short', day:'numeric'})} · ${nextEvent.titulo.slice(0, 18)}${nextEvent.titulo.length > 18 ? '…' : ''}`
+                      : 'Sin eventos'}
                   </div>
                 </div>
               </div>
@@ -4387,22 +4639,36 @@ Responde SOLO con JSON sin bloques de código:
         {activeDrilldown && (
           <div style={{ marginTop: 24, background: '#FAF9F6', borderRadius: 4, padding: 20, border: `1px solid ${T.border}`, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottom: `1px solid ${T.border}`, paddingBottom: 10 }}>
-              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 300, color: T.text, fontFamily: T.fontSerif, letterSpacing: '0.02em' }}>
-                {activeDrilldown.type === 'ticket' && '🔍 Detalle de Ticket Promedio (Ventas Cerradas)'}
-                {activeDrilldown.type === 'conversion' && '📈 Detalle de Conversión (Ventas Caídas / Objeciones / Control de Crisis)'}
-                {activeDrilldown.type === 'funnel' && `👥 Detalle de Pipeline: Etapa "${activeDrilldown.stage}"`}
-                {activeDrilldown.type === 'source' && `🔌 Detalle de Leads por Fuente: "${activeDrilldown.source}"`}
-                {activeDrilldown.type === 'prospects_total' && '👥 Detalle de Prospectos Totales Registrados'}
-                {activeDrilldown.type === 'brokers_active' && '🤝 Detalle de Red de Brokers Activos'}
-                {activeDrilldown.type === 'camilo_prospects' && '🤖 Prospectos Minados por Camilo'}
-                {activeDrilldown.type === 'sara_history' && '📧 Historial de Correos y Registros de Sara'}
-                {activeDrilldown.type === 'next_event' && '📅 Detalle del Próximo Evento'}
-                {activeDrilldown.type === 'top_proyectos' && '🏆 Proyectos Más Demandados del Portafolio'}
-              </h3>
+              <div>
+                <div style={{ fontSize: 9, textTransform: 'uppercase' as const, letterSpacing: '2px', color: '#9CA3AF', marginBottom: 4 }}>
+                  {activeDrilldown.type === 'ticket' && 'Análisis de ventas'}
+                  {activeDrilldown.type === 'conversion' && 'Pipeline comercial'}
+                  {activeDrilldown.type === 'funnel' && 'Etapa del pipeline'}
+                  {activeDrilldown.type === 'source' && 'Canal de captación'}
+                  {activeDrilldown.type === 'prospects_total' && 'Registro general'}
+                  {activeDrilldown.type === 'brokers_active' && 'Red comercial'}
+                  {activeDrilldown.type === 'camilo_prospects' && 'Inteligencia IA'}
+                  {activeDrilldown.type === 'sara_history' && 'Seguimiento IA'}
+                  {activeDrilldown.type === 'next_event' && 'Agenda comercial'}
+                  {activeDrilldown.type === 'top_proyectos' && 'Portafolio GLP'}
+                </div>
+                <h3 style={{ margin: 0, fontSize: 20, fontWeight: 400, color: '#111827', fontFamily: T.fontSerif, letterSpacing: '0.02em' }}>
+                  {activeDrilldown.type === 'ticket' && 'Detalle de Ticket Promedio'}
+                  {activeDrilldown.type === 'conversion' && 'Conversión · Objeciones · Crisis'}
+                  {activeDrilldown.type === 'funnel' && `Pipeline — ${activeDrilldown.stage}`}
+                  {activeDrilldown.type === 'source' && `Leads por Fuente — ${activeDrilldown.source}`}
+                  {activeDrilldown.type === 'prospects_total' && 'Prospectos Registrados'}
+                  {activeDrilldown.type === 'brokers_active' && 'Red de Brokers Activos'}
+                  {activeDrilldown.type === 'camilo_prospects' && 'Prospectos Identificados por Camilo'}
+                  {activeDrilldown.type === 'sara_history' && 'Historial de Correos y Registros de Sara'}
+                  {activeDrilldown.type === 'next_event' && 'Próximo Evento Comercial'}
+                  {activeDrilldown.type === 'top_proyectos' && 'Proyectos Más Demandados'}
+                </h3>
+              </div>
               <button type="button" onClick={() => setActiveDrilldown(null)}
-                style={{ background: 'none', border: 'none', color: '#718096', fontSize: '1.25rem', cursor: 'pointer', padding: '4px' }}
-                onMouseEnter={e => e.currentTarget.style.color = '#FF6B6B'}
-                onMouseLeave={e => e.currentTarget.style.color = '#718096'}>✕</button>
+                style={{ background: 'none', border: '1px solid #E5E7EB', color: '#6B7280', fontSize: 13, cursor: 'pointer', padding: '4px 10px', letterSpacing: '1px', lineHeight: 1.4 }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = '#111827'; e.currentTarget.style.color = '#111827'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = '#E5E7EB'; e.currentTarget.style.color = '#6B7280'; }}>✕</button>
             </div>
             {activeDrilldown.type === 'ticket' && renderTicketDrilldown()}
             {activeDrilldown.type === 'conversion' && renderConversionDrilldown()}
@@ -4418,55 +4684,75 @@ Responde SOLO con JSON sin bloques de código:
               closedSales.forEach(s => { count2[s.project] = (count2[s.project] || 0) + 3; });
               lostSales.forEach(s => { count2[s.project] = (count2[s.project] || 0) + 1; });
               const top3full = Object.entries(count2).sort((a, b) => b[1] - a[1]).slice(0, 3);
-              const colors = [T.teal, T.palm, T.sky];
+              const rankLabels = ['I', 'II', 'III'];
+              const rankColors = ['#B89047', '#8C8C8C', '#A0714F'];
               return (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
                   {top3full.map(([pname, score], i) => {
                     const proj = catalogProjects.find(p => p.name === pname);
                     const interesados = prospects.filter(p => (p.proyectos_interes || []).includes(pname));
                     const cerrados = closedSales.filter(s => s.project === pname);
                     const caidos = lostSales.filter(s => s.project === pname);
                     return (
-                      <div key={pname} style={{ background: T.bg, borderRadius: 4, padding: 16, border: `2px solid ${colors[i]}` }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                          <span style={{ background: colors[i], color: '#fff', borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12, flexShrink: 0 }}>#{i + 1}</span>
-                          <span style={{ fontWeight: 700, fontSize: 14, color: T.text }}>{pname}</span>
+                      <div key={pname} style={{ background: '#fff', padding: '24px 20px', border: `1px solid ${i === 0 ? '#D4AF6B' : '#E5E7EB'}`, borderTop: `3px solid ${rankColors[i]}`, position: 'relative' as const }}>
+                        {/* Ranking */}
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
+                          <div>
+                            <div style={{ fontSize: 9, textTransform: 'uppercase' as const, letterSpacing: '2px', color: rankColors[i], marginBottom: 6, fontWeight: 600 }}>
+                              Posición {rankLabels[i]}
+                            </div>
+                            <div style={{ fontFamily: T.fontSerif, fontSize: 20, fontWeight: 400, color: '#111827', lineHeight: 1.2 }}>{pname}</div>
+                          </div>
+                          <div style={{ fontSize: 28, fontFamily: T.fontSerif, fontWeight: 300, color: rankColors[i], lineHeight: 1 }}>{rankLabels[i]}</div>
                         </div>
+
+                        {/* Datos del proyecto */}
                         {proj && (
-                          <div style={{ fontSize: 11, color: T.textSec, marginBottom: 12, display: 'flex', flexDirection: 'column' as const, gap: 4 }}>
-                            <div>📍 {proj.zone}</div>
-                            <div>💰 ${(proj.minPrice || 0).toLocaleString()} – ${(proj.maxPrice || 0).toLocaleString()} USD</div>
-                            <div>🛏 {proj.bedrooms} · {proj.areaMin}–{proj.areaMax} m²</div>
-                            <div>🗓 Entrega: {proj.entrega}</div>
+                          <div style={{ marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid #F3F4F6' }}>
+                            <div style={{ fontSize: 10, textTransform: 'uppercase' as const, letterSpacing: '1px', color: '#9CA3AF', marginBottom: 4 }}>{proj.zone}</div>
+                            <div style={{ fontSize: 12, color: '#374151', marginBottom: 3 }}>
+                              ${(proj.minPrice || 0).toLocaleString()} – ${(proj.maxPrice || 0).toLocaleString()} USD
+                            </div>
+                            <div style={{ fontSize: 11, color: '#9CA3AF' }}>
+                              {proj.bedrooms} rec. · {proj.areaMin}–{proj.areaMax} m²
+                              <span style={{ marginLeft: 8, paddingLeft: 8, borderLeft: '1px solid #E5E7EB' }}>Entrega {proj.entrega}</span>
+                            </div>
                           </div>
                         )}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 12 }}>
+
+                        {/* Métricas */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0, marginBottom: 16, border: '1px solid #F3F4F6' }}>
                           {[
-                            { label: 'Interesados', val: interesados.length, color: colors[i] },
-                            { label: 'Cerrados', val: cerrados.length, color: T.success },
-                            { label: 'Caídos', val: caidos.length, color: T.danger },
-                          ].map(({ label, val, color }) => (
-                            <div key={label} style={{ background: T.card, borderRadius: 8, padding: '8px 6px', textAlign: 'center' as const }}>
-                              <div style={{ fontSize: 18, fontWeight: 800, color }}>{val}</div>
-                              <div style={{ fontSize: 9, color: T.textSec, textTransform: 'uppercase' as const }}>{label}</div>
+                            { label: 'Interesados', val: interesados.length },
+                            { label: 'Cerrados', val: cerrados.length },
+                            { label: 'Caídos', val: caidos.length },
+                          ].map(({ label, val }, idx) => (
+                            <div key={label} style={{ padding: '10px 8px', textAlign: 'center' as const, borderRight: idx < 2 ? '1px solid #F3F4F6' : 'none' }}>
+                              <div style={{ fontFamily: T.fontSerif, fontSize: 24, fontWeight: 400, color: '#111827', lineHeight: 1 }}>{val}</div>
+                              <div style={{ fontSize: 8, textTransform: 'uppercase' as const, letterSpacing: '1.5px', color: '#9CA3AF', marginTop: 4 }}>{label}</div>
                             </div>
                           ))}
                         </div>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, marginBottom: 6 }}>Prospectos interesados</div>
+
+                        {/* Lista prospectos */}
+                        <div style={{ fontSize: 9, textTransform: 'uppercase' as const, letterSpacing: '1.5px', color: '#9CA3AF', marginBottom: 8 }}>Prospectos interesados</div>
                         {interesados.length === 0 ? (
-                          <div style={{ fontSize: 11, color: T.textSec, fontStyle: 'italic' }}>Sin prospectos aún</div>
+                          <div style={{ fontSize: 11, color: '#9CA3AF', fontStyle: 'italic' }}>Sin prospectos aún</div>
                         ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 4, maxHeight: 140, overflowY: 'auto' as const }}>
-                            {interesados.map(p => (
-                              <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, padding: '4px 6px', background: T.card, borderRadius: 6 }}>
-                                <span style={{ fontWeight: 600, color: T.text }}>{p.nombre} {p.apellido}</span>
-                                <span style={{ color: T.textSec }}>{p.estado}</span>
+                          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 0, maxHeight: 140, overflowY: 'auto' as const }}>
+                            {interesados.map((p, idx) => (
+                              <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, padding: '6px 0', borderBottom: idx < interesados.length - 1 ? '1px solid #F9FAFB' : 'none' }}>
+                                <span style={{ fontFamily: T.fontSerif, fontSize: 13, fontWeight: 400, color: '#111827' }}>{p.nombre} {p.apellido}</span>
+                                <span style={{ fontSize: 9, textTransform: 'uppercase' as const, letterSpacing: '0.8px', color: '#9CA3AF' }}>{p.estado}</span>
                               </div>
                             ))}
                           </div>
                         )}
-                        <div style={{ marginTop: 10, fontSize: 11, fontWeight: 700, color: colors[i], textAlign: 'center' as const }}>
-                          Score total: {score} pts
+
+                        {/* Score */}
+                        <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #F3F4F6', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                          <span style={{ fontSize: 9, textTransform: 'uppercase' as const, letterSpacing: '1.5px', color: '#9CA3AF' }}>Score de demanda</span>
+                          <span style={{ fontFamily: T.fontSerif, fontSize: 20, fontWeight: 400, color: rankColors[i] }}>{score} pts</span>
                         </div>
                       </div>
                     );
@@ -4524,7 +4810,7 @@ Responde SOLO con JSON sin bloques de código:
                         ))}
                         {totalInvitados === 0 && <div style={{ fontSize: 11, color: T.textSec, fontStyle: 'italic' }}>Sin invitados registrados</div>}
                       </div>
-                      <button onClick={() => { setActiveDrilldown(null); setActiveModule('eventos'); setExpandedEvent(ev.id); }} style={{ marginTop: 10, fontSize: 11, color: T.teal, background: 'none', border: `1px solid ${T.teal}40`, borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontWeight: 600 }}>
+                      <button onClick={() => { setActiveDrilldown(null); setPreviousModule('kpis'); setActiveModule('eventos'); setExpandedEvent(ev.id); }} style={{ marginTop: 10, fontSize: 11, color: T.teal, background: 'none', border: `1px solid ${T.teal}40`, borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontWeight: 600 }}>
                         Ver evento completo →
                       </button>
                     </div>
@@ -5896,14 +6182,14 @@ Responde SOLO con JSON sin bloques de código:
     return (
       <div>
         {previousModule && (
-          <div style={{ marginBottom: 12 }}>
-            <button onClick={() => { setActiveModule(previousModule); setPreviousModule(null); }}
-              style={{ background: 'transparent', border: `1px solid ${T.border}`, padding: '6px 14px', fontSize: 11, fontWeight: 700, color: T.textSec, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              ← Volver a {previousModule === 'agentes' ? 'Agentes' : previousModule.charAt(0).toUpperCase() + previousModule.slice(1)}
+          <div style={{ marginBottom: 14 }}>
+            <button onClick={() => { const dest = previousModule; setPreviousModule(null); setActiveModule(dest); }}
+              style={{ background: 'transparent', border: 'none', padding: 0, fontSize: 11, fontWeight: 400, color: '#6B7280', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, textTransform: 'uppercase' as const, letterSpacing: '1.5px', fontFamily: 'Inter, sans-serif' }}>
+              ← Volver a {({'kpis':'Dashboard','dashboard':'Dashboard','eventos':'Agenda de Brokers','gerencial':'Análisis Gerencial','reportes':'Reportes','agentes':'Agentes IA','brokers':'Brokers'} as Record<string,string>)[previousModule] || previousModule.charAt(0).toUpperCase()+previousModule.slice(1)}
             </button>
           </div>
         )}
-        {sectionTitle('Prospectos CRM · Gestión Comercial')}
+        {sectionTitle('Prospectos · Sistema Operativo Inmobiliario')}
 
         {/* Funnel summary filters */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 20, overflowX: 'auto' as const }}>
@@ -5966,20 +6252,15 @@ Responde SOLO con JSON sin bloques de código:
           </button>
           <div style={{ flex: 1 }} />
           <button onClick={() => {
-            if(confirm('¿Restaurar la base de datos a los prospectos de prueba iniciales? Esto combinará los actuales con la data original.')) {
-              const applyMigration = (data: any[]) => {
-                return data.map(p => {
-                  if (!p.emailHistory) {
-                    return { ...p, emailHistory: [] };
-                  }
-                  return p;
-                });
-              };
-              const merged = [...prospects, ...applyMigration(INITIAL_PROSPECTS)];
-              // deduplicate by id
-              const unique = Array.from(new Map(merged.map(item => [item.id, item])).values());
-              setProspects(unique);
-              alert('Prospectos inyectados correctamente.');
+            if(confirm('¿Cargar los 100+ prospectos de prueba? Los prospectos actuales se conservarán con IDs únicos. Se recomienda para validar módulos, reportes y gráficas.')) {
+              const demo = INITIAL_PROSPECTS.map(p => ({ ...p, emailHistory: p.emailHistory || [] }));
+              // Offset demo IDs to avoid collision with real prospects
+              const maxId = prospects.reduce((m, p) => Math.max(m, Number(p.id) || 0), 0);
+              const demoOffset = demo.map((p, i) => ({ ...p, id: maxId + i + 1 }));
+              const merged = [...prospects, ...demoOffset];
+              setProspects(merged);
+              try { localStorage.setItem('glp_crm_prospects', JSON.stringify(merged)); } catch {}
+              alert(`✓ ${demoOffset.length} prospectos de prueba cargados. Total: ${merged.length}`);
             }
           }} style={{ ...btnSecondary(), marginRight: 12 }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -6241,42 +6522,75 @@ Responde SOLO con JSON sin bloques de código:
       accent: '#000000',
     };
 
+    const moduleLabels: Record<string, string> = {
+      kpis: 'Dashboard', dashboard: 'Dashboard', prospectos: 'Prospectos',
+      reportes: 'Reportes', gerencial: 'Análisis Gerencial', agentes: 'Agentes IA',
+      brokers: 'Brokers', campanas: 'Campañas', portafolio: 'Portafolio GLP',
+    };
+
     return (
       <div style={{ fontFamily: sStyle.fontFamily, color: sStyle.text, paddingBottom: 40 }}>
-        {expandedEvent !== null && (
+        {previousModule && (
           <button
-            onClick={() => { setExpandedEvent(null); setActiveModule('dashboard'); }}
-            style={{ marginBottom: 16, background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: sStyle.textMuted, display: 'flex', alignItems: 'center', gap: 4, padding: 0, fontFamily: sStyle.fontFamily, textTransform: 'uppercase', letterSpacing: '1px' }}
+            onClick={() => { const dest = previousModule; setPreviousModule(null); setActiveModule(dest); }}
+            style={{ marginBottom: 16, background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: sStyle.textMuted, display: 'flex', alignItems: 'center', gap: 4, padding: 0, fontFamily: sStyle.fontFamily, textTransform: 'uppercase' as const, letterSpacing: '1.5px' }}
           >
-            ← Volver al Dashboard
+            ← Volver a {moduleLabels[previousModule] || previousModule.charAt(0).toUpperCase() + previousModule.slice(1)}
           </button>
         )}
-        <div style={{ borderBottom: `1px solid ${sStyle.border}`, paddingBottom: 20, marginBottom: 30, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-          <div>
-            <h2 style={{ fontFamily: sStyle.headingFont, fontSize: 28, fontWeight: 400, margin: '0 0 8px 0', letterSpacing: '0.5px' }}>
-              Control de Eventos
-            </h2>
-            <div style={{ fontSize: 13, color: sStyle.textMuted, textTransform: 'uppercase', letterSpacing: '1px' }}>
-              Presupuestos y Retorno de Inversión (CAC)
+        <div style={{ borderBottom: `1px solid ${sStyle.border}`, paddingBottom: 20, marginBottom: 30 }}>
+          {/* Fila superior: título + controles */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+            <div>
+              <h2 style={{ fontFamily: sStyle.headingFont, fontSize: 28, fontWeight: 400, margin: '0 0 4px 0', letterSpacing: '0.5px' }}>
+                {eventosTab === 'comercial' ? 'Eventos Comerciales' : 'Agenda de Brokers'}
+              </h2>
+              <div style={{ fontSize: 13, color: sStyle.textMuted, textTransform: 'uppercase', letterSpacing: '1px' }}>
+                {eventosTab === 'comercial' ? 'Cenas, seminarios, lanzamientos · Presupuesto y CAC' : 'Citas, llamadas y seguimientos del equipo'}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {/* Vista toggle (solo en tab comercial) */}
+              {eventosTab === 'comercial' && (
+                <div style={{ display: 'flex', border: '1px solid #E5E7EB', borderRadius: 4, overflow: 'hidden' }}>
+                  {(['lista','calendario'] as const).map(v => (
+                    <button key={v} onClick={() => setEventosVista(v)}
+                      style={{ padding: '7px 14px', fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: '1px', cursor: 'pointer', border: 'none',
+                        background: eventosVista === v ? '#111827' : 'transparent',
+                        color: eventosVista === v ? '#fff' : '#6B7280' }}>
+                      {v === 'lista' ? 'Lista' : 'Calendario'}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {eventosTab === 'comercial' && (
+                <button
+                  type="button"
+                  onClick={() => setShowEventForm(!showEventForm)}
+                  style={{
+                    background: showEventForm ? 'transparent' : sStyle.accent,
+                    color: showEventForm ? sStyle.text : '#FFF',
+                    border: `1px solid ${sStyle.accent}`,
+                    padding: '8px 24px', fontSize: 12, textTransform: 'uppercase',
+                    letterSpacing: '1px', cursor: 'pointer', transition: 'all 0.2s ease'
+                  }}
+                >
+                  {showEventForm ? 'Cerrar Panel' : 'Nuevo Evento'}
+                </button>
+              )}
             </div>
           </div>
-          <button 
-            type="button"
-            onClick={() => setShowEventForm(!showEventForm)} 
-            style={{ 
-              background: showEventForm ? 'transparent' : sStyle.accent, 
-              color: showEventForm ? sStyle.text : '#FFF', 
-              border: `1px solid ${sStyle.accent}`, 
-              padding: '8px 24px', 
-              fontSize: 12, 
-              textTransform: 'uppercase', 
-              letterSpacing: '1px',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            {showEventForm ? 'Cerrar Panel' : 'Nuevo Evento'}
-          </button>
+          {/* Tabs Comercial / Agenda */}
+          <div style={{ display: 'flex', gap: 0, borderBottom: `2px solid #E5E7EB` }}>
+            {([['comercial','Eventos Comerciales'],['agenda','Agenda de Brokers']] as const).map(([tab, label]) => (
+              <button key={tab} onClick={() => setEventosTab(tab)}
+                style={{ padding: '8px 20px', fontSize: 12, fontWeight: 600, letterSpacing: '0.5px', cursor: 'pointer',
+                  border: 'none', background: 'transparent', borderBottom: eventosTab === tab ? `2px solid #111827` : '2px solid transparent',
+                  marginBottom: -2, color: eventosTab === tab ? '#111827' : '#9CA3AF', transition: 'all 0.15s' }}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {showEventForm && (
@@ -6306,8 +6620,386 @@ Responde SOLO con JSON sin bloques de código:
           </div>
         )}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          {events.map(ev => {
+        {/* ── Vista Calendario (solo tab comercial) ── */}
+        {eventosTab === 'comercial' && eventosVista === 'calendario' && (() => {
+          const BROKER_COLORS: Record<string, string> = {};
+          const colorPalette = ['#006BFF','#FF6B35','#9B59B6','#27AE60','#E74C3C','#F39C12','#1ABC9C','#2C3E50'];
+          const allBrokers = [...new Set(events.flatMap(ev => ev.asistentes).filter(Boolean))];
+          allBrokers.forEach((b, i) => { BROKER_COLORS[b] = colorPalette[i % colorPalette.length]; });
+
+          const { year, month } = calMes;
+          const firstDay = new Date(year, month, 1).getDay();
+          const daysInMonth = new Date(year, month + 1, 0).getDate();
+          const today = new Date();
+          const isGerente = currentUser?.role === 'gerencia' || currentUser?.role === 'presidencia';
+
+          const filteredEvents = events.filter(ev => {
+            if (!ev.fecha) return false;
+            const d = new Date(ev.fecha);
+            if (d.getFullYear() !== year || d.getMonth() !== month) return false;
+            if (calFiltrobroker !== 'todos' && !ev.asistentes.includes(calFiltrobroker)) return false;
+            return true;
+          });
+
+          const eventsByDay: Record<number, typeof events> = {};
+          filteredEvents.forEach(ev => {
+            const day = new Date(ev.fecha).getDate();
+            if (!eventsByDay[day]) eventsByDay[day] = [];
+            eventsByDay[day].push(ev);
+          });
+
+          const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+          const DAY_NAMES = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+
+          return (
+            <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden' }}>
+              {/* Controles del calendario */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #E5E7EB', background: '#F9FAFB' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <button onClick={() => setCalMes(prev => { const d=new Date(prev.year,prev.month-1,1); return {year:d.getFullYear(),month:d.getMonth()}; })}
+                    style={{ background:'none',border:'1px solid #E5E7EB',borderRadius:4,padding:'4px 10px',cursor:'pointer',fontSize:14 }}>‹</button>
+                  <span style={{ fontWeight:700, fontSize:16, minWidth:160, textAlign:'center' }}>{MONTH_NAMES[month]} {year}</span>
+                  <button onClick={() => setCalMes(prev => { const d=new Date(prev.year,prev.month+1,1); return {year:d.getFullYear(),month:d.getMonth()}; })}
+                    style={{ background:'none',border:'1px solid #E5E7EB',borderRadius:4,padding:'4px 10px',cursor:'pointer',fontSize:14 }}>›</button>
+                  <button onClick={() => setCalMes({year:today.getFullYear(),month:today.getMonth()})}
+                    style={{ background:'none',border:'1px solid #E5E7EB',borderRadius:4,padding:'4px 8px',cursor:'pointer',fontSize:11,color:'#6B7280' }}>Hoy</button>
+                </div>
+                {isGerente && (
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <span style={{ fontSize:11, color:'#6B7280' }}>Broker:</span>
+                    <select value={calFiltrobroker} onChange={e => setCalFiltrobroker(e.target.value)}
+                      style={{ fontSize:11, border:'1px solid #E5E7EB', borderRadius:4, padding:'4px 8px', background:'#fff', color:'#111827' }}>
+                      <option value="todos">Todos</option>
+                      {allBrokers.map(b => <option key={b} value={b}>{b}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              {/* Leyenda de brokers */}
+              {allBrokers.length > 0 && (
+                <div style={{ display:'flex', gap:12, padding:'8px 20px', borderBottom:'1px solid #F3F4F6', flexWrap:'wrap' as const }}>
+                  {allBrokers.map(b => (
+                    <div key={b} style={{ display:'flex', alignItems:'center', gap:4, fontSize:10 }}>
+                      <div style={{ width:8, height:8, borderRadius:'50%', background: BROKER_COLORS[b] || '#ccc' }} />
+                      <span style={{ color:'#6B7280' }}>{b}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Grid del calendario */}
+              <div style={{ padding: 16 }}>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:1, marginBottom:4 }}>
+                  {DAY_NAMES.map(d => (
+                    <div key={d} style={{ textAlign:'center', fontSize:10, fontWeight:700, color:'#6B7280', textTransform:'uppercase', padding:'4px 0', letterSpacing:1 }}>{d}</div>
+                  ))}
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2 }}>
+                  {Array.from({length: firstDay}).map((_,i) => <div key={'e'+i} style={{ minHeight:80 }} />)}
+                  {Array.from({length: daysInMonth}).map((_, i) => {
+                    const day = i + 1;
+                    const dayEvents = eventsByDay[day] || [];
+                    const isToday = today.getDate()===day && today.getMonth()===month && today.getFullYear()===year;
+                    return (
+                      <div key={day} style={{
+                        minHeight:80, border:'1px solid #F3F4F6', borderRadius:4, padding:'4px 6px',
+                        background: isToday ? '#EFF6FF' : '#fff',
+                        transition:'background 0.15s'
+                      }}>
+                        <div style={{ fontSize:11, fontWeight: isToday?700:400, color: isToday?'#006BFF':'#374151', marginBottom:2 }}>{day}</div>
+                        {dayEvents.map(ev => {
+                          const brokerColor = BROKER_COLORS[ev.asistentes[0]] || '#6B7280';
+                          return (
+                            <div key={ev.id}
+                              onClick={() => { setExpandedEvent(ev.id); setPreviousModule('eventos_calendario'); setEventosVista('lista'); }}
+                              style={{ fontSize:9, background: brokerColor+'20', color: brokerColor, borderLeft:`2px solid ${brokerColor}`,
+                                borderRadius:2, padding:'2px 4px', marginBottom:2, cursor:'pointer', lineHeight:1.3,
+                                whiteSpace:'nowrap' as const, overflow:'hidden', textOverflow:'ellipsis' }}
+                              title={`${ev.titulo} — ${ev.asistentes[0] || ''}`}>
+                              {ev.titulo}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Resumen para gerente */}
+              {isGerente && (
+                <div style={{ padding:'12px 20px', borderTop:'1px solid #E5E7EB', background:'#F9FAFB', display:'flex', gap:24, flexWrap:'wrap' as const }}>
+                  <div style={{ fontSize:11, color:'#6B7280' }}>
+                    <strong style={{ color:'#111827' }}>{filteredEvents.length}</strong> eventos en {MONTH_NAMES[month]}
+                  </div>
+                  {allBrokers.map(b => {
+                    const count = filteredEvents.filter(ev => ev.asistentes.includes(b)).length;
+                    if (count === 0) return null;
+                    return (
+                      <div key={b} style={{ fontSize:11, color:'#6B7280', display:'flex', alignItems:'center', gap:4 }}>
+                        <div style={{ width:6, height:6, borderRadius:'50%', background: BROKER_COLORS[b] }} />
+                        {b}: <strong style={{ color:'#111827' }}>{count}</strong>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ── Vista Lista / Calendario toggle (Agenda) ── */}
+        {eventosTab === 'agenda' && (
+          <div style={{ borderTop: `1px solid ${sStyle.border}`, paddingTop: 24, paddingBottom: 8 }}>
+            {/* Toggle Lista / Calendario */}
+            <div style={{ display: 'flex', gap: 0, marginBottom: 28, justifyContent: 'flex-end' }}>
+              {(['lista','calendario'] as const).map(v => (
+                <button key={v} onClick={() => setAgendaVista(v)}
+                  style={{ padding: '6px 20px', fontSize: 10, textTransform: 'uppercase' as const, letterSpacing: '1.5px',
+                    border: `1px solid ${sStyle.text}`, background: agendaVista === v ? sStyle.text : 'transparent',
+                    color: agendaVista === v ? '#fff' : sStyle.text, cursor: 'pointer', marginLeft: -1, transition: 'all 0.15s' }}>
+                  {v === 'lista' ? 'Lista' : 'Calendario'}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Agenda: Vista Lista ── */}
+        {eventosTab === 'agenda' && agendaVista === 'lista' && (() => {
+          const agendaEvents = events.filter(ev => ev.categoria === 'agenda');
+          if (agendaEvents.length === 0) return (
+            <div style={{ padding: '80px 0', textAlign: 'center' as const }}>
+              <div style={{ fontFamily: sStyle.headingFont, fontSize: 22, fontWeight: 400, color: sStyle.text, marginBottom: 12 }}>
+                Sin actividades registradas
+              </div>
+              <div style={{ fontSize: 13, color: sStyle.textMuted, maxWidth: 400, margin: '0 auto', lineHeight: 1.6 }}>
+                Las citas y llamadas agendadas desde la ficha de cada prospecto aparecerán aquí, ordenadas por fecha.
+              </div>
+            </div>
+          );
+          const byDate: Record<string, EventData[]> = {};
+          agendaEvents.sort((a,b) => a.fecha.localeCompare(b.fecha)).forEach(ev => {
+            if (!byDate[ev.fecha]) byDate[ev.fecha] = [];
+            byDate[ev.fecha].push(ev);
+          });
+          const todayStr = new Date().toISOString().slice(0,10);
+          return (
+            <div>
+              {Object.entries(byDate).map(([fecha, evs]) => {
+                const d = new Date(fecha + 'T12:00:00');
+                const dayNum  = d.toLocaleDateString('es-CO', { day: '2-digit' });
+                const mes     = d.toLocaleDateString('es-CO', { month: 'short' }).toUpperCase();
+                const semana  = d.toLocaleDateString('es-CO', { weekday: 'long' });
+                const isToday = fecha === todayStr;
+                const isPast  = fecha < todayStr;
+                return (
+                  <div key={fecha} style={{ display: 'grid', gridTemplateColumns: '72px 1fr', borderTop: `1px solid ${sStyle.border}` }}>
+                    {/* Columna de fecha */}
+                    <div style={{ padding: '28px 16px 28px 0', textAlign: 'center' as const, borderRight: `1px solid ${sStyle.border}` }}>
+                      <div style={{ fontFamily: sStyle.headingFont, fontSize: 32, fontWeight: 400, lineHeight: 1,
+                        color: isToday ? sStyle.text : isPast ? '#C4C4C4' : sStyle.text }}>{dayNum}</div>
+                      <div style={{ fontSize: 9, textTransform: 'uppercase' as const, letterSpacing: '1.5px',
+                        color: isToday ? sStyle.text : isPast ? '#C4C4C4' : sStyle.textMuted, marginTop: 4 }}>{mes}</div>
+                      {isToday && (
+                        <div style={{ marginTop: 6, fontSize: 8, textTransform: 'uppercase' as const, letterSpacing: '1px',
+                          color: sStyle.text, border: `1px solid ${sStyle.text}`, padding: '2px 4px', display: 'inline-block' }}>
+                          Hoy
+                        </div>
+                      )}
+                    </div>
+                    {/* Columna de actividades */}
+                    <div style={{ padding: '20px 0 20px 28px' }}>
+                      <div style={{ fontSize: 10, textTransform: 'uppercase' as const, letterSpacing: '2px',
+                        color: isPast ? '#C4C4C4' : sStyle.textMuted, marginBottom: 16 }}>{semana}</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        {evs.map(ev => {
+                          const prospect = prospects.find(p => (ev.prospect_ids||[]).includes(p.id));
+                          return (
+                            <div key={ev.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 16, alignItems: 'start',
+                              paddingBottom: 16, borderBottom: `1px solid ${sStyle.border}` }}>
+                              <div>
+                                <div style={{ fontSize: 10, textTransform: 'uppercase' as const, letterSpacing: '1.5px',
+                                  color: isPast ? '#C4C4C4' : sStyle.textMuted, marginBottom: 6 }}>
+                                  {ev.tipo_cita || 'Actividad'}
+                                  {ev.hora && <span style={{ marginLeft: 12 }}>{ev.hora}{ev.duracion ? ` · ${ev.duracion} min` : ''}</span>}
+                                </div>
+                                <div style={{ fontFamily: sStyle.headingFont, fontSize: 18, fontWeight: 400,
+                                  color: isPast ? '#9CA3AF' : sStyle.text, marginBottom: 6, lineHeight: 1.2 }}>
+                                  {prospect ? `${prospect.nombre} ${prospect.apellido}` : ev.titulo}
+                                </div>
+                                <div style={{ display: 'flex', gap: 20, fontSize: 11, color: sStyle.textMuted }}>
+                                  {ev.venue && <span style={{ textTransform: 'uppercase' as const, letterSpacing: '0.5px' }}>{ev.venue}</span>}
+                                  {ev.broker && <span>{ev.broker}</span>}
+                                  {prospect && <span style={{ color: sStyle.textMuted }}>{(prospect.proyectos_interes||[])[0] || ''}</span>}
+                                </div>
+                                {ev.nota && (
+                                  <div style={{ marginTop: 8, fontSize: 12, color: sStyle.textMuted,
+                                    fontStyle: 'italic', borderLeft: `2px solid ${sStyle.border}`, paddingLeft: 10 }}>
+                                    {ev.nota}
+                                  </div>
+                                )}
+                              </div>
+                              {prospect && (
+                                <button onClick={() => { setPreviousModule('eventos'); setProspectDetail(prospect.id); setActiveProspect(prospect); setActiveModule('prospectos'); }}
+                                  style={{ fontSize: 10, textTransform: 'uppercase' as const, letterSpacing: '1px',
+                                    background: 'transparent', border: `1px solid ${sStyle.text}`, padding: '6px 14px',
+                                    cursor: 'pointer', color: sStyle.text, whiteSpace: 'nowrap' as const,
+                                    opacity: isPast ? 0.4 : 1 }}>
+                                  Ver perfil
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+
+        {/* ── Agenda: Vista Calendario Sotheby's ── */}
+        {eventosTab === 'agenda' && agendaVista === 'calendario' && (() => {
+          const allAgendaEvents = events.filter(ev => ev.categoria === 'agenda');
+          const allBrokersAgenda = [...new Set(allAgendaEvents.map(ev => ev.broker).filter(Boolean))] as string[];
+          const agendaEvents = agendaFiltroBroker === 'todos'
+            ? allAgendaEvents
+            : allAgendaEvents.filter(ev => ev.broker === agendaFiltroBroker);
+          const { year, month } = calMes;
+          const firstDay = new Date(year, month, 1).getDay();
+          const daysInMonth = new Date(year, month + 1, 0).getDate();
+          const today = new Date();
+          const todayStr = today.toISOString().slice(0,10);
+          const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+          const DAY_NAMES_SHORT = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+
+          const eventsByDay: Record<number, typeof agendaEvents> = {};
+          agendaEvents.forEach(ev => {
+            if (!ev.fecha) return;
+            const d = new Date(ev.fecha + 'T12:00:00');
+            if (d.getFullYear() === year && d.getMonth() === month) {
+              const day = d.getDate();
+              if (!eventsByDay[day]) eventsByDay[day] = [];
+              eventsByDay[day].push(ev);
+            }
+          });
+
+          return (
+            <div>
+              {/* Navegación mes + filtro broker */}
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24, paddingBottom:16, borderBottom:`1px solid ${sStyle.border}` }}>
+                <div style={{ display:'flex', alignItems:'center', gap:16 }}>
+                  <button onClick={() => setCalMes(prev => { const d=new Date(prev.year,prev.month-1,1); return {year:d.getFullYear(),month:d.getMonth()}; })}
+                    style={{ background:'none', border:`1px solid ${sStyle.border}`, padding:'5px 14px', cursor:'pointer', fontSize:13, color:sStyle.text }}>‹</button>
+                  <span style={{ fontFamily:sStyle.headingFont, fontSize:22, fontWeight:400, letterSpacing:'0.5px', color:sStyle.text, minWidth:200, textAlign:'center' as const }}>
+                    {MONTH_NAMES[month]} {year}
+                  </span>
+                  <button onClick={() => setCalMes(prev => { const d=new Date(prev.year,prev.month+1,1); return {year:d.getFullYear(),month:d.getMonth()}; })}
+                    style={{ background:'none', border:`1px solid ${sStyle.border}`, padding:'5px 14px', cursor:'pointer', fontSize:13, color:sStyle.text }}>›</button>
+                </div>
+                <button onClick={() => setCalMes({year:today.getFullYear(),month:today.getMonth()})}
+                  style={{ background:'none', border:`1px solid ${sStyle.border}`, padding:'5px 14px', cursor:'pointer', fontSize:10, textTransform:'uppercase' as const, letterSpacing:'1.5px', color:sStyle.textMuted }}>
+                  Hoy
+                </button>
+                {/* Filtro broker */}
+                {allBrokersAgenda.length > 0 && (
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <span style={{ fontSize:9, textTransform:'uppercase' as const, letterSpacing:'1.5px', color:sStyle.textMuted }}>Broker</span>
+                    <select value={agendaFiltroBroker} onChange={e => setAgendaFiltroBroker(e.target.value)}
+                      style={{ fontSize:11, border:`1px solid ${sStyle.border}`, padding:'5px 10px', background:'#fff', color:sStyle.text, cursor:'pointer', outline:'none', fontFamily:'Inter, sans-serif' }}>
+                      <option value="todos">Todos</option>
+                      {allBrokersAgenda.map(b => <option key={b} value={b}>{b}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              {/* Grid días de la semana */}
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', marginBottom:2 }}>
+                {DAY_NAMES_SHORT.map(d => (
+                  <div key={d} style={{ textAlign:'center' as const, fontSize:9, fontWeight:400, color:sStyle.textMuted, textTransform:'uppercase' as const, letterSpacing:'2px', padding:'4px 0 12px' }}>{d}</div>
+                ))}
+              </div>
+
+              {/* Grid del mes */}
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', border:`1px solid ${sStyle.border}` }}>
+                {Array.from({length: firstDay}).map((_,i) => (
+                  <div key={'e'+i} style={{ minHeight:90, borderRight:`1px solid ${sStyle.border}`, borderBottom:`1px solid ${sStyle.border}`, background:'#FAFAFA' }} />
+                ))}
+                {Array.from({length: daysInMonth}).map((_, i) => {
+                  const day = i + 1;
+                  const dayEvs = eventsByDay[day] || [];
+                  const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+                  const isToday = dateStr === todayStr;
+                  const isPast  = dateStr < todayStr;
+                  return (
+                    <div key={day} style={{
+                      minHeight:90, borderRight:`1px solid ${sStyle.border}`, borderBottom:`1px solid ${sStyle.border}`,
+                      padding:'8px 10px', background: isToday ? '#F7F3EE' : '#fff',
+                      position:'relative' as const,
+                    }}>
+                      {/* Número del día */}
+                      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:6 }}>
+                        <span style={{
+                          fontFamily: sStyle.headingFont, fontSize:18, fontWeight:400, lineHeight:1,
+                          color: isPast ? '#C4C4C4' : sStyle.text,
+                        }}>{day}</span>
+                        {isToday && (
+                          <span style={{ fontSize:8, textTransform:'uppercase' as const, letterSpacing:'1px', color:sStyle.text, border:`1px solid ${sStyle.text}`, padding:'1px 4px' }}>Hoy</span>
+                        )}
+                      </div>
+                      {/* Eventos del día */}
+                      <div style={{ display:'flex', flexDirection:'column' as const, gap:4 }}>
+                        {dayEvs.slice(0,3).map(ev => {
+                          const prospect = prospects.find(p => (ev.prospect_ids||[]).includes(p.id));
+                          return (
+                            <div key={ev.id}
+                              onClick={() => {
+                                if (prospect) {
+                                  setPreviousModule('eventos');
+                                  setAgendaVista('calendario');
+                                  setProspectDetail(prospect.id);
+                                  setActiveProspect(prospect);
+                                  setActiveModule('prospectos');
+                                } else {
+                                  setAgendaVista('lista');
+                                }
+                              }}
+                              style={{ fontSize:9, lineHeight:1.3, cursor:'pointer', opacity: isPast ? 0.5 : 1 }}>
+                              <div style={{ textTransform:'uppercase' as const, letterSpacing:'0.8px', color:sStyle.textMuted, fontSize:8 }}>
+                                {ev.hora ? ev.hora+' · ' : ''}{ev.tipo_cita || 'Cita'}
+                              </div>
+                              <div style={{ fontFamily:sStyle.headingFont, fontSize:11, color:sStyle.text, fontWeight:400 }}>
+                                {prospect ? prospect.nombre+' '+prospect.apellido : ev.titulo}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {dayEvs.length > 3 && (
+                          <div style={{ fontSize:8, color:sStyle.textMuted, textTransform:'uppercase' as const, letterSpacing:'0.8px' }}>+{dayEvs.length-3} más</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Total actividades del mes */}
+              {agendaEvents.length > 0 && (
+                <div style={{ marginTop:20, fontSize:10, textTransform:'uppercase' as const, letterSpacing:'2px', color:sStyle.textMuted, textAlign:'right' as const }}>
+                  {Object.values(eventsByDay).reduce((a,v) => a+v.length, 0)} actividad{Object.values(eventsByDay).reduce((a,v) => a+v.length, 0) !== 1 ? 'es' : ''} este mes · {agendaEvents.length} en total
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {eventosTab === 'comercial' && eventosVista === 'lista' && <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          {events.filter(ev => (ev.categoria || 'comercial') === 'comercial').map(ev => {
             const expanded = expandedEvent === ev.id;
             
             const linkedIds = ev.prospect_ids || [];
@@ -6384,14 +7076,20 @@ Responde SOLO con JSON sin bloques de código:
 
                 {expanded && (
                   <div style={{ borderTop: `1px solid ${sStyle.border}`, padding: '30px', background: '#FAFAFA' }} onClick={e => e.stopPropagation()}>
-                    {/* Botón cerrar */}
+                    {/* Botón cerrar / regresar */}
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 20 }}>
-                      <button type="button" onClick={() => setExpandedEvent(null)}
+                      <button type="button" onClick={() => {
+                        setExpandedEvent(null);
+                        if (previousModule === 'eventos_calendario') {
+                          setPreviousModule(null);
+                          setEventosVista('calendario');
+                        }
+                      }}
                         style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', border: `1px solid ${sStyle.border}`, borderRadius: 6, padding: '7px 16px', fontSize: 12, fontWeight: 600, color: sStyle.textMuted, cursor: 'pointer' }}
                         onMouseEnter={e => { e.currentTarget.style.background = '#f3f4f6'; e.currentTarget.style.color = sStyle.text; }}
                         onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = sStyle.textMuted; }}
                       >
-                        ← Volver al presupuesto general
+                        ← {previousModule === 'eventos_calendario' ? 'Volver al calendario' : 'Volver al presupuesto general'}
                       </button>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40, marginBottom: 40 }}>
@@ -6532,7 +7230,7 @@ Responde SOLO con JSON sin bloques de código:
               </div>
             );
           })}
-        </div>
+        </div>}
       </div>
     );
   };
@@ -6707,13 +7405,24 @@ Responde SOLO con JSON sin bloques de código:
       'Engagement promedio':   { tip: 'Tasa de interacción (likes, comentarios, compartidos) sobre el total de alcance en redes sociales. Mide si el contenido es relevante para la audiencia objetivo.', benchmark: 'LinkedIn premium: >3% · Instagram: >2% · <1%: revisar formato y audiencia' },
       'Contenidos producidos': { tip: 'Videos, reels y materiales audiovisuales generados por Isabella para presentar proyectos, testimonios y eventos. Incluye guiones, storyboards y sugerencias de producción.', benchmark: undefined },
       'Plataformas activas':   { tip: 'Canales digitales donde Isabella tiene presencia activa con contenido audiovisual: YouTube, Instagram Reels, TikTok, presentaciones en sala de ventas.', benchmark: 'Prioridad: Instagram Reels y YouTube Shorts para alcance orgánico inmobiliario' },
-      'Views estimadas':       { tip: 'Estimación de reproducciones acumuladas del contenido audiovisual producido por Isabella en todas las plataformas. Indica el alcance potencial de la estrategia de video.', benchmark: undefined },
+      'Views estimadas':          { tip: 'Estimación de reproducciones acumuladas del contenido audiovisual producido por Isabella en todas las plataformas. Indica el alcance potencial de la estrategia de video.', benchmark: undefined },
+      'Perfiles psicográficos':   { tip: 'Prospectos con perfil conductual completo generado por Sofía: arquetipo, sesgos dominantes y recomendaciones de comunicación personalizadas.', benchmark: undefined },
+      'Arquetipos detectados':    { tip: 'Tipos de compradores identificados: precio-sensitivo, estatus-motivado, aversión al riesgo o decisor racional. Sofía clasifica cada prospecto en su categoría dominante.', benchmark: 'Distribución típica HNWI: 40% estatus · 30% racional · 20% riesgo · 10% precio' },
+      'Señales conductuales':     { tip: 'Observaciones psicológicas extraídas de conversaciones con Sara: patrones de pregunta, objeciones recurrentes, señales de compra y señales de deserción.', benchmark: undefined },
     };
     const agents = [
       {
         name: 'CAMILO', emoji: '🕵️‍♂️', role: 'VP de Investigación y Mercados',
         photo: '/img/agents/camilo.png',
-        desc: 'Dual-mode: genera prospectos calificados Y produce inteligencia de mercado accionable (macro, crisis, oportunidades, audiencia). Sus insights alimentan automáticamente a Sara, Valeria e Isabella en el Flujo de Trabajo.',
+        color: '#B89047',
+        tags: ['Prospección', 'Investigación', 'Inteligencia IA'],
+        inputs: ['LinkedIn', 'Prensa', 'Registros públicos'],
+        outputs: ['SARA', 'VALERIA', 'ISABELLA', 'SOFÍA'],
+        desc: [
+          'Genera prospectos HNWI calificados escaneando LinkedIn, registros públicos y prensa de negocios con clustering ponderado.',
+          'Produce inteligencia de mercado accionable: tendencias macro, alertas de crisis y oportunidades de inversión dolarizada.',
+          'Distribuye insights automáticamente a todo el equipo agéntico para activar el enjambre colaborativo.',
+        ],
         lastRun: agentCamiloLastRun,
         stats: [
           { label: 'Prospectos generados', value: agentCamiloProspects },
@@ -6735,7 +7444,15 @@ Responde SOLO con JSON sin bloques de código:
       {
         name: 'SARA', emoji: '🤖', role: 'Directora de Experiencia de Cliente',
         photo: '/img/agents/sara.png',
-        desc: 'Gestión automatizada del back-office comercial. Monitorea y clasifica leads en tiempo real, redacta cotizaciones personalizadas y prepara respuestas comerciales listas para aprobación.',
+        color: '#0EA5E9',
+        tags: ['Mensajería', 'Clasificación', 'Back-office'],
+        inputs: ['WhatsApp', 'Email', 'Instagram DM', 'Chatbot'],
+        outputs: ['SOFÍA', 'VALERIA'],
+        desc: [
+          'Monitorea y clasifica leads en tiempo real desde WhatsApp, email e Instagram DM, priorizando señales de compra inminente.',
+          'Redacta cotizaciones personalizadas y respuestas comerciales listas para aprobación del asesor.',
+          'Alimenta a Sofía con transcripciones y señales conductuales para activar el microperfilamiento psicográfico.',
+        ],
         lastRun: 'Activo en tiempo real',
         stats: [
           { label: 'Mensajes analizados', value: agentSaraMessages },
@@ -6756,9 +7473,49 @@ Responde SOLO con JSON sin bloques de código:
         ],
       },
       {
+        name: 'SOFÍA', emoji: '🧠', role: 'PhD · Psicología del Consumidor de Lujo',
+        photo: '/img/agents/sofia.png',
+        color: '#EC4899',
+        tags: ['Neuromarketing', 'HNWI Profiling', 'Arquetipos', 'Economía Conductual'],
+        inputs: ['CAMILO', 'SARA'],
+        outputs: ['SARA', 'VALERIA'],
+        desc: [
+          'Doctora en Psicología del Consumidor con postdoctorado en Neuromarketing de Lujo y trayectoria en firmas como LVMH, Sotheby\'s Realty y consultoras UHNWI. Especialista en los 4 arquetipos de comprador inmobiliario de alto patrimonio: Coleccionista de Estatus · Preservador de Legado · Decisor Racional · Comprador Aspiracional.',
+          'Decodifica señales conductuales digitales — urgencia real vs. urgencia performativa, lenguaje de anclaje de precio, especificidad financiera, tipo de objeción recurrente — a partir de las conversaciones que Sara captura en WhatsApp, email, chatbot y FAQs.',
+          'Produce briefs de influencia accionables: para Sara, el protocolo exacto de respuesta por arquetipo (qué decir, cuándo, con qué evidencia); para Valeria, los sesgos cognitivos a activar en el copy (escasez, prueba social de élite, identidad aspiracional, preservación de patrimonio, efecto de dotación).',
+        ],
+        lastRun: sofiaProfiles.length > 0 ? `Último análisis: ${sofiaProfiles[sofiaProfiles.length - 1].fecha}` : 'Sin análisis aún',
+        stats: [
+          { label: 'Perfiles psicográficos', value: sofiaProfiles.length },
+          { label: 'Arquetipos detectados', value: [...new Set(sofiaProfiles.map(p => p.arquetipo))].length },
+          { label: 'Señales conductuales', value: sofiaProfiles.reduce((a, p) => a + p.senales.length, 0) },
+        ],
+        status: agentSofiaActive ? 'Analizando...' : sofiaProfiles.length > 0 ? `${sofiaProfiles.length} perfiles activos` : 'Lista',
+        statusColor: agentSofiaActive ? '#EC4899' : sofiaProfiles.length > 0 ? '#10B981' : '#EC4899',
+        logs: sofiaProfiles.length > 0
+          ? sofiaProfiles.slice(-4).map(p => ({ time: p.fecha, msg: `[${p.arquetipo.toUpperCase()}] ${p.prospectName} · Confianza: ${p.confianza}% · ${p.senales[0] || ''}` }))
+          : [
+            { time: 'SISTEMA', msg: 'Módulo de perfilamiento conductual inicializado · Arquetipos HNWI cargados.' },
+            { time: 'MODELO',  msg: 'Coleccionista de Estatus · Preservador de Legado · Decisor Racional · Aspiracional.' },
+            { time: 'ESPERA',  msg: 'Sin perfiles aún · Pulsa "Perfilar Prospectos" para comenzar.' },
+          ],
+        actions: [
+          { label: agentSofiaActive ? 'Analizando...' : 'Perfilar Prospectos', icon: 'brain', onClick: () => handleSofia() },
+          { label: 'Ver Perfiles', icon: 'eye', onClick: () => setAgentHistoryDetail('SOFIA') },
+        ],
+      },
+      {
         name: 'VALERIA', emoji: '✍️', role: 'VP de Medios',
         photo: '/img/agents/alicia.png',
-        desc: 'Experta en persuasión y marketing de contenidos de lujo. Redacta copys con contexto real del portafolio GLP, datos de prospectos e insights de mercado. Todo editable y aprobable por el administrador.',
+        color: '#8B5CF6',
+        tags: ['Copywriting', 'Contenido', 'Marketing'],
+        inputs: ['CAMILO', 'SOFÍA'],
+        outputs: ['Contenido editorial', 'Campañas'],
+        desc: [
+          'Redacta copys con contexto real del portafolio GLP, datos de prospectos e insights de mercado de Camilo.',
+          'Recibe briefs psicográficos de Sofía para adaptar el tono, los sesgos cognitivos y el lenguaje por segmento.',
+          'Gestiona el calendario editorial: LinkedIn, email newsletters, anuncios Meta y presentaciones de proyecto.',
+        ],
         lastRun: valeriaDrafts.length > 0 ? `Último: ${valeriaDrafts[0].canal || valeriaDrafts[0].type} · ${valeriaDrafts[0].date}` : 'Sin contenido generado aún',
         stats: [
           { label: 'Contenidos generados', value: valeriaDrafts.length },
@@ -6777,7 +7534,15 @@ Responde SOLO con JSON sin bloques de código:
       {
         name: 'ISABELLA', emoji: '🎙️', role: 'Embajadora de Marca GLP',
         photo: '/img/agents/isabella.png',
-        desc: 'Cara visible y presentadora de GLP. Genera guiones de producción ejecutables: Reels, videos educativos, testimoniales y calendarios de contenido. Coordina automáticamente con Valeria para el copy de acompañamiento. Usa el mismo Perfil de Marca que Valeria.',
+        color: '#F59E0B',
+        tags: ['Video', 'Guiones', 'Producción'],
+        inputs: ['CAMILO', 'VALERIA'],
+        outputs: ['Reels', 'YouTube', 'HeyGen'],
+        desc: [
+          'Genera guiones de producción ejecutables: Reels, videos educativos, testimoniales y calendarios de contenido audiovisual.',
+          'Coordina automáticamente con Valeria para el copy de acompañamiento de cada pieza de video.',
+          'Exporta guiones en formato JSON listo para HeyGen y plataformas de avatar digital.',
+        ],
         lastRun: isabellaScripts.length > 0 ? `Último: ${isabellaScripts[0].asunto || isabellaScripts[0].type} · ${isabellaScripts[0].date}` : 'Sin guiones generados aún',
         stats: [
           { label: 'Guiones generados', value: isabellaScripts.length },
@@ -6797,7 +7562,7 @@ Responde SOLO con JSON sin bloques de código:
     ];
 
 
-    if (agentHistoryDetail && !['WORKFLOW', 'OBJECTIONS', 'CRISIS'].includes(agentHistoryDetail)) {
+    if (agentHistoryDetail && !['WORKFLOW', 'OBJECTIONS', 'CRISIS', 'SOFIA'].includes(agentHistoryDetail)) {
       // ── PANEL CAMILO ────────────────────────────────────────────
       if (agentHistoryDetail === 'CAMILO') {
         const TIPO_COLOR: Record<string,string> = { mercado:'#3B82F6', crisis:'#EF4444', oportunidad:'#10B981', audiencia:'#8B5CF6' };
@@ -7219,6 +7984,35 @@ Responde SOLO con JSON sin bloques de código:
               </div>
             </div>
 
+            {/* ── BANNER CONTEXTO SOFÍA ── */}
+            {sofiaToSaraContext && (() => {
+              const ARQC: Record<string,{color:string;label:string}> = {
+                estatus: { color:'#6D28D9', label:'Coleccionista de Estatus' },
+                legado:  { color:'#1D4ED8', label:'Preservador de Legado' },
+                racional:{ color:'#047857', label:'Decisor Racional' },
+                aspiracional:{ color:'#B45309', label:'Comprador Aspiracional' },
+              };
+              const cfg = ARQC[sofiaToSaraContext.arquetipo] || ARQC.aspiracional;
+              return (
+                <div style={{ background:'#fff', borderLeft:`4px solid ${cfg.color}`, padding:'14px 24px', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12, borderBottom:'1px solid #EDE8DF' }}>
+                  <div>
+                    <div style={{ fontSize:7, letterSpacing:3, color:cfg.color, fontWeight:800, textTransform:'uppercase' as const, marginBottom:5 }}>Contexto de Sofía · Perfil Conductual</div>
+                    <div style={{ fontSize:13, fontFamily:T.fontSerif, fontWeight:600, color:S_NAVY, marginBottom:3 }}>{sofiaToSaraContext.prospectName}</div>
+                    <div style={{ fontSize:9, color:'#6B7280', marginBottom:8 }}>{sofiaToSaraContext.ocupacion} · USD {(sofiaToSaraContext.presupuesto||0).toLocaleString()}</div>
+                    <div style={{ display:'flex', gap:6, flexWrap:'wrap' as const, marginBottom:8 }}>
+                      <span style={{ fontSize:8, fontWeight:800, color:'#fff', background:cfg.color, padding:'2px 10px', letterSpacing:1.5 }}>{sofiaToSaraContext.arquetipo.toUpperCase()}</span>
+                      <span style={{ fontSize:8, color:cfg.color, background:`${cfg.color}15`, padding:'2px 10px', fontWeight:700 }}>{sofiaToSaraContext.confianza}% confianza</span>
+                    </div>
+                    <div style={{ fontSize:9, color:'#374151', lineHeight:1.6, maxWidth:560 }}>
+                      <span style={{ fontWeight:700, color:'#0369A1' }}>Sara · </span>{sofiaToSaraContext.recomendacion_sara}
+                    </div>
+                  </div>
+                  <button onClick={() => setSofiaToSaraContext(null)}
+                    style={{ background:'none', border:'none', color:'#9CA3AF', fontSize:16, cursor:'pointer', flexShrink:0, padding:'0 4px', lineHeight:1 }}>×</button>
+                </div>
+              );
+            })()}
+
             <div style={{ display:'grid', gridTemplateColumns:'300px 1fr', gap:0, minHeight:'calc(100vh - 180px)' }}>
 
               {/* ── LEFT SIDEBAR ── */}
@@ -7526,6 +8320,36 @@ Responde SOLO con JSON sin bloques de código:
             </div>
 
             <div style={{ padding:'24px 32px' }}>
+
+              {/* ── BANNER CONTEXTO SOFÍA ── */}
+              {sofiaToValeriaContext && (() => {
+                const ARQC: Record<string,{color:string;label:string}> = {
+                  estatus: { color:'#6D28D9', label:'Coleccionista de Estatus' },
+                  legado:  { color:'#1D4ED8', label:'Preservador de Legado' },
+                  racional:{ color:'#047857', label:'Decisor Racional' },
+                  aspiracional:{ color:'#B45309', label:'Comprador Aspiracional' },
+                };
+                const cfg = ARQC[sofiaToValeriaContext.arquetipo] || ARQC.aspiracional;
+                return (
+                  <div style={{ background:'#fff', borderLeft:`4px solid ${cfg.color}`, padding:'14px 18px', marginBottom:20, display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12 }}>
+                    <div>
+                      <div style={{ fontSize:7, letterSpacing:3, color:cfg.color, fontWeight:800, textTransform:'uppercase' as const, marginBottom:5 }}>Contexto de Sofía · Perfil Conductual</div>
+                      <div style={{ fontSize:13, fontFamily:T.fontSerif, fontWeight:600, color:V_NAVY, marginBottom:3 }}>{sofiaToValeriaContext.prospectName}</div>
+                      <div style={{ fontSize:9, color:'#6B7280', marginBottom:8 }}>{sofiaToValeriaContext.ocupacion} · USD {(sofiaToValeriaContext.presupuesto||0).toLocaleString()}</div>
+                      <div style={{ display:'flex', gap:6, flexWrap:'wrap' as const, marginBottom:8 }}>
+                        <span style={{ fontSize:8, fontWeight:800, color:'#fff', background:cfg.color, padding:'2px 10px', letterSpacing:1.5 }}>{sofiaToValeriaContext.arquetipo.toUpperCase()}</span>
+                        <span style={{ fontSize:8, color:cfg.color, background:`${cfg.color}15`, padding:'2px 10px', fontWeight:700 }}>{sofiaToValeriaContext.confianza}% confianza</span>
+                        <span style={{ fontSize:8, color:'#6B7280', background:'#F3F4F6', padding:'2px 10px' }}>{cfg.label}</span>
+                      </div>
+                      <div style={{ fontSize:9, color:'#374151', lineHeight:1.6, maxWidth:520 }}>
+                        <span style={{ fontWeight:700, color:'#7C3AED' }}>Valeria · </span>{sofiaToValeriaContext.recomendacion_valeria}
+                      </div>
+                    </div>
+                    <button onClick={() => setSofiaToValeriaContext(null)}
+                      style={{ background:'none', border:'none', color:'#9CA3AF', fontSize:16, cursor:'pointer', flexShrink:0, padding:'0 4px', lineHeight:1 }}>×</button>
+                  </div>
+                );
+              })()}
 
               {/* ── TAB PERFIL DE MARCA ── */}
               {valeriaTab === 'perfil' && (() => {
@@ -8112,6 +8936,362 @@ Responde SOLO con JSON sin bloques de código:
       );
     }
 
+    // ── PANEL SOFÍA ─────────────────────────────────────────
+    if (agentHistoryDetail === 'SOFIA') {
+      const C_ROSE = '#EC4899'; const C_NAVY = '#001A37'; const C_GOLD = '#B89047'; const C_CREAM = '#F7F4EF'; const C_PARCH = '#EDE8DF';
+      // Read directly from localStorage so HMR state resets don't cause empty panels
+      const liveProfiles: SofiaProfile[] = (() => { try { return JSON.parse(localStorage.getItem('glp_sofia_profiles') || '[]'); } catch { return []; } })();
+      // Paleta Sotheby's: cada arquetipo tiene un color base, un fondo claro del mismo tono
+      const ARQCFG: Record<string, { label: string; tag: string; color: string; bg: string }> = {
+        estatus:      { label: 'Coleccionista de Estatus',  tag: 'ESTATUS',      color: '#6D28D9', bg: '#6D28D9' },
+        legado:       { label: 'Preservador de Legado',     tag: 'LEGADO',       color: '#1D4ED8', bg: '#1D4ED8' },
+        racional:     { label: 'Decisor Racional',          tag: 'RACIONAL',     color: '#047857', bg: '#047857' },
+        aspiracional: { label: 'Comprador Aspiracional',    tag: 'ASPIRACIONAL', color: '#B45309', bg: '#B45309' },
+      };
+      const ARQUETIPOS = [
+        { id: 'estatus',    label: 'Coleccionista de Estatus',  subtag: 'I',  desc: 'Compra por distinción y reconocimiento social. Responde a exclusividad, prueba social de élite y escasez. Evitar lenguaje de precio.', ...ARQCFG.estatus },
+        { id: 'legado',     label: 'Preservador de Legado',     subtag: 'II', desc: 'Motivado por preservación de patrimonio y herencia familiar. Responde a datos de valorización, estabilidad y protección fiscal.',    ...ARQCFG.legado },
+        { id: 'racional',   label: 'Decisor Racional',          subtag: 'III',desc: 'Requiere evidencia cuantitativa: ROI, comparativos, modelos financieros. Desconfía del discurso emocional.',                          ...ARQCFG.racional },
+        { id: 'aspiracional', label: 'Comprador Aspiracional',  subtag: 'IV', desc: 'Motivado por identidad y pertenencia a un estilo de vida. Responde a storytelling, lifestyle y aspiración.',                           ...ARQCFG.aspiracional },
+      ];
+      const countByArq = (id: string) => liveProfiles.filter(p => p.arquetipo === id).length;
+
+      const SOFIA_QUESTIONS = [
+        { sofia: '¿Qué describe mejor la motivación principal de compra de este prospecto?',
+          options: [
+            { text: 'Pertenecer a un círculo exclusivo de propietarios', delta: { estatus: 3 }, signal: 'Busca exclusividad y distinción' },
+            { text: 'Asegurar y transmitir patrimonio familiar', delta: { legado: 3 }, signal: 'Menciona familia, herencia o legado' },
+            { text: 'Maximizar retorno sobre inversión', delta: { racional: 3 }, signal: 'Orientado a retorno de inversión' },
+            { text: 'Acceder al estilo de vida que siempre soñó', delta: { aspiracional: 3 }, signal: 'Motivación aspiracional detectada' },
+          ] },
+        { sofia: '¿Cómo tomó contacto con GLP?',
+          options: [
+            { text: 'Evento exclusivo o propietario actual', delta: { estatus: 2 }, signal: 'Captado en evento exclusivo' },
+            { text: 'Referido de familia o amigo de confianza', delta: { legado: 1, racional: 1 }, signal: 'Ingresó por referencia de confianza' },
+            { text: 'Redes sociales (Instagram / TikTok)', delta: { aspiracional: 2 }, signal: 'Canal de captación social media' },
+            { text: 'LinkedIn o búsqueda profesional', delta: { racional: 1, estatus: 1 }, signal: 'Canal LinkedIn profesional' },
+          ] },
+        { sofia: 'Al hablar de precio, ¿cuál es su primera reacción?',
+          options: [
+            { text: 'No pregunta precio; quiere saber quién más vive ahí', delta: { estatus: 3 }, signal: 'Busca exclusividad — no ancla en precio' },
+            { text: 'Pregunta por valorización histórica y protección fiscal', delta: { legado: 3 }, signal: 'Foco en preservación de valor' },
+            { text: 'Pide comparativo: precio/m², ROI, índice de ocupación', delta: { racional: 3 }, signal: 'Decisión basada en métricas' },
+            { text: 'Le interesa más el lifestyle que el número exacto', delta: { aspiracional: 3 }, signal: 'Emoción supera al análisis financiero' },
+          ] },
+        { sofia: '¿Qué tipo de contenido lo mueve más?',
+          options: [
+            { text: 'Fotos de eventos y propietarios en GLP', delta: { estatus: 2 }, signal: 'Responde a prueba social de élite' },
+            { text: 'Análisis de valorización a 10+ años', delta: { legado: 2, racional: 1 }, signal: 'Perfil analítico-patrimonial' },
+            { text: 'Métricas: ocupación, tasas, comparativos de mercado', delta: { racional: 3 }, signal: 'Perfil analítico-profesional' },
+            { text: 'Videos de lifestyle y experiencia de vivir ahí', delta: { aspiracional: 3 }, signal: 'Responde a storytelling visual' },
+          ] },
+        { sofia: 'Una última señal. ¿En qué etapa está su decisión?',
+          options: [
+            { text: 'Listo para decidir — necesita el detonante correcto', delta: { estatus: 1 }, signal: 'Alta probabilidad de cierre a corto plazo' },
+            { text: 'Comparando — necesita datos sólidos para justificar', delta: { racional: 2 }, signal: 'Ciclo de evaluación activo' },
+            { text: 'Explorando — construyendo el sueño', delta: { aspiracional: 2 }, signal: 'Etapa inspiracional — ciclo largo' },
+            { text: 'Decidido — busca facilidades de pago', delta: { aspiracional: 1, racional: 1 }, signal: 'Urgencia real, barrera financiera' },
+          ] },
+      ];
+
+      const SOFIA_RECS: Record<string, { sara: string; valeria: string }> = {
+        estatus: { sara: 'Destacar exclusividad y pertenencia a comunidad UHNWI. No mencionar precio primero. Invitar a evento privado de propietarios.', valeria: 'Prueba social de élite, escasez real de unidades, copy en primera persona del plural ("quienes ya son parte de..."). Evitar lenguaje promocional.' },
+        legado: { sara: 'Enfatizar valorización histórica, estabilidad del mercado panameño y beneficios de transmisión patrimonial. Ofrecer asesoría de fideicomiso.', valeria: 'Ángulo intergeneracional: "El activo que tus hijos heredarán". ROI a 10+ años, comparativo con instrumentos de preservación patrimonial.' },
+        racional: { sara: 'Enviar comparativo con métricas: precio/m², valorización anual histórica, costo de oportunidad vs. alternativas. Responder con datos, no con emociones.', valeria: 'Copy orientado a datos: tablas de valorización, índices de ocupación, beneficios fiscales cuantificados. Tono directo sin adjetivos emocionales.' },
+        aspiracional: { sara: 'Construir el sueño antes del cierre: lifestyle content, testimoniales de propietarios jóvenes, plan de pago accesible. Crear urgencia suave.', valeria: 'Storytelling visual: "Así se ve tu vida en GLP". Reels de lifestyle, FOMO con escasez de unidades en ese rango de precio.' },
+      };
+
+      const openSofiaChat = () => setSofiaChatState({ open: true, step: 0, name: '', ocupacion: '', presupuesto: 300000,
+        scores: { estatus: 0, legado: 0, racional: 0, aspiracional: 0 }, signals: [],
+        messages: [{ from: 'sofia', text: 'Hola. Soy Sofía. Voy a ayudarte a construir el perfil conductual de un prospecto. Primero necesito algunos datos básicos.' }],
+        result: null });
+
+      const sofiaAnswer = (optIdx: number) => {
+        const q = SOFIA_QUESTIONS[sofiaChatState.step - 1];
+        const opt = q.options[optIdx];
+        const newScores = { ...sofiaChatState.scores };
+        Object.entries(opt.delta).forEach(([k, v]) => { (newScores as any)[k] += v; });
+        const newSignals = [...sofiaChatState.signals, opt.signal];
+        const nextStep = sofiaChatState.step + 1;
+        const newMessages = [
+          ...sofiaChatState.messages,
+          { from: 'user' as const, text: opt.text },
+        ];
+        if (nextStep > SOFIA_QUESTIONS.length) {
+          // Compute result
+          const winner = (Object.entries(newScores).sort((a, b) => b[1] - a[1])[0][0]) as SofiaProfile['arquetipo'];
+          const total = Object.values(newScores).reduce((a, b) => a + b, 0) || 1;
+          const max = newScores[winner];
+          const confianza = Math.min(94, Math.round(52 + (max / total) * 42));
+          const fecha = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+          const rec = SOFIA_RECS[winner];
+          const result: SofiaProfile = {
+            prospectId: Date.now(), prospectName: sofiaChatState.name,
+            ocupacion: sofiaChatState.ocupacion, presupuesto: sofiaChatState.presupuesto,
+            arquetipo: winner, confianza, senales: newSignals.slice(0, 4),
+            recomendacion_sara: rec.sara, recomendacion_valeria: rec.valeria, fecha,
+          };
+          const updated = [...(liveProfiles.filter(p => p.prospectName !== sofiaChatState.name)), result];
+          setSofiaProfiles(updated);
+          localStorage.setItem('glp_sofia_profiles', JSON.stringify(updated));
+          setSofiaChatState(s => ({ ...s, step: nextStep, scores: newScores, signals: newSignals,
+            messages: [...newMessages, { from: 'sofia', text: `Análisis completado. He clasificado a ${sofiaChatState.name} como ${winner.toUpperCase()} con un ${confianza}% de confianza.` }],
+            result }));
+        } else {
+          const nextQ = SOFIA_QUESTIONS[nextStep - 1];
+          setSofiaChatState(s => ({ ...s, step: nextStep, scores: newScores, signals: newSignals,
+            messages: [...newMessages, { from: 'sofia', text: nextQ.sofia }] }));
+        }
+      };
+
+      const sofiaIntakeSubmit = () => {
+        if (!sofiaChatState.name.trim()) return;
+        const pres = sofiaChatState.presupuesto;
+        const presSignal = pres >= 600000 ? 'Presupuesto UHNWI (>$600K)' : pres >= 400000 ? 'Presupuesto HNW ($400K–$600K)' : pres >= 200000 ? 'Presupuesto calificado ($200K–$400K)' : 'Segmento entry luxury (<$200K)';
+        const presScores = pres >= 600000 ? { estatus: 2, legado: 2, racional: 0, aspiracional: 0 } : pres >= 400000 ? { estatus: 0, legado: 2, racional: 1, aspiracional: 0 } : pres >= 200000 ? { estatus: 0, legado: 0, racional: 1, aspiracional: 1 } : { estatus: 0, legado: 0, racional: 0, aspiracional: 2 };
+        const occLow = sofiaChatState.ocupacion.toLowerCase();
+        const occSignal = /ceo|presidente|director|socio|fundador|empresari/i.test(occLow) ? 'Liderazgo corporativo C-level' : /ingenier|financi|contador|analist|abogad|médic|doctor/i.test(occLow) ? 'Perfil analítico-profesional' : /artista|creativ|diseñ|influenc|emprendedor/i.test(occLow) ? 'Perfil creativo/aspiracional' : null;
+        const occScores = /ceo|presidente|director|socio|fundador|empresari/i.test(occLow) ? { estatus: 3, legado: 0, racional: 0, aspiracional: 0 } : /ingenier|financi|contador|analist|abogad|médic|doctor/i.test(occLow) ? { estatus: 0, legado: 0, racional: 3, aspiracional: 0 } : /artista|creativ|diseñ|influenc|emprendedor/i.test(occLow) ? { estatus: 0, legado: 0, racional: 0, aspiracional: 3 } : { estatus: 0, legado: 0, racional: 0, aspiracional: 0 };
+        const initScores = { estatus: presScores.estatus + occScores.estatus, legado: presScores.legado + occScores.legado, racional: presScores.racional + occScores.racional, aspiracional: presScores.aspiracional + occScores.aspiracional };
+        const initSignals = [presSignal, occSignal].filter(Boolean) as string[];
+        setSofiaChatState(s => ({ ...s, step: 1, scores: initScores, signals: initSignals,
+          messages: [...s.messages,
+            { from: 'user', text: `${s.name} · ${s.ocupacion} · USD ${s.presupuesto.toLocaleString()}` },
+            { from: 'sofia', text: SOFIA_QUESTIONS[0].sofia }] }));
+      };
+
+      return (
+        <div style={{ height: '100%', overflowY: 'auto', background: C_CREAM }}>
+          {/* Header */}
+          <div style={{ background: C_NAVY, padding: '24px 32px 20px' }}>
+            <button onClick={() => setAgentHistoryDetail(null)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 10, cursor: 'pointer', padding: 0, marginBottom: 14, letterSpacing: 1.5, textTransform: 'uppercase' as const }}>← Volver</button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+              <div>
+                <div style={{ fontSize: 8, letterSpacing: 4, color: C_GOLD, fontWeight: 700, textTransform: 'uppercase' as const, marginBottom: 6 }}>Agente IA · Perfiladora Conductual</div>
+                <div style={{ fontSize: 24, fontFamily: T.fontSerif, fontWeight: 300, color: '#fff', letterSpacing: 2 }}>SOFÍA</div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', marginTop: 3, letterSpacing: 0.5 }}>PhD · Psicología del Consumidor de Lujo · Neuromarketing HNWI</div>
+              </div>
+              <div style={{ textAlign: 'right' as const }}>
+                <div style={{ fontSize: 22, fontFamily: T.fontSerif, fontWeight: 300, color: C_GOLD }}>{liveProfiles.length}</div>
+                <div style={{ fontSize: 8, letterSpacing: 2, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' as const }}>Perfiles activos</div>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ padding: '24px 32px' }}>
+            {/* Arquetipos */}
+            <div style={{ fontSize: 8, letterSpacing: 3, color: C_GOLD, fontWeight: 700, textTransform: 'uppercase' as const, marginBottom: 14, borderBottom: `1px solid ${C_PARCH}`, paddingBottom: 8 }}>Marco de Arquetipos HNWI</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 28 }}>
+              {ARQUETIPOS.map(a => (
+                <div key={a.id} style={{ background: '#fff', border: `1px solid ${C_PARCH}`, borderTop: `2px solid ${a.color}`, padding: '14px 16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: a.color, letterSpacing: 2, textTransform: 'uppercase' as const }}>{a.tag}</div>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: '#fff', background: a.color, padding: '1px 6px', minWidth: 20, textAlign: 'center' as const }}>{countByArq(a.id)}</div>
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: C_NAVY, fontFamily: T.fontSerif, marginBottom: 5 }}>{a.label}</div>
+                  <div style={{ fontSize: 9.5, color: '#6B7280', lineHeight: 1.6 }}>{a.desc}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Perfiles */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, borderBottom: `1px solid ${C_PARCH}`, paddingBottom: 8 }}>
+              <div style={{ fontSize: 8, letterSpacing: 3, color: C_GOLD, fontWeight: 700, textTransform: 'uppercase' as const }}>
+                Perfiles Psicográficos · {liveProfiles.length} prospectos
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={openSofiaChat}
+                  style={{ background: C_NAVY, border: 'none', color: C_GOLD, padding: '4px 14px', fontSize: 8, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase' as const, cursor: 'pointer' }}>
+                  Perfilar por Chat
+                </button>
+                <button onClick={() => handleSofia()} disabled={agentSofiaActive}
+                  style={{ background: 'none', border: `1px solid ${C_NAVY}`, color: C_NAVY, padding: '4px 12px', fontSize: 8, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase' as const, cursor: agentSofiaActive ? 'default' : 'pointer', opacity: agentSofiaActive ? 0.4 : 1 }}>
+                  {agentSofiaActive ? 'Analizando...' : 'Re-analizar'}
+                </button>
+              </div>
+            </div>
+
+            {liveProfiles.length === 0 ? (
+              <div style={{ background: '#fff', border: `1px solid ${C_PARCH}`, padding: '32px 20px', textAlign: 'center' as const }}>
+                <div style={{ fontSize: 11, fontFamily: T.fontSerif, color: C_NAVY, marginBottom: 6 }}>Sin perfiles generados aún</div>
+                <div style={{ fontSize: 10, color: '#9CA3AF', lineHeight: 1.7 }}>Pulsa "Perfilar Prospectos" en la tarjeta de Sofía.</div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+                {liveProfiles.map(prof => {
+                  const cfg = ARQCFG[prof.arquetipo] || ARQCFG.aspiracional;
+                  return (
+                    <div key={prof.prospectId} style={{ background: '#fff', border: `1px solid ${C_PARCH}`, borderLeft: `3px solid ${cfg.color}`, padding: '12px 16px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: C_NAVY, fontFamily: T.fontSerif }}>{prof.prospectName}</div>
+                          <div style={{ fontSize: 9, color: '#9CA3AF', marginTop: 2 }}>{prof.ocupacion} · USD {(prof.presupuesto || 0).toLocaleString()}</div>
+                        </div>
+                        <div style={{ textAlign: 'right' as const, flexShrink: 0 }}>
+                          <div style={{ fontSize: 8, fontWeight: 800, color: '#fff', letterSpacing: 1.5, background: cfg.bg, padding: '2px 8px' }}>{cfg.tag}</div>
+                          <div style={{ fontSize: 10, color: cfg.bg, fontWeight: 700, marginTop: 3 }}>{prof.confianza}%</div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4, marginBottom: 8 }}>
+                        {prof.senales.map((s, i) => (
+                          <span key={i} style={{ fontSize: 8, padding: '2px 7px', background: C_PARCH, color: '#6B7280', letterSpacing: 0.5 }}>{s}</span>
+                        ))}
+                      </div>
+                      <div style={{ fontSize: 9, color: '#374151', lineHeight: 1.6, marginBottom: 3, paddingLeft: 8, borderLeft: `2px solid #0369A1` }}>
+                        <span style={{ fontWeight: 700, color: '#0369A1', letterSpacing: 0.5 }}>SARA · </span>{prof.recomendacion_sara}
+                      </div>
+                      <div style={{ fontSize: 9, color: '#374151', lineHeight: 1.6, paddingLeft: 8, borderLeft: `2px solid #7C3AED` }}>
+                        <span style={{ fontWeight: 700, color: '#7C3AED', letterSpacing: 0.5 }}>VALERIA · </span>{prof.recomendacion_valeria}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* ── CHATBOT OVERLAY ── */}
+          {sofiaChatState.open && (() => {
+            const arqLeader = (Object.entries(sofiaChatState.scores).sort((a,b) => b[1]-a[1])[0][0]) as string;
+            const ARQCOLOR: Record<string,string> = { estatus: '#6D28D9', legado: '#1D4ED8', racional: '#047857', aspiracional: '#B45309' };
+            const leaderColor = ARQCOLOR[arqLeader] || C_GOLD;
+            const totalScore = Object.values(sofiaChatState.scores).reduce((a,b) => a+b, 0) || 1;
+            const progress = sofiaChatState.step > 0 ? Math.round((sofiaChatState.step / (SOFIA_QUESTIONS.length + 1)) * 100) : 0;
+            const currentQ = sofiaChatState.step >= 1 && sofiaChatState.step <= SOFIA_QUESTIONS.length ? SOFIA_QUESTIONS[sofiaChatState.step - 1] : null;
+            const isResult = sofiaChatState.result !== null;
+            return (
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,26,55,0.7)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ width: 480, maxHeight: '90vh', display: 'flex', flexDirection: 'column', background: C_CREAM, boxShadow: '0 24px 60px rgba(0,0,0,0.4)' }}>
+                  {/* Chat Header */}
+                  <div style={{ background: C_NAVY, padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+                    <div>
+                      <div style={{ fontSize: 7, letterSpacing: 3, color: C_GOLD, fontWeight: 700, textTransform: 'uppercase' as const, marginBottom: 3 }}>Perfiladora Conductual</div>
+                      <div style={{ fontSize: 16, fontFamily: T.fontSerif, color: '#fff', letterSpacing: 1 }}>SOFÍA</div>
+                    </div>
+                    <div style={{ textAlign: 'right' as const }}>
+                      {sofiaChatState.step > 0 && !isResult && (
+                        <>
+                          <div style={{ fontSize: 7, color: 'rgba(255,255,255,0.4)', letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: 4 }}>Arquetipo emergente</div>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: leaderColor, letterSpacing: 1.5, background: 'rgba(255,255,255,0.08)', padding: '2px 10px' }}>{arqLeader.toUpperCase()}</div>
+                        </>
+                      )}
+                      <button onClick={() => setSofiaChatState(s => ({ ...s, open: false }))}
+                        style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.35)', fontSize: 18, cursor: 'pointer', lineHeight: 1, marginTop: 6, display: 'block', marginLeft: 'auto' }}>×</button>
+                    </div>
+                  </div>
+
+                  {/* Progress bar */}
+                  {!isResult && (
+                    <div style={{ height: 2, background: 'rgba(0,26,55,0.1)', flexShrink: 0 }}>
+                      <div style={{ height: '100%', background: leaderColor, width: `${progress}%`, transition: 'width 0.4s ease, background 0.4s ease' }}/>
+                    </div>
+                  )}
+
+                  {/* Messages */}
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '20px 20px 12px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {sofiaChatState.messages.map((m, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: m.from === 'sofia' ? 'flex-start' : 'flex-end' }}>
+                        <div style={{
+                          maxWidth: '78%', padding: '10px 14px', fontSize: 12, lineHeight: 1.6,
+                          background: m.from === 'sofia' ? C_NAVY : '#fff',
+                          color: m.from === 'sofia' ? 'rgba(255,255,255,0.88)' : C_NAVY,
+                          borderRadius: m.from === 'sofia' ? '0 8px 8px 8px' : '8px 0 8px 8px',
+                          border: m.from === 'user' ? `1px solid ${C_PARCH}` : 'none',
+                          fontFamily: m.from === 'sofia' ? T.fontSerif : 'inherit',
+                        }}>{m.text}</div>
+                      </div>
+                    ))}
+
+                    {/* Resultado final */}
+                    {isResult && sofiaChatState.result && (() => {
+                      const r = sofiaChatState.result;
+                      const cfg = ARQCFG[r.arquetipo];
+                      return (
+                        <div style={{ background: '#fff', border: `1px solid ${C_PARCH}`, borderTop: `3px solid ${cfg.bg}`, padding: '16px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                            <div style={{ fontSize: 8, fontWeight: 800, color: '#fff', background: cfg.bg, padding: '3px 10px', letterSpacing: 1.5 }}>{cfg.tag}</div>
+                            <div style={{ fontSize: 20, fontWeight: 300, fontFamily: T.fontSerif, color: cfg.bg }}>{r.confianza}%</div>
+                          </div>
+                          <div style={{ fontSize: 13, fontFamily: T.fontSerif, fontWeight: 600, color: C_NAVY, marginBottom: 4 }}>{r.prospectName}</div>
+                          <div style={{ fontSize: 10, color: '#6B7280', marginBottom: 12 }}>{cfg.label}</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4, marginBottom: 14 }}>
+                            {r.senales.map((s, i) => <span key={i} style={{ fontSize: 8, background: C_PARCH, color: '#374151', padding: '2px 8px' }}>{s}</span>)}
+                          </div>
+                          <div style={{ fontSize: 9, color: '#374151', lineHeight: 1.6, marginBottom: 6, paddingLeft: 8, borderLeft: '2px solid #0369A1' }}>
+                            <span style={{ fontWeight: 700, color: '#0369A1' }}>SARA · </span>{r.recomendacion_sara}
+                          </div>
+                          <div style={{ fontSize: 9, color: '#374151', lineHeight: 1.6, marginBottom: 14, paddingLeft: 8, borderLeft: '2px solid #7C3AED' }}>
+                            <span style={{ fontWeight: 700, color: '#7C3AED' }}>VALERIA · </span>{r.recomendacion_valeria}
+                          </div>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button onClick={() => { setSofiaToSaraContext(sofiaChatState.result); setSofiaChatState(s => ({ ...s, open: false })); setAgentHistoryDetail('SARA'); }}
+                              style={{ flex: 1, background: '#0369A1', border: 'none', color: '#fff', padding: '8px', fontSize: 9, fontWeight: 700, letterSpacing: 1, cursor: 'pointer', textTransform: 'uppercase' as const }}>
+                              Email con Sara
+                            </button>
+                            <button onClick={() => { setSofiaToValeriaContext(sofiaChatState.result); setSofiaChatState(s => ({ ...s, open: false })); setAgentHistoryDetail('VALERIA'); }}
+                              style={{ flex: 1, background: '#7C3AED', border: 'none', color: '#fff', padding: '8px', fontSize: 9, fontWeight: 700, letterSpacing: 1, cursor: 'pointer', textTransform: 'uppercase' as const }}>
+                              Campaña con Valeria
+                            </button>
+                            <button onClick={() => setSofiaChatState(s => ({ ...s, open: false }))}
+                              style={{ background: 'none', border: `1px solid ${C_NAVY}`, color: C_NAVY, padding: '8px 12px', fontSize: 9, fontWeight: 700, cursor: 'pointer' }}>
+                              Cerrar
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Input area */}
+                  {!isResult && (
+                    <div style={{ padding: '0 20px 20px', flexShrink: 0 }}>
+                      {sofiaChatState.step === 0 ? (
+                        /* Intake form */
+                        <div style={{ background: '#fff', border: `1px solid ${C_PARCH}`, padding: '16px' }}>
+                          <div style={{ fontSize: 8, letterSpacing: 2, color: C_GOLD, fontWeight: 700, marginBottom: 12, textTransform: 'uppercase' as const }}>Datos del Prospecto</div>
+                          <input value={sofiaChatState.name} onChange={e => setSofiaChatState(s => ({ ...s, name: e.target.value }))}
+                            placeholder="Nombre completo"
+                            style={{ width: '100%', border: `1px solid ${C_PARCH}`, padding: '8px 10px', fontSize: 12, marginBottom: 8, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' as const }} />
+                          <input value={sofiaChatState.ocupacion} onChange={e => setSofiaChatState(s => ({ ...s, ocupacion: e.target.value }))}
+                            placeholder="Ocupación / cargo"
+                            style={{ width: '100%', border: `1px solid ${C_PARCH}`, padding: '8px 10px', fontSize: 12, marginBottom: 10, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' as const }} />
+                          <div style={{ fontSize: 8, color: '#9CA3AF', marginBottom: 6, letterSpacing: 1 }}>PRESUPUESTO APROXIMADO</div>
+                          <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+                            {[{ label: '<$200K', val: 150000 }, { label: '$200K–$400K', val: 300000 }, { label: '$400K–$600K', val: 500000 }, { label: '>$600K', val: 700000 }].map(opt => (
+                              <button key={opt.val} onClick={() => setSofiaChatState(s => ({ ...s, presupuesto: opt.val }))}
+                                style={{ flex: 1, padding: '6px 4px', fontSize: 9, fontWeight: 700, border: `1px solid ${sofiaChatState.presupuesto === opt.val ? C_NAVY : C_PARCH}`, background: sofiaChatState.presupuesto === opt.val ? C_NAVY : '#fff', color: sofiaChatState.presupuesto === opt.val ? C_GOLD : '#374151', cursor: 'pointer', letterSpacing: 0.5 }}>
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                          <button onClick={sofiaIntakeSubmit} disabled={!sofiaChatState.name.trim()}
+                            style={{ width: '100%', background: sofiaChatState.name.trim() ? C_NAVY : '#D1D5DB', border: 'none', color: sofiaChatState.name.trim() ? C_GOLD : '#9CA3AF', padding: '10px', fontSize: 9, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, cursor: sofiaChatState.name.trim() ? 'pointer' : 'default' }}>
+                            Iniciar Análisis
+                          </button>
+                        </div>
+                      ) : currentQ && (
+                        /* Question options */
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {currentQ.options.map((opt, i) => (
+                            <button key={i} onClick={() => sofiaAnswer(i)}
+                              style={{ background: '#fff', border: `1px solid ${C_PARCH}`, padding: '10px 14px', fontSize: 11, color: C_NAVY, textAlign: 'left' as const, cursor: 'pointer', lineHeight: 1.4, fontFamily: 'inherit', transition: 'border-color 0.15s' }}
+                              onMouseEnter={e => (e.currentTarget.style.borderColor = C_NAVY)}
+                              onMouseLeave={e => (e.currentTarget.style.borderColor = C_PARCH)}>
+                              {opt.text}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      );
+    }
+
     // ── PANEL FLUJO DE TRABAJO ───────────────────────────────
     if (agentHistoryDetail === 'WORKFLOW') {
       const AGENT_COLORS: Record<string,string> = { CAMILO: '#3B82F6', SARA: '#10B981', VALERIA: '#8B5CF6', ISABELLA: '#F59E0B', ADMIN: T.teal };
@@ -8596,11 +9776,11 @@ Responde SOLO con JSON sin bloques de código:
                   GLP Wealth Management · Plataforma de Inteligencia
                 </div>
                 <h2 style={{ margin: 0, fontSize: 30, fontFamily: T.fontSerif, fontWeight: 300, color: '#fff', letterSpacing: 1, lineHeight: 1.1 }}>
-                  Gestión de Ventas Caídas
+                  Comando de Inteligencia Agéntica
                 </h2>
                 <div style={{ width: 48, height: 1, background: GOLD, margin: '12px 0' }} />
                 <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', letterSpacing: 2, textTransform: 'uppercase', fontWeight: 400 }}>
-                  Camilo &nbsp;·&nbsp; Sara &nbsp;·&nbsp; Valeria &nbsp;·&nbsp; Isabella
+                  Camilo &nbsp;·&nbsp; Sara &nbsp;·&nbsp; Sofía &nbsp;·&nbsp; Valeria &nbsp;·&nbsp; Isabella
                 </div>
               </div>
               {/* Status indicators — minimal */}
@@ -8625,17 +9805,18 @@ Responde SOLO con JSON sin bloques de código:
         <div style={{ background: '#fff', borderBottom: `1px solid rgba(184,144,71,0.2)` }}>
           <div style={{ display: 'flex', alignItems: 'stretch' }}>
             {[
-              { idx: 0, name: 'Camilo', role: 'Investigación & Mercados', num: 'I' },
-              { idx: 1, name: 'Sara',   role: 'Experiencia de Cliente',   num: 'II' },
-              { idx: 2, name: 'Valeria', role: 'Medios & Contenido',      num: 'III' },
-              { idx: 3, name: 'Isabella', role: 'Embajadora de Marca',    num: 'IV' },
+              { idx: 0, name: 'Camilo',   role: 'Investigación & Mercados', num: 'I' },
+              { idx: 1, name: 'Sofía',    role: 'Perfiladora Conductual',   num: 'II' },
+              { idx: 2, name: 'Sara',     role: 'Experiencia de Cliente',   num: 'III' },
+              { idx: 3, name: 'Valeria',  role: 'Medios & Contenido',       num: 'IV' },
+              { idx: 4, name: 'Isabella', role: 'Embajadora de Marca',      num: 'V' },
             ].map((step, sIdx) => {
               const active = swarmStep === step.idx;
               const completed = swarmStep !== null && swarmStep > step.idx;
               return (
                 <div key={step.idx} style={{
                   flex: 1, display: 'flex', alignItems: 'center',
-                  borderRight: sIdx < 3 ? `1px solid rgba(184,144,71,0.15)` : 'none',
+                  borderRight: sIdx < 4 ? `1px solid rgba(184,144,71,0.15)` : 'none',
                   background: active ? `rgba(184,144,71,0.05)` : '#fff',
                   transition: 'background 0.3s',
                   borderBottom: active ? `2px solid ${GOLD}` : '2px solid transparent',
@@ -8708,7 +9889,7 @@ Responde SOLO con JSON sin bloques de código:
           // ── Helper: tarjeta de agente (reutilizable en las 3 secciones) ──
           const renderCard = (agent: typeof agents[0]) => {
             const isAgentActive = (agent.name === 'CAMILO' && agentCamiloActive) ||
-              (swarmStep !== null && ((agent.name === 'CAMILO' && swarmStep === 0) || (agent.name === 'SARA' && swarmStep === 1) || (agent.name === 'VALERIA' && swarmStep === 2) || (agent.name === 'ISABELLA' && swarmStep === 3)));
+              (swarmStep !== null && ((agent.name === 'CAMILO' && swarmStep === 0) || (agent.name === 'SOFÍA' && swarmStep === 1) || (agent.name === 'SARA' && swarmStep === 2) || (agent.name === 'VALERIA' && swarmStep === 3) || (agent.name === 'ISABELLA' && swarmStep === 4)));
             const pendingAgentico =
               agent.name === 'VALERIA'  ? valeriaDrafts.filter(d => d.status === 'pending' && d.origen_agentivo).length :
               agent.name === 'ISABELLA' ? isabellaScripts.filter(d => d.status === 'pending' && d.origen_agentivo).length :
@@ -8717,7 +9898,7 @@ Responde SOLO con JSON sin bloques de código:
               <div key={agent.name} style={{ background: '#fff', position: 'relative', transition: 'all 0.3s' }}>
 
                 {/* ── FOTO HERO — full width ── */}
-                <div style={{ position: 'relative', width: '100%', height: 280, overflow: 'hidden', background: NAVY }}>
+                <div style={{ position: 'relative', width: '100%', height: 196, overflow: 'hidden', background: NAVY }}>
                   <img src={agent.photo} alt={agent.name}
                     onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }}
                     style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top',
@@ -8725,8 +9906,8 @@ Responde SOLO con JSON sin bloques de código:
                       transition: 'filter 0.4s' }} />
                   {/* gradient overlay */}
                   <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,10,26,0.88) 0%, rgba(0,10,26,0.1) 55%, transparent 100%)' }} />
-                  {/* active gold bar */}
-                  {isAgentActive && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: GOLD }} />}
+                  {/* active color bar */}
+                  {isAgentActive && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: (agent as any).color || GOLD }} />}
                   {/* name overlay */}
                   <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '20px 28px 18px' }}>
                     <div style={{ fontSize: 9, letterSpacing: 4, color: GOLD, fontWeight: 700, textTransform: 'uppercase', marginBottom: 5 }}>Agente IA</div>
@@ -8736,8 +9917,8 @@ Responde SOLO con JSON sin bloques de código:
                   {/* status dot */}
                   <div style={{ position: 'absolute', top: 16, right: 16, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(0,10,26,0.6)', padding: '4px 10px' }}>
-                      <span style={{ width: 5, height: 5, borderRadius: '50%', background: isAgentActive ? GOLD : '#10B981', display: 'inline-block', animation: isAgentActive ? 'pulse 1.2s infinite' : 'none' }} />
-                      <span style={{ fontSize: 8, letterSpacing: 2, color: isAgentActive ? GOLD_LIGHT : '#10B981', fontWeight: 700, textTransform: 'uppercase' }}>
+                      <span style={{ width: 5, height: 5, borderRadius: '50%', background: isAgentActive ? ((agent as any).color || GOLD) : '#10B981', display: 'inline-block', animation: isAgentActive ? 'pulse 1.2s infinite' : 'none' }} />
+                      <span style={{ fontSize: 8, letterSpacing: 2, color: isAgentActive ? ((agent as any).color || GOLD_LIGHT) : '#10B981', fontWeight: 700, textTransform: 'uppercase' }}>
                         {isAgentActive ? 'Procesando' : agent.status}
                       </span>
                     </div>
@@ -8752,24 +9933,62 @@ Responde SOLO con JSON sin bloques de código:
 
                 {/* ── CONTENT PANEL ── */}
                 <div style={{ padding: '24px 28px 20px' }}>
-                {/* Thin gold rule */}
-                <div style={{ borderTop: `1px solid rgba(184,144,71,0.25)`, marginBottom: 16 }} />
+                {/* Thin color rule */}
+                <div style={{ borderTop: `2px solid ${(agent as any).color || GOLD}40`, marginBottom: 12 }} />
 
-                {/* Description */}
-                <div style={{ fontSize: 12, color: '#6B7280', lineHeight: 1.75, marginBottom: 20, fontStyle: 'italic' }}>{agent.desc}</div>
+                {/* Capability tags */}
+                {(agent as any).tags && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4, marginBottom: 12 }}>
+                    {((agent as any).tags as string[]).map((tag: string) => (
+                      <span key={tag} style={{ fontSize: 8, letterSpacing: 1, fontWeight: 700, textTransform: 'uppercase' as const, padding: '2px 7px', background: `${(agent as any).color || GOLD}18`, color: (agent as any).color || GOLD, border: `1px solid ${(agent as any).color || GOLD}35` }}>
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
 
-                {/* Stats — horizontal con divisores gold */}
-                <div style={{ display: 'flex', borderTop: `1px solid rgba(184,144,71,0.2)`, borderBottom: `1px solid rgba(184,144,71,0.2)`, marginBottom: 18 }}>
+                {/* Description — bullets */}
+                <ul style={{ margin: '0 0 12px', paddingLeft: 16, color: '#6B7280', fontSize: 11, lineHeight: 1.85 }}>
+                  {((agent as any).desc as string[]).map((b: string, i: number) => (
+                    <li key={i} style={{ marginBottom: 3 }}>{b}</li>
+                  ))}
+                </ul>
+
+                {/* Inputs / Outputs relationship chips */}
+                {((agent as any).inputs || (agent as any).outputs) && (
+                  <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 5, marginBottom: 16, padding: '8px 10px', background: '#F9FAFB', border: '1px solid #F0F0F0' }}>
+                    {(agent as any).inputs && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' as const }}>
+                        <span style={{ fontSize: 8, color: '#9CA3AF', letterSpacing: 1.5, textTransform: 'uppercase' as const, fontWeight: 700, minWidth: 52 }}>Recibe</span>
+                        {((agent as any).inputs as string[]).map((inp: string) => (
+                          <span key={inp} style={{ fontSize: 8, padding: '1px 6px', background: '#fff', color: '#6B7280', border: '1px solid #E5E7EB', fontWeight: 600 }}>{inp}</span>
+                        ))}
+                      </div>
+                    )}
+                    {(agent as any).outputs && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' as const }}>
+                        <span style={{ fontSize: 8, color: '#9CA3AF', letterSpacing: 1.5, textTransform: 'uppercase' as const, fontWeight: 700, minWidth: 52 }}>Entrega</span>
+                        {((agent as any).outputs as string[]).map((out: string) => (
+                          <span key={out} style={{ fontSize: 8, padding: '1px 6px', background: `${(agent as any).color || GOLD}12`, color: (agent as any).color || GOLD, border: `1px solid ${(agent as any).color || GOLD}30`, fontWeight: 700 }}>{out}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Stats — horizontal con divisores */}
+                <div style={{ display: 'flex', borderTop: `1px solid ${(agent as any).color || GOLD}30`, borderBottom: `1px solid ${(agent as any).color || GOLD}30`, marginBottom: 18 }}>
                   {agent.stats.map((s, si) => {
+                    const agentColor = (agent as any).color || GOLD;
                     const isSelected = activeAgentKpi?.agent === agent.name && activeAgentKpi?.label === s.label;
                     return (
                       <div key={s.label} onClick={() => isSelected ? setActiveAgentKpi(null) : setActiveAgentKpi({ agent: agent.name, label: s.label })}
                         style={{ flex: 1, padding: '14px 0', textAlign: 'center', cursor: 'pointer',
-                          borderRight: si < 2 ? `1px solid rgba(184,144,71,0.2)` : 'none',
-                          background: isSelected ? `rgba(184,144,71,0.05)` : 'transparent',
+                          borderRight: si < 2 ? `1px solid ${agentColor}25` : 'none',
+                          background: isSelected ? `${agentColor}0D` : 'transparent',
                           transition: 'background 0.15s' }}>
-                        <div style={{ fontSize: 22, fontFamily: T.fontSerif, fontWeight: 300, color: isSelected ? GOLD : NAVY, letterSpacing: 0.5 }}>{s.value}</div>
-                        <div style={{ fontSize: 8, letterSpacing: 2, color: isSelected ? GOLD : '#9CA3AF', textTransform: 'uppercase', marginTop: 4, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
+                        <div style={{ fontSize: 22, fontFamily: T.fontSerif, fontWeight: 300, color: isSelected ? agentColor : NAVY, letterSpacing: 0.5 }}>{s.value}</div>
+                        <div style={{ fontSize: 8, letterSpacing: 2, color: isSelected ? agentColor : '#9CA3AF', textTransform: 'uppercase', marginTop: 4, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
                           {s.label}
                           {AGENT_STAT_TIPS[s.label] && <InfoTip text={AGENT_STAT_TIPS[s.label].tip} benchmark={AGENT_STAT_TIPS[s.label].benchmark} />}
                         </div>
@@ -8780,9 +9999,9 @@ Responde SOLO con JSON sin bloques de código:
 
                 {/* KPI Drilldown */}
                 {activeAgentKpi?.agent === agent.name && (
-                  <div style={{ background: CREAM, border: `1px solid #D6CEBC`, borderLeft: `3px solid ${GOLD}`, padding: '12px 14px', marginBottom: 14, fontSize: 11, color: T.text }}>
+                  <div style={{ background: CREAM, border: `1px solid #D6CEBC`, borderLeft: `3px solid ${(agent as any).color || GOLD}`, padding: '12px 14px', marginBottom: 14, fontSize: 11, color: T.text }}>
                     <div style={{ fontWeight: 700, color: NAVY, marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: 9, letterSpacing: 2, textTransform: 'uppercase', color: GOLD }}>Detalle: {activeAgentKpi.label}</span>
+                      <span style={{ fontSize: 9, letterSpacing: 2, textTransform: 'uppercase', color: (agent as any).color || GOLD }}>Detalle: {activeAgentKpi.label}</span>
                       <span onClick={(e) => { e.stopPropagation(); setActiveAgentKpi(null); }} style={{ cursor: 'pointer', color: '#9CA3AF', fontSize: 14 }}>×</span>
                     </div>
                     {renderAgentKpiDetail(agent.name, activeAgentKpi.label)}
@@ -8800,7 +10019,7 @@ Responde SOLO con JSON sin bloques de código:
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 1, maxHeight: 100, overflowY: 'auto' }}>
                     {agent.logs.map((log, i) => (
                       <div key={i} style={{ fontSize: 10, display: 'flex', gap: 10, padding: '5px 0', borderBottom: `1px solid ${PARCHMENT}` }}>
-                        <span style={{ color: GOLD, fontWeight: 600, minWidth: 38, flexShrink: 0 }}>{log.time}</span>
+                        <span style={{ color: (agent as any).color || GOLD, fontWeight: 600, minWidth: 38, flexShrink: 0 }}>{log.time}</span>
                         <span style={{ color: '#374151' }}>{log.msg}</span>
                       </div>
                     ))}
@@ -8927,7 +10146,7 @@ Responde SOLO con JSON sin bloques de código:
               <div>
                 {vHeader(
                   'I', 'Inteligencia de Mercado',
-                  'Camilo investiga · Valeria y Isabella generan contenido de captación',
+                  'Camilo investiga · Sofía perfila · Valeria e Isabella generan contenido de captación',
                   GOLD,
                   [
                     { label: 'Insights nuevos', value: camiloInsights.filter(i => i.status === 'nuevo').length, color: GOLD },
@@ -8936,8 +10155,8 @@ Responde SOLO con JSON sin bloques de código:
                   ],
                   { label: agentCamiloActive ? '⏳ Investigando...' : '▶ Research', onClick: () => handleCamilo(false, false, 'research'), disabled: agentCamiloActive }
                 )}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1 }}>
-                  {agents.filter(a => ['CAMILO', 'VALERIA', 'ISABELLA'].includes(a.name)).map(renderCard)}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+                  {agents.filter(a => ['CAMILO', 'SOFÍA', 'VALERIA', 'ISABELLA'].includes(a.name)).map(renderCard)}
                 </div>
               </div>
 
@@ -10634,7 +11853,7 @@ Responde SOLO con JSON sin bloques de código:
     const totalP = Number(analyticsResumen?.total_prospectos ?? 0);
     const calif = Number(analyticsResumen?.calificados ?? 0);
     const RPT_TIPS: Record<string,{tip:string;benchmark?:string}> = {
-      'Total prospectos': { tip:'Número de prospectos que ingresaron al CRM en el período seleccionado. Un crecimiento sostenido indica que las acciones de captación están funcionando.', benchmark:'Crecimiento saludable: +10–20% mes a mes' },
+      'Total prospectos': { tip:'Número de prospectos que ingresaron al CRM en el período seleccionado. El porcentaje en rojo o verde compara los nuevos ingresos del mes actual vs el mes anterior (ej: −30% significa que este mes entraron 30% menos prospectos que el mes pasado). Un crecimiento sostenido indica que las acciones de captación están funcionando.', benchmark:'Crecimiento saludable: +10–20% mes a mes' },
       'Pipeline':         { tip:'Valor total en USD de todos los negocios activos en el pipeline, sin ponderar por probabilidad. Representa el techo de ingresos potenciales si se cerraran todas las oportunidades.', benchmark:'Pipeline saludable: 3–5× la meta de ventas del período' },
       'Calificados':      { tip:'Prospectos que pasaron la etapa de Contacto Inicial y están activamente en el proceso de venta (Calificado, Presentación, Negociación, Cierre). Indica la eficiencia del filtro inicial.', benchmark:'Tasa de calificación saludable: ≥40% del total de entradas' },
       'Cerrados':         { tip:'Prospectos que llegaron a estado Post-venta, es decir, negocios efectivamente cerrados en el período. Es el indicador más directo del resultado comercial.', benchmark:'Tasa de cierre global inmobiliaria: 10–20%' },
@@ -10657,7 +11876,7 @@ Responde SOLO con JSON sin bloques de código:
     const vistaResumen = (
       <div style={{display:'flex',flexDirection:'column',gap:14}}>
         <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12}}>
-          {kpiCard('Total prospectos', totalP, `últimos ${rptDias} días`, trendMes||undefined)}
+          {kpiCard('Total prospectos', totalP, `últimos ${rptDias} días${trendMes ? ' · vs mes ant.' : ''}`, trendMes||undefined)}
           {kpiCard('Pipeline', fmtUSD(Number(analyticsResumen?.pipeline_total??0)), `Ticket prom. ${fmtUSD(Number(analyticsResumen?.ticket_promedio??0))}`)}
           {kpiCard('Calificados', calif, `${totalP>0?Math.round(calif/totalP*100):0}% del total`)}
           {kpiCard('Cerrados', analyticsResumen?.cerrados??'—', 'Estado Post-venta')}
@@ -12712,11 +13931,13 @@ Responde SOLO con JSON sin bloques de código:
             {/* Botones de contacto */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
               <a href={`tel:${p.telefono}`}
+                onClick={() => registrarActividad(p.id, 'Llamada iniciada', `Llamada al ${p.telefono}`)}
                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: NAVY, color: WHITE, borderRadius: 6, padding: '14px 0', textDecoration: 'none', fontFamily: SS, fontSize: 13, fontWeight: 600 }}>
                 📞 Llamar
               </a>
               <a href={`https://wa.me/${waNum}?text=Hola%20${encodeURIComponent(p.nombre)}%2C%20te%20contacto%20de%20GLP%20Wealth%20Management.`}
                 target="_blank" rel="noreferrer"
+                onClick={() => registrarActividad(p.id, 'WhatsApp enviado', `WhatsApp al ${p.telefono}`)}
                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#25D366', color: WHITE, borderRadius: 6, padding: '14px 0', textDecoration: 'none', fontFamily: SS, fontSize: 13, fontWeight: 600 }}>
                 WhatsApp
               </a>
@@ -13987,6 +15208,1837 @@ Responde SOLO con JSON sin bloques de código:
     );
   };
 
+  // ══════════════════════════════════════════════════════════════
+  // MODULE: INTEGRACIONES
+  // ══════════════════════════════════════════════════════════════
+  const renderIntegraciones = () => {
+    const NAVY = T.teal;
+    const GOLD = '#B89047';
+    const CREAM = '#FAF9F6';
+
+    const setupModal = integSetupModal;
+    const setSetupModal = setIntegSetupModal;
+    const configValues = integConfigValues;
+    const setConfigValues = setIntegConfigValues;
+
+    const saveConfig = (id: string, fields: Record<string,string>) => {
+      const next = { ...integConfig, [id]: { active: true, fields } };
+      setIntegConfig(next);
+      localStorage.setItem('glp_integrations', JSON.stringify(next));
+      setSetupModal(null);
+    };
+
+    const isActive = (id: string) => integConfig[id]?.active === true;
+
+    const INTEGRATIONS = [
+      {
+        id: 'whatsapp',
+        name: 'WhatsApp Directo',
+        category: 'COMUNICACIÓN ACTIVA',
+        emoji: 'whatsapp',
+        color: '#0F2542',
+        tagline: 'Canal activo. Conectado al número personal del asesor.',
+        description: 'Cada ficha de prospecto tiene acceso directo a WhatsApp del asesor a través de enlace nativo wa.me. El contacto se abre con mensaje pre-cargado desde el perfil del prospecto y la interacción queda registrada en el historial de actividades. Sin intermediarios, sin apps adicionales.',
+        impact: [
+          { label: 'Tiempo de primer contacto', before: '4 horas', after: '< 5 min' },
+          { label: 'Tasa de respuesta del prospecto', before: '35%', after: '78%' },
+          { label: 'Citas originadas por canal', before: '12%', after: '31%' },
+        ],
+        benchmark: 'WhatsApp genera 3× más apertura que email en mercados latinoamericanos',
+        setupFields: [],
+        setupGuide: '',
+        quickStart: 'Activo. El botón WhatsApp en cada ficha de prospecto abre el chat con mensaje personalizado y registra la actividad automáticamente.',
+      },
+      {
+        id: 'calendly',
+        name: 'Agenda de Citas Nativa',
+        category: 'AGENDAMIENTO',
+        emoji: 'calendar',
+        color: '#0F2542',
+        tagline: 'Módulo integrado. Sin herramientas externas.',
+        description: 'El Sistema Operativo Inmobiliario incluye un módulo nativo de agendamiento. Desde la ficha de cualquier prospecto el broker registra citas, llamadas o visitas de proyecto con un solo clic. La actividad aparece en tiempo real en el historial del prospecto y en el calendario de la Agenda de Brokers, con vista por mes y filtro por asesor.',
+        impact: [
+          { label: 'Registro de cita', before: 'Manual en agenda externa', after: 'Un clic desde el perfil' },
+          { label: 'Visibilidad del equipo', before: 'Sin consolidar', after: 'Calendario unificado' },
+          { label: 'Trazabilidad gerencial', before: 'No disponible', after: 'Tiempo real' },
+        ],
+        benchmark: 'Toda cita queda registrada en el historial del prospecto y en el módulo de Eventos.',
+        setupFields: [],
+        setupGuide: '',
+        quickStart: 'Activo. Accede a cualquier ficha de prospecto, selecciona el tipo de cita y el sistema la registra en la Agenda de Brokers.',
+      },
+      {
+        id: 'docusign',
+        name: 'DocuSign / Firma Digital',
+        category: 'FIRMA DIGITAL',
+        emoji: 'docusign',
+        color: '#FFB900',
+        tagline: 'Propuestas y contratos firmados desde el celular del cliente.',
+        description: 'Envía promesas de compra, reservas y contratos directamente desde el módulo de Casos. El cliente firma desde su teléfono. El estado del documento se actualiza automáticamente en el CRM.',
+        impact: [
+          { label: 'Tiempo de firma de promesa', before: '3–7 días', after: '< 2 horas' },
+          { label: 'Documentos perdidos/extraviados', before: 'Frecuente', after: 'Cero' },
+          { label: 'Ciclo de cierre total', before: '30 días', after: '18 días' },
+        ],
+        benchmark: 'Promotoras que usan firma digital reducen el ciclo de cierre en 40%',
+        setupFields: [
+          { key: 'account_id', label: 'Account ID de DocuSign', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' },
+          { key: 'integration_key', label: 'Integration Key', placeholder: 'xxxxxxxx-xxxx-...' },
+          { key: 'secret_key', label: 'Secret Key', placeholder: 'xxxxxxxxxxxxxxxx' },
+        ],
+        setupGuide: 'https://developers.docusign.com/platform/build-integration',
+        quickStart: 'DocuSign tiene plan gratuito de 5 envíos/mes para probar. Crea cuenta en docusign.com y obtén tus credenciales de la sección "Apps and Keys".',
+      },
+      {
+        id: 'powerbi',
+        name: 'Power BI Embed',
+        category: 'BUSINESS INTELLIGENCE',
+        emoji: 'powerbi',
+        color: '#F2C811',
+        tagline: 'Reportes ejecutivos avanzados para presidencia.',
+        description: 'Embebe dashboards de Power BI directamente en el módulo de Análisis Gerencial. Revenue forecast, comparativo vs año anterior, análisis de portafolio. Con export a PDF automático los lunes.',
+        impact: [
+          { label: 'Tiempo en preparar reporte ejecutivo', before: '4 horas', after: '0 min (automático)' },
+          { label: 'Frecuencia de revisión de métricas', before: 'Mensual', after: 'En tiempo real' },
+          { label: 'Decisiones basadas en datos', before: '40%', after: '90%' },
+        ],
+        benchmark: 'Empresas con BI en tiempo real toman decisiones 5× más rápido',
+        setupFields: [
+          { key: 'workspace_id', label: 'Workspace ID de Power BI', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' },
+          { key: 'report_id', label: 'Report ID', placeholder: 'xxxxxxxx-xxxx-...' },
+          { key: 'tenant_id', label: 'Tenant ID (Azure)', placeholder: 'xxxxxxxx-xxxx-...' },
+          { key: 'client_id', label: 'Client ID (App Registration)', placeholder: 'xxxxxxxx-xxxx-...' },
+        ],
+        setupGuide: 'https://docs.microsoft.com/power-bi/developer/embedded/embed-sample-for-customers',
+        quickStart: 'Requiere Power BI Pro (USD $10/mes/usuario) o Premium. Crea tu workspace en app.powerbi.com, publica tu reporte y obtén los IDs desde la URL.',
+      },
+      {
+        id: 'ml_scoring',
+        name: 'Lead Scoring con IA',
+        category: 'IA PREDICTIVA',
+        emoji: 'ml_scoring',
+        color: '#7C3AED',
+        tagline: 'El score aprende de tus cierres históricos. 3–5× más preciso.',
+        description: 'El score actual es por reglas fijas. Con este módulo, un modelo de ML entrenado con los datos históricos de tu empresa aprende qué características predicen cierre. Mejora con cada venta.',
+        impact: [
+          { label: 'Precisión del Lead Score', before: '~55% (reglas)', after: '~85% (ML)' },
+          { label: 'Tiempo del broker en prospectos fríos', before: '40% del tiempo', after: '< 10%' },
+          { label: 'Revenue por broker', before: 'Base', after: '+35% estimado' },
+        ],
+        benchmark: 'Empresas con scoring predictivo aumentan conversión en 30–50%',
+        setupFields: [
+          { key: 'openai_key', label: 'OpenAI API Key (ya configurada si usas agentes)', placeholder: 'sk-...' },
+        ],
+        setupGuide: '',
+        quickStart: 'Este módulo se activa automáticamente cuando acumulas 50+ prospectos con historial completo. El modelo se re-entrena mensualmente con tus nuevos cierres.',
+      },
+      {
+        id: 'voip',
+        name: 'Telefonía VoIP (Twilio)',
+        category: 'TELEFONÍA',
+        emoji: 'voip',
+        color: '#F22F46',
+        tagline: 'Llama con 1 click. Grabación y transcripción automática.',
+        description: 'Llamadas salientes desde la ficha del prospecto con un click. La conversación queda grabada, transcrita con IA y resumida en el historial. El broker no necesita tomar notas.',
+        impact: [
+          { label: 'Tiempo en documentar una llamada', before: '5–10 min', after: '0 min (automático)' },
+          { label: 'Cobertura de seguimiento', before: '60%', after: '100%' },
+          { label: 'Discrepancias "no dijo / sí dijo"', before: 'Frecuentes', after: 'Eliminadas' },
+        ],
+        benchmark: 'El 78% de los cierres requieren al menos 5 llamadas de seguimiento',
+        setupFields: [
+          { key: 'account_sid', label: 'Account SID (Twilio)', placeholder: 'ACxxxxxxxxxxxxxxxx' },
+          { key: 'auth_token', label: 'Auth Token', placeholder: 'xxxxxxxxxxxxxxxx' },
+          { key: 'phone_number', label: 'Número Twilio', placeholder: '+15551234567' },
+        ],
+        setupGuide: 'https://www.twilio.com/docs/voice/quickstart',
+        quickStart: 'Twilio ofrece USD $15 de crédito gratuito para probar. Crea cuenta en twilio.com, obtén un número y copia tus credenciales desde la consola.',
+      },
+    ];
+
+    const integIcon = (id: string, size = 20, color = '#0F2542') => {
+      const s = { width: size, height: size, flexShrink: 0 as const };
+      if (id === 'whatsapp') return (
+        <svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={s}>
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+      );
+      if (id === 'calendar' || id === 'calendly') return (
+        <svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={s}>
+          <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+        </svg>
+      );
+      if (id === 'docusign') return (
+        <svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={s}>
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/>
+        </svg>
+      );
+      if (id === 'powerbi') return (
+        <svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={s}>
+          <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/>
+        </svg>
+      );
+      if (id === 'ml_scoring') return (
+        <svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={s}>
+          <circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+        </svg>
+      );
+      if (id === 'voip') return (
+        <svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={s}>
+          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.4 2 2 0 0 1 3.6 1.22h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.87a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+        </svg>
+      );
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={s}>
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+      );
+    };
+
+    const isNative = (id: string) => id === 'whatsapp' || id === 'calendly';
+
+    const IntegCard = ({ integ }: { integ: typeof INTEGRATIONS[0] }) => {
+      const active = isActive(integ.id) || isNative(integ.id);
+      const native = isNative(integ.id);
+      const N2 = '#0F2542';
+      const G2 = '#B89047';
+      return (
+        <div style={{ background: '#fff', border: `1px solid ${active ? N2+'30' : '#E8ECF0'}`, borderTop: `3px solid ${active ? G2 : '#E8ECF0'}`, overflow: 'hidden', transition: 'box-shadow 0.2s' }}
+          onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 20px rgba(15,37,66,0.08)')}
+          onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}>
+          {/* Header */}
+          <div style={{ padding: '20px 24px', borderBottom: '1px solid #EEF1F5', display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+            <div style={{ width: 44, height: 44, border: `1px solid ${N2}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: '#F7F9FC' }}>
+              {integIcon(integ.emoji || integ.id, 20, N2)}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: '2px', color: G2, textTransform: 'uppercase' as const, marginBottom: 4 }}>{integ.category}</div>
+              <div style={{ fontSize: 16, fontWeight: 400, color: N2, fontFamily: T.fontSerif, letterSpacing: '0.02em' }}>{integ.name}</div>
+              <div style={{ fontSize: 11, color: '#7B92A8', marginTop: 3, fontStyle: 'italic' }}>{integ.tagline}</div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column' as const, alignItems: 'flex-end', gap: 8, flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: active ? '#10B981' : '#CBD5E0' }} />
+                <span style={{ fontSize: 9, letterSpacing: '1px', textTransform: 'uppercase' as const, color: active ? '#10B981' : '#9CA3AF' }}>
+                  {native ? 'Integrado' : (active ? 'Conectado' : 'Sin configurar')}
+                </span>
+              </div>
+              {!native && (
+                <button onClick={() => { setConfigValues(integConfig[integ.id]?.fields || {}); setSetupModal(integ.id); }}
+                  style={{ padding: '5px 14px', background: active ? 'transparent' : N2, color: active ? N2 : '#fff', border: `1px solid ${N2}`, fontSize: 9, fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase' as const, cursor: 'pointer' }}>
+                  {active ? 'Reconfigurar' : 'Configurar'}
+                </button>
+              )}
+            </div>
+          </div>
+          {/* Body */}
+          <div style={{ padding: '18px 24px' }}>
+            <p style={{ fontSize: 12, color: '#4A5568', lineHeight: 1.7, margin: '0 0 14px', fontFamily: 'Inter, sans-serif' }}>{integ.description}</p>
+            {/* Quick start */}
+            <div style={{ borderLeft: `2px solid ${G2}`, paddingLeft: 12, marginBottom: 16, fontSize: 11, color: N2, lineHeight: 1.6, background: '#FAFAF8' }}>
+              {integ.quickStart}
+            </div>
+            {/* Impacto */}
+            <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: '2px', color: '#9CA3AF', textTransform: 'uppercase' as const, marginBottom: 10 }}>Impacto Operativo</div>
+            <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+              {integ.impact.map(imp => (
+                <div key={imp.label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ fontSize: 10, color: '#7B92A8', flex: 1 }}>{imp.label}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                    <span style={{ fontSize: 10, color: '#9CA3AF', textDecoration: 'line-through' }}>{imp.before}</span>
+                    <span style={{ fontSize: 9, color: '#CBD5E0' }}>›</span>
+                    <span style={{ fontSize: 10, color: N2, fontWeight: 700, fontFamily: T.fontSerif }}>{imp.after}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Benchmark */}
+            <div style={{ marginTop: 14, fontSize: 10, color: G2, fontStyle: 'italic', borderTop: '1px solid #EEF1F5', paddingTop: 12 }}>
+              {integ.benchmark}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // Modal de configuración
+    const SetupModal = () => {
+      if (!setupModal) return null;
+      const integ = INTEGRATIONS.find(i => i.id === setupModal)!;
+      return (
+        <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={e => { if (e.target === e.currentTarget) setSetupModal(null); }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 28, width: 480, maxHeight: '90vh', overflowY: 'auto' as const, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+              <div style={{ width: 40, height: 40, border: '1px solid #E8ECF0', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F7F9FC' }}>
+                {integIcon(integ.emoji || integ.id, 18, '#0F2542')}
+              </div>
+              <div>
+                <div style={{ fontSize: 9, color: integ.color, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' as const }}>{integ.category}</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: NAVY, fontFamily: '"Cormorant Garamond", serif' }}>Conectar {integ.name}</div>
+              </div>
+            </div>
+
+            {/* Guía paso a paso */}
+            <div style={{ background: '#F8F9FA', borderRadius: 8, padding: '12px 16px', marginBottom: 20, fontSize: 11, color: T.text, lineHeight: 1.7 }}>
+              <div style={{ fontWeight: 700, marginBottom: 6, color: NAVY }}>Cómo obtener tus credenciales:</div>
+              {integ.id === 'whatsapp' && <>
+                <div>1. Ve a <strong>developers.facebook.com</strong> → Mis Apps → Crear App</div>
+                <div>2. Elige tipo "Negocios" → agrega producto WhatsApp</div>
+                <div>3. En WhatsApp → Configuración de la API, copia el <strong>Phone Number ID</strong> y el <strong>Access Token</strong></div>
+                <div>4. Configura el Webhook apuntando a <code style={{ background: '#eee', padding: '1px 5px', borderRadius: 3 }}>https://tu-servidor.com/api/whatsapp/webhook</code></div>
+              </>}
+              {integ.id === 'calendly' && <>
+                <div>El módulo de agendamiento es nativo del Sistema Operativo Inmobiliario.</div>
+                <div style={{ marginTop: 6 }}>No requiere configuración externa. Accede a la ficha de cualquier prospecto y usa el botón de cita para registrar actividades en la Agenda de Brokers.</div>
+              </>}
+              {integ.id === 'docusign' && <>
+                <div>1. Crea cuenta en <strong>docusign.com</strong> (5 envíos gratis/mes)</div>
+                <div>2. Ve a Configuración → Aplicaciones y Claves</div>
+                <div>3. Crea una "Integration Key" y copia el <strong>Account ID</strong> y <strong>Secret Key</strong></div>
+                <div>4. Activa el modo producción cuando estés listo (primero prueba en sandbox)</div>
+              </>}
+              {integ.id === 'powerbi' && <>
+                <div>1. Abre tu reporte en <strong>app.powerbi.com</strong></div>
+                <div>2. La URL contiene tu <strong>Workspace ID</strong> y <strong>Report ID</strong></div>
+                <div>3. Ve a Azure Portal → App registrations → copia el <strong>Tenant ID</strong> y <strong>Client ID</strong></div>
+                <div>4. El reporte aparecerá embebido en el módulo de Análisis Gerencial</div>
+              </>}
+              {integ.id === 'ml_scoring' && <>
+                <div>El modelo se activa automáticamente cuando tienes <strong>50+ prospectos</strong> con historial de actividad.</div>
+                <div style={{ marginTop: 6 }}>Actualmente tienes datos suficientes para iniciar el entrenamiento. El proceso toma ~2 minutos.</div>
+              </>}
+              {integ.id === 'voip' && <>
+                <div>1. Crea cuenta en <strong>twilio.com</strong> (USD $15 de crédito gratis)</div>
+                <div>2. Ve a la Consola → copia <strong>Account SID</strong> y <strong>Auth Token</strong></div>
+                <div>3. Compra un número de teléfono local colombiano o panameño (~USD $1/mes)</div>
+                <div>4. Pega el número con código de país (ej. +573001234567)</div>
+              </>}
+              {integ.setupGuide && (
+                <a href={integ.setupGuide} target="_blank" rel="noreferrer"
+                  style={{ display: 'inline-block', marginTop: 8, fontSize: 10, color: integ.color, fontWeight: 600 }}>
+                  Ver documentación oficial →
+                </a>
+              )}
+            </div>
+
+            {/* Campos de configuración */}
+            <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 12, marginBottom: 20 }}>
+              {integ.setupFields.map(field => (
+                <div key={field.key}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: NAVY, display: 'block', marginBottom: 5 }}>{field.label}</label>
+                  <input
+                    type={field.key.includes('token') || field.key.includes('key') || field.key.includes('secret') ? 'password' : 'text'}
+                    value={configValues[field.key] || ''}
+                    onChange={e => setConfigValues(prev => ({ ...prev, [field.key]: e.target.value }))}
+                    placeholder={field.placeholder}
+                    style={{ width: '100%', padding: '8px 12px', border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 12, fontFamily: 'monospace', boxSizing: 'border-box' as const, outline: 'none' }}
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setSetupModal(null)}
+                style={{ flex: 1, padding: '10px', background: 'transparent', border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 12, cursor: 'pointer', color: T.textSec }}>
+                Cancelar
+              </button>
+              <button onClick={() => saveConfig(integ.id, configValues)}
+                style={{ flex: 2, padding: '10px', background: integ.color, color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                Guardar y activar
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    const totalActive = INTEGRATIONS.filter(i => isActive(i.id)).length;
+
+    return (
+      <div style={{ padding: '32px 36px', maxWidth: 1200, margin: '0 auto' }}>
+        {/* Header */}
+        <div style={{ marginBottom: 32 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 8 }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: GOLD, textTransform: 'uppercase' as const, marginBottom: 6 }}>Ecosistema Conectado</div>
+              <h1 style={{ fontSize: 32, fontWeight: 300, fontFamily: '"Cormorant Garamond", serif', color: NAVY, margin: 0 }}>Integraciones</h1>
+              <p style={{ fontSize: 13, color: T.textSec, marginTop: 8, lineHeight: 1.5 }}>
+                Herramientas de clase mundial conectadas al CRM. Cada integración activa amplifica el poder de los Agentes IA.
+              </p>
+            </div>
+            {/* Contador de estado */}
+            <div style={{ textAlign: 'right' as const, flexShrink: 0 }}>
+              <div style={{ fontSize: 36, fontWeight: 300, fontFamily: '"Cormorant Garamond", serif', color: totalActive > 0 ? '#10B981' : '#9CA3AF' }}>{totalActive}/{INTEGRATIONS.length}</div>
+              <div style={{ fontSize: 10, color: T.textSec, letterSpacing: '0.06em' }}>INTEGRACIONES ACTIVAS</div>
+              {totalActive === 0 && (
+                <div style={{ fontSize: 10, color: '#F59E0B', marginTop: 4 }}>⚡ Conecta la primera para empezar</div>
+              )}
+            </div>
+          </div>
+          {/* Barra de progreso */}
+          <div style={{ height: 4, background: T.borderLight, borderRadius: 2, marginTop: 16 }}>
+            <div style={{ height: '100%', width: `${(totalActive / INTEGRATIONS.length) * 100}%`, background: `linear-gradient(90deg, #10B981, ${GOLD})`, borderRadius: 2, transition: 'width 0.5s ease' }} />
+          </div>
+        </div>
+
+        {/* Grid de integraciones */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+          {INTEGRATIONS.map(integ => <IntegCard key={integ.id} integ={integ} />)}
+        </div>
+
+        {/* Footer informativo */}
+        <div style={{ marginTop: 32, padding: '16px 20px', background: `${NAVY}08`, border: `1px solid ${T.borderLight}`, borderRadius: 8, fontSize: 11, color: T.textSec, lineHeight: 1.7 }}>
+          <strong style={{ color: NAVY }}>Nota de seguridad:</strong> Las credenciales se almacenan en este navegador (localStorage). Para un entorno de producción multiusuario, deben migrarse a variables de entorno en el servidor (<code style={{ background: '#eee', padding: '1px 5px', borderRadius: 3 }}>.env</code> en el backend).
+        </div>
+
+        <SetupModal />
+      </div>
+    );
+  };
+
+  // ── MÓDULO LEGAL & CIERRE ─────────────────────────────────────
+  type LegalDocStatus = 'pendiente'|'en_revision'|'firmado'|'archivado';
+  type SignerStatus = 'pendiente'|'enviado'|'visto'|'firmado';
+  interface LegalSigner { name: string; role: string; email: string; status: SignerStatus; date?: string }
+  interface LegalEvent { date: string; action: string; detail?: string }
+  interface LegalDocMeta {
+    status: LegalDocStatus;
+    attachedName?: string;
+    attachedUrl?: string;
+    attachedDate?: string;
+    notes?: string;
+    signers?: LegalSigner[];
+    signLink?: string;
+    signSentDate?: string;
+    signSentBy?: string;
+    dueDate?: string;
+    history?: LegalEvent[];
+  }
+
+  const [legalSelected, setLegalSelected] = useState<number | null>(null);
+  const [legalActiveDoc, setLegalActiveDoc] = useState<{ docKey: string; docLabel: string } | null>(null);
+  const [legalDocs, setLegalDocs] = useState<Record<number, Record<string, LegalDocMeta>>>(() => {
+    try { return JSON.parse(localStorage.getItem('glp_legal_docs2') || '{}'); } catch { return {}; }
+  });
+  const [legalSignModal, setLegalSignModal] = useState<{ prospectId: number; docKey: string; docLabel: string } | null>(null);
+  const [legalAttachModal, setLegalAttachModal] = useState<{ prospectId: number; docKey: string; docLabel: string } | null>(null);
+  const [legalNotesModal, setLegalNotesModal] = useState<{ prospectId: number; docKey: string; docLabel: string } | null>(null);
+  const [legalTemplateModal, setLegalTemplateModal] = useState<{ docKey: string; docLabel: string } | null>(null);
+  const [legalSignForm, setLegalSignForm] = useState({ buyer: '', buyerEmail: '', seller: '', sellerEmail: '', notary: '', notaryEmail: '', link: '', due: '', sentBy: '', sentByCustom: false });
+  const [legalAttachForm, setLegalAttachForm] = useState({ name: '', url: '', localUrl: '' });
+  const [legalNoteText, setLegalNoteText] = useState('');
+
+  const appendLegalHistory = (prospectId: number, docKey: string, action: string, detail?: string) => {
+    const event: LegalEvent = { date: new Date().toISOString().split('T')[0], action, detail };
+    setLegalDocs(prev => {
+      const existing = prev[prospectId]?.[docKey] || { status: 'pendiente' as LegalDocStatus };
+      const next = { ...prev, [prospectId]: { ...(prev[prospectId] || {}), [docKey]: { ...existing, history: [...(existing.history || []), event] } } };
+      try { localStorage.setItem('glp_legal_docs2', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+
+  const LEGAL_TEMPLATES: Record<string, string> = {
+    carta_reserva: `CARTA DE RESERVA
+
+Fecha: _______________
+Ciudad: Bogotá D.C.
+
+Entre los suscritos:
+
+VENDEDOR: GLP Inmobiliaria S.A.S., NIT _____________, representada por _______________
+COMPRADOR: _____________________________, identificado con C.C. No. _____________
+
+Se suscribe la presente Carta de Reserva bajo los siguientes términos:
+
+1. INMUEBLE OBJETO DE RESERVA
+   Apartamento/Casa No. _____, Torre/Bloque _____, Piso _____, del Proyecto _______________
+   Dirección: _______________________________________________, Bogotá D.C.
+   Área privada aproximada: _______ m²
+
+2. PRECIO DE VENTA
+   El precio total pactado es de USD _____________ (equivalente en pesos colombianos a la TRM del día de la firma de la Promesa de Compraventa).
+
+3. VALOR DE SEPARACIÓN
+   El COMPRADOR entrega a GLP la suma de USD _____________ a título de separación,
+   la cual será imputada al precio de venta y es de carácter NO REEMBOLSABLE en caso de desistimiento por parte del COMPRADOR.
+
+4. PLAZO
+   La presente reserva tiene vigencia de _____ días calendario, dentro de los cuales las partes deberán suscribir la Promesa de Compraventa.
+
+5. CONDICIONES
+   - El COMPRADOR declara conocer el estado actual del inmueble y del proyecto.
+   - Las especificaciones técnicas podrán estar sujetas a cambios menores sin afectar el área ni el precio.
+
+Firmado en Bogotá D.C., a los _____ días del mes de _____________ de 20_____.
+
+_____________________________          _____________________________
+VENDEDOR                                COMPRADOR
+GLP Inmobiliaria S.A.S.                ______________________________
+C.C. / NIT: ___________________        C.C.: _________________________`,
+
+    pago_separacion: `COMPROBANTE DE PAGO — SEPARACIÓN DE INMUEBLE
+
+Fecha: _______________
+No. Comprobante: GLP-SEP-_________
+
+Recibimos de: _____________________________________________
+C.C. / NIT: _______________________________________________
+La suma de: USD _____________ (_______________________________ dólares)
+Concepto: Separación — Apto. No. _____, Proyecto _______________
+Forma de pago: [ ] Transferencia  [ ] Cheque  [ ] Efectivo
+No. Transacción / Cheque: ___________________________________
+Banco: ____________________________________________________
+
+Este pago corresponde a la separación del inmueble descrito arriba y será
+imputado al precio de venta al momento de la firma de la Promesa de Compraventa.
+
+_____________________________
+Recibido por: GLP Inmobiliaria S.A.S.
+Firma y sello: ________________`,
+
+    due_diligence: `DUE DILIGENCE — IDENTIFICACIÓN Y ORIGEN DE FONDOS
+
+Fecha: _______________
+Ref. Expediente: GLP-DD-_________
+
+DATOS DEL COMPRADOR
+Nombre completo: _____________________________________________
+Tipo de documento: [ ] CC  [ ] CE  [ ] Pasaporte  No.: ______________
+Fecha de nacimiento: ___________________  Nacionalidad: ____________
+Dirección de residencia: ________________________________________
+Teléfono: _____________________  Correo: ________________________
+Actividad económica: __________________________________________
+Empresa / Empleador: __________________________________________
+
+DOCUMENTOS RECIBIDOS
+[ ] Copia documento de identidad (ambas caras)
+[ ] Últimas 3 declaraciones de renta (personas naturales obligadas)
+[ ] Últimos 3 extractos bancarios
+[ ] Carta laboral o certificado de ingresos
+[ ] RUT (para personas jurídicas)
+[ ] Cámara de Comercio con menos de 30 días (personas jurídicas)
+
+DECLARACIÓN SARLAFT
+El comprador declara que los recursos destinados a la adquisición provienen de actividades lícitas y no se encuentra reportado en listas restrictivas (ONU, OFAC, Clinton).
+
+Firma COMPRADOR: ____________________________  Fecha: __________
+Revisado por (Oficial de Cumplimiento): __________________________`,
+
+    propuesta_comercial: `PROPUESTA COMERCIAL
+
+Fecha: _______________
+No. Propuesta: GLP-PC-_________
+
+PARA: _____________________________________________
+INMUEBLE: Apto. No. _____, Torre _____, Piso _____, Proyecto _______________
+
+CONDICIONES ECONÓMICAS
+Precio base:                        USD _____________
+Descuento negociado (_____%):      USD _____________
+Precio final acordado:             USD _____________
+
+FORMA DE PAGO
+Cuota inicial (______%):           USD _____________  — Fecha límite: __________
+Crédito hipotecario (______%):     USD _____________  — Entidad: ______________
+Cesantías / Subsidio (______%):    USD _____________
+
+PLAN DE PAGOS DURANTE CONSTRUCCIÓN
+Mes 1:   USD _____________
+Mes 2:   USD _____________
+Mes 3:   USD _____________
+[...]
+
+BENEFICIOS INCLUIDOS
+[ ] Parqueadero No. _____
+[ ] Depósito No. _____
+[ ] Cocina integral
+[ ] Electrodomésticos
+[ ] Acabados premium (especificar): ________________________
+
+VIGENCIA DE LA PROPUESTA: _____ días a partir de la fecha.
+
+Firma ASESOR: ____________________________   Firma COMPRADOR: ____________________________
+GLP Inmobiliaria S.A.S.`,
+
+    promesa_compraventa: `PROMESA DE COMPRAVENTA
+
+En Bogotá D.C., a los _____ días del mes de _____________ de 20_____,
+
+ENTRE:
+PROMITENTE VENDEDOR: GLP Inmobiliaria S.A.S., NIT _____________, representada por _______________, identificado con C.C. _______________
+
+PROMITENTE COMPRADOR: _______________, identificado con C.C. _______________, domiciliado en _______________
+
+CLÁUSULA PRIMERA — OBJETO
+El PROMITENTE VENDEDOR se obliga a vender y el PROMITENTE COMPRADOR a comprar el inmueble identificado como:
+Apartamento No. _____, Torre _____, Piso _____, del Proyecto _______________
+Matrícula Inmobiliaria No.: _____________
+Área privada: _______ m²  /  Área construida: _______ m²
+
+CLÁUSULA SEGUNDA — PRECIO Y FORMA DE PAGO
+El precio total de la compraventa es de USD _____________ (_____________ Dólares Americanos), pagaderos así:
+a) Suma recibida a título de reserva: USD _____________
+b) Cuotas durante construcción: USD _____________
+c) Saldo con crédito hipotecario / contado: USD _____________
+
+CLÁUSULA TERCERA — PLAZO PARA LA ESCRITURACIÓN
+Las partes se obligan a suscribir la Escritura Pública de Compraventa a más tardar el día _____ del mes de _____________ de 20_____, o a la entrega del inmueble, lo que ocurra primero.
+
+CLÁUSULA CUARTA — ARRAS
+Se conviene que en caso de incumplimiento del PROMITENTE COMPRADOR, perderá a favor del VENDEDOR la suma de USD _____________ por concepto de arras.
+
+CLÁUSULA QUINTA — ENTREGA
+El inmueble será entregado en las condiciones pactadas, libre de gravámenes, hipotecas y limitaciones de dominio.
+
+_____________________________          _____________________________
+PROMITENTE VENDEDOR                     PROMITENTE COMPRADOR
+GLP Inmobiliaria S.A.S.
+NIT: ___________________               C.C.: _________________________`,
+
+    cert_tradicion: `SOLICITUD — CERTIFICADO DE TRADICIÓN Y LIBERTAD
+
+Entidad: Oficina de Registro de Instrumentos Públicos de Bogotá
+Fecha de solicitud: _______________
+Matrícula Inmobiliaria: ___________________________
+Dirección del inmueble: ___________________________
+Solicitante: GLP Inmobiliaria S.A.S.
+
+--- USO INTERNO ---
+Fecha de emisión del certificado: _______________
+Folios obtenidos: ______
+Vigencia: 30 días desde emisión
+Resultado: [ ] Sin limitaciones  [ ] Con gravámenes (detallar): _______________
+Anotaciones relevantes: _________________________________________________`,
+
+    estudio_titulo: `ESTUDIO DE TÍTULOS
+
+Firma de Abogados: ___________________________
+Fecha: _______________
+Ref.: Apto. No. _____, Proyecto _______________, Matrícula _______________
+
+1. CADENA DE DOMINIO
+   Propietario actual: GLP Inmobiliaria S.A.S. (desde _______________)
+   Título anterior: _______________
+
+2. GRAVÁMENES Y LIMITACIONES
+   [ ] Hipoteca a favor de: _________________________  Cuantía: USD _____________
+   [ ] Embargo: Proceso No. _______________
+   [ ] Servidumbre: _______________
+   [ ] Sin gravámenes
+
+3. IMPUESTOS Y VALORIZACIONES
+   Predial al día: [ ] Sí  [ ] No  (Último pago: _______________)
+   Valorización: [ ] Pagada  [ ] Pendiente
+
+4. CONCEPTO JURÍDICO
+   [ ] FAVORABLE — El inmueble puede ser adquirido sin riesgo jurídico.
+   [ ] FAVORABLE CON SALVEDADES — (detallar): _______________
+   [ ] DESFAVORABLE — (detallar): _______________
+
+Firma Abogado: ____________________________  Tarjeta Profesional No.: _______________`,
+
+    paz_salvo: `PAZ Y SALVO — ADMINISTRACIÓN
+
+Proyecto: _______________________________________________
+Unidad: Apto. No. _____, Torre _____, Piso _____
+Propietario / Vendedor: _________________________________
+
+Por medio del presente documento, la Administración del conjunto/edificio certifica que la unidad arriba descrita se encuentra AL DÍA en el pago de:
+[ ] Cuotas de administración
+[ ] Cuotas extraordinarias
+[ ] Multas
+[ ] Fondo de imprevistos
+
+Fecha de corte: _______________
+Valor adeudado: $0 (cero pesos)
+
+____________________________
+Administrador(a): _______________
+CC/NIT: _______________________
+Firma y sello`,
+
+    poder_notarial: `PODER ESPECIAL
+
+El/La suscrito(a) _______________, identificado(a) con _______________ No. _______________,
+confiero poder especial, amplio y suficiente a _______________, identificado(a) con _______________ No. _______________,
+para que en mi nombre y representación realice los siguientes actos:
+
+1. Firmar la Promesa de Compraventa y/o Escritura Pública del inmueble ubicado en _______________
+2. Retirar y firmar documentos ante la Notaría _______________
+3. Pagar los gastos notariales y de registro correspondientes
+
+El presente poder tiene vigencia hasta el día _____ del mes de _____________ de 20_____.
+
+Otorgado en la ciudad de _______________, a los _____ días del mes de _____________ de 20_____.
+
+____________________________
+PODERDANTE
+C.C.: _______________________
+
+Reconocido y autenticado ante la Notaría _____ del Círculo de _______________
+Notario: ___________________________`,
+
+    escritura_publica: `ESCRITURA PÚBLICA DE COMPRAVENTA
+(Minuta para Notaría)
+
+NOTARÍA: _____ del Círculo de Bogotá D.C.
+Fecha de otorgamiento: _______________
+Escritura No.: _____________________
+
+COMPARECEN:
+VENDEDOR: GLP Inmobiliaria S.A.S., NIT ___________________
+Representante legal: _______________, C.C. _______________
+COMPRADOR: _______________, C.C. _______________, estado civil: _______________
+
+DECLARAN:
+1. Que el VENDEDOR transfiere a título de venta real y enajenación perpetua al COMPRADOR el inmueble:
+   Apartamento No. ___, Torre ___, Piso ___, Proyecto _______________
+   Matrícula Inmobiliaria: _______________
+   Área privada: ___ m²
+
+2. Precio de venta: USD _______________ (equivalente a COP _______________ a TRM del día de firma)
+   Forma de pago: Declarado por las partes como recibido a satisfacción.
+
+3. El VENDEDOR garantiza la tradición, saneamiento de evicción y ausencia de gravámenes.
+
+4. Los gastos notariales serán asumidos: 50% VENDEDOR / 50% COMPRADOR.
+
+_____________________________          _____________________________
+VENDEDOR                                COMPRADOR`,
+
+    registro_rph: `TRÁMITE DE REGISTRO — OFICINA DE REGISTRO DE INSTRUMENTOS PÚBLICOS
+
+Fecha radicación: _______________
+No. de radicado: ________________
+Notaría de origen: _____ de Bogotá
+Escritura No.: __________________
+Fecha escritura: ________________
+
+Matrícula Inmobiliaria: _______________
+Acto a registrar: Compraventa
+Cuantía: COP ___________________
+
+LIQUIDACIÓN DE DERECHOS DE REGISTRO
+Derechos de registro (1.67% cuantía):  COP _______________
+Derechos de anotación:                 COP _______________
+Retenciones y otros:                   COP _______________
+TOTAL A PAGAR:                         COP _______________
+
+Estado: [ ] Radicado  [ ] En estudio  [ ] Registrado
+Fecha de registro efectivo: _______________
+Folio actualizado: [ ] Sí  [ ] No`,
+
+    dian_documentos: `DECLARACIÓN DIAN / CUMPLIMIENTO SARLAFT-OFAC
+
+Ref. Transacción: GLP-DIAN-_________
+Fecha: _______________
+
+COMPRADOR: _____________________________________________
+C.C. / NIT: _______________________________________________
+Valor de la transacción: USD _____________
+
+VERIFICACIONES REALIZADAS
+[ ] Verificación en listas OFAC: NEGATIVO
+[ ] Verificación en listas ONU: NEGATIVO
+[ ] Verificación en listas Clinton: NEGATIVO
+[ ] RUT actualizado del comprador: RECIBIDO
+[ ] Declaración de origen de fondos firmada: SÍ
+
+OBLIGACIONES TRIBUTARIAS
+Retención en la fuente (1% sobre valor >26.800 UVT): COP _______________
+IVA transferencia (si aplica): N/A
+Impuesto de timbre: N/A
+
+DECLARACIÓN
+El comprador declara bajo la gravedad del juramento que los recursos son de origen lícito
+y autoriza a GLP Inmobiliaria a realizar las verificaciones de ley.
+
+Firma COMPRADOR: ____________________________
+Oficial de Cumplimiento GLP: __________________`,
+
+    acta_entrega: `ACTA DE ENTREGA DEL INMUEBLE
+
+Fecha y hora: _______________________________________________
+Proyecto: __________________________________________________
+Unidad: Apto. No. _____, Torre _____, Piso _____
+
+COMPARECEN:
+Por GLP Inmobiliaria: _______________, cargo: _______________
+Propietario/Comprador: _______________
+
+INVENTARIO DE ENTREGA
+Área entregada: _______ m² privados
+Parqueadero No.: _____  /  Depósito No.: _____
+
+RECORRIDO DE INSPECCIÓN
+[ ] Pisos: Estado _______________
+[ ] Muros y cielos: Estado _______________
+[ ] Baños (_____ unidades): Estado _______________
+[ ] Cocina: Estado _______________
+[ ] Ventanas y puertas: Estado _______________
+[ ] Red eléctrica: Verificada [ ]
+[ ] Red hidrosanitaria: Verificada [ ]
+[ ] Red de gas: Verificada [ ]
+
+OBSERVACIONES Y PENDIENTES:
+_______________________________________________________________
+_______________________________________________________________
+
+Fecha límite resolución de pendientes: _______________
+
+METROS DE SERVICIOS PÚBLICOS AL MOMENTO DE ENTREGA
+Agua: _______  Gas: _______  Energía: _______
+
+_____________________________          _____________________________
+POR GLP INMOBILIARIA                    PROPIETARIO / COMPRADOR`,
+
+    llaves: `CONSTANCIA DE ENTREGA DE LLAVES Y MANUALES
+
+Fecha: _______________
+Unidad: Apto. No. _____, Torre _____, Piso _____, Proyecto _______________
+Propietario: _______________________________________________
+
+LLAVES ENTREGADAS
+[ ] Llave puerta principal (______ juegos)
+[ ] Control de acceso vehicular (______ controles)
+[ ] Llave parqueadero No. _____
+[ ] Llave depósito No. _____
+[ ] Tarjeta de acceso peatonal (______ tarjetas)
+
+MANUALES Y DOCUMENTOS ENTREGADOS
+[ ] Manual del propietario / Reglamento de propiedad horizontal
+[ ] Manual de uso y mantenimiento del apartamento
+[ ] Garantías de electrodomésticos
+[ ] Garantías de acabados y materiales
+[ ] Plano del apartamento (copia)
+[ ] Datos de contacto administración
+
+OBSERVACIONES: ___________________________________________________
+
+El propietario declara haber recibido a satisfacción las llaves y documentos listados.
+
+_____________________________          _____________________________
+POR GLP INMOBILIARIA                    PROPIETARIO / COMPRADOR
+Cargo: ________________________         C.C.: _______________________`,
+  };
+
+  const saveLegalDoc = (prospectId: number, docKey: string, patch: Partial<LegalDocMeta>, historyAction?: string) => {
+    setLegalDocs(prev => {
+      const existing = prev[prospectId]?.[docKey] || { status: 'pendiente' as LegalDocStatus };
+      const newHistory = historyAction
+        ? [...(existing.history || []), { date: new Date().toISOString().split('T')[0], action: historyAction }]
+        : existing.history;
+      const merged = { ...existing, ...patch };
+      if (newHistory) merged.history = newHistory;
+      const next = { ...prev, [prospectId]: { ...(prev[prospectId] || {}), [docKey]: merged } };
+      try { localStorage.setItem('glp_legal_docs2', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+  const updateLegalDoc = (prospectId: number, docKey: string, status: LegalDocStatus) => saveLegalDoc(prospectId, docKey, { status });
+
+  const renderLegal = () => {
+    const N2 = '#0F2542';
+    const G2 = '#B89047';
+    const SERIF = T.fontSerif;
+    const SANS = 'Inter, sans-serif';
+
+    const LEGAL_STAGES = ['Negociación', 'Cierre', 'Post-venta'];
+    const legalProspects = prospects.filter(p => LEGAL_STAGES.includes(p.estado || ''));
+    const selected = legalSelected !== null ? prospects.find(p => p.id === legalSelected) : null;
+    const docMap = selected ? (legalDocs[selected.id] || {}) : {};
+
+    const PHASES: { id: string; label: string; sublabel: string; docs: { key: string; label: string; needsSign?: boolean }[] }[] = [
+      {
+        id: 'reserva', label: 'Reserva', sublabel: 'Separación del inmueble',
+        docs: [
+          { key: 'carta_reserva', label: 'Carta de Reserva', needsSign: true },
+          { key: 'pago_separacion', label: 'Comprobante de Pago Separación' },
+          { key: 'due_diligence', label: 'Due Diligence Inicial (Identidad)' },
+          { key: 'propuesta_comercial', label: 'Propuesta Comercial Firmada', needsSign: true },
+        ],
+      },
+      {
+        id: 'promesa', label: 'Promesa', sublabel: 'Acuerdo de compraventa',
+        docs: [
+          { key: 'promesa_compraventa', label: 'Promesa de Compraventa', needsSign: true },
+          { key: 'cert_tradicion', label: 'Certificado de Tradición y Libertad' },
+          { key: 'estudio_titulo', label: 'Estudio de Títulos' },
+          { key: 'paz_salvo', label: 'Paz y Salvo Administración' },
+          { key: 'poder_notarial', label: 'Poder Notarial (si aplica)', needsSign: true },
+        ],
+      },
+      {
+        id: 'escritura', label: 'Escritura & Registro', sublabel: 'Cierre y entrega',
+        docs: [
+          { key: 'escritura_publica', label: 'Escritura Pública Notariada', needsSign: true },
+          { key: 'registro_rph', label: 'Registro en Registro Público' },
+          { key: 'dian_documentos', label: 'Declaración DIAN / OFAC', needsSign: true },
+          { key: 'acta_entrega', label: 'Acta de Entrega del Inmueble', needsSign: true },
+          { key: 'llaves', label: 'Entrega de Llaves y Manuales' },
+        ],
+      },
+    ];
+
+    const STATUS_CFG: Record<LegalDocStatus, { label: string; color: string; bg: string }> = {
+      pendiente:   { label: 'Pendiente',   color: '#9CA3AF', bg: '#F9FAFB' },
+      en_revision: { label: 'En Revisión', color: '#B89047', bg: '#FEFCE8' },
+      firmado:     { label: 'Firmado',     color: '#059669', bg: '#F0FDF4' },
+      archivado:   { label: 'Archivado',   color: '#0F2542', bg: '#EBF2FB' },
+    };
+    const SIGNER_CFG: Record<SignerStatus, { label: string; color: string }> = {
+      pendiente: { label: 'Pendiente', color: '#9CA3AF' },
+      enviado:   { label: 'Enviado',   color: '#B89047' },
+      visto:     { label: 'Visto',     color: '#3B82F6' },
+      firmado:   { label: 'Firmado',   color: '#059669' },
+    };
+
+    const allDocs = PHASES.flatMap(ph => ph.docs);
+    const totalDocs = allDocs.length;
+
+    const phaseProgress = (phase: typeof PHASES[0]) => {
+      const total = phase.docs.length;
+      const done = phase.docs.filter(d => { const s = docMap[d.key]?.status; return s === 'firmado' || s === 'archivado'; }).length;
+      return { done, total, pct: Math.round(done / total * 100) };
+    };
+
+    const overallPhase = (p: typeof selected) => {
+      if (!p) return null;
+      const d = legalDocs[p.id] || {};
+      const isDone = (doc: { key: string }) => d[doc.key]?.status === 'firmado' || d[doc.key]?.status === 'archivado';
+      if (PHASES[2].docs.every(isDone)) return 'Escritura Completa';
+      if (PHASES[1].docs.every(isDone)) return 'En Trámite Notarial';
+      if (PHASES[0].docs.every(isDone)) return 'Promesa en Proceso';
+      return 'Reserva en Curso';
+    };
+
+    const trafficLight = (p: typeof selected) => {
+      if (!p) return 'gray';
+      const d = legalDocs[p.id] || {};
+      const today = new Date();
+      let hasOverdue = false;
+      let hasWarning = false;
+      for (const doc of allDocs) {
+        const m = d[doc.key];
+        if (!m) continue;
+        if (m.dueDate) {
+          const due = new Date(m.dueDate);
+          const diff = (due.getTime() - today.getTime()) / 86400000;
+          if (diff < 0 && m.status !== 'firmado' && m.status !== 'archivado') hasOverdue = true;
+          else if (diff < 7) hasWarning = true;
+        }
+        if (m.signSentDate && m.status === 'en_revision') {
+          const sent = new Date(m.signSentDate);
+          const daysWaiting = (today.getTime() - sent.getTime()) / 86400000;
+          if (daysWaiting > 14) hasOverdue = true;
+          else if (daysWaiting > 7) hasWarning = true;
+        }
+      }
+      if (hasOverdue) return 'red';
+      if (hasWarning) return 'yellow';
+      return 'green';
+    };
+
+    const totalFirmados = legalProspects.reduce((sum, p) => {
+      const d = legalDocs[p.id] || {};
+      return sum + allDocs.filter(doc => d[doc.key]?.status === 'firmado' || d[doc.key]?.status === 'archivado').length;
+    }, 0);
+
+    // ── Alertas globales ──────────────────────────────────────────
+    const today = new Date();
+    type AlertItem = { prospect: string; doc: string; type: 'vencido'|'urgente'|'estancado'; daysVal: number };
+    const alerts: AlertItem[] = [];
+    for (const p of legalProspects) {
+      const d = legalDocs[p.id] || {};
+      for (const doc of allDocs) {
+        const m = d[doc.key];
+        if (!m) continue;
+        const name = `${p.nombre} ${p.apellido}`;
+        if (m.dueDate) {
+          const diff = (new Date(m.dueDate).getTime() - today.getTime()) / 86400000;
+          if (diff < 0 && m.status !== 'firmado' && m.status !== 'archivado')
+            alerts.push({ prospect: name, doc: doc.label, type: 'vencido', daysVal: Math.abs(Math.round(diff)) });
+          else if (diff < 7 && m.status !== 'firmado' && m.status !== 'archivado')
+            alerts.push({ prospect: name, doc: doc.label, type: 'urgente', daysVal: Math.round(diff) });
+        }
+        if (m.signSentDate && m.status === 'en_revision') {
+          const days = (today.getTime() - new Date(m.signSentDate).getTime()) / 86400000;
+          if (days > 7)
+            alerts.push({ prospect: name, doc: doc.label, type: 'estancado', daysVal: Math.round(days) });
+        }
+      }
+    }
+
+    // ── Modal: Firma electrónica ──────────────────────────────────
+    const signModalJsx = (() => {
+      if (!legalSignModal) return null;
+      const { prospectId, docKey, docLabel } = legalSignModal;
+      const existing = legalDocs[prospectId]?.[docKey] || { status: 'pendiente' as LegalDocStatus };
+      const inputStyle = { width: '100%', padding: '8px 12px', border: `1px solid #EEF1F5`, fontSize: 12, color: N2, fontFamily: SANS, outline: 'none', boxSizing: 'border-box' as const };
+      const labelStyle = { fontSize: 9, color: '#7B92A8', marginBottom: 4 };
+      return (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,37,66,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={e => { if (e.target === e.currentTarget) setLegalSignModal(null); }}>
+          <div style={{ background: '#fff', width: 560, maxHeight: '88vh', overflowY: 'auto' as const, padding: '36px 40px', boxShadow: '0 20px 60px rgba(15,37,66,0.18)' }}>
+            <div style={{ fontSize: 8, letterSpacing: '2.5px', textTransform: 'uppercase' as const, color: G2, marginBottom: 8 }}>Firma Electrónica</div>
+            <div style={{ fontFamily: SERIF, fontSize: 22, color: N2, marginBottom: 4 }}>{docLabel}</div>
+            <div style={{ fontSize: 11, color: '#7B92A8', marginBottom: 28 }}>Define los firmantes, correos de notificación y enlace de firma</div>
+
+            {/* Firmantes con email */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 9, letterSpacing: '1.5px', textTransform: 'uppercase' as const, color: '#9CA3AF', marginBottom: 12 }}>Firmantes y correos de notificación</div>
+              {([
+                { nameField: 'buyer' as const, emailField: 'buyerEmail' as const, role: 'Comprador / Cliente' },
+                { nameField: 'seller' as const, emailField: 'sellerEmail' as const, role: 'Vendedor / Desarrollador' },
+                { nameField: 'notary' as const, emailField: 'notaryEmail' as const, role: 'Notario / Testigo (opcional)' },
+              ] as const).map(({ nameField, emailField, role }) => (
+                <div key={nameField} style={{ marginBottom: 14, padding: '12px 14px', background: '#FAFAF8', border: `1px solid #EEF1F5` }}>
+                  <div style={{ fontSize: 9, color: G2, fontWeight: 700, letterSpacing: '1px', marginBottom: 8, textTransform: 'uppercase' as const }}>{role}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <div>
+                      <div style={labelStyle}>Nombre completo</div>
+                      <input value={legalSignForm[nameField]} onChange={e => setLegalSignForm(f => ({ ...f, [nameField]: e.target.value }))}
+                        placeholder="Nombre" style={inputStyle} />
+                    </div>
+                    <div>
+                      <div style={labelStyle}>Correo electrónico</div>
+                      <input type="email" value={legalSignForm[emailField]} onChange={e => setLegalSignForm(f => ({ ...f, [emailField]: e.target.value }))}
+                        placeholder="correo@ejemplo.com" style={inputStyle} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Enviado por + Enlace */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+              <div>
+                <div style={{ fontSize: 9, letterSpacing: '1.5px', textTransform: 'uppercase' as const, color: '#9CA3AF', marginBottom: 8 }}>Enviado por (asesor)</div>
+                <select
+                  value={brokers.some((b: any) => b.nombre === legalSignForm.sentBy) ? legalSignForm.sentBy : (legalSignForm.sentBy ? '__otro__' : '')}
+                  onChange={e => {
+                    if (e.target.value === '__otro__') {
+                      setLegalSignForm(f => ({ ...f, sentBy: '', sentByCustom: true }));
+                    } else {
+                      setLegalSignForm(f => ({ ...f, sentBy: e.target.value, sentByCustom: false }));
+                    }
+                  }}
+                  style={{ ...inputStyle, appearance: 'none' as const, backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%239CA3AF'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center' }}>
+                  <option value="">— Seleccionar broker —</option>
+                  {(brokers as any[]).filter((b: any) => b.estado !== 'inactivo').map((b: any) => (
+                    <option key={b.id} value={b.nombre}>{b.nombre}{b.empresa ? ` · ${b.empresa}` : ''}</option>
+                  ))}
+                  <option value="__otro__">Otro (ingresar nombre)</option>
+                </select>
+                {legalSignForm.sentByCustom && (
+                  <input value={legalSignForm.sentBy} onChange={e => setLegalSignForm(f => ({ ...f, sentBy: e.target.value }))}
+                    placeholder="Nombre del asesor"
+                    style={{ ...inputStyle, marginTop: 6 }} />
+                )}
+              </div>
+              <div>
+                <div style={{ fontSize: 9, letterSpacing: '1.5px', textTransform: 'uppercase' as const, color: '#9CA3AF', marginBottom: 8 }}>Fecha Límite de Firma</div>
+                <input type="date" value={legalSignForm.due} onChange={e => setLegalSignForm(f => ({ ...f, due: e.target.value }))}
+                  style={{ ...inputStyle }} />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 9, letterSpacing: '1.5px', textTransform: 'uppercase' as const, color: '#9CA3AF', marginBottom: 8 }}>Enlace de Firma (DocuSign u otro)</div>
+              <input value={legalSignForm.link} onChange={e => setLegalSignForm(f => ({ ...f, link: e.target.value }))}
+                placeholder="https://app.docusign.com/documents/..."
+                style={{ ...inputStyle, fontSize: 11 }} />
+            </div>
+
+            <div style={{ marginBottom: 4 }}>
+              <div style={{ fontSize: 9, letterSpacing: '1.5px', textTransform: 'uppercase' as const, color: '#9CA3AF', marginBottom: 8 }}>Fecha Límite de Firma</div>
+              <input type="date" value={legalSignForm.due} onChange={e => setLegalSignForm(f => ({ ...f, due: e.target.value }))}
+                style={{ padding: '8px 12px', border: `1px solid #EEF1F5`, fontSize: 12, color: N2, fontFamily: SANS, outline: 'none' }} />
+            </div>
+
+            {/* Estado actual si ya tiene firmantes */}
+            {existing.signers && existing.signers.length > 0 && (
+              <div style={{ marginBottom: 24, padding: '16px', background: '#EBF2FB', border: `1px solid ${N2}20` }}>
+                <div style={{ fontSize: 9, letterSpacing: '1.5px', textTransform: 'uppercase' as const, color: N2, marginBottom: 10, fontWeight: 700 }}>Estado actual de firmas</div>
+                {existing.signers.map((s, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 11, color: N2, fontWeight: 600 }}>{s.name}</div>
+                      <div style={{ fontSize: 9, color: '#7B92A8' }}>{s.role}{s.email ? ` · ${s.email}` : ''}</div>
+                      {s.date && <div style={{ fontSize: 8, color: '#059669', marginTop: 1 }}>Firmado: {s.date}</div>}
+                    </div>
+                    <div style={{ display: 'flex', gap: 3 }}>
+                      {(['pendiente','enviado','visto','firmado'] as SignerStatus[]).map(st => (
+                        <button key={st} onClick={() => {
+                          const newSigners = [...(existing.signers || [])] as LegalSigner[];
+                          newSigners[i] = { ...newSigners[i], status: st, date: st === 'firmado' ? new Date().toISOString().split('T')[0] : newSigners[i].date };
+                          saveLegalDoc(prospectId, docKey, { signers: newSigners }, st === 'firmado' ? `${s.name} firmó el documento` : `Estado ${s.name} → ${SIGNER_CFG[st].label}`);
+                        }} style={{ fontSize: 8, padding: '3px 7px', border: `1px solid ${s.status === st ? SIGNER_CFG[st].color : '#EEF1F5'}`, background: s.status === st ? SIGNER_CFG[st].color + '20' : 'transparent', color: s.status === st ? SIGNER_CFG[st].color : '#9CA3AF', cursor: 'pointer' }}>
+                          {SIGNER_CFG[st].label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => setLegalSignModal(null)}
+                style={{ padding: '9px 20px', border: `1px solid #EEF1F5`, background: 'none', fontSize: 10, color: '#7B92A8', cursor: 'pointer', letterSpacing: '1px', textTransform: 'uppercase' as const }}>
+                Cancelar
+              </button>
+              <button onClick={() => {
+                const signers: LegalSigner[] = [];
+                if (legalSignForm.buyer) signers.push({ name: legalSignForm.buyer, email: legalSignForm.buyerEmail, role: 'Comprador', status: 'enviado' });
+                if (legalSignForm.seller) signers.push({ name: legalSignForm.seller, email: legalSignForm.sellerEmail, role: 'Vendedor', status: 'enviado' });
+                if (legalSignForm.notary) signers.push({ name: legalSignForm.notary, email: legalSignForm.notaryEmail, role: 'Notario', status: 'enviado' });
+                const finalSigners = signers.length > 0 ? signers : existing.signers;
+                const sentTo = (finalSigners || []).map(s => s.email || s.name).filter(Boolean).join(', ');
+                saveLegalDoc(prospectId, docKey, {
+                  status: 'en_revision',
+                  signers: finalSigners,
+                  signLink: legalSignForm.link || existing.signLink,
+                  signSentDate: new Date().toISOString().split('T')[0],
+                  signSentBy: legalSignForm.sentBy || existing.signSentBy,
+                  dueDate: legalSignForm.due || existing.dueDate,
+                }, `Enviado a firma por ${legalSignForm.sentBy || 'asesor'}${sentTo ? ` → ${sentTo}` : ''}`);
+                setLegalSignModal(null);
+                setLegalSignForm({ buyer: '', buyerEmail: '', seller: '', sellerEmail: '', notary: '', notaryEmail: '', link: '', due: '', sentBy: '', sentByCustom: false });
+              }} style={{ padding: '9px 24px', background: N2, border: 'none', fontSize: 10, color: '#fff', cursor: 'pointer', letterSpacing: '1px', textTransform: 'uppercase' as const, fontWeight: 600 }}>
+                Enviar a Firma
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    })();
+
+    // ── Modal: Adjuntar documento ─────────────────────────────────
+    const attachModalJsx = (() => {
+      if (!legalAttachModal) return null;
+      const { prospectId, docKey, docLabel } = legalAttachModal;
+      const hasTemplate = !!LEGAL_TEMPLATES[docKey];
+      return (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,37,66,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={e => { if (e.target === e.currentTarget) setLegalAttachModal(null); }}>
+          <div style={{ background: '#fff', width: 480, padding: '36px 40px', boxShadow: '0 20px 60px rgba(15,37,66,0.18)' }}>
+            <div style={{ fontSize: 8, letterSpacing: '2.5px', textTransform: 'uppercase' as const, color: G2, marginBottom: 8 }}>Gestión Documental</div>
+            <div style={{ fontFamily: SERIF, fontSize: 20, color: N2, marginBottom: 4 }}>{docLabel}</div>
+            {hasTemplate && (
+              <button onClick={() => { setLegalAttachModal(null); setLegalTemplateModal({ docKey, docLabel }); }}
+                style={{ fontSize: 9, color: G2, background: 'none', border: 'none', cursor: 'pointer', padding: 0, letterSpacing: '0.5px', marginBottom: 20, textDecoration: 'underline' }}>
+                Ver plantilla modelo →
+              </button>
+            )}
+            {!hasTemplate && <div style={{ marginBottom: 20 }} />}
+
+            {/* File picker */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 9, color: '#7B92A8', marginBottom: 6, letterSpacing: '1px', textTransform: 'uppercase' as const }}>Seleccionar archivo local</div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', border: `1px dashed #CBD5E0`, cursor: 'pointer', background: '#FAFAF8' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={N2} strokeWidth="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <span style={{ fontSize: 11, color: legalAttachForm.name ? N2 : '#9CA3AF', flex: 1 }}>
+                  {legalAttachForm.name || 'Haz clic para seleccionar un archivo…'}
+                </span>
+                <input type="file" style={{ display: 'none' }} onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const localUrl = URL.createObjectURL(file);
+                  setLegalAttachForm(f => ({ ...f, name: file.name, localUrl, url: localUrl }));
+                }} />
+              </label>
+              {legalAttachForm.localUrl && (
+                <div style={{ fontSize: 9, color: '#D97706', marginTop: 4 }}>
+                  Archivo seleccionado. Se guardará el nombre — para acceso permanente sube el archivo a Google Drive y pega el enlace abajo.
+                </div>
+              )}
+            </div>
+
+            {/* Separador */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '16px 0' }}>
+              <div style={{ flex: 1, height: 1, background: '#EEF1F5' }} />
+              <span style={{ fontSize: 9, color: '#9CA3AF', letterSpacing: '1px' }}>O PEGA UN ENLACE</span>
+              <div style={{ flex: 1, height: 1, background: '#EEF1F5' }} />
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 9, color: '#7B92A8', marginBottom: 4 }}>Nombre del documento (editable)</div>
+              <input value={legalAttachForm.name} onChange={e => setLegalAttachForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="ej. Carta_Reserva_Martinez_v2.pdf"
+                style={{ width: '100%', padding: '8px 12px', border: `1px solid #EEF1F5`, fontSize: 12, color: N2, fontFamily: SANS, outline: 'none', boxSizing: 'border-box' as const }} />
+            </div>
+            <div style={{ marginBottom: 28 }}>
+              <div style={{ fontSize: 9, color: '#7B92A8', marginBottom: 4 }}>Enlace (Google Drive, OneDrive, Dropbox…)</div>
+              <input value={legalAttachForm.localUrl ? '' : legalAttachForm.url}
+                onChange={e => setLegalAttachForm(f => ({ ...f, url: e.target.value, localUrl: '' }))}
+                placeholder="https://drive.google.com/..."
+                style={{ width: '100%', padding: '8px 12px', border: `1px solid #EEF1F5`, fontSize: 11, color: N2, fontFamily: SANS, outline: 'none', boxSizing: 'border-box' as const }} />
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => { setLegalAttachModal(null); setLegalAttachForm({ name: '', url: '', localUrl: '' }); }}
+                style={{ padding: '9px 20px', border: `1px solid #EEF1F5`, background: 'none', fontSize: 10, color: '#7B92A8', cursor: 'pointer', letterSpacing: '1px', textTransform: 'uppercase' as const }}>
+                Cancelar
+              </button>
+              <button onClick={() => {
+                if (!legalAttachForm.name && !legalAttachForm.url && !legalAttachForm.localUrl) { setLegalAttachModal(null); return; }
+                // blob: URLs are session-only — save name only, no URL, to avoid broken links after reload
+                const isLocal = legalAttachForm.localUrl.startsWith('blob:') || (!legalAttachForm.url && legalAttachForm.localUrl);
+                saveLegalDoc(prospectId, docKey, {
+                  attachedName: legalAttachForm.name,
+                  attachedUrl: isLocal ? '' : legalAttachForm.url,
+                  attachedDate: new Date().toISOString().split('T')[0],
+                  status: 'en_revision',
+                }, `Documento adjunto: ${legalAttachForm.name}`);
+                setLegalAttachModal(null);
+                setLegalAttachForm({ name: '', url: '', localUrl: '' });
+              }} style={{ padding: '9px 24px', background: N2, border: 'none', fontSize: 10, color: '#fff', cursor: 'pointer', letterSpacing: '1px', textTransform: 'uppercase' as const, fontWeight: 600 }}>
+                Adjuntar
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    })();
+
+    // ── Modal: Plantilla modelo ───────────────────────────────────
+    const templateModalJsx = (() => {
+      if (!legalTemplateModal) return null;
+      const { docKey, docLabel } = legalTemplateModal;
+      const text = LEGAL_TEMPLATES[docKey] || '';
+      const download = () => {
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `GLP_Plantilla_${docKey}.txt`; a.click();
+        URL.revokeObjectURL(url);
+      };
+      return (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,37,66,0.55)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={e => { if (e.target === e.currentTarget) setLegalTemplateModal(null); }}>
+          <div style={{ background: '#fff', width: 680, maxHeight: '88vh', display: 'flex', flexDirection: 'column' as const, boxShadow: '0 24px 64px rgba(15,37,66,0.22)' }}>
+            {/* Header */}
+            <div style={{ padding: '24px 32px 20px', borderBottom: `1px solid #EEF1F5`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexShrink: 0 }}>
+              <div>
+                <div style={{ fontSize: 8, letterSpacing: '2.5px', textTransform: 'uppercase' as const, color: G2, marginBottom: 6 }}>Plantilla Modelo GLP</div>
+                <div style={{ fontFamily: SERIF, fontSize: 20, color: N2 }}>{docLabel}</div>
+                <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 4 }}>Completa los campos marcados con ___ antes de usar</div>
+              </div>
+              <button onClick={download}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: N2, border: 'none', color: '#fff', fontSize: 9, letterSpacing: '1.5px', textTransform: 'uppercase' as const, cursor: 'pointer', flexShrink: 0 }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Descargar
+              </button>
+            </div>
+            {/* Contenido */}
+            <div style={{ overflowY: 'auto' as const, padding: '24px 32px', flex: 1 }}>
+              <pre style={{ fontFamily: 'monospace', fontSize: 11, color: '#374151', lineHeight: 1.8, whiteSpace: 'pre-wrap' as const, margin: 0 }}>{text}</pre>
+            </div>
+            {/* Footer */}
+            <div style={{ padding: '16px 32px', borderTop: `1px solid #EEF1F5`, display: 'flex', justifyContent: 'flex-end', gap: 10, flexShrink: 0 }}>
+              <button onClick={() => { setLegalTemplateModal(null); setLegalAttachModal({ prospectId: legalSelected!, docKey, docLabel }); setLegalAttachForm({ name: `GLP_${docKey}.txt`, url: '', localUrl: '' }); }}
+                style={{ padding: '9px 20px', border: `1px solid #EEF1F5`, background: 'none', fontSize: 10, color: '#7B92A8', cursor: 'pointer', letterSpacing: '1px', textTransform: 'uppercase' as const }}>
+                Adjuntar al expediente
+              </button>
+              <button onClick={() => setLegalTemplateModal(null)}
+                style={{ padding: '9px 24px', background: N2, border: 'none', fontSize: 10, color: '#fff', cursor: 'pointer', letterSpacing: '1px', textTransform: 'uppercase' as const }}>
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    })();
+
+    // ── Modal: Notas ──────────────────────────────────────────────
+    const notesModalJsx = (() => {
+      if (!legalNotesModal) return null;
+      const { prospectId, docKey, docLabel } = legalNotesModal;
+      return (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,37,66,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={e => { if (e.target === e.currentTarget) setLegalNotesModal(null); }}>
+          <div style={{ background: '#fff', width: 420, padding: '36px 40px', boxShadow: '0 20px 60px rgba(15,37,66,0.18)' }}>
+            <div style={{ fontSize: 8, letterSpacing: '2.5px', textTransform: 'uppercase' as const, color: G2, marginBottom: 8 }}>Nota del Documento</div>
+            <div style={{ fontFamily: SERIF, fontSize: 20, color: N2, marginBottom: 20 }}>{docLabel}</div>
+            <textarea value={legalNoteText} onChange={e => setLegalNoteText(e.target.value)}
+              placeholder="Observaciones, condiciones especiales, instrucciones para el notario..."
+              rows={5}
+              style={{ width: '100%', padding: '10px 12px', border: `1px solid #EEF1F5`, fontSize: 12, color: N2, fontFamily: SANS, outline: 'none', resize: 'vertical' as const, boxSizing: 'border-box' as const }} />
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
+              <button onClick={() => setLegalNotesModal(null)}
+                style={{ padding: '9px 20px', border: `1px solid #EEF1F5`, background: 'none', fontSize: 10, color: '#7B92A8', cursor: 'pointer', letterSpacing: '1px', textTransform: 'uppercase' as const }}>Cancelar</button>
+              <button onClick={() => {
+                saveLegalDoc(prospectId, docKey, { notes: legalNoteText });
+                setLegalNotesModal(null);
+                setLegalNoteText('');
+              }} style={{ padding: '9px 24px', background: N2, border: 'none', fontSize: 10, color: '#fff', cursor: 'pointer', letterSpacing: '1px', textTransform: 'uppercase' as const, fontWeight: 600 }}>Guardar</button>
+            </div>
+          </div>
+        </div>
+      );
+    })();
+
+    const iconBtn = (title: string, onClick: () => void, children: React.ReactNode, active?: boolean) => (
+      <button title={title} onClick={onClick}
+        style={{ width: 28, height: 28, border: `1px solid ${active ? N2 : '#EEF1F5'}`, background: active ? `${N2}10` : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: active ? N2 : '#9CA3AF', transition: 'all 0.15s', flexShrink: 0 }}>
+        {children}
+      </button>
+    );
+
+    return (
+      <>
+        {signModalJsx}
+        {attachModalJsx}
+        {notesModalJsx}
+        {templateModalJsx}
+        <div style={{ display: 'flex', height: '100%', minHeight: 0 }}>
+
+          {/* ── Lista lateral ── */}
+          <div style={{ width: 280, borderRight: `1px solid #EEF1F5`, overflowY: 'auto' as const, flexShrink: 0, background: '#FAFAF8' }}>
+            <div style={{ padding: '24px 20px 16px' }}>
+              <div style={{ fontSize: 8, letterSpacing: '2.5px', textTransform: 'uppercase' as const, color: G2, fontWeight: 700, marginBottom: 6 }}>Legal & Cierre</div>
+              <div style={{ fontFamily: SERIF, fontSize: 20, fontWeight: 400, color: N2 }}>Expedientes Activos</div>
+              <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+                <div style={{ flex: 1, background: '#fff', border: `1px solid #EEF1F5`, padding: '8px 12px', textAlign: 'center' as const }}>
+                  <div style={{ fontFamily: SERIF, fontSize: 22, color: N2 }}>{legalProspects.length}</div>
+                  <div style={{ fontSize: 8, letterSpacing: '1.5px', textTransform: 'uppercase' as const, color: '#9CA3AF', marginTop: 2 }}>Expedientes</div>
+                </div>
+                <div style={{ flex: 1, background: '#fff', border: `1px solid #EEF1F5`, padding: '8px 12px', textAlign: 'center' as const }}>
+                  <div style={{ fontFamily: SERIF, fontSize: 22, color: G2 }}>{legalProspects.length > 0 ? Math.round(totalFirmados / (legalProspects.length * totalDocs) * 100) : 0}%</div>
+                  <div style={{ fontSize: 8, letterSpacing: '1.5px', textTransform: 'uppercase' as const, color: '#9CA3AF', marginTop: 2 }}>Completado</div>
+                </div>
+              </div>
+              {/* Alertas mini */}
+              {alerts.length > 0 && (
+                <div style={{ marginTop: 12, padding: '8px 10px', background: '#FEF2F2', border: `1px solid #FECACA` }}>
+                  <div style={{ fontSize: 8, letterSpacing: '1.5px', textTransform: 'uppercase' as const, color: '#DC2626', marginBottom: 4, fontWeight: 700 }}>{alerts.length} alerta{alerts.length > 1 ? 's' : ''}</div>
+                  {alerts.slice(0, 2).map((a, i) => (
+                    <div key={i} style={{ fontSize: 9, color: '#7F1D1D', marginBottom: 2, lineHeight: 1.4 }}>
+                      {a.type === 'vencido' ? `Vencido hace ${a.daysVal}d` : a.type === 'urgente' ? `Vence en ${a.daysVal}d` : `Estancado ${a.daysVal}d`} · {a.prospect.split(' ')[0]}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={{ borderTop: `1px solid #EEF1F5` }}>
+              {legalProspects.length === 0 && (
+                <div style={{ padding: '32px 20px', textAlign: 'center' as const, color: '#9CA3AF', fontSize: 12, fontStyle: 'italic' }}>
+                  No hay prospectos en etapas de cierre
+                </div>
+              )}
+              {legalProspects.map(p => {
+                const isSelected = legalSelected === p.id;
+                const d = legalDocs[p.id] || {};
+                const totalDone = allDocs.filter(doc => d[doc.key]?.status === 'firmado' || d[doc.key]?.status === 'archivado').length;
+                const pct = Math.round(totalDone / totalDocs * 100);
+                const tl = trafficLight(p);
+                const tlColor = tl === 'red' ? '#DC2626' : tl === 'yellow' ? '#D97706' : '#059669';
+                return (
+                  <div key={p.id} onClick={() => setLegalSelected(p.id)}
+                    style={{ padding: '14px 20px', borderBottom: `1px solid #EEF1F5`, cursor: 'pointer', background: isSelected ? '#fff' : 'transparent', borderLeft: isSelected ? `2px solid ${N2}` : '2px solid transparent', transition: 'all 0.15s' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ width: 7, height: 7, borderRadius: '50%', background: tlColor, flexShrink: 0 }} />
+                      <div style={{ fontFamily: SERIF, fontSize: 14, color: N2, flex: 1 }}>{p.nombre} {p.apellido}</div>
+                    </div>
+                    <div style={{ fontSize: 10, color: '#7B92A8', marginTop: 3, marginLeft: 15 }}>{p.estado} · {(p.proyectos_interes as string[])?.[0] || 'Sin proyecto'}</div>
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                        <span style={{ fontSize: 8, letterSpacing: '1px', textTransform: 'uppercase' as const, color: '#9CA3AF' }}>{overallPhase(p)}</span>
+                        <span style={{ fontSize: 9, color: pct === 100 ? '#059669' : N2, fontWeight: 700 }}>{pct}%</span>
+                      </div>
+                      <div style={{ height: 2, background: '#EEF1F5' }}>
+                        <div style={{ height: 2, width: `${pct}%`, background: pct === 100 ? '#059669' : G2, transition: 'width 0.4s' }} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ── Panel principal ── */}
+          <div style={{ flex: 1, overflowY: 'auto' as const, minWidth: 0 }}>
+            {!selected ? (
+              /* ── Panel de alertas globales cuando no hay expediente seleccionado ── */
+              <div style={{ padding: '32px 40px' }}>
+                <div style={{ fontSize: 8, letterSpacing: '2.5px', textTransform: 'uppercase' as const, color: G2, marginBottom: 6 }}>Resumen General</div>
+                <div style={{ fontFamily: SERIF, fontSize: 24, color: N2, marginBottom: 28 }}>Panel de Alertas y Vencimientos</div>
+                {alerts.length === 0 ? (
+                  <div style={{ padding: '40px', textAlign: 'center' as const, color: '#9CA3AF', border: `1px solid #EEF1F5` }}>
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="1.5" style={{ marginBottom: 12 }}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    <div style={{ fontFamily: SERIF, fontSize: 16, color: '#059669' }}>Sin alertas activas</div>
+                    <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 6 }}>Todos los expedientes están al día</div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
+                    {alerts.map((a, i) => {
+                      const color = a.type === 'vencido' ? '#DC2626' : a.type === 'urgente' ? '#D97706' : '#3B82F6';
+                      const bg = a.type === 'vencido' ? '#FEF2F2' : a.type === 'urgente' ? '#FFFBEB' : '#EFF6FF';
+                      return (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 20px', background: bg, border: `1px solid ${color}30` }}>
+                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 12, color: N2, fontWeight: 600 }}>{a.prospect}</div>
+                            <div style={{ fontSize: 10, color: '#7B92A8', marginTop: 2 }}>{a.doc}</div>
+                          </div>
+                          <div style={{ textAlign: 'right' as const }}>
+                            <div style={{ fontSize: 10, color, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.5px' }}>
+                              {a.type === 'vencido' ? `Vencido hace ${a.daysVal} días` : a.type === 'urgente' ? `Vence en ${a.daysVal} días` : `Sin respuesta ${a.daysVal} días`}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                <div style={{ marginTop: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' as const, gap: 8, color: '#9CA3AF' }}>
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#CBD5E0" strokeWidth="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                  <div style={{ fontSize: 12 }}>Selecciona un expediente en el panel izquierdo para gestionarlo</div>
+                </div>
+              </div>
+            ) : (
+              <div style={{ padding: '32px 40px' }}>
+                {/* Header */}
+                <div style={{ borderBottom: `1px solid #EEF1F5`, paddingBottom: 24, marginBottom: 28, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ fontSize: 8, letterSpacing: '2.5px', textTransform: 'uppercase' as const, color: G2, marginBottom: 6 }}>Expediente Legal</div>
+                    <div style={{ fontFamily: SERIF, fontSize: 26, color: N2 }}>{selected.nombre} {selected.apellido}</div>
+                    <div style={{ fontSize: 12, color: '#7B92A8', marginTop: 4 }}>
+                      {(selected.proyectos_interes as string[])?.[0] || 'Sin proyecto'} · {selected.broker_asignado as string || 'Sin broker'} · USD {Number(selected.presupuesto_usd || 0).toLocaleString()}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' as const, display: 'flex', flexDirection: 'column' as const, alignItems: 'flex-end', gap: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 8, letterSpacing: '1.5px', textTransform: 'uppercase' as const, color: '#9CA3AF', marginBottom: 3 }}>Estado Legal</div>
+                      <div style={{ fontFamily: SERIF, fontSize: 15, color: N2 }}>{overallPhase(selected)}</div>
+                    </div>
+                    <button onClick={() => { setPreviousModule('legal'); setProspectDetail(selected.id); setActiveProspect(selected); setActiveModule('prospectos'); }}
+                      style={{ fontSize: 9, letterSpacing: '1.5px', textTransform: 'uppercase' as const, background: 'none', border: `1px solid #EEF1F5`, color: '#7B92A8', padding: '5px 12px', cursor: 'pointer' }}>
+                      Ver Perfil Completo
+                    </button>
+                  </div>
+                </div>
+
+                {/* Pipeline visual */}
+                <div style={{ display: 'flex', marginBottom: 32, borderBottom: `1px solid #EEF1F5`, paddingBottom: 24, gap: 0 }}>
+                  {PHASES.map((phase, idx) => {
+                    const { done, total, pct } = phaseProgress(phase);
+                    const complete = pct === 100;
+                    return (
+                      <div key={phase.id} style={{ flex: 1, padding: '0 16px', borderLeft: idx > 0 ? `1px solid #EEF1F5` : 'none' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                          <div style={{ width: 20, height: 20, borderRadius: '50%', background: complete ? '#059669' : done > 0 ? G2 : '#EEF1F5', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            {complete
+                              ? <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                              : <span style={{ fontSize: 9, color: done > 0 ? '#fff' : '#CBD5E0', fontWeight: 700 }}>{idx + 1}</span>}
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: N2 }}>{phase.label}</div>
+                            <div style={{ fontSize: 9, color: '#9CA3AF' }}>{phase.sublabel}</div>
+                          </div>
+                        </div>
+                        <div style={{ height: 3, background: '#EEF1F5', borderRadius: 2 }}>
+                          <div style={{ height: 3, width: `${pct}%`, background: complete ? '#059669' : G2, borderRadius: 2, transition: 'width 0.4s' }} />
+                        </div>
+                        <div style={{ fontSize: 9, color: '#9CA3AF', marginTop: 4 }}>{done} de {total} documentos</div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Documentos por fase */}
+                {PHASES.map(phase => (
+                  <div key={phase.id} style={{ marginBottom: 32 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+                      <div style={{ fontSize: 9, letterSpacing: '2px', textTransform: 'uppercase' as const, color: G2, fontWeight: 700 }}>{phase.label}</div>
+                      <div style={{ flex: 1, height: 1, background: '#EEF1F5' }} />
+                      <div style={{ fontSize: 9, color: '#9CA3AF' }}>{phaseProgress(phase).done}/{phaseProgress(phase).total}</div>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 6 }}>
+                      {phase.docs.map(doc => {
+                        const meta = docMap[doc.key] || { status: 'pendiente' as LegalDocStatus };
+                        const status = meta.status;
+                        const cfg = STATUS_CFG[status];
+                        const hasSigned = meta.signers && meta.signers.length > 0;
+                        const allSigned = hasSigned && meta.signers!.every(s => s.status === 'firmado');
+                        const today2 = new Date();
+                        const isOverdue = meta.dueDate && new Date(meta.dueDate) < today2 && status !== 'firmado' && status !== 'archivado';
+                        const daysWaiting = meta.signSentDate ? Math.round((today2.getTime() - new Date(meta.signSentDate).getTime()) / 86400000) : 0;
+                        const isActive = legalActiveDoc?.docKey === doc.key;
+                        return (
+                          <div key={doc.key}
+                            style={{ background: isActive ? '#F8F9FB' : '#fff', border: `1px solid ${isActive ? N2 : isOverdue ? '#FECACA' : '#EEF1F5'}`, transition: 'all 0.15s' }}>
+
+                            {/* ── Fila principal ── */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px' }}>
+                              <div style={{ width: 6, height: 6, borderRadius: '50%', background: cfg.color, flexShrink: 0 }} />
+
+                              {/* Nombre + info adjunto */}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 12, color: N2, fontWeight: isActive ? 600 : 400 }}>{doc.label}</div>
+                                {meta.attachedName && (
+                                  <div style={{ fontSize: 9, color: '#7B92A8', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                                    {meta.attachedUrl
+                                      ? <a href={meta.attachedUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ color: '#7B92A8', textDecoration: 'none' }}>{meta.attachedName}</a>
+                                      : <span style={{ color: '#7B92A8' }}>{meta.attachedName} <span style={{ color: '#CBD5E0', fontSize: 8 }}>(local)</span></span>}
+                                    {meta.attachedDate && <span style={{ color: '#CBD5E0' }}>· {meta.attachedDate}</span>}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Acciones */}
+                              <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
+                                {LEGAL_TEMPLATES[doc.key] && iconBtn('Plantilla', () => setLegalTemplateModal({ docKey: doc.key, docLabel: doc.label }), (
+                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+                                ))}
+                                {iconBtn('Adjuntar', () => { setLegalAttachModal({ prospectId: selected.id, docKey: doc.key, docLabel: doc.label }); setLegalAttachForm({ name: meta.attachedName || '', url: meta.attachedUrl || '', localUrl: '' }); }, (
+                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                                ), !!meta.attachedName)}
+                                {doc.needsSign && iconBtn('Firmas', () => { setLegalSignModal({ prospectId: selected.id, docKey: doc.key, docLabel: doc.label }); setLegalSignForm((() => { const sb = meta.signSentBy || ''; const isKnown = (brokers as any[]).some((b: any) => b.nombre === sb); return { buyer: meta.signers?.find(s => s.role === 'Comprador')?.name || '', buyerEmail: meta.signers?.find(s => s.role === 'Comprador')?.email || '', seller: meta.signers?.find(s => s.role === 'Vendedor')?.name || '', sellerEmail: meta.signers?.find(s => s.role === 'Vendedor')?.email || '', notary: meta.signers?.find(s => s.role === 'Notario')?.name || '', notaryEmail: meta.signers?.find(s => s.role === 'Notario')?.email || '', link: meta.signLink || '', due: meta.dueDate || '', sentBy: sb, sentByCustom: sb !== '' && !isKnown }; })()); }, (
+                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                ), hasSigned)}
+                                {iconBtn('Nota', () => { setLegalNotesModal({ prospectId: selected.id, docKey: doc.key, docLabel: doc.label }); setLegalNoteText(meta.notes || ''); }, (
+                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                                ), !!meta.notes)}
+                              </div>
+
+                              {/* Estado */}
+                              <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
+                                {(['pendiente','en_revision','firmado','archivado'] as LegalDocStatus[]).map(s => {
+                                  const c = STATUS_CFG[s];
+                                  const active = status === s;
+                                  return (
+                                    <button key={s} onClick={e => { e.stopPropagation(); saveLegalDoc(selected.id, doc.key, { status: s }, `Estado → ${STATUS_CFG[s].label}`); }}
+                                      style={{ fontSize: 8, padding: '3px 8px', border: `1px solid ${active ? c.color : '#EEF1F5'}`, background: active ? c.bg : 'transparent', color: active ? c.color : '#9CA3AF', cursor: 'pointer', letterSpacing: '0.3px', fontWeight: active ? 700 : 400, transition: 'all 0.15s' }}>
+                                      {c.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+
+                              {/* Botón trazabilidad */}
+                              <button onClick={() => setLegalActiveDoc(isActive ? null : { docKey: doc.key, docLabel: doc.label })}
+                                title="Ver trazabilidad"
+                                style={{ width: 26, height: 26, border: `1px solid ${isActive ? N2 : '#EEF1F5'}`, background: isActive ? N2 : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: isActive ? '#fff' : '#9CA3AF', transition: 'all 0.15s' }}>
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                              </button>
+                            </div>
+
+                            {/* ── Trazabilidad inline (cuando hay firmantes) ── */}
+                            {hasSigned && (
+                              <div style={{ borderTop: `1px solid #EEF1F5`, margin: '0 14px', padding: '8px 0 10px' }}>
+                                <div style={{ fontSize: 8, letterSpacing: '1.5px', textTransform: 'uppercase' as const, color: '#9CA3AF', marginBottom: 6, fontWeight: 700 }}>
+                                  Enviado {meta.signSentDate} {meta.signSentBy ? `por ${meta.signSentBy}` : ''}{isOverdue ? ' · ' : ''}{isOverdue && <span style={{ color: '#DC2626', fontWeight: 700 }}>VENCIDO {meta.dueDate}</span>}{!isOverdue && meta.dueDate && status !== 'firmado' && <span style={{ color: '#D97706' }}> · Vence {meta.dueDate}</span>}
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 6 }}>
+                                  {meta.signers!.map((s, i) => (
+                                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', background: SIGNER_CFG[s.status].color + '0D', border: `1px solid ${SIGNER_CFG[s.status].color}30` }}>
+                                      <div style={{ width: 5, height: 5, borderRadius: '50%', background: SIGNER_CFG[s.status].color, flexShrink: 0 }} />
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontSize: 10, color: N2, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{s.name}</div>
+                                        {s.email && <div style={{ fontSize: 8, color: '#7B92A8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{s.email}</div>}
+                                        <div style={{ fontSize: 8, color: SIGNER_CFG[s.status].color, fontWeight: 600 }}>{s.role} · {SIGNER_CFG[s.status].label}{s.date && s.status === 'firmado' ? ` ${s.date}` : ''}</div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                                {meta.signLink && (
+                                  <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#7B92A8" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                                    <a href={meta.signLink} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: 9, color: '#7B92A8', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const, flex: 1 }}>
+                                      {meta.signLink.length > 60 ? meta.signLink.slice(0, 60) + '…' : meta.signLink}
+                                    </a>
+                                    <button onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(meta.signLink!); }} style={{ fontSize: 8, color: G2, background: 'none', border: 'none', cursor: 'pointer', padding: 0, flexShrink: 0 }}>Copiar</button>
+                                  </div>
+                                )}
+                                {allSigned && <div style={{ marginTop: 6, fontSize: 9, color: '#059669', fontWeight: 700 }}>Todos los firmantes han completado la firma</div>}
+                                {status === 'en_revision' && daysWaiting > 7 && <div style={{ marginTop: 4, fontSize: 8, color: '#3B82F6' }}>Pendiente de respuesta hace {daysWaiting} días</div>}
+                              </div>
+                            )}
+
+                            {/* Notas inline */}
+                            {meta.notes && !hasSigned && (
+                              <div style={{ borderTop: `1px solid #EEF1F5`, margin: '0 14px', padding: '6px 0 8px', fontSize: 9, color: '#9CA3AF', fontStyle: 'italic' }}>{meta.notes.slice(0, 80)}{meta.notes.length > 80 ? '…' : ''}</div>
+                            )}
+
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ── Panel derecho: Resumen / Trazabilidad ── */}
+          {selected && (() => {
+            const today2 = new Date();
+
+            // ── Resumen del expediente (sin documento activo) ──
+            if (!legalActiveDoc) {
+              const allDocs = PHASES.flatMap(p => p.docs);
+              const allMetas = allDocs.map(d => ({ doc: d, meta: docMap[d.key] || { status: 'pendiente' as LegalDocStatus } }));
+              const overdueItems = allMetas.filter(({ meta: m }) => m.dueDate && new Date(m.dueDate) < today2 && m.status !== 'firmado' && m.status !== 'archivado');
+              const pendingSign = allMetas.filter(({ meta: m }) => m.signers && m.signers.length > 0 && m.signers.some(s => s.status !== 'firmado'));
+              const recentHistory: (LegalEvent & { docLabel: string })[] = [];
+              allMetas.forEach(({ doc, meta: m }) => {
+                (m.history || []).forEach(ev => recentHistory.push({ ...ev, docLabel: doc.label }));
+              });
+              recentHistory.sort((a, b) => b.date.localeCompare(a.date));
+              const totalDocs = allDocs.length;
+              const doneDocs = allMetas.filter(({ meta: m }) => m.status === 'firmado' || m.status === 'archivado').length;
+              const pct = Math.round((doneDocs / totalDocs) * 100);
+
+              return (
+                <div style={{ width: 300, borderLeft: `1px solid #EEF1F5`, flexShrink: 0, overflowY: 'auto' as const, background: '#FAFAF8' }}>
+                  {/* Header resumen */}
+                  <div style={{ padding: '20px 20px 14px', borderBottom: `1px solid #EEF1F5`, position: 'sticky' as const, top: 0, background: '#FAFAF8', zIndex: 1 }}>
+                    <div style={{ fontSize: 8, letterSpacing: '2px', textTransform: 'uppercase' as const, color: G2, fontWeight: 700, marginBottom: 4 }}>Resumen del Expediente</div>
+                    <div style={{ fontFamily: SERIF, fontSize: 14, color: N2, lineHeight: 1.3 }}>{selected.nombre} {selected.apellido}</div>
+                    <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
+                      <div style={{ flex: 1, padding: '8px 10px', background: '#fff', border: `1px solid #EEF1F5`, textAlign: 'center' as const }}>
+                        <div style={{ fontFamily: SERIF, fontSize: 20, color: N2 }}>{doneDocs}</div>
+                        <div style={{ fontSize: 8, color: '#9CA3AF', letterSpacing: '0.5px' }}>COMPLETADOS</div>
+                      </div>
+                      <div style={{ flex: 1, padding: '8px 10px', background: '#fff', border: `1px solid #EEF1F5`, textAlign: 'center' as const }}>
+                        <div style={{ fontFamily: SERIF, fontSize: 20, color: totalDocs - doneDocs > 0 ? G2 : '#059669' }}>{totalDocs - doneDocs}</div>
+                        <div style={{ fontSize: 8, color: '#9CA3AF', letterSpacing: '0.5px' }}>PENDIENTES</div>
+                      </div>
+                      <div style={{ flex: 1, padding: '8px 10px', background: overdueItems.length > 0 ? '#FEF2F2' : '#fff', border: `1px solid ${overdueItems.length > 0 ? '#FECACA' : '#EEF1F5'}`, textAlign: 'center' as const }}>
+                        <div style={{ fontFamily: SERIF, fontSize: 20, color: overdueItems.length > 0 ? '#DC2626' : '#9CA3AF' }}>{overdueItems.length}</div>
+                        <div style={{ fontSize: 8, color: overdueItems.length > 0 ? '#DC2626' : '#9CA3AF', letterSpacing: '0.5px' }}>VENCIDOS</div>
+                      </div>
+                    </div>
+                    {/* Barra progreso */}
+                    <div style={{ marginTop: 10 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <div style={{ fontSize: 8, color: '#9CA3AF' }}>Progreso general</div>
+                        <div style={{ fontSize: 8, color: N2, fontWeight: 700 }}>{pct}%</div>
+                      </div>
+                      <div style={{ height: 4, background: '#EEF1F5', borderRadius: 2 }}>
+                        <div style={{ height: 4, width: `${pct}%`, background: pct === 100 ? '#059669' : G2, borderRadius: 2, transition: 'width 0.4s' }} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ padding: '16px 20px' }}>
+                    {/* Alertas vencidas */}
+                    {overdueItems.length > 0 && (
+                      <div style={{ marginBottom: 20 }}>
+                        <div style={{ fontSize: 8, letterSpacing: '2px', textTransform: 'uppercase' as const, color: '#DC2626', marginBottom: 8, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                          Vencidos ({overdueItems.length})
+                        </div>
+                        {overdueItems.map(({ doc, meta: m }, i) => (
+                          <div key={i} onClick={() => setLegalActiveDoc({ docKey: doc.key, docLabel: doc.label })} style={{ marginBottom: 6, padding: '8px 10px', background: '#FEF2F2', border: `1px solid #FECACA`, cursor: 'pointer' }}>
+                            <div style={{ fontSize: 10, color: '#DC2626', fontWeight: 600 }}>{doc.label}</div>
+                            <div style={{ fontSize: 8, color: '#DC2626', marginTop: 2 }}>Venció: {m.dueDate}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Pendientes de firma */}
+                    {pendingSign.length > 0 && (
+                      <div style={{ marginBottom: 20 }}>
+                        <div style={{ fontSize: 8, letterSpacing: '2px', textTransform: 'uppercase' as const, color: '#D97706', marginBottom: 8, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                          Pendientes de Firma ({pendingSign.length})
+                        </div>
+                        {pendingSign.map(({ doc, meta: m }, i) => {
+                          const pending = m.signers!.filter(s => s.status !== 'firmado');
+                          return (
+                            <div key={i} onClick={() => setLegalActiveDoc({ docKey: doc.key, docLabel: doc.label })} style={{ marginBottom: 6, padding: '8px 10px', background: '#fff', border: `1px solid #EEF1F5`, cursor: 'pointer' }}>
+                              <div style={{ fontSize: 10, color: N2, fontWeight: 600 }}>{doc.label}</div>
+                              <div style={{ fontSize: 8, color: '#7B92A8', marginTop: 3 }}>{pending.map(s => s.name).join(', ')}</div>
+                              {m.dueDate && <div style={{ fontSize: 8, color: new Date(m.dueDate) < today2 ? '#DC2626' : '#D97706', marginTop: 2, fontWeight: 600 }}>Vence: {m.dueDate}</div>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Actividad reciente */}
+                    <div>
+                      <div style={{ fontSize: 8, letterSpacing: '2px', textTransform: 'uppercase' as const, color: '#9CA3AF', marginBottom: 10, fontWeight: 700 }}>Actividad Reciente</div>
+                      {recentHistory.length === 0 ? (
+                        <div style={{ fontSize: 10, color: '#CBD5E0', fontStyle: 'italic' }}>Sin actividad registrada aún.</div>
+                      ) : (
+                        <div style={{ position: 'relative' as const }}>
+                          <div style={{ position: 'absolute' as const, left: 7, top: 0, bottom: 0, width: 1, background: '#EEF1F5' }} />
+                          {recentHistory.slice(0, 8).map((ev, i) => (
+                            <div key={i} style={{ display: 'flex', gap: 12, marginBottom: 12, position: 'relative' as const }}>
+                              <div style={{ width: 15, height: 15, borderRadius: '50%', background: '#fff', border: `2px solid ${G2}`, flexShrink: 0, zIndex: 1 }} />
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: 9, color: '#7B92A8', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '0.5px', marginBottom: 1 }}>{ev.docLabel}</div>
+                                <div style={{ fontSize: 10, color: N2, lineHeight: 1.3 }}>{ev.action}</div>
+                                <div style={{ fontSize: 8, color: '#9CA3AF', marginTop: 2 }}>{ev.date}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            // ── Trazabilidad de documento activo ──
+            const { docKey, docLabel } = legalActiveDoc;
+            const meta = docMap[docKey] || { status: 'pendiente' as LegalDocStatus };
+            const cfg = STATUS_CFG[meta.status];
+            return (
+              <div style={{ width: 300, borderLeft: `1px solid #EEF1F5`, flexShrink: 0, overflowY: 'auto' as const, background: '#FAFAF8' }}>
+                {/* Header */}
+                <div style={{ padding: '20px 20px 14px', borderBottom: `1px solid #EEF1F5`, position: 'sticky' as const, top: 0, background: '#FAFAF8', zIndex: 1 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ fontSize: 8, letterSpacing: '2px', textTransform: 'uppercase' as const, color: G2, fontWeight: 700 }}>Trazabilidad</div>
+                    <button onClick={() => setLegalActiveDoc(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 16, padding: 0, lineHeight: 1 }}>×</button>
+                  </div>
+                  <div style={{ fontFamily: SERIF, fontSize: 15, color: N2, marginTop: 4, lineHeight: 1.3 }}>{docLabel}</div>
+                  <div style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', background: cfg.bg, border: `1px solid ${cfg.color}40` }}>
+                    <div style={{ width: 6, height: 6, borderRadius: '50%', background: cfg.color }} />
+                    <span style={{ fontSize: 9, color: cfg.color, fontWeight: 700, letterSpacing: '0.5px' }}>{cfg.label}</span>
+                  </div>
+                </div>
+
+                <div style={{ padding: '16px 20px' }}>
+
+                  {/* Firmantes */}
+                  {meta.signers && meta.signers.length > 0 && (
+                    <div style={{ marginBottom: 20 }}>
+                      <div style={{ fontSize: 8, letterSpacing: '2px', textTransform: 'uppercase' as const, color: '#9CA3AF', marginBottom: 10, fontWeight: 700 }}>Firmantes</div>
+                      {meta.signers.map((s, i) => (
+                        <div key={i} style={{ marginBottom: 10, padding: '10px 12px', background: '#fff', border: `1px solid #EEF1F5` }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 11, color: N2, fontWeight: 600 }}>{s.name}</div>
+                              <div style={{ fontSize: 9, color: '#9CA3AF', marginTop: 1 }}>{s.role}</div>
+                              {s.email && (
+                                <div style={{ fontSize: 9, color: '#7B92A8', marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{s.email}</span>
+                                </div>
+                              )}
+                              {s.date && s.status === 'firmado' && (
+                                <div style={{ fontSize: 8, color: '#059669', marginTop: 3, fontWeight: 700 }}>Firmado: {s.date}</div>
+                              )}
+                            </div>
+                            <span style={{ fontSize: 8, padding: '2px 7px', background: SIGNER_CFG[s.status].color + '18', color: SIGNER_CFG[s.status].color, border: `1px solid ${SIGNER_CFG[s.status].color}40`, flexShrink: 0, marginLeft: 6 }}>
+                              {SIGNER_CFG[s.status].label}
+                            </span>
+                          </div>
+                          {/* Cambiar estado firmante inline */}
+                          <div style={{ display: 'flex', gap: 3, marginTop: 8 }}>
+                            {(['pendiente','enviado','visto','firmado'] as SignerStatus[]).map(st => (
+                              <button key={st} onClick={e => {
+                                e.stopPropagation();
+                                const newSigners = [...(meta.signers || [])] as LegalSigner[];
+                                newSigners[i] = { ...newSigners[i], status: st, date: st === 'firmado' ? today2.toISOString().split('T')[0] : newSigners[i].date };
+                                saveLegalDoc(selected.id, docKey, { signers: newSigners }, st === 'firmado' ? `${s.name} firmó el documento` : `${s.name} → ${SIGNER_CFG[st].label}`);
+                              }} style={{ flex: 1, fontSize: 8, padding: '3px 0', border: `1px solid ${s.status === st ? SIGNER_CFG[st].color : '#EEF1F5'}`, background: s.status === st ? SIGNER_CFG[st].color + '20' : 'transparent', color: s.status === st ? SIGNER_CFG[st].color : '#9CA3AF', cursor: 'pointer' }}>
+                                {SIGNER_CFG[st].label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                      {/* Enlace de firma */}
+                      {meta.signLink && (
+                        <div style={{ marginTop: 8, padding: '8px 12px', background: '#EBF2FB', border: `1px solid ${N2}20`, display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={N2} strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                          <a href={meta.signLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 9, color: N2, textDecoration: 'none', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
+                            {meta.signLink.replace(/^https?:\/\//, '').slice(0, 35)}…
+                          </a>
+                          <button onClick={() => navigator.clipboard.writeText(meta.signLink!)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: G2, fontSize: 8, padding: 0, letterSpacing: '0.5px' }}>Copiar</button>
+                        </div>
+                      )}
+                      {meta.dueDate && (
+                        <div style={{ marginTop: 6, fontSize: 9, color: new Date(meta.dueDate) < today2 ? '#DC2626' : '#D97706', fontWeight: 600 }}>
+                          {new Date(meta.dueDate) < today2 ? 'Vencido: ' : 'Vence: '}{meta.dueDate}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Documento adjunto */}
+                  {meta.attachedName && (
+                    <div style={{ marginBottom: 20 }}>
+                      <div style={{ fontSize: 8, letterSpacing: '2px', textTransform: 'uppercase' as const, color: '#9CA3AF', marginBottom: 8, fontWeight: 700 }}>Documento Adjunto</div>
+                      <div style={{ padding: '10px 12px', background: '#fff', border: `1px solid #EEF1F5`, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={G2} strokeWidth="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          {meta.attachedUrl
+                            ? (meta.attachedUrl ? <a href={meta.attachedUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: N2, textDecoration: 'none', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{meta.attachedName}</a> : <span style={{ fontSize: 11, color: N2 }}>{meta.attachedName}</span>)
+                            : <span style={{ fontSize: 11, color: N2 }}>{meta.attachedName}</span>}
+                          {meta.attachedDate && <div style={{ fontSize: 8, color: '#9CA3AF', marginTop: 2 }}>{meta.attachedDate}</div>}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Notas */}
+                  {meta.notes && (
+                    <div style={{ marginBottom: 20 }}>
+                      <div style={{ fontSize: 8, letterSpacing: '2px', textTransform: 'uppercase' as const, color: '#9CA3AF', marginBottom: 8, fontWeight: 700 }}>Notas</div>
+                      <div style={{ padding: '10px 12px', background: '#fff', border: `1px solid #EEF1F5`, fontSize: 11, color: '#4A5568', lineHeight: 1.6, fontStyle: 'italic' }}>{meta.notes}</div>
+                    </div>
+                  )}
+
+                  {/* Historial / Trazabilidad */}
+                  <div>
+                    <div style={{ fontSize: 8, letterSpacing: '2px', textTransform: 'uppercase' as const, color: '#9CA3AF', marginBottom: 10, fontWeight: 700 }}>Historial de Cambios</div>
+                    {(!meta.history || meta.history.length === 0) ? (
+                      <div style={{ fontSize: 10, color: '#CBD5E0', fontStyle: 'italic' }}>Sin actividad registrada aún</div>
+                    ) : (
+                      <div style={{ position: 'relative' as const }}>
+                        <div style={{ position: 'absolute' as const, left: 7, top: 0, bottom: 0, width: 1, background: '#EEF1F5' }} />
+                        {[...meta.history].reverse().map((ev, i) => (
+                          <div key={i} style={{ display: 'flex', gap: 12, marginBottom: 12, position: 'relative' as const }}>
+                            <div style={{ width: 15, height: 15, borderRadius: '50%', background: '#fff', border: `2px solid ${G2}`, flexShrink: 0, zIndex: 1 }} />
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 10, color: N2, fontWeight: 600, lineHeight: 1.3 }}>{ev.action}</div>
+                              <div style={{ fontSize: 8, color: '#9CA3AF', marginTop: 2 }}>{ev.date}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {/* Botones rápidos en el panel */}
+                    <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column' as const, gap: 6 }}>
+                      <button onClick={e => { e.stopPropagation(); setLegalSignModal({ prospectId: selected.id, docKey, docLabel }); }}
+                        style={{ padding: '8px', border: `1px solid #EEF1F5`, background: '#fff', fontSize: 9, color: N2, cursor: 'pointer', letterSpacing: '1px', textTransform: 'uppercase' as const, textAlign: 'left' as const, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                        Gestionar Firmas
+                      </button>
+                      <button onClick={e => { e.stopPropagation(); setLegalAttachModal({ prospectId: selected.id, docKey, docLabel }); setLegalAttachForm({ name: meta.attachedName || '', url: meta.attachedUrl || '', localUrl: '' }); }}
+                        style={{ padding: '8px', border: `1px solid #EEF1F5`, background: '#fff', fontSize: 9, color: N2, cursor: 'pointer', letterSpacing: '1px', textTransform: 'uppercase' as const, textAlign: 'left' as const, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                        Adjuntar Documento
+                      </button>
+                      <button onClick={e => { e.stopPropagation(); setLegalNotesModal({ prospectId: selected.id, docKey, docLabel }); setLegalNoteText(meta.notes || ''); }}
+                        style={{ padding: '8px', border: `1px solid #EEF1F5`, background: '#fff', fontSize: 9, color: N2, cursor: 'pointer', letterSpacing: '1px', textTransform: 'uppercase' as const, textAlign: 'left' as const, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                        Agregar Nota
+                      </button>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      </>
+    );
+  };
+
   const renderModule = () => {
     if (currentUserRole === 'presidencia') {
       if (activeModule === 'kpis' || activeModule === 'dashboard') return renderPresidencia();
@@ -13999,6 +17051,8 @@ Responde SOLO con JSON sin bloques de código:
       case 'prospectos': return renderProspectos();
       case 'eventos': return renderEventos();
       case 'agentes': return renderAgentes();
+      case 'legal': return renderLegal();
+      case 'integraciones': return renderIntegraciones();
       case 'faqs': return renderFAQs();
       case 'calculadora': return renderCalculadora();
       case 'gerencial': return renderAnalisisGerencial();
@@ -14861,7 +17915,7 @@ Responde SOLO con JSON sin bloques de código:
     if (activeModule === 'agentes') {
       return (
         <>
-          {panelHeader('Agentes IA', 'Sara · Camilo · Max')}
+          {panelHeader('Agentes IA', 'Camilo · Sofía · Sara · Valeria · Isabella')}
           <div style={{ flex: 1, overflowY: 'auto' as const, padding: '12px 12px', display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
             {activeProspect && (
               <div style={{ background: '#fff', border: `1px solid #E5E0D8`, borderRadius: 4, padding: '10px 12px' }}>
@@ -14872,9 +17926,11 @@ Responde SOLO con JSON sin bloques de código:
             )}
             {panelSectionLabel('Estado de agentes')}
             {[
-              { name: 'Sara',   desc: 'Correos y seguimiento',    status: 'Activa', color: T.success },
-              { name: 'Camilo', desc: 'Minería de prospectos',    status: 'Activo', color: T.success },
-              { name: 'Max',    desc: 'Análisis de objeciones',   status: 'Activo', color: T.success },
+              { name: 'Camilo',   desc: 'Investigación & prospección',     status: 'Activo', color: '#B89047' },
+              { name: 'Sofía',    desc: 'Perfilamiento conductual',         status: 'Lista',  color: '#EC4899' },
+              { name: 'Sara',     desc: 'Mensajería & back-office',         status: 'Activa', color: '#0EA5E9' },
+              { name: 'Valeria',  desc: 'Contenido & copywriting',          status: 'Lista',  color: '#8B5CF6' },
+              { name: 'Isabella', desc: 'Producción de video & guiones',    status: 'Lista',  color: '#F59E0B' },
             ].map(a => (
               <div key={a.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: '#fff', borderRadius: 4, border: `1px solid #E5E0D8` }}>
                 <div>
@@ -14891,6 +17947,79 @@ Responde SOLO con JSON sin bloques de código:
 
     // ── EVENTOS: lista de asistentes del evento expandido ────────
     if (activeModule === 'eventos') {
+      // ── Panel Agenda de Brokers ──
+      if (eventosTab === 'agenda') {
+        const agendaEvs = events.filter(ev => ev.categoria === 'agenda').sort((a,b) => a.fecha.localeCompare(b.fecha));
+        const todayStr = new Date().toISOString().slice(0,10);
+        const proximas = agendaEvs.filter(ev => ev.fecha >= todayStr);
+        const pasadas  = agendaEvs.filter(ev => ev.fecha < todayStr);
+        const allBrokersPanel = [...new Set(agendaEvs.map(ev => ev.broker).filter(Boolean))] as string[];
+        return (
+          <>
+            {panelHeader('Agenda de Brokers')}
+            <div style={{ flex: 1, overflowY: 'auto' as const, padding: '12px 14px', display: 'flex', flexDirection: 'column' as const, gap: 0 }}>
+              {/* Resumen */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
+                <div style={{ textAlign: 'center' as const, padding: '10px 6px', background: '#F9FAFB', border: '1px solid #E5E7EB' }}>
+                  <div style={{ fontFamily: T.fontSerif, fontSize: 22, fontWeight: 400, color: '#111827', lineHeight: 1 }}>{proximas.length}</div>
+                  <div style={{ fontSize: 8, textTransform: 'uppercase' as const, letterSpacing: '1.5px', color: '#9CA3AF', marginTop: 4 }}>Próximas</div>
+                </div>
+                <div style={{ textAlign: 'center' as const, padding: '10px 6px', background: '#F9FAFB', border: '1px solid #E5E7EB' }}>
+                  <div style={{ fontFamily: T.fontSerif, fontSize: 22, fontWeight: 400, color: '#9CA3AF', lineHeight: 1 }}>{pasadas.length}</div>
+                  <div style={{ fontSize: 8, textTransform: 'uppercase' as const, letterSpacing: '1.5px', color: '#9CA3AF', marginTop: 4 }}>Realizadas</div>
+                </div>
+              </div>
+
+              {/* Por broker */}
+              {allBrokersPanel.map(broker => {
+                const citasBroker = agendaEvs.filter(ev => ev.broker === broker);
+                const proximasBroker = citasBroker.filter(ev => ev.fecha >= todayStr);
+                return (
+                  <div key={broker} style={{ marginBottom: 14, paddingBottom: 14, borderBottom: '1px solid #F3F4F6' }}>
+                    <div style={{ fontSize: 9, textTransform: 'uppercase' as const, letterSpacing: '1.5px', color: '#B89047', marginBottom: 8, fontWeight: 600 }}>
+                      {broker}
+                      <span style={{ marginLeft: 6, color: '#9CA3AF', fontWeight: 400 }}>{proximasBroker.length} próximas · {citasBroker.length} total</span>
+                    </div>
+                    {citasBroker.map(ev => {
+                      const prospect = prospects.find(p => (ev.prospect_ids||[]).includes(p.id));
+                      const isPast = ev.fecha < todayStr;
+                      const d = new Date(ev.fecha + 'T12:00:00');
+                      const dayNum = d.toLocaleDateString('es-CO', { day: '2-digit' });
+                      const mes = d.toLocaleDateString('es-CO', { month: 'short' }).toUpperCase();
+                      return (
+                        <div key={ev.id}
+                          onClick={() => prospect && (() => { setProspectDetail(prospect.id); setActiveProspect(prospect); setActiveModule('prospectos'); })()}
+                          style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '8px 0', borderBottom: '1px solid #F9FAFB', cursor: prospect ? 'pointer' : 'default', opacity: isPast ? 0.5 : 1 }}>
+                          <div style={{ flexShrink: 0, textAlign: 'center' as const, minWidth: 30 }}>
+                            <div style={{ fontFamily: T.fontSerif, fontSize: 16, fontWeight: 400, color: '#111827', lineHeight: 1 }}>{dayNum}</div>
+                            <div style={{ fontSize: 8, color: '#9CA3AF', letterSpacing: '1px' }}>{mes}</div>
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontFamily: T.fontSerif, fontSize: 12, color: '#111827', lineHeight: 1.2, marginBottom: 2 }}>
+                              {prospect ? `${prospect.nombre} ${prospect.apellido}` : ev.titulo}
+                            </div>
+                            <div style={{ fontSize: 9, textTransform: 'uppercase' as const, letterSpacing: '0.8px', color: '#9CA3AF' }}>
+                              {ev.tipo_cita}{ev.hora ? ` · ${ev.hora}` : ''}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+
+              {agendaEvs.length === 0 && (
+                <div style={{ textAlign: 'center' as const, padding: '40px 0', color: '#9CA3AF', fontSize: 12 }}>
+                  Sin citas registradas
+                </div>
+              )}
+            </div>
+          </>
+        );
+      }
+
+      // ── Panel Eventos Comerciales ──
       const ev = expandedEvent !== null ? events.find(e => e.id === expandedEvent) : null;
       if (!ev) return (
         <>
@@ -14987,9 +18116,47 @@ Responde SOLO con JSON sin bloques de código:
               <div style={{ fontSize: 12, color: T.text }}>{activeProspect.broker_asignado || '—'}</div>
             </div>
             <div>
-              <div style={{ fontSize: 9, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 3 }}>Contacto</div>
-              <div style={{ fontSize: 11, color: T.textSec }}>{activeProspect.correo}</div>
-              <div style={{ fontSize: 11, color: T.textSec, marginTop: 2 }}>{activeProspect.telefono}</div>
+              <div style={{ fontSize: 9, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 6 }}>Contacto rápido</div>
+              {/* Botones de acción rápida */}
+              <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                {/* WhatsApp */}
+                <a
+                  href={`https://wa.me/${(activeProspect.telefono || '').replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${activeProspect.nombre}, te escribo de GLP Wealth Management. ¿Tienes un momento para conversar sobre tu inversión?`)}`}
+                  target="_blank" rel="noreferrer"
+                  title="Abrir WhatsApp"
+                  onClick={() => registrarActividad(activeProspect.id, 'WhatsApp enviado', `Mensaje WhatsApp a ${activeProspect.telefono}`)}
+                  style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '7px 4px', background: '#25D366', color: '#fff', borderRadius: 6, textDecoration: 'none', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                  </svg>
+                  WhatsApp
+                </a>
+                {/* Email */}
+                <a
+                  href={`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(activeProspect.correo)}&su=${encodeURIComponent(`GLP Wealth Management — ${(activeProspect.proyectos_interes||[])[0] || 'Propuesta de inversión'}`)}`}
+                  target="_blank" rel="noreferrer"
+                  title="Enviar email desde Gmail"
+                  onClick={() => registrarActividad(activeProspect.id, 'Email enviado', `Correo a ${activeProspect.correo}`)}
+                  style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '7px 4px', background: T.teal, color: '#fff', borderRadius: 6, textDecoration: 'none', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
+                  </svg>
+                  Email
+                </a>
+                {/* Cita interna */}
+                <button
+                  onClick={() => { setCitaFecha(''); setCitaHora('10:00'); setCitaDuracion(60); setCitaTipo('Visita de proyecto'); setCitaNota(''); setCitaConfirmada(false); setCitaModal(activeProspect); }}
+                  title="Agendar cita"
+                  style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '7px 4px', background: '#006BFF', color: '#fff', borderRadius: 6, border: 'none', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                    <path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>
+                  </svg>
+                  Cita
+                </button>
+              </div>
+              <div style={{ fontSize: 10, color: T.textSec }}>{activeProspect.correo}</div>
+              <div style={{ fontSize: 10, color: T.textSec, marginTop: 1 }}>{activeProspect.telefono}</div>
             </div>
             {activeProspect.notas && (
               <div>
@@ -15039,97 +18206,291 @@ Responde SOLO con JSON sin bloques de código:
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', width: '100%', background: T.bg, fontFamily: 'Inter, sans-serif', color: T.text }}>
       {/* LEFT SIDEBAR */}
       <div style={{
-        width: 210, height: '100vh', background: T.teal, borderRight: `1px solid ${T.tealDark}`,
+        width: 210, height: '100vh',
+        background: '#fff',
+        borderRight: `1px solid #E8ECF0`,
         display: 'flex', flexDirection: 'column' as const,
         position: 'fixed' as const, top: 0, left: 0, zIndex: 10,
         overflowY: 'auto', overflowX: 'hidden',
+        boxShadow: '2px 0 12px rgba(15,37,66,0.06)',
       }}>
+        {/* Acento superior navy */}
+        <div style={{ height: 2, background: 'linear-gradient(90deg, #0F2542 0%, #1C3A5E 60%, transparent 100%)' }} />
+
         {/* Logo */}
-        <div style={{ padding: '18px 16px 14px', borderBottom: `1px solid rgba(255,255,255,0.1)` }}>
-          <div style={{ fontSize: 20, fontWeight: 800, color: T.coral, letterSpacing: 1 }}>GLP</div>
-          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', letterSpacing: 2, textTransform: 'uppercase' as const }}>Control Comercial</div>
+        <div style={{ padding: '20px 18px 16px', borderBottom: `1px solid #EEF1F5` }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: '#0F2542', letterSpacing: 2, fontFamily: 'Georgia, serif' }}>GLP</div>
+          <div style={{ fontSize: 8, color: '#7B92A8', letterSpacing: 3, textTransform: 'uppercase' as const, marginTop: 3 }}>Sistema Operativo Inmobiliario</div>
           {/* Badge de rol */}
-          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const,
-              color: currentUserRole === 'superadmin' ? '#B89047' : currentUserRole === 'presidencia' ? '#93C5FD' : currentUserRole === 'gerencia' ? '#6EE7B7' : '#FCA5A5',
-              background: 'rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: 2 }}>
+          <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase' as const,
+              color: currentUserRole === 'superadmin' ? '#B89047' : currentUserRole === 'presidencia' ? '#185FA5' : currentUserRole === 'gerencia' ? '#0F6E56' : '#993C1D',
+              background: currentUserRole === 'superadmin' ? '#FBF5E8' : currentUserRole === 'presidencia' ? '#E6F1FB' : currentUserRole === 'gerencia' ? '#E1F5EE' : '#FAECE7',
+              padding: '3px 8px',
+              border: `1px solid ${currentUserRole === 'superadmin' ? '#D4AF6B' : currentUserRole === 'presidencia' ? '#B5D4F4' : currentUserRole === 'gerencia' ? '#9FE1CB' : '#F5C4B3'}` }}>
               {ROLE_LABELS[currentUserRole]}
             </span>
           </div>
         </div>
-        {/* Primary nav */}
-        <div style={{ display: 'flex', flexDirection: 'column', padding: '8px 0' }}>
-          {MODULES_PRIMARY.filter(m => allowedModules === null || allowedModules.includes(m.id)).map(m => (
-            <button key={m.id} onClick={() => setActiveModule(m.id)} style={sidebarBtn(m.id)}>
-              {renderSidebarIcon(m.id, activeModule === m.id ? T.teal : T.coral)}
-              <span>{m.label}</span>
-            </button>
-          ))}
+
+        {/* Nav por secciones */}
+        <div style={{ flex: 1, overflowY: 'auto' as const, padding: '8px 0' }}>
+          {NAV_SECTIONS.map((section, si) => {
+            const visibleItems = (section.items as any[]).filter(m => {
+              if (m.superadminOnly && !isSuperAdmin) return false;
+              return allowedModules === null || allowedModules.includes(m.id);
+            });
+            if (visibleItems.length === 0) return null;
+            return (
+              <div key={si} style={{ marginBottom: 4 }}>
+                <div style={{ fontSize: 8, color: '#A0B4C6', letterSpacing: '2.5px', textTransform: 'uppercase' as const, padding: '10px 18px 4px', fontWeight: 600 }}>
+                  {section.label}
+                </div>
+                {visibleItems.map((m: any) => (
+                  <button key={m.id} onClick={() => setActiveModule(m.id)} style={sidebarBtn(m.id)}>
+                    {renderSidebarIcon(m.id, activeModule === m.id ? '#0F2542' : '#7B92A8')}
+                    <span>{m.label}</span>
+                  </button>
+                ))}
+              </div>
+            );
+          })}
         </div>
-        {/* Secondary nav */}
-        {(() => {
-          const secVisible = MODULES_SECONDARY.filter(m => {
-            if (m.id === 'configuracion' && !isSuperAdmin) return false;
-            return allowedModules === null || allowedModules.includes(m.id);
-          });
-          return secVisible.length > 0 ? (
-            <div style={{ borderTop: `1px solid rgba(255,255,255,0.08)`, padding: '8px 0', marginTop: 4 }}>
-              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', letterSpacing: 2, textTransform: 'uppercase' as const, padding: '4px 16px 6px' }}>Más</div>
-              {secVisible.map(m => (
-                <button key={m.id} onClick={() => setActiveModule(m.id)} style={{ ...sidebarBtn(m.id), opacity: activeModule === m.id ? 1 : 0.65 }}>
-                  {renderSidebarIcon(m.id, activeModule === m.id ? T.teal : 'rgba(255,255,255,0.7)')}
-                  <span style={{ fontSize: 12 }}>{m.label}</span>
-                </button>
-              ))}
-            </div>
-          ) : null;
-        })()}
+
         {/* Logout */}
         <button
           onClick={() => { if (confirm('¿Desea cerrar la sesión?')) { sessionStorage.removeItem('glp_crm_logged_user'); setCurrentUser(null); } }}
-          style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '12px 16px', border: 'none', background: 'transparent', color: 'rgba(255,80,80,0.85)', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', borderTop: `1px solid rgba(255,255,255,0.08)`, marginTop: 'auto' }}
-          onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,50,50,0.1)'}
-          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+          style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '12px 18px', border: 'none', background: 'transparent', color: '#CC4444', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer', borderTop: `1px solid #EEF1F5`, marginTop: 'auto', letterSpacing: '0.03em' }}
+          onMouseEnter={e => { e.currentTarget.style.background = '#FEF2F2'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
         >
-          <Icon name="lock" size={13} color="rgba(255,80,80,0.85)" /> Cerrar Sesión
+          <Icon name="lock" size={12} color="#CC4444" /> Cerrar Sesión
         </button>
-        <div style={{ padding: '10px 16px', borderTop: `1px solid rgba(255,255,255,0.07)`, fontSize: 9, color: 'rgba(255,255,255,0.25)', letterSpacing: 1 }}>
-          GLP CRM v1.0 · 2026
+        <div style={{ padding: '10px 18px', borderTop: `1px solid #EEF1F5`, fontSize: 9, color: '#B0C0CC', letterSpacing: 1.5 }}>
+          GLP OS v1.0 · 2026
         </div>
       </div>
 
       {/* MAIN AREA */}
-      <div style={{ flex: 1, marginLeft: 210, marginRight: (activeModule === 'configuracion' || activeModule === 'reportes' || activeModule === 'campanas' || activeModule === 'gerencial') ? 0 : 280, display: 'flex', flexDirection: 'column' as const }}>
+      <div style={{ flex: 1, marginLeft: 210, marginRight: (activeModule === 'configuracion' || activeModule === 'reportes' || activeModule === 'campanas' || activeModule === 'gerencial' || activeModule === 'integraciones') ? 0 : 280, display: 'flex', flexDirection: 'column' as const }}>
         {/* TOP HEADER */}
-        <div style={{ background: T.teal, padding: '10px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky' as const, top: 0, zIndex: 5, borderBottom: `1px solid rgba(255,255,255,0.1)` }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', letterSpacing: 0.3 }}>
-            {MODULES.find(m => m.id === activeModule)?.label || 'GLP CRM'}
+        <div style={{ background: '#fff', padding: '10px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky' as const, top: 0, zIndex: 5, borderBottom: `1px solid #EEF1F5` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#0F2542', letterSpacing: 0.3 }}>
+              {MODULES.find(m => m.id === activeModule)?.label || 'GLP OS'}
+            </div>
+            <div style={{ fontSize: 9, color: '#A0B4C6', letterSpacing: 2, textTransform: 'uppercase' as const }}>Sistema Operativo Inmobiliario</div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', padding: '3px 10px', borderRadius: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#F0FAF5', border: '1px solid #9FE1CB', padding: '3px 10px', borderRadius: 20 }}>
               <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981', display: 'inline-block' }} />
-              <span style={{ fontSize: 11, fontWeight: 600, color: '#fff' }}>IA Activa</span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: '#0F6E56' }}>IA Activa</span>
             </div>
             <button onClick={() => setForceMobileView(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: 20, padding: '3px 12px', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#F5F7FA', border: '1px solid #E8ECF0', color: '#4A6A8A', borderRadius: 20, padding: '3px 12px', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
               📱 Vista Mobile
             </button>
-            <a href="/" style={{ fontSize: 12, color: T.coral, textDecoration: 'none', fontWeight: 600 }}>← Landing</a>
+            <a href="/" style={{ fontSize: 12, color: '#B89047', textDecoration: 'none', fontWeight: 600 }}>← Landing</a>
           </div>
         </div>
         {/* CONTENT */}
-        <div id="crm-content" style={{ padding: (activeModule === 'reportes' || activeModule === 'casos' || activeModule === 'campanas' || activeModule === 'gerencial') ? 0 : '24px 28px', overflowY: 'auto' as const, flex: 1 }}>
+        <div id="crm-content" style={{ padding: (activeModule === 'reportes' || activeModule === 'casos' || activeModule === 'campanas' || activeModule === 'gerencial' || activeModule === 'integraciones' || activeModule === 'legal') ? 0 : '24px 28px', overflowY: 'auto' as const, flex: 1, display: 'flex', flexDirection: 'column' as const }}>
           {renderModule()}
         </div>
       </div>
 
       {/* RIGHT PANEL — Contextual */}
-      {activeModule !== 'configuracion' && activeModule !== 'reportes' && activeModule !== 'casos' && activeModule !== 'campanas' && activeModule !== 'gerencial' && (
+      {activeModule !== 'configuracion' && activeModule !== 'reportes' && activeModule !== 'casos' && activeModule !== 'campanas' && activeModule !== 'gerencial' && activeModule !== 'integraciones' && activeModule !== 'legal' && (
         <div style={{ width: 280, position: 'fixed' as const, top: 0, right: 0, bottom: 0, zIndex: 9, background: '#FAF9F6', borderLeft: `1px solid #E5E0D8`, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' }}>
           {renderRightPanel()}
         </div>
       )}
 
+
+      {/* ── MODAL AGENDAR CITA ─────────────────────────────── */}
+      {citaModal && (() => {
+        const p = citaModal;
+        const NAVY = T.teal; const GOLD = '#B89047';
+        const tipos = ['Visita de proyecto','Llamada de calificación','Presentación virtual','Reunión de cierre','Seguimiento'];
+
+        // Construir fechas para links de calendario
+        const buildCalDates = () => {
+          if (!citaFecha || !citaHora) return null;
+          const start = new Date(`${citaFecha}T${citaHora}:00`);
+          const end = new Date(start.getTime() + citaDuracion * 60000);
+          const fmt = (d: Date) => d.toISOString().replace(/[-:]/g,'').split('.')[0]+'Z';
+          return { start: fmt(start), end: fmt(end), startLocal: start };
+        };
+        const calDates = buildCalDates();
+        const titulo = `GLP — ${citaTipo} con ${p.nombre} ${p.apellido}`;
+        const detalle = `Prospecto: ${p.nombre} ${p.apellido}\nProyecto(s): ${(p.proyectos_interes||[]).join(', ')}\nPresupuesto: $${(p.presupuesto_usd||0).toLocaleString()} USD\nBroker: ${p.broker_asignado||'—'}\n${citaNota ? `\nNotas: ${citaNota}` : ''}`;
+
+        const googleLink = calDates
+          ? `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(titulo)}&dates=${calDates.start}/${calDates.end}&details=${encodeURIComponent(detalle)}&add=${encodeURIComponent(p.correo)}`
+          : null;
+        const outlookLink = calDates
+          ? `https://outlook.live.com/calendar/0/action/compose?subject=${encodeURIComponent(titulo)}&startdt=${citaFecha}T${citaHora}:00&enddt=${new Date(new Date(`${citaFecha}T${citaHora}:00`).getTime()+citaDuracion*60000).toISOString().slice(0,16)}&body=${encodeURIComponent(detalle)}&to=${encodeURIComponent(p.correo)}`
+          : null;
+
+        const confirmar = () => {
+          if (!citaFecha || !citaHora) return;
+          // Agregar al módulo de Eventos con estructura completa EventData
+          const newEvento: EventData = {
+            id: Date.now(), titulo, fecha: citaFecha,
+            categoria: 'agenda',
+            hora: citaHora,
+            duracion: citaDuracion,
+            tipo_cita: citaTipo,
+            nota: citaNota,
+            broker: p.broker_asignado || '',
+            venue: citaTipo === 'Visita de proyecto' ? (p.proyectos_interes||[])[0] || 'Por confirmar' : 'Virtual / Por confirmar',
+            proyectos_presentados: p.proyectos_interes || [],
+            asistentes: [p.broker_asignado || ''],
+            prospect_ids: [p.id],
+            proyectos_interes: p.proyectos_interes || [],
+            presupuesto_asignado: 0, presupuesto_ejecutado: 0, items_costo: [],
+          };
+          setEvents((prev: EventData[]) => {
+            const updated = [...prev, newEvento];
+            try { localStorage.setItem('glp_agenda_events', JSON.stringify(updated.filter(e => e.categoria === 'agenda'))); } catch {}
+            return updated;
+          });
+          // Registrar actividad en el historial del prospecto con tipo HistEntry correcto
+          const actEntry: HistEntry = {
+            fecha: new Date().toISOString().slice(0,10),
+            accion: `Cita agendada — ${citaTipo}`,
+            detalle: `${citaFecha} a las ${citaHora} (${citaDuracion < 60 ? citaDuracion + ' min' : citaDuracion/60 + 'h'})${citaNota ? '. ' + citaNota : ''}`,
+          };
+          setProspects((prev: Prospect[]) => prev.map(pr => {
+            if (pr.id !== p.id) return pr;
+            const updated = { ...pr, historial: [...(pr.historial||[]), actEntry], fecha_ultima_actividad: actEntry.fecha };
+            updateProspectBackend(updated);
+            return updated;
+          }));
+          setCitaConfirmada(true);
+        };
+
+        return (
+          <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,26,55,0.6)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}
+            onClick={e => { if (e.target === e.currentTarget) { setCitaModal(null); setCitaConfirmada(false); } }}>
+            <div style={{ background: '#fff', borderRadius: 12, width: 480, maxHeight: '90vh', overflowY: 'auto' as const, boxShadow: '0 24px 60px rgba(0,0,0,0.3)' }}>
+              {/* Header */}
+              <div style={{ background: NAVY, padding: '20px 24px', borderRadius: '12px 12px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontSize: 10, color: GOLD, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' as const }}>Agendar Cita</div>
+                  <div style={{ fontSize: 16, color: '#fff', fontFamily: '"Cormorant Garamond",serif', fontWeight: 600, marginTop: 2 }}>{p.nombre} {p.apellido}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 1 }}>{(p.proyectos_interes||[]).join(' · ')}</div>
+                </div>
+                <button onClick={() => { setCitaModal(null); setCitaConfirmada(false); }}
+                  style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', width: 32, height: 32, borderRadius: 6, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+              </div>
+
+              <div style={{ padding: '24px' }}>
+                {!citaConfirmada ? (<>
+                  {/* Tipo de reunión */}
+                  <div style={{ marginBottom: 18 }}>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: NAVY, display: 'block', marginBottom: 8, letterSpacing: '0.06em', textTransform: 'uppercase' as const }}>Tipo de reunión</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>
+                      {tipos.map(t => (
+                        <button key={t} onClick={() => setCitaTipo(t)}
+                          style={{ padding: '5px 12px', borderRadius: 20, border: `1px solid ${citaTipo===t ? GOLD : '#E5E7EB'}`, background: citaTipo===t ? `${GOLD}15` : 'transparent', color: citaTipo===t ? GOLD : '#6B7280', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Fecha y hora */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 18 }}>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: NAVY, display: 'block', marginBottom: 6, letterSpacing: '0.06em', textTransform: 'uppercase' as const }}>Fecha</label>
+                      <input type="date" value={citaFecha} min={new Date().toISOString().split('T')[0]}
+                        onChange={e => setCitaFecha(e.target.value)}
+                        style={{ width: '100%', padding: '9px 12px', border: `1px solid #E5E7EB`, borderRadius: 6, fontSize: 13, boxSizing: 'border-box' as const, outline: 'none', fontFamily: 'Inter,sans-serif' }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: NAVY, display: 'block', marginBottom: 6, letterSpacing: '0.06em', textTransform: 'uppercase' as const }}>Hora</label>
+                      <input type="time" value={citaHora} onChange={e => setCitaHora(e.target.value)}
+                        style={{ width: '100%', padding: '9px 12px', border: `1px solid #E5E7EB`, borderRadius: 6, fontSize: 13, boxSizing: 'border-box' as const, outline: 'none', fontFamily: 'Inter,sans-serif' }} />
+                    </div>
+                  </div>
+
+                  {/* Duración */}
+                  <div style={{ marginBottom: 18 }}>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: NAVY, display: 'block', marginBottom: 8, letterSpacing: '0.06em', textTransform: 'uppercase' as const }}>Duración</label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      {[30,60,90,120].map(d => (
+                        <button key={d} onClick={() => setCitaDuracion(d)}
+                          style={{ flex: 1, padding: '7px 0', borderRadius: 6, border: `1px solid ${citaDuracion===d ? GOLD : '#E5E7EB'}`, background: citaDuracion===d ? `${GOLD}15` : 'transparent', color: citaDuracion===d ? GOLD : '#6B7280', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                          {d < 60 ? `${d} min` : `${d/60}h`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Notas */}
+                  <div style={{ marginBottom: 22 }}>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: NAVY, display: 'block', marginBottom: 6, letterSpacing: '0.06em', textTransform: 'uppercase' as const }}>Notas para la reunión</label>
+                    <textarea value={citaNota} onChange={e => setCitaNota(e.target.value)} rows={3} placeholder="Agenda, proyectos a presentar, puntos clave..."
+                      style={{ width: '100%', padding: '9px 12px', border: `1px solid #E5E7EB`, borderRadius: 6, fontSize: 12, resize: 'vertical' as const, boxSizing: 'border-box' as const, outline: 'none', fontFamily: 'Inter,sans-serif' }} />
+                  </div>
+
+                  <button onClick={confirmar} disabled={!citaFecha || !citaHora}
+                    style={{ width: '100%', padding: '12px', background: citaFecha && citaHora ? NAVY : '#E5E7EB', color: citaFecha && citaHora ? '#fff' : '#9CA3AF', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: citaFecha && citaHora ? 'pointer' : 'default', transition: 'background 0.2s' }}>
+                    Confirmar cita
+                  </button>
+                </>) : (<>
+                  {/* Estado: confirmada */}
+                  <div style={{ textAlign: 'center' as const, marginBottom: 24 }}>
+                    <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
+                    <div style={{ fontSize: 17, fontWeight: 700, color: NAVY, fontFamily: '"Cormorant Garamond",serif' }}>¡Cita agendada!</div>
+                    <div style={{ fontSize: 12, color: '#6B7280', marginTop: 6 }}>
+                      {citaTipo} · {citaFecha} a las {citaHora} · {citaDuracion < 60 ? `${citaDuracion} min` : `${citaDuracion/60}h`}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#6B7280', marginTop: 3 }}>Registrado en Eventos del CRM ✓</div>
+                  </div>
+
+                  {/* Agregar a calendario */}
+                  <div style={{ marginBottom: 20 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: NAVY, letterSpacing: '0.06em', textTransform: 'uppercase' as const, marginBottom: 10 }}>Agregar a tu calendario</div>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      {googleLink && (
+                        <a href={googleLink} target="_blank" rel="noreferrer"
+                          style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px', background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, textDecoration: 'none', fontSize: 12, fontWeight: 600, color: '#374151', cursor: 'pointer' }}>
+                          <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                          Google Calendar
+                        </a>
+                      )}
+                      {outlookLink && (
+                        <a href={outlookLink} target="_blank" rel="noreferrer"
+                          style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px', background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, textDecoration: 'none', fontSize: 12, fontWeight: 600, color: '#374151', cursor: 'pointer' }}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="3" fill="#0078D4"/><path d="M13 6h6v4h-6zM13 11h6v4h-6zM13 16h6v3h-6zM4 6h8v13H4z" fill="white"/></svg>
+                          Outlook
+                        </a>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Enviar invite por Gmail */}
+                  {googleLink && (
+                    <a href={`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(p.correo)}&su=${encodeURIComponent(`Invitación: ${titulo}`)}&body=${encodeURIComponent(`Estimado/a ${p.nombre},\n\nTe confirmo nuestra reunión:\n\n📅 Fecha: ${citaFecha}\n🕐 Hora: ${citaHora}\n⏱ Duración: ${citaDuracion < 60 ? `${citaDuracion} minutos` : `${citaDuracion/60} hora(s)`}\n📋 Tipo: ${citaTipo}\n\n${citaNota ? `Agenda:\n${citaNota}\n\n` : ''}Quedo atento a cualquier consulta.\n\nSaludos,\nGLP Wealth Management`)}`}
+                      target="_blank" rel="noreferrer"
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px', background: `${GOLD}10`, border: `1px solid ${GOLD}40`, borderRadius: 8, textDecoration: 'none', fontSize: 12, fontWeight: 600, color: GOLD, marginBottom: 16 }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                      Enviar invite por Gmail a {p.correo}
+                    </a>
+                  )}
+
+                  <button onClick={() => { setCitaModal(null); setCitaConfirmada(false); }}
+                    style={{ width: '100%', padding: '10px', background: NAVY, color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                    Cerrar
+                  </button>
+                </>)}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {crmLightboxImg && (
         <div
