@@ -494,12 +494,20 @@ type LostSale = {
 };
 
 const INITIAL_CLOSED_SALES: Sale[] = [
-  { id: 1, prospect: 'Carlos Gómez', project: 'Panamáa Viejo Residences', value: 120000, broker: 'Patricia Vargas', date: '2026-05-12' },
-  { id: 2, prospect: 'Diana Herrera', project: 'Panamáa Viejo Residences', value: 140000, broker: 'Patricia Vargas', date: '2026-03-01' },
-  { id: 3, prospect: 'Roberto Castaño', project: 'Surfside', value: 220000, broker: 'Felipe Londoño', date: '2026-05-28' },
-  { id: 4, prospect: 'Martha Ruiz', project: 'The Palms', value: 350000, broker: 'Santiago Mesa', date: '2026-04-18' },
-  { id: 5, prospect: 'Juan Pérez', project: 'Bayside Resort Panamá', value: 150000, broker: 'Valentina Ospina', date: '2026-05-22' },
-  { id: 6, prospect: 'Eduardo Silva', project: 'Oceana Residences & Skyhomes', value: 730000, broker: 'Andrés Morales', date: '2026-06-05' }
+  { id: 1,  prospect: 'Roberto Castaño',       project: 'Surfside',                         value: 720000, broker: 'Felipe Londoño',     date: '2026-05-28' },
+  { id: 2,  prospect: 'Diana Herrera',          project: 'Panamá Viejo Residences',          value: 140000, broker: 'Patricia Vargas',    date: '2026-02-28' },
+  { id: 3,  prospect: 'Eduardo Silva',          project: 'Oceana Residences & Skyhomes',     value: 730000, broker: 'Andrés Morales',     date: '2026-06-05' },
+  { id: 4,  prospect: 'Martha Ruiz',            project: 'The Palms',                        value: 350000, broker: 'Santiago Mesa',      date: '2026-04-18' },
+  { id: 5,  prospect: 'Juan Pérez',             project: 'Bayside Resort Panamá',            value: 150000, broker: 'Valentina Ospina',   date: '2026-05-22' },
+  { id: 6,  prospect: 'Carlos Gómez',           project: 'Panamá Viejo Residences',          value: 120000, broker: 'Patricia Vargas',    date: '2026-05-12' },
+  { id: 7,  prospect: 'Gabriela Montoya',       project: 'Ocean Reef Park',                  value: 195000, broker: 'Rodrigo Fernández',  date: '2026-03-20' },
+  { id: 8,  prospect: 'Hernán Ríos',            project: 'The Tides – Playa Caracol',        value: 160000, broker: 'Valentina Ospina',   date: '2026-04-05' },
+  { id: 9,  prospect: 'Andrea Salcedo',         project: 'Ipanema Panamá',                   value: 280000, broker: 'Patricia Vargas',    date: '2026-01-15' },
+  { id: 10, prospect: 'Luis Fernando Arango',   project: 'Ventu',                            value: 185000, broker: 'Santiago Mesa',      date: '2026-02-10' },
+  { id: 11, prospect: 'Camila Torres',          project: 'BeachWalk Resort Playa Caracol',   value: 130000, broker: 'Andrés Morales',     date: '2025-12-18' },
+  { id: 12, prospect: 'Ricardo Bermúdez',       project: 'Bosco di Santa María',             value: 420000, broker: 'Felipe Londoño',     date: '2026-06-28' },
+  { id: 13, prospect: 'Patricia Vélez',         project: 'Playa Dorada',                     value: 175000, broker: 'Rodrigo Fernández',  date: '2026-07-03' },
+  { id: 14, prospect: 'Sergio Caballero',       project: 'Bayside Resort Panamá',            value: 210000, broker: 'Patricia Vargas',    date: '2026-07-10' },
 ];
 
 const INITIAL_LOST_SALES: LostSale[] = [
@@ -551,6 +559,38 @@ export type AgentDraft = {
   origen_agentivo?: string;
   sofia_arquetipo?: string;
 };
+
+// ── MÓDULO CARTERA ─────────────────────────────────────────────────────────────
+export type CuotaCartera = {
+  id: string;
+  numero: number;
+  concepto: 'cuota_inicial' | 'credito' | 'subrogacion' | 'escritura' | 'entrega';
+  monto: number; // USD
+  fecha_vencimiento: string;
+  fecha_pago?: string;
+  estado: 'pendiente' | 'pagada' | 'vencida' | 'en_proceso';
+  comprobante?: string;
+  notas?: string;
+};
+
+export type CarteraCliente = {
+  id: string;
+  prospectId: number;
+  prospectName: string;
+  proyecto: string;
+  unidad: string;
+  precio_total: number; // USD
+  moneda: 'USD' | 'COP';
+  fecha_separacion: string;
+  fecha_escritura?: string;
+  fecha_entrega?: string;
+  modalidad: 'contado' | 'credito' | 'subrogacion' | 'mixto';
+  cuotas: CuotaCartera[];
+  notas_internas?: string;
+  arquetipo?: string; // de Sofía
+  riesgo: 'verde' | 'amarillo' | 'rojo'; // semáforo
+};
+// ──────────────────────────────────────────────────────────────────────────────
 
 type GlpBrandProfile = {
   audiencias: string[];
@@ -739,6 +779,207 @@ const computeAnalyticsFromProspects = (ps: Prospect[]) => {
 };
 
 const generateSampleProspects = (): Prospect[] => {
+  // ── PROSPECTOS DESTACADOS PARA DEMO (ids 1-12) ──────────────────────────────
+  const DEMO_PROSPECTS: Prospect[] = [
+    {
+      id: 1, nombre: 'Carlos', apellido: 'Gutiérrez',
+      direccion: 'Cra 11 #93-44, Bogotá', correo: 'carlos.gutierrez@gmail.com', telefono: '+57 310 555 0101',
+      ocupacion: 'CEO Fintech', proyectos_interes: ['Surfside', 'Oceana Residences & Skyhomes'],
+      forma_contacto: 'Referido', broker_asignado: 'Patricia Vargas', estado: 'Negociación',
+      presupuesto_usd: 450000, fecha_entrada: '2026-04-15',
+      notas: 'Referido por propietario actual. Busca segunda residencia con ROI. Perfil RACIONAL — pide comparativos de mercado y proyección de valorización a 10 años.',
+      historial: [
+        { fecha: '2026-04-15', accion: 'Contacto Inicial', detalle: 'Referido por Diego Restrepo, propietario en Surfside. Primera llamada con Patricia Vargas.' },
+        { fecha: '2026-04-22', accion: 'Calificación', detalle: 'Presupuesto confirmado USD 450K. Interés en unidades con vista al mar. Capital disponible en Colombia y EEUU.' },
+        { fecha: '2026-05-10', accion: 'Presentación', detalle: 'Presentación presencial en Bogotá. Visitó sala de ventas virtual de Surfside. Solicitó comparativo ROI vs CDT.' },
+        { fecha: '2026-06-01', accion: 'Negociación', detalle: 'Recibió cotización Tower A, piso 18. Negocia plan de pagos: 30% cuota inicial, 70% crédito hipotecario Miami.' },
+        { fecha: '2026-07-05', accion: 'Negociación', detalle: 'Segunda ronda — solicita certificado de exención predial 20 años y carta del banco hipotecario.' },
+      ],
+      emailHistory: [
+        { id: 'e1a', date: '2026-05-12', subject: 'Cotización Surfside — Tower A, Piso 18', body: 'Estimado Carlos,\n\nAdjunto la cotización detallada de la unidad 18-A en Surfside, Hallandale Beach. Precio: USD 430,000. Incluye análisis de ROI proyectado al 7.2% anual y comparativo de rentas en la zona.\n\nQuedo atento a sus comentarios.\n\nSara · GLP Wealth Management', status: 'sent', direction: 'out' },
+        { id: 'e1b', date: '2026-05-15', subject: 'Re: Cotización Surfside — preguntas adicionales', body: 'Sara, gracias por la información. Tengo algunas preguntas sobre el esquema fiscal para colombianos con activos en Miami. ¿Cómo manejan el reporte ante la DIAN?\n\nCarlos G.', status: 'incoming', direction: 'in' },
+        { id: 'e1c', date: '2026-06-03', subject: 'Plan de pagos personalizado — Surfside 18-A', body: 'Carlos,\n\nComo acordamos, aquí el plan de pagos estructurado:\n• Cuota inicial 30%: USD 129,000 (3 instalamentos)\n• Crédito hipotecario 70%: USD 301,000 — tasa estimada 6.8%\n\nEl equipo legal puede acompañarte en la declaración ante DIAN.\n\nSara · GLP Wealth Management', status: 'draft', direction: 'out' },
+      ],
+    },
+    {
+      id: 2, nombre: 'María Isabel', apellido: 'Rodríguez',
+      direccion: 'Cl 127 #15-60 Apto 802, Bogotá', correo: 'mariaisabel.rodriguez@outlook.com', telefono: '+57 311 555 0202',
+      ocupacion: 'Médica Especialista', proyectos_interes: ['The Palms', 'Bosco di Santa María'],
+      forma_contacto: 'Evento', broker_asignado: 'Santiago Mesa', estado: 'Presentación',
+      presupuesto_usd: 320000, fecha_entrada: '2026-05-08',
+      notas: 'Conoció GLP en evento de medicina privada en Bogotá. Perfil LEGADO — quiere asegurar patrimonio para sus hijos. Muy interesada en The Palms.',
+      historial: [
+        { fecha: '2026-05-08', accion: 'Contacto Inicial', detalle: 'Registrada en evento GLP × Clínica del Country. Primera impresión muy positiva.' },
+        { fecha: '2026-05-20', accion: 'Calificación', detalle: 'Video call con Santiago. Confirma presupuesto USD 320K. Interés en unidades para arriendo turístico.' },
+        { fecha: '2026-06-15', accion: 'Presentación', detalle: 'Presentación virtual de The Palms y Bosco di Santa María. Solicitó información sobre trust para trasmitir a hijos.' },
+      ],
+      emailHistory: [
+        { id: 'e2a', date: '2026-05-22', subject: 'Bienvenida a GLP — Información exclusiva The Palms', body: 'Estimada María Isabel,\n\nFue un placer conocerla en el evento. Le comparto el brochure exclusivo de The Palms, con rendimientos proyectados del programa de arriendo turístico administrado por GLP.\n\nSara · GLP Wealth Management', status: 'sent', direction: 'out' },
+        { id: 'e2b', date: '2026-06-20', subject: '¿Cuándo podemos avanzar?', body: 'María Isabel, ¿tuvo oportunidad de revisar la información de The Palms? Nos gustaría agendar una llamada con nuestro equipo legal para hablar del esquema de trust patrimonial.\n\nSara · GLP Wealth Management', status: 'draft', direction: 'out' },
+      ],
+    },
+    {
+      id: 3, nombre: 'Andrés Felipe', apellido: 'Martínez',
+      direccion: 'Av El Poblado #43-120, Medellín', correo: 'andres.martinez@gmail.com', telefono: '+57 312 555 0303',
+      ocupacion: 'Empresario Textil', proyectos_interes: ['Ipanema Panamá', 'Bayside Resort Panamá'],
+      forma_contacto: 'Pagina Web', broker_asignado: 'Valentina Ospina', estado: 'Calificación',
+      presupuesto_usd: 250000, fecha_entrada: '2026-06-01',
+      notas: 'Lead orgánico web. Empresario de Medellín buscando diversificar en Panamá. Perfil ASPIRACIONAL — le atrae el lifestyle de Panamá City.',
+      historial: [
+        { fecha: '2026-06-01', accion: 'Contacto Inicial', detalle: 'Formulario web — solicita información sobre inversión en Panamá.' },
+        { fecha: '2026-06-10', accion: 'Calificación', detalle: 'Llamada con Valentina. Presupuesto USD 250K. Visita a Panamá en septiembre como primera inversión internacional.' },
+      ],
+      emailHistory: [
+        { id: 'e3a', date: '2026-06-02', subject: 'Gracias por su interés en GLP — Proyectos Panamá', body: 'Andrés Felipe,\n\nGracias por contactarnos. Le adjunto los proyectos disponibles en Panamá con retornos entre 7-9% anual en dólares.\n\nSara · GLP Wealth Management', status: 'sent', direction: 'out' },
+      ],
+    },
+    {
+      id: 4, nombre: 'Laura', apellido: 'Sánchez',
+      direccion: 'Cra 43 #9-80, Cali', correo: 'laura.sanchez@gmail.com', telefono: '+57 313 555 0404',
+      ocupacion: 'Directora Financiera', proyectos_interes: ['Ocean Reef Park'],
+      forma_contacto: 'Instagram', broker_asignado: 'Andrés Morales', estado: 'Contacto Inicial',
+      presupuesto_usd: 180000, fecha_entrada: '2026-07-01',
+      notas: 'Lead Instagram. Primera vez que considera inversión en el exterior. Perfil ASPIRACIONAL — reaccionó a video de lifestyle en GLP.',
+      historial: [
+        { fecha: '2026-07-01', accion: 'Contacto Inicial', detalle: 'DM en Instagram preguntando por precios en Ocean Reef Park. Respondida en menos de 1 hora.' },
+      ],
+      emailHistory: [],
+    },
+    {
+      id: 5, nombre: 'Roberto', apellido: 'Castaño',
+      direccion: 'Cl 72 #10-34 OF 502, Bogotá', correo: 'roberto.castano@outlook.com', telefono: '+57 314 555 0505',
+      ocupacion: 'Inversionista', proyectos_interes: ['Surfside'],
+      forma_contacto: 'WhatsApp', broker_asignado: 'Felipe Londoño', estado: 'Cierre',
+      presupuesto_usd: 750000, fecha_entrada: '2026-02-10',
+      notas: 'Inversionista sofisticado. Ya tiene propiedades en Miami y Cartagena. Perfil ESTATUS — compra por exclusividad y círculo social. Lista corta: Surfside Torre A Penthouse.',
+      historial: [
+        { fecha: '2026-02-10', accion: 'Contacto Inicial', detalle: 'WhatsApp directo a Felipe Londoño — referido VIP de evento Sotheby\'s Miami.' },
+        { fecha: '2026-02-18', accion: 'Calificación', detalle: 'Reunión privada Bogotá. Presupuesto USD 750K+. Busca penthouse con vista panorámica.' },
+        { fecha: '2026-03-05', accion: 'Presentación', detalle: 'Tour virtual exclusivo Surfside Penthouse Piso 28. Propietarios actuales fueron referenciados.' },
+        { fecha: '2026-04-01', accion: 'Negociación', detalle: 'Propuesta de compra USD 720K. Pago contado 60% + hipoteca 40%. Solicita revisión equipo legal (Colombia Law Group).' },
+        { fecha: '2026-05-28', accion: 'Cierre', detalle: 'Acuerdo firmado. Separación USD 50K consignada. Pendiente escritura Q3 2026.' },
+        { fecha: '2026-07-01', accion: 'Cierre', detalle: 'Revisión documental en proceso. Certificado de exención predial recibido.' },
+      ],
+      emailHistory: [
+        { id: 'e5a', date: '2026-04-05', subject: 'Propuesta formal — Surfside Penthouse 28A', body: 'Roberto,\n\nAdjunto la propuesta formal del Penthouse 28A: USD 720,000 con estructura de pago acordada. Incluye memoria descriptiva completa y certificados de amenidades exclusivas.\n\nSara · GLP Wealth Management', status: 'sent', direction: 'out' },
+        { id: 'e5b', date: '2026-05-30', subject: 'Confirmación de separación — Siguiente paso escritura', body: 'Roberto,\n\nConfirmamos recepción de la separación de USD 50,000. El equipo legal está coordinando la revisión notarial en Miami para Q3 2026. Le mantendremos informado.\n\nSara · GLP Wealth Management', status: 'sent', direction: 'out' },
+      ],
+    },
+    {
+      id: 6, nombre: 'Diana', apellido: 'Herrera',
+      direccion: 'Cra 15 #88-64 Apto 301, Bogotá', correo: 'diana.herrera@gmail.com', telefono: '+57 315 555 0606',
+      ocupacion: 'Abogada Tributarista', proyectos_interes: ['Panamá Viejo Residences'],
+      forma_contacto: 'Referido', broker_asignado: 'Patricia Vargas', estado: 'Post-venta',
+      presupuesto_usd: 140000, fecha_entrada: '2025-11-15',
+      notas: 'Primera compra cerrada. Unidad 12B en Panamá Viejo Residences. En etapa de trámites. Perfil RACIONAL — negoció cada detalle del contrato.',
+      historial: [
+        { fecha: '2025-11-15', accion: 'Contacto Inicial', detalle: 'Referida por colega del bufete. Primera reunión con Patricia.' },
+        { fecha: '2025-12-01', accion: 'Calificación', detalle: 'Abogada experta en tributación internacional. Presupuesto USD 140K primer inmueble.' },
+        { fecha: '2025-12-20', accion: 'Presentación', detalle: 'Revisó minuciosamente toda la documentación de Panamá Viejo Residences.' },
+        { fecha: '2026-01-15', accion: 'Negociación', detalle: 'Negoció 3 cláusulas del contrato relacionadas con resolución de disputas y obligaciones del developer.' },
+        { fecha: '2026-02-28', accion: 'Cierre', detalle: 'Firma de promesa de compraventa. Pago contado 100%.' },
+        { fecha: '2026-03-01', accion: 'Post-venta', detalle: 'En seguimiento. Solicita actualizaciones quincenales del avance de obra.' },
+      ],
+      emailHistory: [
+        { id: 'e6a', date: '2026-03-10', subject: 'Actualización de obra — Panamá Viejo Residences', body: 'Diana,\n\nAvance de obra al 35%. Estructura de los pisos 1-8 completada. Estimado de entrega: Q2 2027. Adjunto reporte fotográfico.\n\nSara · GLP Wealth Management', status: 'sent', direction: 'out' },
+        { id: 'e6b', date: '2026-06-01', subject: 'Avance Q2 — Piso 12 en estructuración', body: 'Diana,\n\nEl piso 12 está en proceso de estructuración. Avance total del proyecto: 58%. Entrega estimada se mantiene Q2 2027. Su unidad 12B tiene vista confirmada al Casco Antiguo.\n\nSara · GLP Wealth Management', status: 'sent', direction: 'out' },
+        { id: 'e6c', date: '2026-07-10', subject: 'Consulta sobre próxima cuota de administración', body: 'Sara, ¿cuándo inicia el cobro de cuota de administración del edificio? Necesito incluirlo en mi planificación fiscal.\n\nDiana H.', status: 'incoming', direction: 'in' },
+      ],
+    },
+    {
+      id: 7, nombre: 'Mauricio', apellido: 'Ospina',
+      direccion: 'Cl 34 #76-10 Torre 2, Medellín', correo: 'mauricio.ospina@outlook.com', telefono: '+57 316 555 0707',
+      ocupacion: 'Director Financiero', proyectos_interes: ['Oceana Residences & Skyhomes', 'The Palms'],
+      forma_contacto: 'LinkedIn', broker_asignado: 'Rodrigo Fernández', estado: 'Negociación',
+      presupuesto_usd: 580000, fecha_entrada: '2026-03-20',
+      notas: 'Contacto LinkedIn. CFO de holding familiar. Maneja portafolio de inversión y busca diversificar USD 500K+ fuera de Colombia. Perfil LEGADO.',
+      historial: [
+        { fecha: '2026-03-20', accion: 'Contacto Inicial', detalle: 'Conectó vía LinkedIn con Rodrigo. Interés en portafolio diversificado.' },
+        { fecha: '2026-04-05', accion: 'Calificación', detalle: 'Video call. Presupuesto USD 580K distribuido en 2 unidades. Holding familiar como vehículo de compra.' },
+        { fecha: '2026-05-01', accion: 'Presentación', detalle: 'Presentación estructurada: Oceana Skyhome + unidad en The Palms. ROI combinado estimado 8.1% anual.' },
+        { fecha: '2026-06-10', accion: 'Negociación', detalle: 'Solicita descuento por compra de dos unidades. Oferta de GLP: 2.5% descuento en segunda unidad.' },
+      ],
+      emailHistory: [
+        { id: 'e7a', date: '2026-05-05', subject: 'Portafolio dual: Oceana + The Palms — Análisis financiero', body: 'Mauricio,\n\nAdjunto el análisis de inversión para las dos unidades: Oceana Skyhome (USD 320K) + The Palms Apt 8C (USD 260K). ROI combinado proyectado: 8.1% anual. Beneficio de descuento disponible para compra simultánea.\n\nSara · GLP Wealth Management', status: 'sent', direction: 'out' },
+        { id: 'e7b', date: '2026-06-15', subject: 'Propuesta de descuento — compra simultánea', body: 'Mauricio,\n\nComo acordamos, GLP ofrece 2.5% de descuento en la segunda unidad por compra simultánea: ahorro de USD 6,500. La oferta es válida hasta el 31 de julio.\n\nSara · GLP Wealth Management', status: 'draft', direction: 'out' },
+      ],
+    },
+    {
+      id: 8, nombre: 'Valentina', apellido: 'Duque',
+      direccion: 'Cl 10 #4-41, Cali', correo: 'valentina.duque@gmail.com', telefono: '+57 317 555 0808',
+      ocupacion: 'Odontóloga', proyectos_interes: ['BeachWalk Resort Playa Caracol'],
+      forma_contacto: 'TikTok', broker_asignado: 'Andrés Morales', estado: 'Contacto Inicial',
+      presupuesto_usd: 130000, fecha_entrada: '2026-07-08',
+      notas: 'Lead TikTok — vio video de BeachWalk y escribió por DM. Primera vez que considera inversión internacional. Joven, 32 años. Perfil ASPIRACIONAL.',
+      historial: [
+        { fecha: '2026-07-08', accion: 'Contacto Inicial', detalle: 'DM TikTok: "Vi el video de la piscina con vista al mar, ¿cuánto vale?" — Respondida por Andrés.' },
+      ],
+      emailHistory: [],
+    },
+    {
+      id: 9, nombre: 'Felipe', apellido: 'Restrepo',
+      direccion: 'Cra 65 #48-50 OF 312, Medellín', correo: 'felipe.restrepo@outlook.com', telefono: '+57 318 555 0909',
+      ocupacion: 'Consultor Financiero', proyectos_interes: ['Ventu', 'Ocean Front'],
+      forma_contacto: 'Referido', broker_asignado: 'Felipe Londoño', estado: 'Presentación',
+      presupuesto_usd: 200000, fecha_entrada: '2026-05-25',
+      notas: 'Consultor independiente. Referido de cartera cerrada. Tiene fondos en EEUU. Muy analítico, pide proyecciones de flujo de caja. Perfil RACIONAL.',
+      historial: [
+        { fecha: '2026-05-25', accion: 'Contacto Inicial', detalle: 'Referido por Diana Herrera. Ya tiene fondos en cuenta bancaria en EEUU.' },
+        { fecha: '2026-06-08', accion: 'Calificación', detalle: 'Presupuesto USD 200K. Busca retorno vía arriendo turístico mínimo 8% anual.' },
+        { fecha: '2026-07-02', accion: 'Presentación', detalle: 'Presentación de Ventu y Ocean Front. Recibió modelo de flujo de caja a 5 años.' },
+      ],
+      emailHistory: [
+        { id: 'e9a', date: '2026-06-10', subject: 'Modelo de flujo de caja — Ventu Resort', body: 'Felipe,\n\nAdjunto el modelo financiero de Ventu: precio USD 185,000, tasa de ocupación histórica 74%, ingreso bruto anual estimado USD 18,200. Retorno neto proyectado 8.3% anual después de gastos de administración.\n\nSara · GLP Wealth Management', status: 'sent', direction: 'out' },
+      ],
+    },
+    {
+      id: 10, nombre: 'Catalina', apellido: 'Montoya',
+      direccion: 'Cra 11 #82-70, Bogotá', correo: 'catalina.montoya@gmail.com', telefono: '+57 319 555 1010',
+      ocupacion: 'Gerente General', proyectos_interes: ['The Tides – Playa Caracol', 'Aires del Mar – Playa Caracol'],
+      forma_contacto: 'Evento', broker_asignado: 'Valentina Ospina', estado: 'Calificación',
+      presupuesto_usd: 280000, fecha_entrada: '2026-06-20',
+      notas: 'Contacto en evento Asobancaria. Gerente de empresa familiar. Busca segunda residencia en Playa Caracol. Perfil ESTATUS.',
+      historial: [
+        { fecha: '2026-06-20', accion: 'Contacto Inicial', detalle: 'Evento Asobancaria — stand GLP. Intercambio de tarjetas con Valentina.' },
+        { fecha: '2026-07-03', accion: 'Calificación', detalle: 'Video call. Busca unidad con acceso directo a playa para uso familiar y arriendo en temporadas.' },
+      ],
+      emailHistory: [
+        { id: 'e10a', date: '2026-06-25', subject: 'Proyectos Playa Caracol — Exclusiva GLP', body: 'Catalina,\n\nFue un placer conocerla en Asobancaria. Le comparto los dos proyectos disponibles en Playa Caracol con acceso directo a la playa.\n\nSara · GLP Wealth Management', status: 'sent', direction: 'out' },
+      ],
+    },
+    {
+      id: 11, nombre: 'Jorge', apellido: 'Salazar',
+      direccion: 'Cra 43A #16-50, Barranquilla', correo: 'jorge.salazar@outlook.com', telefono: '+57 320 555 1111',
+      ocupacion: 'Arquitecto', proyectos_interes: ['Ocean Reef Park', 'Olas del Mar'],
+      forma_contacto: 'Instagram', broker_asignado: 'Santiago Mesa', estado: 'Contacto Inicial',
+      presupuesto_usd: 160000, fecha_entrada: '2026-07-10',
+      notas: 'Arquitecto con aprecio por el diseño. Comentó en post de Instagram sobre Ocean Reef. Primera respuesta positiva. Perfil ASPIRACIONAL.',
+      historial: [
+        { fecha: '2026-07-10', accion: 'Contacto Inicial', detalle: 'Comentó en Instagram: "¿Tienen unidades disponibles con vista al océano?" — Respondido mismo día.' },
+      ],
+      emailHistory: [],
+    },
+    {
+      id: 12, nombre: 'Natalia', apellido: 'Jaramillo',
+      direccion: 'Cl 16 #28-51 OF 204, Pereira', correo: 'natalia.jaramillo@gmail.com', telefono: '+57 321 555 1212',
+      ocupacion: 'Economista', proyectos_interes: ['Playa Dorada', 'Bayside Resort Panamá'],
+      forma_contacto: 'LinkedIn', broker_asignado: 'Rodrigo Fernández', estado: 'Negociación',
+      presupuesto_usd: 220000, fecha_entrada: '2026-04-02',
+      notas: 'Economista con maestría en inversiones. Analiza muy bien los números. Tiene fondos en cuenta en Panamá. Perfil RACIONAL — pidió informe de riesgos del mercado inmobiliario panameño.',
+      historial: [
+        { fecha: '2026-04-02', accion: 'Contacto Inicial', detalle: 'LinkedIn — artículo sobre inversión en Panamá la llevó al perfil de GLP.' },
+        { fecha: '2026-04-15', accion: 'Calificación', detalle: 'Economista con fondos disponibles en Panamá. Presupuesto USD 220K.' },
+        { fecha: '2026-05-05', accion: 'Presentación', detalle: 'Comparativo Playa Dorada vs Bayside Resort. Solicitó estudio de mercado 2025-2030.' },
+        { fecha: '2026-06-20', accion: 'Negociación', detalle: 'Recibió informe de riesgos y proyección de valorización. Evalúa opciones de financiamiento local.' },
+      ],
+      emailHistory: [
+        { id: 'e12a', date: '2026-05-10', subject: 'Estudio de mercado inmobiliario Panamá 2025–2030', body: 'Natalia,\n\nAdjunto el estudio de mercado elaborado por nuestro equipo de análisis. Proyección de valorización Playa Dorada: +42% en 5 años. Bayside Resort: +38% con programa de arriendo activo.\n\nSara · GLP Wealth Management', status: 'sent', direction: 'out' },
+        { id: 'e12b', date: '2026-06-25', subject: 'Opciones de financiamiento en Panamá', body: 'Natalia,\n\nIdentificamos 3 bancos en Panamá con líneas para extranjeros a tasas de 5.9-6.5%. Podemos acompañar el proceso de precalificación. ¿Tiene disponibilidad esta semana?\n\nSara · GLP Wealth Management', status: 'draft', direction: 'out' },
+      ],
+    },
+  ];
+
+  // ── PROSPECTOS GENERADOS (ids 13-114) ────────────────────────────────────────
   const firstNames = [
     'Juan', 'Andres', 'Carlos', 'Maria', 'Laura', 'Diana', 'Roberto', 'Eduardo', 'Martha', 'Sofia',
     'Camila', 'Felipe', 'Santiago', 'Valentina', 'Patricia', 'Alejandro', 'Gabriel', 'Daniela', 'Natalia', 'Jose',
@@ -750,155 +991,56 @@ const generateSampleProspects = (): Prospect[] => {
     'Gomez', 'Rodriguez', 'Martinez', 'Sanchez', 'Castano', 'Herrera', 'Gutierrez', 'Londoño', 'Mesa', 'Fernandez',
     'Ospina', 'Morales', 'Restrepo', 'Vargas', 'Silva', 'Ruiz', 'Perez', 'Uribe', 'Jaramillo', 'Ramirez',
     'Torres', 'Diaz', 'Munoz', 'Castro', 'Ortiz', 'Giraldo', 'Jimenez', 'Rios', 'Salazar', 'Valenzuela',
-    'Cardona', 'Velasquez', 'Marquez', 'Ochoa', 'Montoya', 'Herrón', 'Escobar', 'Zapata', 'Bermudez', 'Ortega',
-    'Guerrero', 'Rojas', 'Duque', 'Franco', 'Benitez', 'Patiño', 'Bustamante', 'Villegas', 'Marin', 'Serna'
+    'Cardona', 'Velasquez', 'Marquez', 'Ochoa', 'Montoya', 'Herron', 'Escobar', 'Zapata', 'Bermudez', 'Ortega',
   ];
-  const occupations = [
-    'CEO Fintech', 'Abogado Tributarista', 'Médica Especialista', 'Empresario Textil', 'Consultor Financiero', 'Inversionista', 'Director Financiero',
-    'Gerente General', 'Arquitecto', 'Ingeniero Civil', 'Odontólogo', 'Comerciante', 'Piloto Comercial', 'Economista'
-  ];
-  const locations = [
-    'Bogotá', 'Medellín', 'Cali', 'Barranquilla', 'Bucaramanga', 'Pereira', 'Manizales'
-  ];
+  const occupations = ['CEO Fintech', 'Abogado Tributarista', 'Médica Especialista', 'Empresario Textil', 'Consultor Financiero', 'Inversionista', 'Director Financiero', 'Gerente General', 'Arquitecto', 'Economista'];
+  const locations = ['Bogotá', 'Medellín', 'Cali', 'Barranquilla', 'Bucaramanga', 'Pereira', 'Manizales'];
+  const projects = ['Ocean Reef Park', 'Oceana Residences & Skyhomes', 'Bosco di Santa María', 'The Palms', 'Ventu', 'Ipanema Panamá', 'The Tides – Playa Caracol', 'Surfside', 'BeachWalk Resort Playa Caracol', 'Panamá Viejo Residences', 'Bayside Resort Panamá', 'Playa Dorada', 'Ocean Front', 'Olas del Mar', 'Aires del Mar – Playa Caracol'];
+  const brokers = ['Patricia Vargas', 'Santiago Mesa', 'Rodrigo Fernández', 'Valentina Ospina', 'Andrés Morales', 'Felipe Londoño'];
+  const stages = [...Array(40).fill('Contacto Inicial'), ...Array(25).fill('Calificación'), ...Array(14).fill('Presentación'), ...Array(8).fill('Negociación'), ...Array(3).fill('Cierre'), ...Array(6).fill('Post-venta')];
+  const sources = [...Array(10).fill('Instagram'), ...Array(10).fill('TikTok'), ...Array(8).fill('LinkedIn'), ...Array(5).fill('Redes Sociales'), ...Array(22).fill('Referido'), ...Array(18).fill('Evento'), ...Array(14).fill('Pagina Web'), ...Array(9).fill('WhatsApp')];
 
-  const projects = [
-    'Ocean Reef Park', 'Oceana Residences & Skyhomes', 'Bosco di Santa María', 'The Palms', 'Ventu',
-    'Ipanema Panamá', 'The Tides – Playa Caracol', 'Surfside', 'BeachWalk Resort Playa Caracol', 'Panamá Viejo Residences',
-    'Bayside Resort Panamá', 'Playa Dorada', 'Ocean Front', 'Olas del Mar', 'Aires del Mar – Playa Caracol'
-  ];
-
-  const brokers = [
-    'Patricia Vargas', 'Santiago Mesa', 'Rodrigo Fernández', 'Valentina Ospina', 'Andrés Morales', 'Felipe Londoño'
-  ];
-
-  const stages = [
-    ...Array(42).fill('Contacto Inicial'),
-    ...Array(28).fill('Calificación'),
-    ...Array(15).fill('Presentación'),
-    ...Array(8).fill('Negociación'),
-    ...Array(3).fill('Cierre'),
-    ...Array(6).fill('Post-venta')
-  ];
-
-  const sources = [
-    ...Array(10).fill('Instagram'),
-    ...Array(10).fill('TikTok'),
-    ...Array(10).fill('LinkedIn'),
-    ...Array(6).fill('Redes Sociales'),
-    ...Array(25).fill('Referido'),
-    ...Array(20).fill('Evento'),
-    ...Array(16).fill('Pagina Web'),
-    ...Array(5).fill('WhatsApp')
-  ];
-
-  const list: Prospect[] = [];
-
-  for (let i = 0; i < 102; i++) {
+  const generated: Prospect[] = [];
+  for (let i = 0; i < 96; i++) {
     const fn = firstNames[i % firstNames.length];
     const ln = lastNames[(i * 3) % lastNames.length];
-    const ocu = occupations[(i * 7) % occupations.length];
     const loc = locations[(i * 11) % locations.length];
     const broker = brokers[(i * 13) % brokers.length];
-    
-    // Choose 1-3 projects
     const projCount = (i % 3) + 1;
     const projList: string[] = [];
     for (let p = 0; p < projCount; p++) {
       const proj = projects[(i * 17 + p) % projects.length];
-      if (!projList.includes(proj)) {
-        projList.push(proj);
-      }
+      if (!projList.includes(proj)) projList.push(proj);
     }
-
-    const state = stages[i];
-    const source = sources[i];
-    
-    let budget = 120000;
-    if (i % 5 === 0) budget = 180000;
-    else if (i % 5 === 1) budget = 250000;
-    else if (i % 5 === 2) budget = 320000;
-    else if (i % 5 === 3) budget = 450000;
-    else budget = 1200000;
-
-    budget += (i % 9) * 5000 - 20000;
+    const state = stages[i % stages.length];
+    const source = sources[i % sources.length];
+    let budget = [180000, 250000, 320000, 450000, 1200000][i % 5] + (i % 9) * 5000 - 20000;
     if (budget < 90000) budget = 120000;
-
-    const email = `${fn.toLowerCase().replace(/\s+/g, '')}.${ln.toLowerCase().replace(/\s+/g, '').replace('ñ', 'n')}@${i % 2 === 0 ? 'gmail.com' : 'outlook.com'}`;
-    const phone = `+57 31${i % 10} ${Math.floor(100 + (i * 9.7) % 900)} ${Math.floor(1000 + (i * 13.3) % 9000)}`;
-
-    // Distribute entry dates realistically across the last 18 months
-    // More prospects in recent months (weighted toward recent), fewer older
     const today0 = new Date('2026-07-13');
-    // Use a weighted distribution: ~30% last 30d, ~25% 30-90d, ~20% 90-180d, ~25% 180-365d+
-    const weightedDaysAgo = (() => {
-      const seed = (i * 17 + 3) % 100;
-      if (seed < 5)  return (i % 5) + 1;          // 5%: last 7 days
-      if (seed < 22) return 8 + (i % 22);          // 17%: 8–29 days
-      if (seed < 45) return 30 + (i % 60);         // 23%: 30–89 days
-      if (seed < 65) return 90 + (i % 90);         // 20%: 90–179 days
-      if (seed < 85) return 180 + (i % 120);       // 20%: 180–299 days
-      return 300 + (i % 180);                       // 15%: 300–479 days
-    })();
-    const entryD = new Date(today0.getTime() - weightedDaysAgo * 86400000);
-    const entryDate = entryD.toISOString().split('T')[0];
-
-    const hist = [
-      { fecha: entryDate, accion: 'Contacto Inicial', detalle: `Registrado vía ${source}` }
-    ];
-    if (state !== 'Contacto Inicial') {
-      hist.push({ fecha: entryDate, accion: 'Calificación', detalle: 'Presupuesto y perfil del inversionista evaluados' });
-    }
-    if (state !== 'Contacto Inicial' && state !== 'Calificación') {
-      hist.push({ fecha: entryDate, accion: 'Presentación', detalle: `Presentación detallada de proyectos: ${projList.join(', ')}` });
-    }
-    if (state === 'Negociación' || state === 'Cierre' || state === 'Post-venta') {
-      hist.push({ fecha: entryDate, accion: 'Negociación', detalle: 'Estructuración del plan de pagos y envío de cotizaciones' });
-    }
-    if (state === 'Cierre' || state === 'Post-venta') {
-      hist.push({ fecha: entryDate, accion: 'Cierre', detalle: 'Propuesta aceptada, firma del acuerdo de reserva en proceso' });
-    }
-    if (state === 'Post-venta') {
-      hist.push({ fecha: entryDate, accion: 'Post-venta', detalle: 'Contrato firmado, property management y documentación DIAN' });
-    }
-
-    list.push({
-      id: i + 1,
-      nombre: fn,
-      apellido: ln,
-      direccion: `Calle ${(i * 7) % 150} #${(i * 13) % 99}-${(i * 19) % 90}, ${loc}`,
-      correo: email,
-      telefono: phone,
-      ocupacion: ocu,
-      proyectos_interes: projList,
-      forma_contacto: source,
-      broker_asignado: broker,
-      estado: state,
-      presupuesto_usd: budget,
-      notas: `Prospecto interesado en diversificación internacional vía ${source}. Ocupación: ${ocu}.`,
-      historial: hist,
-      fecha_entrada: entryDate
+    const seed = (i * 17 + 3) % 100;
+    const daysAgo = seed < 5 ? (i%5)+1 : seed < 22 ? 8+(i%22) : seed < 45 ? 30+(i%60) : seed < 65 ? 90+(i%90) : seed < 85 ? 180+(i%120) : 300+(i%180);
+    const entryDate = new Date(today0.getTime() - daysAgo * 86400000).toISOString().split('T')[0];
+    const email = `${fn.toLowerCase()}.${ln.toLowerCase().replace('ñ','n')}${i}@${i%2===0?'gmail.com':'outlook.com'}`;
+    const hist = [{ fecha: entryDate, accion: 'Contacto Inicial', detalle: `Registrado vía ${source}` }];
+    if (!['Contacto Inicial'].includes(state)) hist.push({ fecha: entryDate, accion: 'Calificación', detalle: 'Presupuesto y perfil evaluados' });
+    if (['Presentación','Negociación','Cierre','Post-venta'].includes(state)) hist.push({ fecha: entryDate, accion: 'Presentación', detalle: `Presentación de ${projList.join(', ')}` });
+    if (['Negociación','Cierre','Post-venta'].includes(state)) hist.push({ fecha: entryDate, accion: 'Negociación', detalle: 'Plan de pagos estructurado' });
+    if (['Cierre','Post-venta'].includes(state)) hist.push({ fecha: entryDate, accion: 'Cierre', detalle: 'Propuesta aceptada' });
+    if (state === 'Post-venta') hist.push({ fecha: entryDate, accion: 'Post-venta', detalle: 'Contrato firmado, en seguimiento' });
+    generated.push({
+      id: i + 13,
+      nombre: fn, apellido: ln,
+      direccion: `Calle ${(i*7)%150} #${(i*13)%99}-${(i*19)%90}, ${loc}`,
+      correo: email, telefono: `+57 31${i%10} ${Math.floor(100+(i*9.7)%900)} ${Math.floor(1000+(i*13.3)%9000)}`,
+      ocupacion: occupations[(i*7)%occupations.length],
+      proyectos_interes: projList, forma_contacto: source,
+      broker_asignado: broker, estado: state, presupuesto_usd: budget,
+      notas: `Prospecto interesado en diversificación internacional vía ${source}.`,
+      historial: hist, fecha_entrada: entryDate, emailHistory: [],
     });
   }
 
-  // Force first 6 prospects to match historical names exactly for attendee checks
-  const histNames = [
-    { nombre: 'Carlos', apellido: 'Gutiérrez', estado: 'Negociación', forma_contacto: 'Referido', broker_asignado: 'Patricia Vargas' },
-    { nombre: 'María Isabel', apellido: 'Rodríguez', estado: 'Presentación', forma_contacto: 'Evento', broker_asignado: 'Santiago Mesa' },
-    { nombre: 'Andrés Felipe', apellido: 'Martínez', estado: 'Calificación', forma_contacto: 'Pagina Web', broker_asignado: 'Valentina Ospina' },
-    { nombre: 'Laura', apellido: 'Sánchez', estado: 'Contacto Inicial', forma_contacto: 'Instagram', broker_asignado: 'Andrés Morales' },
-    { nombre: 'Roberto', apellido: 'Castaño', estado: 'Cierre', forma_contacto: 'WhatsApp', broker_asignado: 'Felipe Londoño' },
-    { nombre: 'Diana', apellido: 'Herrera', estado: 'Post-venta', forma_contacto: 'Referido', broker_asignado: 'Patricia Vargas' }
-  ];
-
-  for (let k = 0; k < histNames.length; k++) {
-    list[k].nombre = histNames[k].nombre;
-    list[k].apellido = histNames[k].apellido;
-    list[k].estado = histNames[k].estado;
-    list[k].forma_contacto = histNames[k].forma_contacto;
-    list[k].broker_asignado = histNames[k].broker_asignado;
-  }
-
-  return list;
+  return [...DEMO_PROSPECTS, ...generated];
 };
 
 const INITIAL_PROSPECTS: Prospect[] = generateSampleProspects();
@@ -988,6 +1130,7 @@ const NAV_SECTIONS = [
     items: [
       { id: 'portafolio',  label: 'Portafolio GLP' },
       { id: 'calculadora', label: 'Calculadora' },
+      { id: 'cartera',     label: 'Cartera' },
       { id: 'legal',       label: 'Legal & Cierre' },
       { id: 'eventos',     label: 'Eventos' },
       { id: 'casos',       label: 'PQRs' },
@@ -1030,8 +1173,8 @@ const ROLE_LABELS: Record<UserRole, string> = {
 const ROLE_MODULES: Record<UserRole, string[]> = {
   superadmin:  [], // vacío = todos
   presidencia: ['dashboard','reportes','portafolio','kpis','gerencial','integraciones'],
-  gerencia:    ['dashboard','kpis','prospectos','reportes','gerencial','campanas','portafolio','calculadora','agentes','legal','integraciones','casos','brokers','faqs','eventos','catalogo'],
-  broker:      ['prospectos','portafolio','calculadora','casos','faqs'],
+  gerencia:    ['dashboard','kpis','prospectos','reportes','gerencial','campanas','portafolio','calculadora','cartera','agentes','legal','integraciones','casos','brokers','faqs','eventos','catalogo'],
+  broker:      ['prospectos','portafolio','calculadora','cartera','casos','faqs'],
 };
 
 const SUPERADMIN_USERNAME = 'ahortua';
@@ -1649,7 +1792,22 @@ export default function CRMDashboard() {
   const [agentSaraActive, setAgentSaraActive] = useState(false);
   const [agentSofiaActive, setAgentSofiaActive] = useState(false);
   const [sofiaProfiles, setSofiaProfiles] = useState<SofiaProfile[]>(() => {
-    try { return JSON.parse(localStorage.getItem('glp_sofia_profiles') || '[]'); } catch { return []; }
+    try {
+      const stored = JSON.parse(localStorage.getItem('glp_sofia_profiles') || '[]');
+      if (stored.length > 0) return stored;
+      const demo: SofiaProfile[] = [
+        { prospectId:1, prospectName:'Carlos Gutiérrez', ocupacion:'CEO Fintech', presupuesto:450000, arquetipo:'racional', confianza:91, fecha:'2026-05-10', senales:['Decisión basada en métricas','Perfil analítico-profesional','Ciclo de evaluación activo'], recomendacion_sara:'Enviar comparativo ROI detallado y certificados de valorización histórica. Tono profesional, sin emociones.', recomendacion_valeria:'Crear contenido con métricas: ocupación, retorno anual, comparativo vs CDT. Usar LinkedIn como canal principal.' },
+        { prospectId:2, prospectName:'María Isabel Rodríguez', ocupacion:'Médica Especialista', presupuesto:320000, arquetipo:'legado', confianza:88, fecha:'2026-06-01', senales:['Menciona familia, herencia o legado','Foco en preservación de valor','Perfil analítico-patrimonial'], recomendacion_sara:'Enfocar comunicación en transmisión de patrimonio a hijos. Mencionar trust y planificación sucesorial.', recomendacion_valeria:'Narrativa de legado familiar. Mostrar casos de propietarios que compraron para sus hijos. Email marketing con historias reales.' },
+        { prospectId:5, prospectName:'Roberto Castaño', ocupacion:'Inversionista', presupuesto:750000, arquetipo:'estatus', confianza:94, fecha:'2026-02-20', senales:['Busca exclusividad — no ancla en precio','Captado en evento exclusivo','Alta probabilidad de cierre a corto plazo'], recomendacion_sara:'Comunicación discreta y exclusiva. No mencionar precios en primer contacto. Destacar quiénes son los otros propietarios.', recomendacion_valeria:'Contenido visual premium: fotos de eventos, propietarios en GLP, lifestyle de élite. Instagram y WhatsApp privado.' },
+        { prospectId:6, prospectName:'Diana Herrera', ocupacion:'Abogada Tributarista', presupuesto:140000, arquetipo:'racional', confianza:89, fecha:'2025-12-05', senales:['Decisión basada en métricas','Foco en preservación de valor','Ciclo de evaluación activo'], recomendacion_sara:'Lenguaje legal y financiero. Documentar todo por escrito. Nunca hacer promesas verbales.', recomendacion_valeria:'Infografías de rendimiento y comparativos legales. Contenido sobre seguridad jurídica de la inversión.' },
+        { prospectId:7, prospectName:'Mauricio Ospina', ocupacion:'Director Financiero', presupuesto:580000, arquetipo:'legado', confianza:86, fecha:'2026-04-10', senales:['Menciona familia, herencia o legado','Perfil analítico-patrimonial','Ingresó por referencia de confianza'], recomendacion_sara:'Hablar de diversificación patrimonial intergeneracional. Proponer estructura de holding para la compra.', recomendacion_valeria:'Contenido sobre protección de patrimonio familiar en dólares. Webinar sobre planificación patrimonial internacional.' },
+        { prospectId:12, prospectName:'Natalia Jaramillo', ocupacion:'Economista', presupuesto:220000, arquetipo:'racional', confianza:92, fecha:'2026-04-20', senales:['Decisión basada en métricas','Orientado a retorno de inversión','Ciclo de evaluación activo'], recomendacion_sara:'Enviar estudio de mercado completo. Responder cada pregunta con datos verificables. Agendar llamada técnica.', recomendacion_valeria:'LinkedIn con análisis de mercado inmobiliario panameño. Gráficas de valorización histórica y proyectada.' },
+        { prospectId:3, prospectName:'Andrés Felipe Martínez', ocupacion:'Empresario Textil', presupuesto:250000, arquetipo:'aspiracional', confianza:83, fecha:'2026-06-12', senales:['Motivación aspiracional detectada','Canal de captación social media','Etapa inspiracional — ciclo largo'], recomendacion_sara:'Conectar el sueño de vida en Panamá con la inversión. Compartir experiencias de propietarios actuales.', recomendacion_valeria:'Videos de lifestyle: amanecer en Playa Caracol, piscinas infinitas, gastronomía. TikTok e Instagram Reels.' },
+        { prospectId:4, prospectName:'Laura Sánchez', ocupacion:'Directora Financiera', presupuesto:180000, arquetipo:'aspiracional', confianza:79, fecha:'2026-07-02', senales:['Motivación aspiracional detectada','Canal de captación social media','Etapa inspiracional — ciclo largo'], recomendacion_sara:'Inspirar con posibilidades. No presionar con precios. Invitar a evento o tour virtual.', recomendacion_valeria:'Contenido aspiracional con música y emotividad. Videos cortos de experiencias en GLP.' },
+      ];
+      localStorage.setItem('glp_sofia_profiles', JSON.stringify(demo));
+      return demo;
+    } catch { return []; }
   });
   const [sofiaToValeriaContext, setSofiaToValeriaContext] = useState<SofiaProfile | null>(null);
   const [sofiaToSaraContext, setSofiaToSaraContext] = useState<SofiaProfile | null>(null);
@@ -1662,6 +1820,76 @@ export default function CRMDashboard() {
   const [agentValeriaActive, setAgentValeriaActive] = useState(false);
   const [agentIsabellaActive, setAgentIsabellaActive] = useState(false);
   const [agentCamiloLastRun, setAgentCamiloLastRun] = useState('2026-06-05 08:00');
+
+  // ── CARTERA STATE ────────────────────────────────────────────────────────────
+  const [carteras, setCarteras] = useState<CarteraCliente[]>(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('glp_carteras') || '[]');
+      if (stored.length > 0) return stored;
+      // Demo seed
+      const demo: CarteraCliente[] = [
+        {
+          id: 'c1', prospectId: 5, prospectName: 'Roberto Castaño',
+          proyecto: 'Surfside', unidad: 'Penthouse 28A', precio_total: 720000,
+          moneda: 'USD', fecha_separacion: '2026-05-28', fecha_escritura: '2026-09-15', fecha_entrega: '2026-12-01',
+          modalidad: 'mixto', arquetipo: 'estatus', riesgo: 'verde', notas_internas: 'Cliente VIP. Pago 60% contado + 40% hipoteca Miami. Abogado: Colombia Law Group.',
+          cuotas: [
+            { id:'c1q1', numero:1, concepto:'cuota_inicial', monto:216000, fecha_vencimiento:'2026-06-15', fecha_pago:'2026-06-12', estado:'pagada' },
+            { id:'c1q2', numero:2, concepto:'cuota_inicial', monto:216000, fecha_vencimiento:'2026-07-15', fecha_pago:'2026-07-10', estado:'pagada' },
+            { id:'c1q3', numero:3, concepto:'escritura', monto:8000, fecha_vencimiento:'2026-09-15', estado:'pendiente' },
+            { id:'c1q4', numero:4, concepto:'credito', monto:280000, fecha_vencimiento:'2026-09-30', estado:'en_proceso' },
+          ],
+        },
+        {
+          id: 'c2', prospectId: 6, prospectName: 'Diana Herrera',
+          proyecto: 'Panamá Viejo Residences', unidad: 'Apt 12B', precio_total: 140000,
+          moneda: 'USD', fecha_separacion: '2026-02-28', fecha_escritura: '2026-08-01', fecha_entrega: '2027-06-01',
+          modalidad: 'contado', arquetipo: 'racional', riesgo: 'verde', notas_internas: 'Pago contado 100%. Abogada — revisó todos los documentos. Muy detallista.',
+          cuotas: [
+            { id:'c2q1', numero:1, concepto:'cuota_inicial', monto:42000, fecha_vencimiento:'2026-03-01', fecha_pago:'2026-02-28', estado:'pagada' },
+            { id:'c2q2', numero:2, concepto:'cuota_inicial', monto:42000, fecha_vencimiento:'2026-05-01', fecha_pago:'2026-04-29', estado:'pagada' },
+            { id:'c2q3', numero:3, concepto:'cuota_inicial', monto:42000, fecha_vencimiento:'2026-07-15', estado:'pendiente' },
+            { id:'c2q4', numero:4, concepto:'escritura', monto:5000, fecha_vencimiento:'2026-08-01', estado:'pendiente' },
+            { id:'c2q5', numero:5, concepto:'entrega', monto:9000, fecha_vencimiento:'2027-06-01', estado:'pendiente' },
+          ],
+        },
+        {
+          id: 'c3', prospectId: 1, prospectName: 'Carlos Gutiérrez',
+          proyecto: 'Surfside', unidad: 'Tower A Piso 18', precio_total: 430000,
+          moneda: 'USD', fecha_separacion: '2026-07-10', fecha_escritura: '2027-01-15', fecha_entrega: '2027-06-01',
+          modalidad: 'mixto', arquetipo: 'racional', riesgo: 'amarillo', notas_internas: 'En negociación activa. Cuota inicial vence pronto.',
+          cuotas: [
+            { id:'c3q1', numero:1, concepto:'cuota_inicial', monto:43000, fecha_vencimiento:'2026-07-20', estado:'pendiente' },
+            { id:'c3q2', numero:2, concepto:'cuota_inicial', monto:43000, fecha_vencimiento:'2026-08-20', estado:'pendiente' },
+            { id:'c3q3', numero:3, concepto:'cuota_inicial', monto:43000, fecha_vencimiento:'2026-09-20', estado:'pendiente' },
+            { id:'c3q4', numero:4, concepto:'credito', monto:301000, fecha_vencimiento:'2027-01-15', estado:'pendiente' },
+          ],
+        },
+        {
+          id: 'c4', prospectId: 7, prospectName: 'Mauricio Ospina',
+          proyecto: 'Oceana Residences & Skyhomes', unidad: 'Skyhome 15C', precio_total: 320000,
+          moneda: 'USD', fecha_separacion: '2026-07-05', fecha_escritura: '2027-02-01', fecha_entrega: '2027-09-01',
+          modalidad: 'credito', arquetipo: 'legado', riesgo: 'rojo', notas_internas: 'Cuota de separación vencida. Pendiente confirmación transferencia.',
+          cuotas: [
+            { id:'c4q1', numero:1, concepto:'cuota_inicial', monto:32000, fecha_vencimiento:'2026-07-05', estado:'vencida' },
+            { id:'c4q2', numero:2, concepto:'cuota_inicial', monto:32000, fecha_vencimiento:'2026-08-05', estado:'pendiente' },
+            { id:'c4q3', numero:3, concepto:'cuota_inicial', monto:32000, fecha_vencimiento:'2026-09-05', estado:'pendiente' },
+            { id:'c4q4', numero:4, concepto:'credito', monto:224000, fecha_vencimiento:'2027-02-01', estado:'pendiente' },
+          ],
+        },
+      ];
+      localStorage.setItem('glp_carteras', JSON.stringify(demo));
+      return demo;
+    } catch { return []; }
+  });
+  const [carteraSelected, setCarteraSelected] = useState<string | null>(null);
+  const [carteraTab, setCarteraTab] = useState<'resumen'|'cuotas'|'flujo'|'alertas'>('resumen');
+  const [carteraModalOpen, setCarteraModalOpen] = useState(false);
+  const [carteraForm, setCarteraForm] = useState<Partial<CarteraCliente>>({});
+  const [carteraFilter, setCarteraFilter] = useState<'todos'|'verde'|'amarillo'|'rojo'>('todos');
+  const [carteraMsgLoading, setCarteraMsgLoading] = useState(false);
+  const [carteraMsgResult, setCarteraMsgResult] = useState('');
+  // ────────────────────────────────────────────────────────────────────────────
   const [agentCamiloProspects, setAgentCamiloProspects] = useState(14);
   const [agentSaraMessages, setAgentSaraMessages] = useState(237);
   const [agentSaraAlerts, setAgentSaraAlerts] = useState(3);
@@ -3638,6 +3866,13 @@ Responde SOLO con JSON sin bloques de código:
         return (
           <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
             <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        );
+      case 'cartera':
+        return (
+          <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
+            <line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/>
           </svg>
         );
       case 'legal':
@@ -17095,6 +17330,542 @@ Cargo: ________________________         C.C.: _______________________`,
     );
   };
 
+  // ── RENDER CARTERA ──────────────────────────────────────────────────────────
+  const renderCartera = () => {
+    const S = { bg: '#F7F4EF', parch: '#EDE8DF', navy: '#001A37', gold: '#B89047', cream: '#FFFDF7' };
+    const T = { serif: 'Georgia, serif', sans: 'system-ui, sans-serif' };
+
+    const ARQC: Record<string,string> = { estatus:'#6D28D9', legado:'#1D4ED8', racional:'#047857', aspiracional:'#B45309' };
+    const RIESGO_COLOR = { verde: '#10B981', amarillo: '#F59E0B', rojo: '#EF4444' };
+    const RIESGO_LABEL = { verde: 'Al día', amarillo: 'Atención', rojo: 'En mora' };
+    const CONCEPTO_LABEL: Record<string,string> = {
+      cuota_inicial: 'Cuota Inicial', credito: 'Crédito Hipotecario',
+      subrogacion: 'Subrogación', escritura: 'Escritura', entrega: 'Entrega',
+    };
+
+    const saveCarteras = (updated: CarteraCliente[]) => {
+      setCarteras(updated);
+      localStorage.setItem('glp_carteras', JSON.stringify(updated));
+    };
+
+    const calcRiesgo = (c: CarteraCliente): 'verde' | 'amarillo' | 'rojo' => {
+      const hoy = new Date();
+      const vencidas = c.cuotas.filter(q => q.estado === 'vencida').length;
+      const proximas = c.cuotas.filter(q => {
+        if (q.estado !== 'pendiente') return false;
+        const diff = (new Date(q.fecha_vencimiento).getTime() - hoy.getTime()) / 86400000;
+        return diff <= 10 && diff >= 0;
+      }).length;
+      if (vencidas > 0) return 'rojo';
+      if (proximas > 0) return 'amarillo';
+      return 'verde';
+    };
+
+    const totalRecaudado = (c: CarteraCliente) =>
+      c.cuotas.filter(q => q.estado === 'pagada').reduce((s, q) => s + q.monto, 0);
+    const totalPendiente = (c: CarteraCliente) =>
+      c.cuotas.filter(q => q.estado !== 'pagada').reduce((s, q) => s + q.monto, 0);
+
+    const filtered = carteras.filter(c => carteraFilter === 'todos' || calcRiesgo(c) === carteraFilter);
+    const selected = carteras.find(c => c.id === carteraSelected) || null;
+
+    const handleGenerarMensaje = async (c: CarteraCliente) => {
+      setCarteraMsgLoading(true);
+      setCarteraMsgResult('');
+      const vencidas = c.cuotas.filter(q => q.estado === 'vencida');
+      const proximas = c.cuotas.filter(q => {
+        if (q.estado !== 'pendiente') return false;
+        const diff = (new Date(q.fecha_vencimiento).getTime() - Date.now()) / 86400000;
+        return diff <= 15 && diff >= 0;
+      });
+      const arqLabel = c.arquetipo ? c.arquetipo.toUpperCase() : 'RACIONAL';
+      const tono = c.arquetipo === 'estatus' ? 'exclusivo y discreet, sin mencionar detalles financieros explícitos'
+        : c.arquetipo === 'legado' ? 'cálido y patrimonial, enfocado en el futuro de su familia'
+        : c.arquetipo === 'aspiracional' ? 'inspirador y motivador, conectando el pago con el sueño cumplido'
+        : 'claro, directo y basado en datos concretos';
+      const prompt = `Eres Sara, gestora de comunicación de GLP Wealth Management, proyecto inmobiliario de lujo en Surfside, Miami.
+Redacta un mensaje corto (máx 5 líneas) para recordarle a ${c.prospectName} sobre ${vencidas.length > 0 ? `${vencidas.length} cuota(s) VENCIDA(s) por USD ${vencidas.reduce((s,q)=>s+q.monto,0).toLocaleString()}` : `una cuota próxima el ${proximas[0]?.fecha_vencimiento} por USD ${proximas[0]?.monto?.toLocaleString()}`}.
+Proyecto: ${c.proyecto} · Unidad: ${c.unidad}.
+Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.
+No uses emojis. Firma como "Sara · GLP Wealth Management".`;
+      try {
+        const res = await fetch('http://localhost:3001/api/openai', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt, max_tokens: 300 }),
+        });
+        const data = await res.json();
+        setCarteraMsgResult(data.text || data.choices?.[0]?.message?.content || 'Sin respuesta');
+      } catch {
+        setCarteraMsgResult('El servidor no está disponible. Inicia el backend para generar mensajes con IA.');
+      }
+      setCarteraMsgLoading(false);
+    };
+
+    const addCuota = (carteraId: string) => {
+      const nueva: CuotaCartera = {
+        id: Date.now().toString(), numero: 0,
+        concepto: 'cuota_inicial', monto: 0,
+        fecha_vencimiento: new Date().toISOString().split('T')[0],
+        estado: 'pendiente',
+      };
+      saveCarteras(carteras.map(c => c.id === carteraId
+        ? { ...c, cuotas: [...c.cuotas, { ...nueva, numero: c.cuotas.length + 1 }] }
+        : c));
+    };
+
+    const updateCuota = (carteraId: string, cuotaId: string, patch: Partial<CuotaCartera>) => {
+      saveCarteras(carteras.map(c => c.id === carteraId
+        ? { ...c, cuotas: c.cuotas.map(q => q.id === cuotaId ? { ...q, ...patch } : q) }
+        : c));
+    };
+
+    const deleteCuota = (carteraId: string, cuotaId: string) => {
+      saveCarteras(carteras.map(c => c.id === carteraId
+        ? { ...c, cuotas: c.cuotas.filter(q => q.id !== cuotaId) }
+        : c));
+    };
+
+    // KPIs globales
+    const totalCartera = carteras.reduce((s, c) => s + c.precio_total, 0);
+    const totalRecaudo = carteras.reduce((s, c) => s + totalRecaudado(c), 0);
+    const enMora = carteras.filter(c => calcRiesgo(c) === 'rojo').length;
+    const porVencer = carteras.filter(c => calcRiesgo(c) === 'amarillo').length;
+
+    return (
+      <div style={{ background: S.bg, minHeight: '100vh', fontFamily: T.sans }}>
+        {/* Header */}
+        <div style={{ background: S.navy, padding: '28px 40px 24px', borderBottom: `3px solid ${S.gold}` }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: 3, color: S.gold, fontFamily: T.serif, marginBottom: 6 }}>GLP WEALTH MANAGEMENT</div>
+              <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, color: '#fff', fontFamily: T.serif, letterSpacing: 0.5 }}>Módulo de Cartera</h1>
+              <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 4 }}>Gestión de planes de pago · Seguimiento · Alertas inteligentes</div>
+            </div>
+            <button onClick={() => { setCarteraForm({}); setCarteraModalOpen(true); }}
+              style={{ background: S.gold, color: '#fff', border: 'none', padding: '10px 20px', fontSize: 11, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', cursor: 'pointer', fontFamily: T.serif }}>
+              + Nuevo Cliente
+            </button>
+          </div>
+
+          {/* KPI row */}
+          <div style={{ display: 'flex', gap: 24, marginTop: 24 }}>
+            {[
+              { label: 'CARTERA TOTAL', val: `USD ${(totalCartera/1000).toFixed(0)}K`, sub: `${carteras.length} clientes` },
+              { label: 'RECAUDADO', val: `USD ${(totalRecaudo/1000).toFixed(0)}K`, sub: `${totalCartera > 0 ? Math.round(totalRecaudo/totalCartera*100) : 0}% del total` },
+              { label: 'EN MORA', val: enMora.toString(), sub: 'clientes con cuotas vencidas', alert: enMora > 0 },
+              { label: 'POR VENCER', val: porVencer.toString(), sub: 'vencen en los próximos 10 días', warn: porVencer > 0 },
+            ].map((k, i) => (
+              <div key={i} style={{ background: (k as any).alert ? '#7F1D1D' : (k as any).warn ? '#78350F' : 'rgba(255,255,255,0.07)', padding: '14px 20px', flex: 1, borderLeft: `2px solid ${(k as any).alert ? '#EF4444' : (k as any).warn ? '#F59E0B' : S.gold}` }}>
+                <div style={{ fontSize: 9, letterSpacing: 2, color: S.gold, marginBottom: 4 }}>{k.label}</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: '#fff', fontFamily: T.serif }}>{k.val}</div>
+                <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 2 }}>{k.sub}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', height: 'calc(100vh - 220px)' }}>
+          {/* Lista izquierda */}
+          <div style={{ width: 320, borderRight: `1px solid ${S.parch}`, background: '#fff', overflow: 'auto', flexShrink: 0 }}>
+            {/* Filtro semáforo */}
+            <div style={{ padding: '12px 16px', borderBottom: `1px solid ${S.parch}`, display: 'flex', gap: 6 }}>
+              {(['todos','verde','amarillo','rojo'] as const).map(f => (
+                <button key={f} onClick={() => setCarteraFilter(f)}
+                  style={{ flex: 1, padding: '5px 0', fontSize: 9, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', border: 'none', cursor: 'pointer', background: carteraFilter === f ? (f === 'todos' ? S.navy : RIESGO_COLOR[f as 'verde'|'amarillo'|'rojo']) : S.parch, color: carteraFilter === f ? '#fff' : '#6B7280' }}>
+                  {f === 'todos' ? 'Todos' : RIESGO_LABEL[f as 'verde'|'amarillo'|'rojo']}
+                </button>
+              ))}
+            </div>
+
+            {filtered.length === 0 && (
+              <div style={{ padding: 32, textAlign: 'center', color: '#9CA3AF', fontSize: 13 }}>
+                {carteras.length === 0 ? 'Aún no hay clientes en cartera.\nHaz clic en "+ Nuevo Cliente" para agregar.' : 'Sin resultados para este filtro.'}
+              </div>
+            )}
+
+            {filtered.map(c => {
+              const riesgo = calcRiesgo(c);
+              const recaudado = totalRecaudado(c);
+              const pct = c.precio_total > 0 ? Math.round(recaudado / c.precio_total * 100) : 0;
+              const sp = sofiaProfiles.find(p => p.prospectId === c.prospectId);
+              return (
+                <div key={c.id} onClick={() => setCarteraSelected(c.id)}
+                  style={{ padding: '16px', borderBottom: `1px solid ${S.parch}`, cursor: 'pointer', background: carteraSelected === c.id ? '#EFF6FF' : '#fff', borderLeft: `3px solid ${RIESGO_COLOR[riesgo]}` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: S.navy }}>{c.prospectName}</div>
+                      <div style={{ fontSize: 10, color: '#6B7280', marginTop: 1 }}>{c.proyecto} · {c.unidad}</div>
+                    </div>
+                    <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: 1, padding: '3px 7px', background: `${RIESGO_COLOR[riesgo]}18`, color: RIESGO_COLOR[riesgo], textTransform: 'uppercase' }}>
+                      {RIESGO_LABEL[riesgo]}
+                    </span>
+                  </div>
+                  {/* Barra de progreso */}
+                  <div style={{ height: 3, background: S.parch, marginBottom: 6 }}>
+                    <div style={{ width: `${pct}%`, height: '100%', background: pct >= 75 ? '#10B981' : pct >= 40 ? S.gold : S.navy }} />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#6B7280' }}>
+                    <span>USD {recaudado.toLocaleString()} recaudado</span>
+                    <span style={{ fontWeight: 700, color: S.navy }}>{pct}%</span>
+                  </div>
+                  {sp && (
+                    <div style={{ marginTop: 6, display: 'inline-flex', alignItems: 'center', gap: 4, background: `${ARQC[sp.arquetipo]||S.gold}12`, border: `1px solid ${ARQC[sp.arquetipo]||S.gold}40`, padding: '2px 7px' }}>
+                      <div style={{ width: 5, height: 5, borderRadius: '50%', background: S.gold }} />
+                      <span style={{ fontSize: 8, fontWeight: 800, color: S.gold, letterSpacing: 1.5 }}>Sofía</span>
+                      <span style={{ fontSize: 8, color: ARQC[sp.arquetipo]||S.gold, fontWeight: 700, letterSpacing: 1 }}>· {sp.arquetipo.toUpperCase()}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Panel derecho */}
+          {!selected ? (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9CA3AF', fontSize: 14 }}>
+              Selecciona un cliente para ver su cartera
+            </div>
+          ) : (
+            <div style={{ flex: 1, overflow: 'auto', background: S.bg }}>
+              {/* Header del cliente */}
+              <div style={{ padding: '24px 32px', background: '#fff', borderBottom: `1px solid ${S.parch}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ fontSize: 10, letterSpacing: 2, color: S.gold, marginBottom: 4 }}>CLIENTE ACTIVO</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: S.navy, fontFamily: T.serif }}>{selected.prospectName}</div>
+                    <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>{selected.proyecto} · Unidad {selected.unidad} · {selected.modalidad.toUpperCase()}</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => { setCarteraForm(selected); setCarteraModalOpen(true); }}
+                      style={{ background: 'transparent', border: `1px solid ${S.gold}`, color: S.gold, padding: '7px 14px', fontSize: 10, fontWeight: 700, letterSpacing: 1, cursor: 'pointer' }}>
+                      Editar
+                    </button>
+                    <button onClick={() => { if (window.confirm('¿Eliminar esta cartera?')) saveCarteras(carteras.filter(c => c.id !== selected.id)); setCarteraSelected(null); }}
+                      style={{ background: 'transparent', border: '1px solid #EF4444', color: '#EF4444', padding: '7px 14px', fontSize: 10, fontWeight: 700, letterSpacing: 1, cursor: 'pointer' }}>
+                      Eliminar
+                    </button>
+                  </div>
+                </div>
+
+                {/* Mini KPIs del cliente */}
+                <div style={{ display: 'flex', gap: 16, marginTop: 16 }}>
+                  {[
+                    { l: 'PRECIO TOTAL', v: `USD ${selected.precio_total.toLocaleString()}` },
+                    { l: 'RECAUDADO', v: `USD ${totalRecaudado(selected).toLocaleString()}` },
+                    { l: 'PENDIENTE', v: `USD ${totalPendiente(selected).toLocaleString()}` },
+                    { l: 'CUOTAS', v: `${selected.cuotas.filter(q=>q.estado==='pagada').length}/${selected.cuotas.length} pagadas` },
+                  ].map((k, i) => (
+                    <div key={i} style={{ background: S.bg, padding: '10px 16px', borderLeft: `2px solid ${S.gold}`, flex: 1 }}>
+                      <div style={{ fontSize: 8, letterSpacing: 2, color: '#9CA3AF', marginBottom: 3 }}>{k.l}</div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: S.navy, fontFamily: T.serif }}>{k.v}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Tabs */}
+                <div style={{ display: 'flex', gap: 0, marginTop: 16, borderBottom: `1px solid ${S.parch}` }}>
+                  {(['resumen','cuotas','flujo','alertas'] as const).map(tab => (
+                    <button key={tab} onClick={() => setCarteraTab(tab)}
+                      style={{ padding: '8px 20px', fontSize: 11, fontWeight: carteraTab === tab ? 700 : 400, letterSpacing: 1, textTransform: 'uppercase', border: 'none', borderBottom: carteraTab === tab ? `2px solid ${S.gold}` : '2px solid transparent', background: 'transparent', color: carteraTab === tab ? S.navy : '#9CA3AF', cursor: 'pointer', marginBottom: -1 }}>
+                      {tab === 'resumen' ? 'Resumen' : tab === 'cuotas' ? 'Plan de Pagos' : tab === 'flujo' ? 'Flujo de Caja' : 'Alertas IA'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ padding: '24px 32px' }}>
+                {/* TAB: RESUMEN */}
+                {carteraTab === 'resumen' && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                    <div style={{ background: '#fff', padding: 24, border: `1px solid ${S.parch}` }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, color: S.navy, marginBottom: 16, textTransform: 'uppercase' }}>Datos del Negocio</div>
+                      {[
+                        ['Proyecto', selected.proyecto],
+                        ['Unidad', selected.unidad],
+                        ['Modalidad', selected.modalidad.toUpperCase()],
+                        ['Fecha Separación', selected.fecha_separacion],
+                        ['Fecha Escritura', selected.fecha_escritura || '—'],
+                        ['Fecha Entrega', selected.fecha_entrega || '—'],
+                      ].map(([l, v]) => (
+                        <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${S.parch}`, fontSize: 12 }}>
+                          <span style={{ color: '#6B7280' }}>{l}</span>
+                          <span style={{ color: S.navy, fontWeight: 600 }}>{v}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ background: '#fff', padding: 24, border: `1px solid ${S.parch}` }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, color: S.navy, marginBottom: 16, textTransform: 'uppercase' }}>Estado de Pagos</div>
+                      {/* Barra visual */}
+                      <div style={{ marginBottom: 16 }}>
+                        <div style={{ display: 'flex', height: 12, overflow: 'hidden', borderRadius: 2, gap: 2 }}>
+                          {selected.cuotas.map(q => (
+                            <div key={q.id} style={{ flex: q.monto / (selected.precio_total || 1), background: q.estado === 'pagada' ? '#10B981' : q.estado === 'vencida' ? '#EF4444' : q.estado === 'en_proceso' ? S.gold : '#D1D5DB', minWidth: 4 }} title={`${CONCEPTO_LABEL[q.concepto]} — USD ${q.monto.toLocaleString()}`} />
+                          ))}
+                        </div>
+                        <div style={{ display: 'flex', gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
+                          {[['#10B981','Pagada'],['#EF4444','Vencida'],[S.gold,'En proceso'],['#D1D5DB','Pendiente']].map(([c,l]) => (
+                            <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#6B7280' }}>
+                              <div style={{ width: 8, height: 8, background: c, borderRadius: 1 }}/>{l}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      {selected.notas_internas && (
+                        <div style={{ background: S.bg, padding: 12, fontSize: 11, color: '#374151', lineHeight: 1.6, borderLeft: `2px solid ${S.gold}` }}>
+                          {selected.notas_internas}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB: CUOTAS */}
+                {carteraTab === 'cuotas' && (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+                      <button onClick={() => addCuota(selected.id)}
+                        style={{ background: S.navy, color: '#fff', border: 'none', padding: '8px 16px', fontSize: 10, fontWeight: 700, letterSpacing: 1, cursor: 'pointer' }}>
+                        + Agregar Cuota
+                      </button>
+                    </div>
+                    <div style={{ background: '#fff', border: `1px solid ${S.parch}` }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ background: S.navy }}>
+                            {['#','Concepto','Monto (USD)','Vencimiento','Pago Real','Estado','Acciones'].map(h => (
+                              <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: S.gold, textTransform: 'uppercase' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selected.cuotas.map((q, i) => (
+                            <tr key={q.id} style={{ borderBottom: `1px solid ${S.parch}`, background: i % 2 === 0 ? '#fff' : S.bg }}>
+                              <td style={{ padding: '10px 14px', fontSize: 12, color: '#9CA3AF' }}>{q.numero}</td>
+                              <td style={{ padding: '10px 14px', fontSize: 12, color: S.navy }}>
+                                <select value={q.concepto} onChange={e => updateCuota(selected.id, q.id, { concepto: e.target.value as any })}
+                                  style={{ border: `1px solid ${S.parch}`, padding: '3px 6px', fontSize: 11, background: '#fff', color: S.navy }}>
+                                  {Object.entries(CONCEPTO_LABEL).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
+                                </select>
+                              </td>
+                              <td style={{ padding: '10px 14px' }}>
+                                <input type="number" value={q.monto} onChange={e => updateCuota(selected.id, q.id, { monto: Number(e.target.value) })}
+                                  style={{ width: 90, border: `1px solid ${S.parch}`, padding: '3px 6px', fontSize: 11, color: S.navy }} />
+                              </td>
+                              <td style={{ padding: '10px 14px' }}>
+                                <input type="date" value={q.fecha_vencimiento} onChange={e => updateCuota(selected.id, q.id, { fecha_vencimiento: e.target.value })}
+                                  style={{ border: `1px solid ${S.parch}`, padding: '3px 6px', fontSize: 11, color: S.navy }} />
+                              </td>
+                              <td style={{ padding: '10px 14px' }}>
+                                <input type="date" value={q.fecha_pago || ''} onChange={e => updateCuota(selected.id, q.id, { fecha_pago: e.target.value })}
+                                  style={{ border: `1px solid ${S.parch}`, padding: '3px 6px', fontSize: 11, color: S.navy }} />
+                              </td>
+                              <td style={{ padding: '10px 14px' }}>
+                                <select value={q.estado} onChange={e => updateCuota(selected.id, q.id, { estado: e.target.value as any })}
+                                  style={{ border: `1px solid ${S.parch}`, padding: '3px 6px', fontSize: 11, background: '#fff', color: q.estado === 'pagada' ? '#10B981' : q.estado === 'vencida' ? '#EF4444' : q.estado === 'en_proceso' ? '#F59E0B' : S.navy }}>
+                                  <option value="pendiente">Pendiente</option>
+                                  <option value="en_proceso">En proceso</option>
+                                  <option value="pagada">Pagada</option>
+                                  <option value="vencida">Vencida</option>
+                                </select>
+                              </td>
+                              <td style={{ padding: '10px 14px' }}>
+                                <button onClick={() => deleteCuota(selected.id, q.id)}
+                                  style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>×</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr style={{ background: S.bg, borderTop: `2px solid ${S.parch}` }}>
+                            <td colSpan={2} style={{ padding: '10px 14px', fontSize: 11, fontWeight: 700, color: S.navy }}>TOTAL</td>
+                            <td style={{ padding: '10px 14px', fontSize: 13, fontWeight: 700, color: S.navy, fontFamily: T.serif }}>
+                              USD {selected.cuotas.reduce((s,q)=>s+q.monto,0).toLocaleString()}
+                            </td>
+                            <td colSpan={4}/>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB: FLUJO */}
+                {carteraTab === 'flujo' && (
+                  <div style={{ background: '#fff', border: `1px solid ${S.parch}`, padding: 24 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, color: S.navy, marginBottom: 20, textTransform: 'uppercase' }}>Proyección de Flujo de Caja</div>
+                    {(() => {
+                      const meses: Record<string, { esperado: number; recaudado: number }> = {};
+                      selected.cuotas.forEach(q => {
+                        const mes = q.fecha_vencimiento.substring(0, 7);
+                        if (!meses[mes]) meses[mes] = { esperado: 0, recaudado: 0 };
+                        meses[mes].esperado += q.monto;
+                        if (q.estado === 'pagada') meses[mes].recaudado += q.monto;
+                      });
+                      const sorted = Object.entries(meses).sort(([a],[b]) => a.localeCompare(b));
+                      const maxVal = Math.max(...sorted.map(([,v]) => v.esperado), 1);
+                      return (
+                        <div>
+                          {sorted.map(([mes, vals]) => (
+                            <div key={mes} style={{ marginBottom: 16 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 11 }}>
+                                <span style={{ color: S.navy, fontWeight: 600 }}>{new Date(mes+'-01').toLocaleDateString('es-CO',{month:'long',year:'numeric'})}</span>
+                                <span style={{ color: '#6B7280' }}>USD {vals.esperado.toLocaleString()} esperado · <span style={{ color: '#10B981', fontWeight: 700 }}>USD {vals.recaudado.toLocaleString()} recaudado</span></span>
+                              </div>
+                              <div style={{ height: 8, background: S.parch, position: 'relative' }}>
+                                <div style={{ width: `${vals.esperado/maxVal*100}%`, height: '100%', background: '#D1D5DB', position: 'absolute' }}/>
+                                <div style={{ width: `${vals.recaudado/maxVal*100}%`, height: '100%', background: '#10B981', position: 'absolute' }}/>
+                              </div>
+                            </div>
+                          ))}
+                          {sorted.length === 0 && <div style={{ color: '#9CA3AF', fontSize: 13, textAlign: 'center' }}>Agrega cuotas con fecha de vencimiento para ver el flujo.</div>}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                {/* TAB: ALERTAS IA */}
+                {carteraTab === 'alertas' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    {/* Semáforo */}
+                    <div style={{ background: '#fff', border: `1px solid ${S.parch}`, padding: 24 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, color: S.navy, marginBottom: 16, textTransform: 'uppercase' }}>Semáforo de Riesgo</div>
+                      {(() => {
+                        const riesgo = calcRiesgo(selected);
+                        const vencidas = selected.cuotas.filter(q => q.estado === 'vencida');
+                        const proximas = selected.cuotas.filter(q => {
+                          if (q.estado !== 'pendiente') return false;
+                          const diff = (new Date(q.fecha_vencimiento).getTime() - Date.now()) / 86400000;
+                          return diff <= 15 && diff >= 0;
+                        });
+                        return (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+                            <div style={{ width: 64, height: 64, borderRadius: '50%', background: RIESGO_COLOR[riesgo], display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <span style={{ fontSize: 28 }}>{riesgo === 'verde' ? '✓' : riesgo === 'amarillo' ? '!' : '⚠'}</span>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 18, fontWeight: 700, color: RIESGO_COLOR[riesgo], fontFamily: T.serif }}>{RIESGO_LABEL[riesgo]}</div>
+                              {vencidas.length > 0 && <div style={{ fontSize: 12, color: '#EF4444', marginTop: 4 }}>{vencidas.length} cuota(s) vencida(s) · USD {vencidas.reduce((s,q)=>s+q.monto,0).toLocaleString()}</div>}
+                              {proximas.length > 0 && <div style={{ fontSize: 12, color: '#F59E0B', marginTop: 4 }}>{proximas.length} cuota(s) próxima(s) a vencer</div>}
+                              {riesgo === 'verde' && <div style={{ fontSize: 12, color: '#10B981', marginTop: 4 }}>Sin pagos vencidos ni próximos a vencer en 10 días.</div>}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Generador de mensaje IA */}
+                    <div style={{ background: '#fff', border: `1px solid ${S.parch}`, padding: 24 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, color: S.navy, marginBottom: 4, textTransform: 'uppercase' }}>Mensaje Personalizado con Sara</div>
+                      <div style={{ fontSize: 11, color: '#6B7280', marginBottom: 16 }}>
+                        Sara redacta el recordatorio adaptado al arquetipo del cliente{selected.arquetipo ? ` (${selected.arquetipo.toUpperCase()})` : ''}.
+                      </div>
+                      <button onClick={() => handleGenerarMensaje(selected)} disabled={carteraMsgLoading}
+                        style={{ background: S.navy, color: '#fff', border: 'none', padding: '10px 20px', fontSize: 11, fontWeight: 700, letterSpacing: 1, cursor: carteraMsgLoading ? 'default' : 'pointer', opacity: carteraMsgLoading ? 0.7 : 1 }}>
+                        {carteraMsgLoading ? 'Generando...' : '✦ Generar mensaje con Sara'}
+                      </button>
+                      {carteraMsgResult && (
+                        <div style={{ marginTop: 16, background: S.bg, padding: 16, borderLeft: `3px solid ${S.gold}`, fontSize: 12, color: '#374151', lineHeight: 1.8, whiteSpace: 'pre-wrap', fontFamily: T.serif }}>
+                          {carteraMsgResult}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Modal Nuevo/Editar Cliente */}
+        {carteraModalOpen && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ background: '#fff', width: 560, maxHeight: '85vh', overflow: 'auto', padding: 32 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: S.navy, fontFamily: T.serif }}>{carteraForm.id ? 'Editar Cliente' : 'Nuevo Cliente en Cartera'}</div>
+                <button onClick={() => setCarteraModalOpen(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#9CA3AF' }}>×</button>
+              </div>
+              {[
+                { label: 'Nombre del cliente', key: 'prospectName', type: 'text' },
+                { label: 'Proyecto', key: 'proyecto', type: 'text' },
+                { label: 'Unidad / Apartamento', key: 'unidad', type: 'text' },
+                { label: 'Precio total (USD)', key: 'precio_total', type: 'number' },
+                { label: 'Fecha de separación', key: 'fecha_separacion', type: 'date' },
+                { label: 'Fecha de escritura', key: 'fecha_escritura', type: 'date' },
+                { label: 'Fecha de entrega', key: 'fecha_entrega', type: 'date' },
+              ].map(({ label, key, type }) => (
+                <div key={key} style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, color: '#6B7280', marginBottom: 4, textTransform: 'uppercase' }}>{label}</div>
+                  <input type={type} value={(carteraForm as any)[key] || ''}
+                    onChange={e => setCarteraForm(f => ({ ...f, [key]: type === 'number' ? Number(e.target.value) : e.target.value }))}
+                    style={{ width: '100%', boxSizing: 'border-box' as const, border: `1px solid ${S.parch}`, padding: '8px 12px', fontSize: 13, color: S.navy, outline: 'none' }} />
+                </div>
+              ))}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, color: '#6B7280', marginBottom: 4, textTransform: 'uppercase' }}>Modalidad</div>
+                <select value={carteraForm.modalidad || 'contado'} onChange={e => setCarteraForm(f => ({ ...f, modalidad: e.target.value as any }))}
+                  style={{ width: '100%', border: `1px solid ${S.parch}`, padding: '8px 12px', fontSize: 13, color: S.navy, background: '#fff' }}>
+                  <option value="contado">Contado</option>
+                  <option value="credito">Crédito Hipotecario</option>
+                  <option value="subrogacion">Subrogación</option>
+                  <option value="mixto">Mixto</option>
+                </select>
+              </div>
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, color: '#6B7280', marginBottom: 4, textTransform: 'uppercase' }}>Arquetipo (Sofía)</div>
+                <select value={carteraForm.arquetipo || ''} onChange={e => setCarteraForm(f => ({ ...f, arquetipo: e.target.value }))}
+                  style={{ width: '100%', border: `1px solid ${S.parch}`, padding: '8px 12px', fontSize: 13, color: S.navy, background: '#fff' }}>
+                  <option value="">Sin clasificar</option>
+                  <option value="estatus">Estatus</option>
+                  <option value="legado">Legado</option>
+                  <option value="racional">Racional</option>
+                  <option value="aspiracional">Aspiracional</option>
+                </select>
+              </div>
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, color: '#6B7280', marginBottom: 4, textTransform: 'uppercase' }}>Notas internas</div>
+                <textarea value={carteraForm.notas_internas || ''} onChange={e => setCarteraForm(f => ({ ...f, notas_internas: e.target.value }))}
+                  rows={3} style={{ width: '100%', boxSizing: 'border-box' as const, border: `1px solid ${S.parch}`, padding: '8px 12px', fontSize: 13, color: S.navy, resize: 'vertical' as const, fontFamily: 'inherit' }} />
+              </div>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button onClick={() => setCarteraModalOpen(false)}
+                  style={{ background: 'transparent', border: `1px solid ${S.parch}`, padding: '9px 20px', fontSize: 11, cursor: 'pointer', color: '#6B7280' }}>Cancelar</button>
+                <button onClick={() => {
+                  const id = carteraForm.id || Date.now().toString();
+                  const prospect = prospects.find(p => `${p.nombre} ${p.apellido}`.toLowerCase().includes((carteraForm.prospectName||'').toLowerCase()));
+                  const nueva: CarteraCliente = {
+                    id, prospectId: prospect?.id || 0,
+                    prospectName: carteraForm.prospectName || '',
+                    proyecto: carteraForm.proyecto || '',
+                    unidad: carteraForm.unidad || '',
+                    precio_total: carteraForm.precio_total || 0,
+                    moneda: 'USD',
+                    fecha_separacion: carteraForm.fecha_separacion || new Date().toISOString().split('T')[0],
+                    fecha_escritura: carteraForm.fecha_escritura,
+                    fecha_entrega: carteraForm.fecha_entrega,
+                    modalidad: carteraForm.modalidad || 'contado',
+                    cuotas: carteraForm.cuotas || [],
+                    notas_internas: carteraForm.notas_internas,
+                    arquetipo: carteraForm.arquetipo,
+                    riesgo: 'verde',
+                  };
+                  const updated = carteraForm.id ? carteras.map(c => c.id === id ? nueva : c) : [...carteras, nueva];
+                  saveCarteras(updated);
+                  if (!carteraForm.id) setCarteraSelected(id);
+                  setCarteraModalOpen(false);
+                }}
+                  style={{ background: S.navy, color: '#fff', border: 'none', padding: '9px 24px', fontSize: 11, fontWeight: 700, letterSpacing: 1, cursor: 'pointer' }}>
+                  {carteraForm.id ? 'Guardar cambios' : 'Crear cliente'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+  // ────────────────────────────────────────────────────────────────────────────
+
   const renderModule = () => {
     if (currentUserRole === 'presidencia') {
       if (activeModule === 'kpis' || activeModule === 'dashboard') return renderPresidencia();
@@ -17107,6 +17878,7 @@ Cargo: ________________________         C.C.: _______________________`,
       case 'prospectos': return renderProspectos();
       case 'eventos': return renderEventos();
       case 'agentes': return renderAgentes();
+      case 'cartera': return renderCartera();
       case 'legal': return renderLegal();
       case 'integraciones': return renderIntegraciones();
       case 'faqs': return renderFAQs();
