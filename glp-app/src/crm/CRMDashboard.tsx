@@ -1504,24 +1504,34 @@ export default function CRMDashboard() {
             proyectos_interes: Array.isArray(p.proyectos_interes) ? p.proyectos_interes : (typeof p.proyectos_interes === 'string' ? JSON.parse(p.proyectos_interes || '[]') : []),
             historial: Array.isArray(p.historial) ? p.historial : (typeof p.historial === 'string' ? JSON.parse(p.historial || '[]') : []),
           }));
-          setProspects(loaded);
-          try { localStorage.setItem('glp_crm_prospects', JSON.stringify(loaded)); } catch {}
+          // Si el backend tiene pocos registros, complementar con los prospectos de demo generados
+          let combined = loaded;
+          if (loaded.length < 50) {
+            const backendIds = new Set(loaded.map((p: any) => String(p.id)));
+            const generados = applyMigration(INITIAL_PROSPECTS).filter(p => !backendIds.has(String(p.id)));
+            combined = [...loaded, ...generados];
+          }
+          setProspects(combined);
+          try { localStorage.setItem('glp_crm_prospects', JSON.stringify(combined)); } catch {}
         }
       })
       .catch(e => {
         console.error('Error fetching prospects:', e);
-        // Backend offline: intentar restaurar desde localStorage, luego usar datos demo
+        // Backend offline: restaurar desde localStorage si tiene datos completos (≥50), sino regenerar
         try {
           const saved = localStorage.getItem('glp_crm_prospects');
           if (saved) {
             const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed) && parsed.length > 0) {
+            if (Array.isArray(parsed) && parsed.length >= 50) {
               setProspects(applyMigration(parsed));
               return;
             }
           }
         } catch {}
-        setProspects(applyMigration(INITIAL_PROSPECTS));
+        // Seed completo: 12 héroes + 96 generados = 108 prospectos
+        const full = applyMigration(INITIAL_PROSPECTS);
+        setProspects(full);
+        try { localStorage.setItem('glp_crm_prospects', JSON.stringify(full)); } catch {}
       });
   }, []);
 
