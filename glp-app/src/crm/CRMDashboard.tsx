@@ -20444,7 +20444,7 @@ No uses emojis. Firma como "Sara · GLP Wealth Management".`;
           </div>
         </div>
         {/* CONTENT */}
-        <div id="crm-content" style={{ padding: (activeModule === 'reportes' || activeModule === 'casos' || activeModule === 'campanas' || activeModule === 'gerencial' || activeModule === 'integraciones' || activeModule === 'legal') ? 0 : '24px 28px', overflowY: 'auto' as const, flex: 1, display: 'flex', flexDirection: 'column' as const, marginRight: (activeModule !== 'configuracion' && activeModule !== 'reportes' && activeModule !== 'casos' && activeModule !== 'campanas' && activeModule !== 'gerencial' && activeModule !== 'integraciones' && activeModule !== 'legal') ? (carteraRightOpen ? 280 : 32) : 0, transition: 'margin-right 0.2s' }}>
+        <div id="crm-content" style={{ padding: (activeModule === 'reportes' || activeModule === 'casos' || activeModule === 'campanas' || activeModule === 'gerencial' || activeModule === 'integraciones' || activeModule === 'legal') ? 0 : '24px 28px', overflowY: 'auto' as const, flex: 1, display: 'flex', flexDirection: 'column' as const, marginLeft: 210, marginRight: (activeModule !== 'configuracion' && activeModule !== 'reportes' && activeModule !== 'casos' && activeModule !== 'campanas' && activeModule !== 'gerencial' && activeModule !== 'integraciones' && activeModule !== 'legal') ? (carteraRightOpen ? 280 : 32) : 0, transition: 'margin-right 0.2s' }}>
           {renderModule()}
         </div>
       </div>
