@@ -17437,7 +17437,24 @@ No uses emojis. Firma como "Sara · GLP Wealth Management".`;
         const data = await res.json();
         setCarteraMsgResult(data.text || data.choices?.[0]?.message?.content || 'Sin respuesta');
       } catch {
-        setCarteraMsgResult('El servidor no está disponible. Inicia el backend para generar mensajes con IA.');
+        // Plantillas por arquetipo cuando el backend no está disponible
+        const arq = c.arquetipo || 'racional';
+        const vencidas = c.cuotas.filter(q => q.estado === 'vencida');
+        const proximas = c.cuotas.filter(q => {
+          if (q.estado !== 'pendiente') return false;
+          const diff = (new Date(q.fecha_vencimiento).getTime() - Date.now()) / 86400000;
+          return diff <= 15 && diff >= 0;
+        });
+        const montoStr = vencidas.length > 0
+          ? `USD ${vencidas.reduce((s,q)=>s+q.monto,0).toLocaleString()} vencido(s)`
+          : proximas.length > 0 ? `USD ${proximas[0].monto.toLocaleString()} con vencimiento ${proximas[0].fecha_vencimiento}` : 'pendiente';
+        const plantillas: Record<string, string> = {
+          estatus: `Estimado/a ${c.prospectName},\n\nDesde GLP Wealth Management queremos recordarle discretamente la gestión de su inversión en ${c.proyecto}.\n\nExiste un saldo de ${montoStr} pendiente de regularización. Quedamos a su disposición para coordinar los detalles con la privacidad que merece.\n\nSara · GLP Wealth Management`,
+          legado: `Estimado/a ${c.prospectName},\n\nSabemos que su decisión de invertir en ${c.proyecto} va más allá de lo financiero — es un legado para su familia.\n\nLe recordamos un saldo de ${montoStr} para mantener ese camino encaminado. Estamos aquí para acompañarle.\n\nSara · GLP Wealth Management`,
+          aspiracional: `Hola ${c.prospectName}!\n\nEstás cada vez más cerca de hacer realidad tu inversión en ${c.proyecto}. Solo quería recordarte que hay ${montoStr} pendiente para seguir avanzando.\n\n¡Tú puedes! Aquí estoy para cualquier consulta.\n\nSara · GLP Wealth Management`,
+          racional: `Estimado/a ${c.prospectName},\n\nLe informamos que su cuenta en ${c.proyecto} registra ${montoStr}.\n\nPara mantener el plan de pagos al día y evitar intereses de mora, agradecemos gestionar este saldo a la brevedad. Adjuntamos los datos de pago a solicitud.\n\nSara · GLP Wealth Management`,
+        };
+        setCarteraMsgResult(plantillas[arq] || plantillas.racional);
       }
       setCarteraMsgLoading(false);
     };
@@ -18446,6 +18463,120 @@ No uses emojis. Firma como "Sara · GLP Wealth Management".`;
     );
 
     if (activeModule === 'configuracion') return null;
+
+    // ── CARTERA: resumen de alertas y compromisos ────────────
+    if (activeModule === 'cartera') {
+      const hoy = new Date();
+      const enMoraList = carteras.filter(c => {
+        return c.cuotas.some(q => q.estado === 'vencida');
+      });
+      const proxVencer = carteras.filter(c => {
+        return c.cuotas.some(q => {
+          if (q.estado !== 'pendiente') return false;
+          const diff = (new Date(q.fecha_vencimiento).getTime() - hoy.getTime()) / 86400000;
+          return diff <= 10 && diff >= 0;
+        });
+      });
+      const compromisos = carteras.flatMap(c => c.cuotas.filter(q => q.compromiso).map(q => ({ c, q })))
+        .sort((a, b) => (a.q.compromiso!.fecha > b.q.compromiso!.fecha ? 1 : -1))
+        .slice(0, 5);
+      const totalCartera = carteras.reduce((s, c) => s + c.precio_total, 0);
+      const totalRecaudo = carteras.reduce((s, c) => s + c.cuotas.filter(q => q.estado === 'pagada').reduce((s2, q) => s2 + q.monto, 0), 0);
+      const pctAvance = totalCartera > 0 ? Math.round(totalRecaudo / totalCartera * 100) : 0;
+
+      return (
+        <>
+          {panelHeader('Cartera', 'Alertas & Compromisos')}
+          <div style={{ flex: 1, overflowY: 'auto' as const, padding: '12px 14px', display: 'flex', flexDirection: 'column' as const, gap: 12 }}>
+            {/* Progreso global */}
+            <div style={{ background: '#fff', border: '1px solid #E5E0D8', borderRadius: 4, padding: '10px 12px' }}>
+              <div style={{ fontSize: 8, color: GOLD, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, marginBottom: 8 }}>Avance Global</div>
+              <div style={{ height: 6, background: '#F0EDE8', borderRadius: 3, overflow: 'hidden', marginBottom: 6 }}>
+                <div style={{ width: `${pctAvance}%`, height: '100%', background: pctAvance >= 70 ? '#10B981' : GOLD }} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10 }}>
+                <span style={{ color: T.textSec }}>USD {(totalRecaudo/1000).toFixed(0)}K recaudado</span>
+                <span style={{ fontWeight: 700, color: T.text }}>{pctAvance}%</span>
+              </div>
+            </div>
+
+            {/* En mora */}
+            {enMoraList.length > 0 && (
+              <div>
+                {panelSectionLabel(`⚠ ${enMoraList.length} cliente${enMoraList.length > 1 ? 's' : ''} en mora`)}
+                <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 5 }}>
+                  {enMoraList.slice(0, 4).map(c => {
+                    const vencidas = c.cuotas.filter(q => q.estado === 'vencida');
+                    return (
+                      <div key={c.id} onClick={() => { setCarteraSelected(c.id); setCarteraView('clientes'); setCarteraTab('cuotas'); }}
+                        style={{ padding: '7px 9px', background: '#FFF5F5', border: '1px solid #FCA5A5', borderLeft: '3px solid #EF4444', borderRadius: 3, cursor: 'pointer' }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#991B1B' }}>{c.prospectName}</div>
+                        <div style={{ fontSize: 9, color: '#6B7280', marginTop: 1 }}>{vencidas.length} cuota{vencidas.length > 1 ? 's' : ''} · USD {vencidas.reduce((s, q) => s + q.monto, 0).toLocaleString()}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Próximos a vencer */}
+            {proxVencer.length > 0 && (
+              <div>
+                {panelSectionLabel(`🕐 ${proxVencer.length} por vencer (≤10 días)`)}
+                <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 5 }}>
+                  {proxVencer.slice(0, 4).map(c => {
+                    const prox = c.cuotas.find(q => {
+                      if (q.estado !== 'pendiente') return false;
+                      const diff = (new Date(q.fecha_vencimiento).getTime() - hoy.getTime()) / 86400000;
+                      return diff <= 10 && diff >= 0;
+                    });
+                    return (
+                      <div key={c.id} onClick={() => { setCarteraSelected(c.id); setCarteraView('clientes'); setCarteraTab('cuotas'); }}
+                        style={{ padding: '7px 9px', background: '#FFFBEB', border: '1px solid #FCD34D', borderLeft: '3px solid #F59E0B', borderRadius: 3, cursor: 'pointer' }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#92400E' }}>{c.prospectName}</div>
+                        <div style={{ fontSize: 9, color: '#6B7280', marginTop: 1 }}>Vence {prox?.fecha_vencimiento} · USD {prox?.monto.toLocaleString()}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Compromisos */}
+            {compromisos.length > 0 ? (
+              <div>
+                {panelSectionLabel('📅 Próximos compromisos')}
+                <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 5 }}>
+                  {compromisos.map(({ c, q }) => (
+                    <div key={q.id} onClick={() => { setCarteraSelected(c.id); setCarteraView('clientes'); setCarteraTab('cuotas'); }}
+                      style={{ padding: '7px 9px', background: '#fff', border: '1px solid #E5E0D8', borderLeft: '3px solid ' + GOLD, borderRadius: 3, cursor: 'pointer' }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: T.text }}>{c.prospectName}</div>
+                      <div style={{ fontSize: 9, color: '#6B7280', marginTop: 1 }}>{q.compromiso!.fecha} · USD {q.compromiso!.monto.toLocaleString()}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              enMoraList.length === 0 && proxVencer.length === 0 && (
+                <div style={{ textAlign: 'center' as const, padding: '20px 0', color: '#10B981' }}>
+                  <div style={{ fontSize: 24, marginBottom: 8 }}>✓</div>
+                  <div style={{ fontSize: 11, fontWeight: 600 }}>Cartera al día</div>
+                  <div style={{ fontSize: 10, color: T.textSec, marginTop: 4 }}>Sin mora ni alertas activas</div>
+                </div>
+              )
+            )}
+
+            {/* Acceso rápido */}
+            <div style={{ marginTop: 'auto' as const, paddingTop: 8, borderTop: '1px solid #E5E0D8' }}>
+              <button onClick={() => setCarteraView('reportes')}
+                style={{ width: '100%', padding: '8px', background: '#001A37', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em' }}>
+                Ver Reportes →
+              </button>
+            </div>
+          </div>
+        </>
+      );
+    }
 
     // ── FAQs: analytics de consultas ─────────────────────────
     if (activeModule === 'faqs') {
