@@ -17590,7 +17590,163 @@ No uses emojis. Firma como "Sara · GLP Wealth Management".`;
                     ✕ Limpiar filtros
                   </button>
                 )}
-                <span style={{ marginLeft: 'auto', fontSize: 11, color: '#6B7280' }}>{filtradas.length} cliente{filtradas.length !== 1 ? 's' : ''}</span>
+                <span style={{ fontSize: 11, color: '#6B7280' }}>{filtradas.length} cliente{filtradas.length !== 1 ? 's' : ''}</span>
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                  {/* Excel */}
+                  <button onClick={() => {
+                    import('xlsx').then(XLSX => {
+                      const fecha = new Date().toLocaleDateString('es-CO');
+                      // Hoja 1: resumen por cliente
+                      const wsClientes = XLSX.utils.json_to_sheet(filtradas.map(c => ({
+                        'Cliente': c.prospectName,
+                        'Proyecto': c.proyecto,
+                        'Unidad': c.unidad,
+                        'Modalidad': c.modalidad,
+                        'Precio Total USD': c.precio_total,
+                        'Recaudado USD': totalRecaudado(c),
+                        'Pendiente USD': totalPendiente(c),
+                        '% Avance': c.precio_total > 0 ? Math.round(totalRecaudado(c)/c.precio_total*100) : 0,
+                        'Estado': calcRiesgo(c) === 'rojo' ? 'En mora' : calcRiesgo(c) === 'amarillo' ? 'Atención' : 'Al día',
+                        'Cuotas pagadas': c.cuotas.filter(q=>q.estado==='pagada').length,
+                        'Cuotas totales': c.cuotas.length,
+                        'Fecha separación': c.fecha_separacion,
+                        'Arquetipo': c.arquetipo || '—',
+                      })));
+                      // Hoja 2: cuotas detalladas
+                      const cuotasData = filtradas.flatMap(c => c.cuotas.map(q => ({
+                        'Cliente': c.prospectName,
+                        'Proyecto': c.proyecto,
+                        '# Cuota': q.numero,
+                        'Concepto': q.concepto,
+                        'Monto USD': q.monto,
+                        'Vencimiento': q.fecha_vencimiento,
+                        'Estado': q.estado,
+                        'Fecha pago': q.fecha_pago || '',
+                        'Monto pagado USD': q.monto_pagado || '',
+                        'Medio pago': q.medio_pago || '',
+                        'Referencia': q.comprobante_ref || '',
+                        'Compromiso fecha': q.compromiso?.fecha || '',
+                        'Compromiso monto USD': q.compromiso?.monto || '',
+                      })));
+                      const wsCuotas = XLSX.utils.json_to_sheet(cuotasData);
+                      // Hoja 3: por proyecto
+                      const proyData = Object.entries(porProyecto).map(([proy, d]) => ({
+                        'Proyecto': proy,
+                        'Clientes': d.clientes,
+                        'Total USD': d.total,
+                        'Recaudado USD': d.recaudado,
+                        '% Avance': d.total > 0 ? Math.round(d.recaudado/d.total*100) : 0,
+                        'En mora': d.mora,
+                      }));
+                      const wsProyecto = XLSX.utils.json_to_sheet(proyData);
+                      const wb = XLSX.utils.book_new();
+                      XLSX.utils.book_append_sheet(wb, wsClientes, 'Clientes');
+                      XLSX.utils.book_append_sheet(wb, wsCuotas, 'Cuotas Detalle');
+                      XLSX.utils.book_append_sheet(wb, wsProyecto, 'Por Proyecto');
+                      XLSX.writeFile(wb, `GLP_Cartera_${fecha.replace(/\//g,'-')}.xlsx`);
+                    });
+                  }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#16A34A', color: '#fff', border: 'none', padding: '6px 12px', fontSize: 10, fontWeight: 700, cursor: 'pointer', letterSpacing: 0.8 }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                    Excel
+                  </button>
+                  {/* PDF */}
+                  <button onClick={() => {
+                    const fecha = new Date().toLocaleDateString('es-CO');
+                    const filtroLabel = [
+                      carteraRptFiltro.proyecto || 'Todos los proyectos',
+                      carteraRptFiltro.riesgo ? (carteraRptFiltro.riesgo === 'verde' ? 'Al día' : carteraRptFiltro.riesgo === 'amarillo' ? 'Atención' : 'En mora') : 'Todos los estados',
+                      carteraRptFiltro.broker || 'Todos los brokers',
+                    ].join(' · ');
+                    const rows = filtradas.map(c => {
+                      const recaudado = totalRecaudado(c);
+                      const pct = c.precio_total > 0 ? Math.round(recaudado/c.precio_total*100) : 0;
+                      const riesgo = calcRiesgo(c);
+                      const badge = riesgo === 'rojo' ? '#EF4444' : riesgo === 'amarillo' ? '#F59E0B' : '#10B981';
+                      const label = riesgo === 'rojo' ? 'En mora' : riesgo === 'amarillo' ? 'Atención' : 'Al día';
+                      return `<tr><td>${c.prospectName}</td><td>${c.proyecto}</td><td>${c.unidad}</td><td style="text-align:right">$${c.precio_total.toLocaleString()}</td><td style="text-align:right;color:#10B981;font-weight:700">$${recaudado.toLocaleString()}</td><td style="text-align:right">$${totalPendiente(c).toLocaleString()}</td><td style="text-align:center"><span style="background:${badge}20;color:${badge};padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700">${label}</span></td><td style="text-align:center">${pct}%</td></tr>`;
+                    }).join('');
+                    const proyRows = Object.entries(porProyecto).map(([proy, d]) => {
+                      const pct = d.total > 0 ? Math.round(d.recaudado/d.total*100) : 0;
+                      return `<tr><td>${proy}</td><td style="text-align:center">${d.clientes}</td><td style="text-align:right">$${d.total.toLocaleString()}</td><td style="text-align:right;color:#10B981;font-weight:700">$${d.recaudado.toLocaleString()}</td><td style="text-align:center;font-weight:700">${pct}%</td><td style="text-align:center;color:${d.mora>0?'#EF4444':'#10B981'};font-weight:700">${d.mora}</td></tr>`;
+                    }).join('');
+                    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>GLP Cartera — Reporte ${fecha}</title><style>
+                      *{margin:0;padding:0;box-sizing:border-box}body{font-family:'Georgia',serif;color:#001A37;background:#fff;padding:32px}
+                      .header{border-bottom:3px solid #B89047;padding-bottom:16px;margin-bottom:24px}
+                      .logo{font-size:22px;font-weight:700;letter-spacing:3px;color:#001A37}
+                      .subtitle{font-size:9px;letter-spacing:3px;color:#B89047;text-transform:uppercase;margin-top:3px}
+                      h2{font-size:14px;font-weight:400;color:#001A37;letter-spacing:1px;margin:24px 0 12px;text-transform:uppercase;border-left:3px solid #B89047;padding-left:10px}
+                      .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
+                      .kpi{border:1px solid #E5E0D8;padding:12px 14px;border-left-width:3px}
+                      .kpi-label{font-size:8px;letter-spacing:2px;color:#9CA3AF;text-transform:uppercase;margin-bottom:4px;font-family:system-ui,sans-serif}
+                      .kpi-val{font-size:20px;font-weight:300}
+                      table{width:100%;border-collapse:collapse;font-family:system-ui,sans-serif;font-size:11px;margin-bottom:24px}
+                      th{background:#001A37;color:#B89047;padding:8px 10px;text-align:left;font-size:8px;letter-spacing:1.5px;text-transform:uppercase;font-weight:700}
+                      td{padding:8px 10px;border-bottom:1px solid #F0EDE8;color:#374151}
+                      tr:nth-child(even) td{background:#F9F7F3}
+                      .footer{margin-top:32px;padding-top:12px;border-top:1px solid #E5E0D8;font-size:9px;color:#9CA3AF;font-family:system-ui,sans-serif;display:flex;justify-content:space-between}
+                      @media print{body{padding:16px}.no-print{display:none}}
+                    </style></head><body>
+                      <div class="header"><div class="logo">GLP</div><div class="subtitle">Wealth Management · Reporte de Cartera</div><div style="font-size:11px;color:#6B7280;margin-top:8px;font-family:system-ui,sans-serif">Fecha: ${fecha} · Filtro: ${filtroLabel}</div></div>
+                      <div class="kpis">
+                        <div class="kpi" style="border-left-color:#B89047"><div class="kpi-label">Cartera filtrada</div><div class="kpi-val">USD ${(rptTotal/1000).toFixed(0)}K</div></div>
+                        <div class="kpi" style="border-left-color:#10B981"><div class="kpi-label">Recaudado</div><div class="kpi-val">USD ${(rptRecaudado/1000).toFixed(0)}K</div></div>
+                        <div class="kpi" style="border-left-color:#F59E0B"><div class="kpi-label">Por recaudar</div><div class="kpi-val">USD ${(rptPendiente/1000).toFixed(0)}K</div></div>
+                        <div class="kpi" style="border-left-color:#EF4444"><div class="kpi-label">En mora</div><div class="kpi-val">${rptMora.length} clientes</div></div>
+                      </div>
+                      <h2>Clientes (${filtradas.length})</h2>
+                      <table><thead><tr><th>Cliente</th><th>Proyecto</th><th>Unidad</th><th>Total USD</th><th>Recaudado</th><th>Pendiente</th><th>Estado</th><th>%</th></tr></thead><tbody>${rows}</tbody></table>
+                      <h2>Recaudo por Proyecto</h2>
+                      <table><thead><tr><th>Proyecto</th><th style="text-align:center">Clientes</th><th>Total USD</th><th>Recaudado</th><th style="text-align:center">%</th><th style="text-align:center">Mora</th></tr></thead><tbody>${proyRows}</tbody></table>
+                      <div class="footer"><span>GLP Wealth Management · Sistema Operativo Inmobiliario</span><span>Generado el ${new Date().toLocaleString('es-CO')}</span></div>
+                    </body></html>`;
+                    const win = window.open('', '_blank', 'width=900,height=700');
+                    if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 500); }
+                  }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#DC2626', color: '#fff', border: 'none', padding: '6px 12px', fontSize: 10, fontWeight: 700, cursor: 'pointer', letterSpacing: 0.8 }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/><polyline points="9 11 9 9"/></svg>
+                    PDF
+                  </button>
+                  {/* Imprimir */}
+                  <button onClick={() => {
+                    const fecha = new Date().toLocaleDateString('es-CO');
+                    const filtroLabel = [
+                      carteraRptFiltro.proyecto || 'Todos los proyectos',
+                      carteraRptFiltro.riesgo ? (carteraRptFiltro.riesgo === 'verde' ? 'Al día' : carteraRptFiltro.riesgo === 'amarillo' ? 'Atención' : 'En mora') : '',
+                      carteraRptFiltro.broker || '',
+                    ].filter(Boolean).join(' · ');
+                    const rows = filtradas.map(c => {
+                      const recaudado = totalRecaudado(c);
+                      const pct = c.precio_total > 0 ? Math.round(recaudado/c.precio_total*100) : 0;
+                      const riesgo = calcRiesgo(c);
+                      const label = riesgo === 'rojo' ? 'En mora' : riesgo === 'amarillo' ? 'Atención' : 'Al día';
+                      return `<tr><td>${c.prospectName}</td><td>${c.proyecto}</td><td style="text-align:right">$${c.precio_total.toLocaleString()}</td><td style="text-align:right;font-weight:bold">$${recaudado.toLocaleString()}</td><td style="text-align:center">${pct}%</td><td style="text-align:center">${label}</td></tr>`;
+                    }).join('');
+                    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>GLP Cartera</title><style>
+                      *{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#000;padding:20px}
+                      h1{font-size:16px;margin-bottom:4px}p{font-size:10px;color:#666;margin-bottom:16px}
+                      table{width:100%;border-collapse:collapse}th{background:#001A37;color:#fff;padding:6px 8px;font-size:9px;text-align:left}
+                      td{padding:6px 8px;border-bottom:1px solid #ddd}tr:nth-child(even)td{background:#f9f9f9}
+                      .kpis{display:flex;gap:16px;margin-bottom:20px}.kpi{border:1px solid #ddd;padding:10px;flex:1;text-align:center}.kpi-l{font-size:8px;color:#999;text-transform:uppercase;letter-spacing:1px}.kpi-v{font-size:18px;font-weight:bold}
+                    </style></head><body>
+                      <h1>GLP Wealth Management — Reporte de Cartera</h1>
+                      <p>${fecha}${filtroLabel ? ' · ' + filtroLabel : ''} · ${filtradas.length} cliente${filtradas.length !== 1 ? 's' : ''}</p>
+                      <div class="kpis">
+                        <div class="kpi"><div class="kpi-l">Total</div><div class="kpi-v">$${(rptTotal/1000).toFixed(0)}K</div></div>
+                        <div class="kpi"><div class="kpi-l">Recaudado</div><div class="kpi-v">$${(rptRecaudado/1000).toFixed(0)}K</div></div>
+                        <div class="kpi"><div class="kpi-l">Pendiente</div><div class="kpi-v">$${(rptPendiente/1000).toFixed(0)}K</div></div>
+                        <div class="kpi"><div class="kpi-l">En mora</div><div class="kpi-v">${rptMora.length}</div></div>
+                      </div>
+                      <table><thead><tr><th>Cliente</th><th>Proyecto</th><th>Total USD</th><th>Recaudado</th><th>%</th><th>Estado</th></tr></thead><tbody>${rows}</tbody></table>
+                    </body></html>`;
+                    const win = window.open('', '_blank', 'width=800,height=600');
+                    if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 400); }
+                  }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, background: S.navy, color: '#fff', border: 'none', padding: '6px 12px', fontSize: 10, fontWeight: 700, cursor: 'pointer', letterSpacing: 0.8 }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                    Imprimir
+                  </button>
+                </div>
               </div>
 
               {/* KPIs resumen */}
