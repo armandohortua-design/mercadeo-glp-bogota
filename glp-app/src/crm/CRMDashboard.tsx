@@ -16371,6 +16371,50 @@ Cargo: ________________________         C.C.: _______________________`,
   };
   const updateLegalDoc = (prospectId: number, docKey: string, status: LegalDocStatus) => saveLegalDoc(prospectId, docKey, { status });
 
+  // ── INTEGRACIÓN CARTERA ↔ LEGAL ──────────────────────────────────────────
+  // Dispara trámites legales automáticamente al alcanzar umbrales de pago.
+  // También sincroniza fecha_escritura y fecha_entrega entre módulos.
+  const sincronizarCarteraConLegal = (updated: CarteraCliente[]) => {
+    updated.forEach(c => {
+      const recaudado = c.cuotas.filter(q => q.estado === 'pagada').reduce((s, q) => s + q.monto, 0);
+      const pct = c.precio_total > 0 ? Math.round(recaudado / c.precio_total * 100) : 0;
+      const pid = c.prospectId;
+      const existing = legalDocs[pid] || {};
+      const today = new Date().toISOString().split('T')[0];
+
+      // Umbral 10%: iniciar reserva → carta_reserva en revisión
+      if (pct >= 10 && !existing.carta_reserva) {
+        saveLegalDoc(pid, 'carta_reserva', { status: 'en_revision',
+          history: [{ date: today, action: `Auto-activado: cartera alcanzó ${pct}% (USD ${recaudado.toLocaleString()})` }] });
+        saveLegalDoc(pid, 'pago_separacion', { status: 'en_revision',
+          history: [{ date: today, action: 'Auto-activado con pago de separación registrado en Cartera' }] });
+      }
+      // Umbral 30%: iniciar promesa de compraventa
+      if (pct >= 30 && existing.carta_reserva && !existing.promesa_compraventa) {
+        saveLegalDoc(pid, 'promesa_compraventa', { status: 'en_revision',
+          history: [{ date: today, action: `Auto-activado: cartera alcanzó ${pct}% — listo para promesa de compraventa` }] });
+      }
+      // Umbral 80%: iniciar escritura
+      if (pct >= 80 && existing.promesa_compraventa && !existing.escritura_publica) {
+        saveLegalDoc(pid, 'escritura_publica', { status: 'en_revision',
+          history: [{ date: today, action: `Auto-activado: cartera alcanzó ${pct}% — gestionar escritura notarial` }] });
+      }
+      // Umbral 100%: entrega
+      if (pct >= 100 && existing.escritura_publica && !existing.acta_entrega) {
+        saveLegalDoc(pid, 'acta_entrega', { status: 'en_revision',
+          history: [{ date: today, action: 'Auto-activado: pago completo — programar acta de entrega' }] });
+      }
+      // Sincronizar fecha_escritura → fecha límite del doc escritura
+      if (c.fecha_escritura && existing.escritura_publica && !existing.escritura_publica.dueDate) {
+        saveLegalDoc(pid, 'escritura_publica', { dueDate: c.fecha_escritura });
+      }
+      // Sincronizar fecha_entrega → fecha límite acta de entrega
+      if (c.fecha_entrega && existing.acta_entrega && !existing.acta_entrega.dueDate) {
+        saveLegalDoc(pid, 'acta_entrega', { dueDate: c.fecha_entrega });
+      }
+    });
+  };
+
   const renderLegal = () => {
     const N2 = '#0F2542';
     const G2 = '#B89047';
@@ -16885,6 +16929,23 @@ Cargo: ________________________         C.C.: _______________________`,
                         <div style={{ height: 2, width: `${pct}%`, background: pct === 100 ? '#059669' : G2, transition: 'width 0.4s' }} />
                       </div>
                     </div>
+                    {/* Mini-semáforo de cartera */}
+                    {(() => {
+                      const cartera = carteras.find(c => c.prospectId === p.id || String(c.prospectId) === String(p.id));
+                      if (!cartera) return null;
+                      const recaudado = cartera.cuotas.filter(q => q.estado === 'pagada').reduce((s,q)=>s+q.monto,0);
+                      const pctCob = cartera.precio_total > 0 ? Math.round(recaudado/cartera.precio_total*100) : 0;
+                      const vencidas = cartera.cuotas.filter(q => q.estado === 'vencida').length;
+                      const pagoColor = vencidas > 0 ? '#EF4444' : pctCob >= 80 ? '#10B981' : '#F59E0B';
+                      return (
+                        <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, padding: '4px 7px', background: `${pagoColor}10`, border: `1px solid ${pagoColor}30`, borderRadius: 3 }}>
+                          <div style={{ width: 5, height: 5, borderRadius: '50%', background: pagoColor, flexShrink: 0 }} />
+                          <span style={{ fontSize: 9, color: pagoColor, fontWeight: 700 }}>
+                            Cartera {pctCob}%{vencidas > 0 ? ` · ${vencidas} vencida${vencidas>1?'s':''}` : ''}
+                          </span>
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })}
@@ -16953,6 +17014,58 @@ Cargo: ________________________         C.C.: _______________________`,
                     </button>
                   </div>
                 </div>
+
+                {/* ── Bloque de Estado de Cartera integrado ── */}
+                {(() => {
+                  const cartera = carteras.find(c => c.prospectId === selected.id || String(c.prospectId) === String(selected.id));
+                  if (!cartera) return (
+                    <div style={{ marginBottom: 24, padding: '12px 16px', background: '#FAFAF8', border: `1px solid #EEF1F5`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ fontSize: 11, color: '#9CA3AF', fontStyle: 'italic' }}>Sin cartera registrada para este cliente</div>
+                      <button onClick={() => { setCarteraForm({ prospectId: selected.id, prospectName: `${selected.nombre} ${selected.apellido}`, proyecto: (selected.proyectos_interes as string[])?.[0] || '', modalidad: 'credito', precio_total: Number(selected.presupuesto_usd || 0), cuotas: [], riesgo: 'verde', moneda: 'USD', fecha_separacion: new Date().toISOString().split('T')[0] }); setCarteraModalOpen(true); setActiveModule('cartera'); }}
+                        style={{ fontSize: 9, letterSpacing: 1, fontWeight: 700, background: N2, color: '#fff', border: 'none', padding: '5px 12px', cursor: 'pointer' }}>
+                        + Crear Cartera
+                      </button>
+                    </div>
+                  );
+                  const recaudado = cartera.cuotas.filter(q => q.estado === 'pagada').reduce((s,q)=>s+q.monto,0);
+                  const pendiente = cartera.cuotas.filter(q => q.estado !== 'pagada').reduce((s,q)=>s+q.monto,0);
+                  const pctCob = cartera.precio_total > 0 ? Math.round(recaudado/cartera.precio_total*100) : 0;
+                  const vencidas = cartera.cuotas.filter(q => q.estado === 'vencida');
+                  const proximas = cartera.cuotas.filter(q => {
+                    if (q.estado !== 'pendiente') return false;
+                    const diff = (new Date(q.fecha_vencimiento).getTime() - Date.now()) / 86400000;
+                    return diff <= 10 && diff >= 0;
+                  });
+                  const pagoColor = vencidas.length > 0 ? '#EF4444' : proximas.length > 0 ? '#F59E0B' : '#10B981';
+                  const pagoLabel = vencidas.length > 0 ? `${vencidas.length} cuota${vencidas.length>1?'s':''} vencida${vencidas.length>1?'s':''}` : proximas.length > 0 ? `${proximas.length} por vencer` : 'Al día';
+                  return (
+                    <div style={{ marginBottom: 24, padding: '16px 20px', background: `${pagoColor}08`, border: `1px solid ${pagoColor}30`, display: 'flex', alignItems: 'center', gap: 24 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{ width: 36, height: 36, borderRadius: '50%', background: pagoColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>
+                          {vencidas.length > 0 ? '⚠' : proximas.length > 0 ? '!' : '✓'}
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 9, letterSpacing: 1.5, color: '#9CA3AF', textTransform: 'uppercase' as const, marginBottom: 2 }}>Estado de Cartera</div>
+                          <div style={{ fontWeight: 700, color: pagoColor, fontSize: 12 }}>{pagoLabel}</div>
+                        </div>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#6B7280', marginBottom: 4 }}>
+                          <span>USD {recaudado.toLocaleString()} recaudado</span>
+                          <span style={{ fontWeight: 700, color: N2 }}>{pctCob}%</span>
+                        </div>
+                        <div style={{ height: 5, background: '#EEF1F5', borderRadius: 2 }}>
+                          <div style={{ width: `${pctCob}%`, height: '100%', background: pagoColor, borderRadius: 2 }} />
+                        </div>
+                        <div style={{ fontSize: 9, color: '#9CA3AF', marginTop: 3 }}>USD {pendiente.toLocaleString()} pendiente · {cartera.proyecto} · {cartera.unidad}</div>
+                      </div>
+                      <button onClick={() => { setActiveModule('cartera'); setCarteraSelected(cartera.id); setCarteraTab('cuotas' as any); }}
+                        style={{ fontSize: 9, letterSpacing: 1, fontWeight: 700, background: 'none', border: `1px solid ${pagoColor}50`, color: pagoColor, padding: '5px 12px', cursor: 'pointer', flexShrink: 0 }}>
+                        Ver Plan de Pagos →
+                      </button>
+                    </div>
+                  );
+                })()}
 
                 {/* Pipeline visual */}
                 <div style={{ display: 'flex', marginBottom: 32, borderBottom: `1px solid #EEF1F5`, paddingBottom: 24, gap: 0 }}>
@@ -17387,6 +17500,8 @@ Cargo: ________________________         C.C.: _______________________`,
     const saveCarteras = (updated: CarteraCliente[]) => {
       setCarteras(updated);
       localStorage.setItem('glp_carteras', JSON.stringify(updated));
+      // Disparar sincronización automática con Legal
+      setTimeout(() => sincronizarCarteraConLegal(updated), 0);
     };
 
     const calcRiesgo = (c: CarteraCliente): 'verde' | 'amarillo' | 'rojo' => {
@@ -17982,10 +18097,10 @@ No uses emojis. Firma como "Sara · GLP Wealth Management".`;
 
                 {/* Tabs */}
                 <div style={{ display: 'flex', gap: 0, marginTop: 16, borderBottom: `1px solid ${S.parch}` }}>
-                  {(['resumen','cuotas','flujo','alertas'] as const).map(tab => (
-                    <button key={tab} onClick={() => setCarteraTab(tab)}
+                  {(['resumen','cuotas','flujo','alertas','legal'] as const).map(tab => (
+                    <button key={tab} onClick={() => setCarteraTab(tab as any)}
                       style={{ padding: '8px 20px', fontSize: 11, fontWeight: carteraTab === tab ? 700 : 400, letterSpacing: 1, textTransform: 'uppercase', border: 'none', borderBottom: carteraTab === tab ? `2px solid ${S.gold}` : '2px solid transparent', background: 'transparent', color: carteraTab === tab ? S.navy : '#9CA3AF', cursor: 'pointer', marginBottom: -1 }}>
-                      {tab === 'resumen' ? 'Resumen' : tab === 'cuotas' ? 'Plan de Pagos' : tab === 'flujo' ? 'Flujo de Caja' : 'Alertas IA'}
+                      {tab === 'resumen' ? 'Resumen' : tab === 'cuotas' ? 'Plan de Pagos' : tab === 'flujo' ? 'Flujo de Caja' : tab === 'alertas' ? 'Alertas IA' : '⚖ Legal & Cierre'}
                     </button>
                   ))}
                 </div>
@@ -18231,6 +18346,119 @@ No uses emojis. Firma como "Sara · GLP Wealth Management".`;
                     </div>
                   </div>
                 )}
+
+                {/* TAB: LEGAL & CIERRE */}
+                {(carteraTab as string) === 'legal' && (() => {
+                  const pid = selected.prospectId;
+                  const docMap = legalDocs[pid] || {};
+                  const recaudado = totalRecaudado(selected);
+                  const pct = selected.precio_total > 0 ? Math.round(recaudado / selected.precio_total * 100) : 0;
+                  const riesgo = calcRiesgo(selected);
+
+                  const FASES = [
+                    { id: 'reserva', label: 'Reserva', umbral: 10, docs: ['carta_reserva','pago_separacion','due_diligence','propuesta_comercial'] },
+                    { id: 'promesa', label: 'Promesa', umbral: 30, docs: ['promesa_compraventa','cert_tradicion','estudio_titulo','paz_salvo'] },
+                    { id: 'escritura', label: 'Escritura & Registro', umbral: 80, docs: ['escritura_publica','registro_rph','dian_documentos'] },
+                    { id: 'entrega', label: 'Entrega', umbral: 100, docs: ['acta_entrega','llaves'] },
+                  ];
+                  const DOC_LABELS: Record<string,string> = {
+                    carta_reserva:'Carta de Reserva', pago_separacion:'Comprobante Separación',
+                    due_diligence:'Due Diligence', propuesta_comercial:'Propuesta Comercial',
+                    promesa_compraventa:'Promesa de Compraventa', cert_tradicion:'Certificado Tradición',
+                    estudio_titulo:'Estudio de Títulos', paz_salvo:'Paz y Salvo Admin.',
+                    escritura_publica:'Escritura Pública', registro_rph:'Registro Público',
+                    dian_documentos:'Declaración DIAN/OFAC', acta_entrega:'Acta de Entrega', llaves:'Entrega de Llaves',
+                  };
+                  const STATUS_COLOR: Record<string,string> = { pendiente:'#9CA3AF', en_revision:'#F59E0B', firmado:'#10B981', archivado:'#3B82F6' };
+                  const STATUS_LABEL: Record<string,string> = { pendiente:'Pendiente', en_revision:'En revisión', firmado:'Firmado', archivado:'Archivado' };
+
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                      {/* Semáforo de pagos + avance legal */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                        <div style={{ background: '#fff', border: `1px solid ${S.parch}`, padding: 20 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 2, color: S.navy, marginBottom: 12, textTransform: 'uppercase' }}>Estado de Pagos</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                            <div style={{ width: 52, height: 52, borderRadius: '50%', background: RIESGO_COLOR[riesgo], display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>
+                              {riesgo === 'verde' ? '✓' : riesgo === 'amarillo' ? '!' : '⚠'}
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: 700, color: RIESGO_COLOR[riesgo] }}>{RIESGO_LABEL[riesgo]}</div>
+                              <div style={{ fontSize: 11, color: '#6B7280', marginTop: 3 }}>USD {recaudado.toLocaleString()} de USD {selected.precio_total.toLocaleString()}</div>
+                              <div style={{ height: 5, background: S.parch, marginTop: 6, borderRadius: 2 }}>
+                                <div style={{ width: `${pct}%`, height: '100%', background: pct >= 80 ? '#10B981' : S.gold, borderRadius: 2 }} />
+                              </div>
+                              <div style={{ fontSize: 10, color: S.navy, fontWeight: 700, marginTop: 3 }}>{pct}% recaudado</div>
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{ background: '#fff', border: `1px solid ${S.parch}`, padding: 20 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 2, color: S.navy, marginBottom: 12, textTransform: 'uppercase' }}>Hitos Clave</div>
+                          {[
+                            { l: 'Fecha Separación', v: selected.fecha_separacion },
+                            { l: 'Fecha Escritura', v: selected.fecha_escritura || '—' },
+                            { l: 'Fecha Entrega', v: selected.fecha_entrega || '—' },
+                          ].map(({ l, v }) => (
+                            <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: `1px solid ${S.parch}`, fontSize: 12 }}>
+                              <span style={{ color: '#6B7280' }}>{l}</span>
+                              <span style={{ color: S.navy, fontWeight: 600 }}>{v}</span>
+                            </div>
+                          ))}
+                          <button onClick={() => { setActiveModule('legal'); setLegalSelected(selected.prospectId); }}
+                            style={{ marginTop: 12, width: '100%', background: S.navy, color: '#fff', border: 'none', padding: '7px 0', fontSize: 10, fontWeight: 700, letterSpacing: 1, cursor: 'pointer' }}>
+                            Ir a Legal & Cierre →
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Fases legales con estado de docs */}
+                      {FASES.map(fase => {
+                        const desbloqueada = pct >= fase.umbral;
+                        const docsDone = fase.docs.filter(k => docMap[k]?.status === 'firmado' || docMap[k]?.status === 'archivado').length;
+                        const pctFase = Math.round(docsDone / fase.docs.length * 100);
+                        return (
+                          <div key={fase.id} style={{ background: '#fff', border: `1px solid ${S.parch}`, borderLeft: `3px solid ${desbloqueada ? S.gold : '#E5E7EB'}`, padding: 20, opacity: desbloqueada ? 1 : 0.5 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                              <div>
+                                <div style={{ fontWeight: 700, fontSize: 13, color: S.navy }}>{fase.label}</div>
+                                <div style={{ fontSize: 10, color: '#6B7280', marginTop: 2 }}>
+                                  {desbloqueada ? `${docsDone}/${fase.docs.length} documentos completos` : `Se activa al ${fase.umbral}% recaudado`}
+                                </div>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: desbloqueada ? S.gold : '#9CA3AF' }}>{pctFase}%</div>
+                                {!desbloqueada && <span style={{ fontSize: 9, background: '#F3F4F6', color: '#9CA3AF', padding: '2px 7px', fontWeight: 700, letterSpacing: 0.8 }}>BLOQUEADO</span>}
+                                {desbloqueada && pctFase === 100 && <span style={{ fontSize: 9, background: '#D1FAE5', color: '#059669', padding: '2px 7px', fontWeight: 700, letterSpacing: 0.8 }}>COMPLETO</span>}
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              {fase.docs.map(k => {
+                                const meta = docMap[k];
+                                const st = meta?.status || 'pendiente';
+                                return (
+                                  <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: S.bg, borderRadius: 3 }}>
+                                    <span style={{ fontSize: 11, color: S.navy }}>{DOC_LABELS[k] || k}</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                      {meta?.dueDate && <span style={{ fontSize: 9, color: '#6B7280' }}>📅 {meta.dueDate}</span>}
+                                      <span style={{ fontSize: 9, fontWeight: 700, color: STATUS_COLOR[st], background: `${STATUS_COLOR[st]}15`, padding: '2px 7px', letterSpacing: 0.8 }}>
+                                        {STATUS_LABEL[st]}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            {!desbloqueada && (
+                              <div style={{ marginTop: 10, fontSize: 10, color: '#9CA3AF', fontStyle: 'italic' }}>
+                                Faltan {fase.umbral - pct}% de recaudo para activar esta fase
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           )}
