@@ -18001,226 +18001,197 @@ No uses emojis. Firma como "Sara · GLP Wealth Management".`;
         {(carteraView as string) === 'dia' && (() => {
           const hoy = new Date();
           const hoyStr = hoy.toISOString().split('T')[0];
-
-          // Acciones urgentes hoy: cuotas vencidas o que vencen hoy
-          const urgentes = carteras.flatMap(c => c.cuotas
-            .filter(q => q.estado === 'vencida' || (q.estado === 'pendiente' && q.fecha_vencimiento === hoyStr))
-            .map(q => ({ c, q, tipo: q.estado === 'vencida' ? 'mora' : 'hoy' }))
-          );
-
-          // Próximos 7 días
-          const proximos7 = carteras.flatMap(c => c.cuotas.filter(q => {
-            if (q.estado !== 'pendiente') return false;
-            const diff = (new Date(q.fecha_vencimiento).getTime() - hoy.getTime()) / 86400000;
-            return diff > 0 && diff <= 7;
-          }).map(q => {
-            const diff = Math.ceil((new Date(q.fecha_vencimiento).getTime() - hoy.getTime()) / 86400000);
-            return ({ c, q, diff });
-          })).sort((a, b) => a.diff - b.diff);
-
-          // Compromisos pendientes de hoy o pasados
-          const compromisosPend = carteras.flatMap(c => c.cuotas
-            .filter(q => q.compromiso && q.compromiso.fecha <= hoyStr && q.estado !== 'pagada')
-            .map(q => ({ c, q }))
-          ).sort((a, b) => a.q.compromiso!.fecha.localeCompare(b.q.compromiso!.fecha));
-
-          // Cierres activos: clientes con docs legales en_revision
-          const cierresActivos = carteras.filter(c => {
-            const docs = legalDocs[c.prospectId] || {};
-            return Object.values(docs).some((d: any) => d?.status === 'en_revision');
-          });
-
-          // Timeline de cierre por cliente
-          const timelineClientes = carteras.filter(c => {
-            const recaudado = c.cuotas.filter(q => q.estado === 'pagada').reduce((s, q) => s + q.monto, 0);
-            const pct = c.precio_total > 0 ? Math.round(recaudado / c.precio_total * 100) : 0;
-            return pct >= 10; // en proceso de cierre
-          });
-
+          const DOC_LABELS_DIA: Record<string,string> = {
+            carta_reserva:'Carta de Reserva', pago_separacion:'Comprobante Separación',
+            due_diligence:'Due Diligence', propuesta_comercial:'Propuesta Comercial',
+            promesa_compraventa:'Promesa de Compraventa', cert_tradicion:'Certificado Tradición',
+            estudio_titulo:'Estudio de Títulos', paz_salvo:'Paz y Salvo',
+            escritura_publica:'Escritura Pública', registro_rph:'Registro RPH',
+            dian_documentos:'Declaración DIAN', acta_entrega:'Acta de Entrega', llaves:'Entrega de Llaves',
+          };
           const FASES_DIA = [
             { id: 'reserva', label: 'Reserva', umbral: 10, color: '#6D28D9' },
             { id: 'promesa', label: 'Promesa', umbral: 30, color: '#1D4ED8' },
             { id: 'escritura', label: 'Escritura', umbral: 80, color: '#B89047' },
             { id: 'entrega', label: 'Entrega', umbral: 100, color: '#10B981' },
           ];
+          const urgentes = carteras.flatMap(c => c.cuotas
+            .filter(q => q.estado === 'vencida' || (q.estado === 'pendiente' && q.fecha_vencimiento === hoyStr))
+            .map(q => ({ c, q, tipo: q.estado === 'vencida' ? 'mora' : 'hoy' as const }))
+          );
+          const proximos7 = carteras.flatMap(c => c.cuotas.filter(q => {
+            if (q.estado !== 'pendiente') return false;
+            const diff = (new Date(q.fecha_vencimiento).getTime() - hoy.getTime()) / 86400000;
+            return diff > 0 && diff <= 7;
+          }).map(q => ({ c, q, diff: Math.ceil((new Date(q.fecha_vencimiento).getTime() - hoy.getTime()) / 86400000) })))
+            .sort((a, b) => a.diff - b.diff);
+          const compromisosPend = carteras.flatMap(c => c.cuotas
+            .filter(q => q.compromiso && q.compromiso.fecha <= hoyStr && q.estado !== 'pagada')
+            .map(q => ({ c, q }))
+          ).sort((a, b) => a.q.compromiso!.fecha.localeCompare(b.q.compromiso!.fecha));
+          const timelineClientes = carteras.filter(c => {
+            const rec = c.cuotas.filter(q => q.estado === 'pagada').reduce((s, q) => s + q.monto, 0);
+            return c.precio_total > 0 && Math.round(rec / c.precio_total * 100) >= 10;
+          });
+          const cierresActivos = carteras.filter(c => Object.values(legalDocs[c.prospectId] || {}).some((d: any) => d?.status === 'en_revision'));
+          const totalMoraHoy = urgentes.filter(x => x.tipo === 'mora').reduce((s, x) => s + x.q.monto, 0);
+          const totalVenceHoy = urgentes.filter(x => x.tipo === 'hoy').reduce((s, x) => s + x.q.monto, 0);
+          const totalProximos = proximos7.reduce((s, x) => s + x.q.monto, 0);
+
+          const cardSect = (title: string, accent: string, children: React.ReactNode) => (
+            <div style={{ background: '#fff', border: `1px solid ${S.parch}`, borderTop: `3px solid ${accent}` }}>
+              <div style={{ padding: '10px 14px 8px', borderBottom: `1px solid ${S.parch}` }}>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 2, color: accent, textTransform: 'uppercase' as const }}>{title}</div>
+              </div>
+              <div style={{ padding: '10px 14px' }}>{children}</div>
+            </div>
+          );
 
           return (
-            <div style={{ padding: '24px 40px', overflowY: 'auto', maxHeight: 'calc(100vh - 220px)' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+            <div style={{ padding: '12px 16px', overflowY: 'auto', height: 'calc(100vh - 220px)', boxSizing: 'border-box' as const }}>
+              {/* Fila de mini-KPIs del día */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 12 }}>
+                {[
+                  { label: 'En mora hoy', val: urgentes.filter(x=>x.tipo==='mora').length, sub: totalMoraHoy > 0 ? `USD ${totalMoraHoy.toLocaleString()}` : 'ninguno', color: urgentes.some(x=>x.tipo==='mora') ? '#EF4444' : '#10B981' },
+                  { label: 'Vencen hoy', val: urgentes.filter(x=>x.tipo==='hoy').length, sub: totalVenceHoy > 0 ? `USD ${totalVenceHoy.toLocaleString()}` : 'ninguno', color: urgentes.some(x=>x.tipo==='hoy') ? '#F59E0B' : '#10B981' },
+                  { label: 'Próx. 7 días', val: proximos7.length, sub: totalProximos > 0 ? `USD ${totalProximos.toLocaleString()}` : 'ninguno', color: '#6B7280' },
+                  { label: 'Cierres activos', val: timelineClientes.length, sub: `${cierresActivos.length} doc${cierresActivos.length!==1?'s':''} en revisión`, color: S.gold },
+                ].map(k => (
+                  <div key={k.label} style={{ background: '#fff', border: `1px solid ${S.parch}`, borderLeft: `3px solid ${k.color}`, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 8, color: '#9CA3AF', letterSpacing: 1.5, textTransform: 'uppercase' as const, marginBottom: 4 }}>{k.label}</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: k.color, fontFamily: T.serif, lineHeight: 1 }}>{k.val}</div>
+                    <div style={{ fontSize: 9, color: '#6B7280', marginTop: 3 }}>{k.sub}</div>
+                  </div>
+                ))}
+              </div>
 
-                {/* COL IZQUIERDA */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Grid 3 columnas */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.3fr', gap: 10, alignItems: 'start' }}>
 
-                  {/* Acciones urgentes */}
-                  <div style={{ background: '#fff', border: `1px solid ${S.parch}`, padding: 20 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 2, color: urgentes.length > 0 ? '#EF4444' : S.navy, marginBottom: 14, textTransform: 'uppercase' as const }}>
-                      {urgentes.length > 0 ? `⚠ ${urgentes.length} Acción${urgentes.length > 1 ? 'es' : ''} Urgente${urgentes.length > 1 ? 's' : ''}` : '✓ Sin Urgencias Hoy'}
-                    </div>
-                    {urgentes.length === 0 && (
-                      <div style={{ fontSize: 12, color: '#10B981', textAlign: 'center' as const, padding: '8px 0' }}>Cartera al día — sin vencimientos hoy.</div>
-                    )}
-                    {urgentes.map(({ c, q, tipo }) => (
-                      <div key={q.id} onClick={() => { setCarteraSelected(c.id); setCarteraView('clientes'); setCarteraTab('cuotas'); }}
-                        style={{ marginBottom: 8, padding: '10px 12px', background: tipo === 'mora' ? '#FEF2F2' : '#FFFBEB', border: `1px solid ${tipo === 'mora' ? '#FCA5A5' : '#FCD34D'}`, borderLeft: `4px solid ${tipo === 'mora' ? '#EF4444' : '#F59E0B'}`, borderRadius: 4, cursor: 'pointer' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div>
-                            <div style={{ fontSize: 12, fontWeight: 700, color: tipo === 'mora' ? '#991B1B' : '#92400E' }}>{c.prospectName}</div>
-                            <div style={{ fontSize: 10, color: '#6B7280', marginTop: 2 }}>{c.proyecto} · {tipo === 'mora' ? 'VENCIDA' : 'Vence hoy'} · USD {q.monto.toLocaleString()}</div>
+                {/* COL 1: Urgentes + Compromisos */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {cardSect(urgentes.length > 0 ? `⚠ ${urgentes.length} acciones urgentes` : '✓ Sin urgencias', urgentes.length > 0 ? '#EF4444' : '#10B981',
+                    urgentes.length === 0
+                      ? <div style={{ fontSize: 11, color: '#10B981', padding: '6px 0' }}>Cartera al día hoy.</div>
+                      : urgentes.map(({ c, q, tipo }) => (
+                        <div key={q.id} onClick={() => { setCarteraSelected(c.id); setCarteraView('clientes'); setCarteraTab('cuotas'); }}
+                          style={{ marginBottom: 6, padding: '8px 10px', background: tipo === 'mora' ? '#FEF2F2' : '#FFFBEB', borderLeft: `3px solid ${tipo === 'mora' ? '#EF4444' : '#F59E0B'}`, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: tipo === 'mora' ? '#991B1B' : '#92400E', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.prospectName}</div>
+                            <div style={{ fontSize: 9, color: '#6B7280' }}>{tipo === 'mora' ? 'VENCIDA' : 'Vence hoy'} · USD {q.monto.toLocaleString()}</div>
                           </div>
                           <button onClick={e => { e.stopPropagation(); setCarteraSelected(c.id); setCarteraView('clientes'); setCarteraTab('alertas'); }}
-                            style={{ background: tipo === 'mora' ? '#EF4444' : '#F59E0B', color: '#fff', border: 'none', padding: '5px 10px', fontSize: 9, fontWeight: 700, cursor: 'pointer', borderRadius: 3, letterSpacing: 0.8 }}>
+                            style={{ flexShrink: 0, background: tipo === 'mora' ? '#EF4444' : '#F59E0B', color: '#fff', border: 'none', padding: '4px 8px', fontSize: 8, fontWeight: 700, cursor: 'pointer', borderRadius: 2, letterSpacing: 0.5 }}>
                             ✦ SARA
                           </button>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Compromisos pendientes */}
-                  <div style={{ background: '#fff', border: `1px solid ${S.parch}`, padding: 20 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 2, color: S.navy, marginBottom: 14, textTransform: 'uppercase' as const }}>
-                      📅 Compromisos Pendientes ({compromisosPend.length})
-                    </div>
-                    {compromisosPend.length === 0 && <div style={{ fontSize: 12, color: '#9CA3AF' }}>Sin compromisos registrados.</div>}
-                    {compromisosPend.map(({ c, q }) => (
-                      <div key={q.id} onClick={() => { setCarteraSelected(c.id); setCarteraView('clientes'); setCarteraTab('cuotas'); }}
-                        style={{ marginBottom: 8, padding: '9px 12px', background: '#FAFAF8', border: `1px solid ${S.parch}`, borderLeft: `3px solid ${S.gold}`, borderRadius: 3, cursor: 'pointer' }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: S.navy }}>{c.prospectName}</div>
-                        <div style={{ fontSize: 10, color: '#6B7280', marginTop: 2 }}>
-                          Compromiso {q.compromiso!.fecha <= hoyStr ? <span style={{ color: '#EF4444', fontWeight: 700 }}>vencido ({q.compromiso!.fecha})</span> : q.compromiso!.fecha}
-                          {' '}· USD {q.compromiso!.monto.toLocaleString()}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Próximos 7 días */}
-                  <div style={{ background: '#fff', border: `1px solid ${S.parch}`, padding: 20 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 2, color: S.navy, marginBottom: 14, textTransform: 'uppercase' as const }}>
-                      🗓 Próximos 7 Días ({proximos7.length} cuota{proximos7.length !== 1 ? 's' : ''})
-                    </div>
-                    {proximos7.length === 0 && <div style={{ fontSize: 12, color: '#9CA3AF' }}>Sin vencimientos en los próximos 7 días.</div>}
-                    {proximos7.map(({ c, q, diff }) => (
-                      <div key={q.id} onClick={() => { setCarteraSelected(c.id); setCarteraView('clientes'); setCarteraTab('cuotas'); }}
-                        style={{ marginBottom: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: diff <= 3 ? '#FFFBEB' : '#FAFAF8', border: `1px solid ${diff <= 3 ? '#FCD34D' : S.parch}`, borderRadius: 3, cursor: 'pointer' }}>
-                        <div>
+                      ))
+                  )}
+                  {cardSect(`📅 Compromisos (${compromisosPend.length})`, S.gold,
+                    compromisosPend.length === 0
+                      ? <div style={{ fontSize: 11, color: '#9CA3AF' }}>Sin compromisos pendientes.</div>
+                      : compromisosPend.map(({ c, q }) => (
+                        <div key={q.id} onClick={() => { setCarteraSelected(c.id); setCarteraView('clientes'); setCarteraTab('cuotas'); }}
+                          style={{ marginBottom: 6, padding: '7px 10px', background: '#FAFAF8', borderLeft: `3px solid ${S.gold}`, cursor: 'pointer' }}>
                           <div style={{ fontSize: 11, fontWeight: 700, color: S.navy }}>{c.prospectName}</div>
-                          <div style={{ fontSize: 10, color: '#6B7280' }}>{q.fecha_vencimiento} · USD {q.monto.toLocaleString()}</div>
+                          <div style={{ fontSize: 9, color: q.compromiso!.fecha <= hoyStr ? '#EF4444' : '#6B7280' }}>
+                            {q.compromiso!.fecha <= hoyStr ? `⚠ Vencido ${q.compromiso!.fecha}` : q.compromiso!.fecha} · USD {q.compromiso!.monto.toLocaleString()}
+                          </div>
                         </div>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: diff <= 3 ? '#F59E0B' : '#6B7280', background: diff <= 3 ? '#FEF3C7' : '#F3F4F6', padding: '3px 8px', borderRadius: 10 }}>
-                          {diff === 1 ? 'Mañana' : `${diff} días`}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))
+                  )}
                 </div>
 
-                {/* COL DERECHA: Pipeline de cierres */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-                  {/* Timeline de cierres activos */}
-                  <div style={{ background: '#fff', border: `1px solid ${S.parch}`, padding: 20 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 2, color: S.navy, marginBottom: 16, textTransform: 'uppercase' as const }}>
-                      ⚖ Pipeline de Cierres Activos
-                    </div>
-                    {timelineClientes.length === 0 && (
-                      <div style={{ fontSize: 12, color: '#9CA3AF', textAlign: 'center' as const, padding: '12px 0' }}>
-                        Ningún cliente en proceso de cierre aún.
-                      </div>
-                    )}
-                    {timelineClientes.map(c => {
-                      const recaudado = c.cuotas.filter(q => q.estado === 'pagada').reduce((s, q) => s + q.monto, 0);
-                      const pct = c.precio_total > 0 ? Math.round(recaudado / c.precio_total * 100) : 0;
-                      const faseActual = FASES_DIA.slice().reverse().find(f => pct >= f.umbral) || FASES_DIA[0];
-                      const siguienteFase = FASES_DIA.find(f => pct < f.umbral);
-                      const docsEnRevision = Object.entries(legalDocs[c.prospectId] || {}).filter(([,d]: any) => d?.status === 'en_revision').length;
-                      const docsFirmados = Object.entries(legalDocs[c.prospectId] || {}).filter(([,d]: any) => d?.status === 'firmado').length;
+                {/* COL 2: Próximos 7 días */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {cardSect(`🗓 Próximos 7 días (${proximos7.length})`, '#6B7280',
+                    proximos7.length === 0
+                      ? <div style={{ fontSize: 11, color: '#9CA3AF' }}>Sin vencimientos en 7 días.</div>
+                      : proximos7.map(({ c, q, diff }) => (
+                        <div key={q.id} onClick={() => { setCarteraSelected(c.id); setCarteraView('clientes'); setCarteraTab('cuotas'); }}
+                          style={{ marginBottom: 5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', background: diff <= 2 ? '#FFFBEB' : '#FAFAF8', borderLeft: `3px solid ${diff <= 2 ? '#F59E0B' : S.parch}`, cursor: 'pointer', gap: 6 }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: S.navy, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.prospectName}</div>
+                            <div style={{ fontSize: 9, color: '#6B7280' }}>{q.fecha_vencimiento} · USD {q.monto.toLocaleString()}</div>
+                          </div>
+                          <div style={{ flexShrink: 0, fontSize: 9, fontWeight: 700, color: diff <= 2 ? '#F59E0B' : '#6B7280', background: diff <= 2 ? '#FEF3C7' : '#F3F4F6', padding: '2px 7px', borderRadius: 10, whiteSpace: 'nowrap' as const }}>
+                            {diff === 1 ? 'Mañana' : `${diff}d`}
+                          </div>
+                        </div>
+                      ))
+                  )}
+                  {cierresActivos.length > 0 && cardSect('📋 Docs en revisión', '#F59E0B',
+                    cierresActivos.map(c => {
+                      const enRevision = Object.entries(legalDocs[c.prospectId] || {}).filter(([,d]: any) => d?.status === 'en_revision');
                       return (
-                        <div key={c.id} style={{ marginBottom: 16, padding: 14, background: '#FAFAF8', border: `1px solid ${S.parch}`, borderRadius: 4 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                            <div>
-                              <div style={{ fontSize: 12, fontWeight: 700, color: S.navy }}>{c.prospectName}</div>
-                              <div style={{ fontSize: 10, color: '#6B7280' }}>{c.proyecto} · {c.unidad}</div>
+                        <div key={c.id} style={{ marginBottom: 10 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: S.navy, marginBottom: 5 }}>{c.prospectName}</div>
+                          {enRevision.map(([key]) => (
+                            <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 8px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 2, marginBottom: 3 }}>
+                              <span style={{ fontSize: 9, color: '#92400E' }}>{DOC_LABELS_DIA[key] || key}</span>
+                              <button onClick={() => saveLegalDoc(c.prospectId, key, { status: 'firmado', history: [{ date: hoyStr, action: 'Aprobado desde Operación del Día' }] })}
+                                style={{ background: '#10B981', color: '#fff', border: 'none', padding: '2px 7px', fontSize: 8, fontWeight: 700, cursor: 'pointer', borderRadius: 2 }}>✓ Aprobar</button>
                             </div>
-                            <div style={{ fontSize: 10, fontWeight: 700, color: faseActual.color, background: `${faseActual.color}15`, padding: '3px 8px', borderRadius: 3 }}>
-                              {faseActual.label} · {pct}%
-                            </div>
-                          </div>
-                          {/* Timeline horizontal */}
-                          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}>
-                            {FASES_DIA.map((f, idx) => {
-                              const done = pct >= f.umbral;
-                              const active = f.id === faseActual.id;
-                              return (
-                                <React.Fragment key={f.id}>
-                                  <div style={{ display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 3 }}>
-                                    <div style={{ width: 24, height: 24, borderRadius: '50%', background: done ? f.color : '#E5E7EB', border: `2px solid ${active ? f.color : done ? f.color : '#E5E7EB'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: done ? '#fff' : '#9CA3AF', fontWeight: 700, boxShadow: active ? `0 0 0 3px ${f.color}30` : 'none' }}>
-                                      {done ? '✓' : idx + 1}
-                                    </div>
-                                    <div style={{ fontSize: 8, color: done ? f.color : '#9CA3AF', fontWeight: done ? 700 : 400, whiteSpace: 'nowrap' as const }}>{f.label}</div>
-                                  </div>
-                                  {idx < FASES_DIA.length - 1 && (
-                                    <div style={{ flex: 1, height: 2, background: pct >= FASES_DIA[idx + 1].umbral ? FASES_DIA[idx + 1].color : '#E5E7EB', margin: '0 4px', marginBottom: 14 }} />
-                                  )}
-                                </React.Fragment>
-                              );
-                            })}
-                          </div>
-                          {/* Docs y acción */}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div style={{ fontSize: 10, color: '#6B7280' }}>
-                              {docsFirmados > 0 && <span style={{ color: '#10B981', marginRight: 8 }}>✓ {docsFirmados} firmados</span>}
-                              {docsEnRevision > 0 && <span style={{ color: '#F59E0B' }}>⏳ {docsEnRevision} en revisión</span>}
-                              {docsFirmados === 0 && docsEnRevision === 0 && <span style={{ color: '#9CA3AF' }}>Sin docs activos</span>}
-                            </div>
-                            <button onClick={() => { setCarteraSelected(c.id); setCarteraView('clientes'); setCarteraTab('legal' as any); }}
-                              style={{ background: S.navy, color: '#fff', border: 'none', padding: '5px 10px', fontSize: 9, fontWeight: 700, cursor: 'pointer', borderRadius: 3, letterSpacing: 0.8 }}>
-                              Ver Cierre →
-                            </button>
-                          </div>
-                          {siguienteFase && (
-                            <div style={{ marginTop: 8, fontSize: 9, color: '#9CA3AF', borderTop: `1px solid ${S.parch}`, paddingTop: 6 }}>
-                              Siguiente: {siguienteFase.label} al {siguienteFase.umbral}% · faltan USD {Math.max(0, Math.ceil(c.precio_total * siguienteFase.umbral / 100) - recaudado).toLocaleString()}
-                            </div>
-                          )}
+                          ))}
                         </div>
                       );
-                    })}
-                  </div>
+                    })
+                  )}
+                </div>
 
-                  {/* Docs en revisión hoy */}
-                  {cierresActivos.length > 0 && (
-                    <div style={{ background: '#fff', border: `1px solid ${S.parch}`, padding: 20 }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 2, color: S.navy, marginBottom: 14, textTransform: 'uppercase' as const }}>
-                        📋 Documentos en Revisión
-                      </div>
-                      {cierresActivos.map(c => {
-                        const docs = legalDocs[c.prospectId] || {};
-                        const enRevision = Object.entries(docs).filter(([,d]: any) => d?.status === 'en_revision');
-                        const DOC_LABELS: Record<string,string> = {
-                          carta_reserva:'Carta de Reserva', pago_separacion:'Comprobante Separación',
-                          due_diligence:'Due Diligence', propuesta_comercial:'Propuesta Comercial',
-                          promesa_compraventa:'Promesa de Compraventa', cert_tradicion:'Certificado Tradición',
-                          estudio_titulo:'Estudio de Títulos', paz_salvo:'Paz y Salvo',
-                          escritura_publica:'Escritura Pública', registro_rph:'Registro RPH',
-                          dian_documentos:'Declaración DIAN', acta_entrega:'Acta de Entrega', llaves:'Entrega de Llaves',
-                        };
+                {/* COL 3: Pipeline de cierres */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {cardSect(`⚖ Pipeline de cierres (${timelineClientes.length})`, S.navy,
+                    timelineClientes.length === 0
+                      ? <div style={{ fontSize: 11, color: '#9CA3AF' }}>Ningún cliente en proceso de cierre.</div>
+                      : timelineClientes.map(c => {
+                        const recaudado = c.cuotas.filter(q => q.estado === 'pagada').reduce((s, q) => s + q.monto, 0);
+                        const pct = c.precio_total > 0 ? Math.round(recaudado / c.precio_total * 100) : 0;
+                        const faseActual = FASES_DIA.slice().reverse().find(f => pct >= f.umbral) || FASES_DIA[0];
+                        const siguienteFase = FASES_DIA.find(f => pct < f.umbral);
+                        const docsEn = Object.values(legalDocs[c.prospectId] || {}).filter((d: any) => d?.status === 'en_revision').length;
+                        const docsFirm = Object.values(legalDocs[c.prospectId] || {}).filter((d: any) => d?.status === 'firmado').length;
                         return (
-                          <div key={c.id} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: `1px solid ${S.parch}` }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: S.navy, marginBottom: 6 }}>{c.prospectName}</div>
-                            {enRevision.map(([key]) => (
-                              <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 8px', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 3, marginBottom: 4 }}>
-                                <span style={{ fontSize: 10, color: '#92400E' }}>{DOC_LABELS[key] || key}</span>
-                                <button onClick={() => { saveLegalDoc(c.prospectId, key, { status: 'firmado', history: [{ date: hoyStr, action: 'Aprobado desde Operación del Día' }] }); }}
-                                  style={{ background: '#10B981', color: '#fff', border: 'none', padding: '3px 8px', fontSize: 9, fontWeight: 700, cursor: 'pointer', borderRadius: 2 }}>
-                                  ✓ Aprobar
-                                </button>
+                          <div key={c.id} style={{ marginBottom: 10, padding: '10px 12px', background: '#FAFAF8', border: `1px solid ${S.parch}`, borderLeft: `3px solid ${faseActual.color}` }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: S.navy, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.prospectName}</div>
+                                <div style={{ fontSize: 9, color: '#6B7280' }}>{c.proyecto}</div>
                               </div>
-                            ))}
+                              <span style={{ flexShrink: 0, fontSize: 9, fontWeight: 700, color: faseActual.color, background: `${faseActual.color}18`, padding: '2px 7px', borderRadius: 3, marginLeft: 6 }}>{faseActual.label} {pct}%</span>
+                            </div>
+                            {/* Mini timeline */}
+                            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                              {FASES_DIA.map((f, idx) => {
+                                const done = pct >= f.umbral;
+                                const active = f.id === faseActual.id;
+                                return (
+                                  <React.Fragment key={f.id}>
+                                    <div style={{ display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 2 }}>
+                                      <div style={{ width: 20, height: 20, borderRadius: '50%', background: done ? f.color : '#E5E7EB', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: done ? '#fff' : '#9CA3AF', fontWeight: 700, boxShadow: active ? `0 0 0 3px ${f.color}30` : 'none' }}>
+                                        {done ? '✓' : idx + 1}
+                                      </div>
+                                      <div style={{ fontSize: 7, color: done ? f.color : '#D1D5DB', fontWeight: done ? 700 : 400, whiteSpace: 'nowrap' as const }}>{f.label}</div>
+                                    </div>
+                                    {idx < FASES_DIA.length - 1 && <div style={{ flex: 1, height: 2, background: pct >= FASES_DIA[idx + 1].umbral ? FASES_DIA[idx + 1].color : '#E5E7EB', margin: '0 3px', marginBottom: 12 }} />}
+                                  </React.Fragment>
+                                );
+                              })}
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div style={{ fontSize: 9, color: '#6B7280' }}>
+                                {docsFirm > 0 && <span style={{ color: '#10B981' }}>✓{docsFirm} </span>}
+                                {docsEn > 0 && <span style={{ color: '#F59E0B' }}>⏳{docsEn} </span>}
+                                {siguienteFase && <span>→ {siguienteFase.label} al {siguienteFase.umbral}%</span>}
+                              </div>
+                              <button onClick={() => { setCarteraSelected(c.id); setCarteraView('clientes'); setCarteraTab('legal' as any); }}
+                                style={{ background: S.navy, color: '#fff', border: 'none', padding: '4px 8px', fontSize: 8, fontWeight: 700, cursor: 'pointer', borderRadius: 2 }}>
+                                Ver →
+                              </button>
+                            </div>
                           </div>
                         );
-                      })}
-                    </div>
+                      })
                   )}
                 </div>
               </div>
