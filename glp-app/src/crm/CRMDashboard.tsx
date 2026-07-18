@@ -571,6 +571,12 @@ export type CuotaCartera = {
   estado: 'pendiente' | 'pagada' | 'vencida' | 'en_proceso';
   comprobante?: string;
   notas?: string;
+  // Registro de pago real
+  monto_pagado?: number;
+  medio_pago?: 'transferencia' | 'efectivo' | 'cheque' | 'pse' | 'otro';
+  comprobante_ref?: string;
+  // Compromiso de pago
+  compromiso?: { fecha: string; monto: number; notas?: string; };
 };
 
 export type CarteraCliente = {
@@ -786,7 +792,7 @@ const generateSampleProspects = (): Prospect[] => {
       direccion: 'Cra 11 #93-44, Bogotá', correo: 'carlos.gutierrez@gmail.com', telefono: '+57 310 555 0101',
       ocupacion: 'CEO Fintech', proyectos_interes: ['Surfside', 'Oceana Residences & Skyhomes'],
       forma_contacto: 'Referido', broker_asignado: 'Patricia Vargas', estado: 'Negociación',
-      presupuesto_usd: 450000, fecha_entrada: '2026-04-15',
+      presupuesto_usd: 450000, fecha_entrada: '2026-04-15', fecha_ultima_actividad: '2026-07-15',
       notas: 'Referido por propietario actual. Busca segunda residencia con ROI. Perfil RACIONAL — pide comparativos de mercado y proyección de valorización a 10 años.',
       historial: [
         { fecha: '2026-04-15', accion: 'Contacto Inicial', detalle: 'Referido por Diego Restrepo, propietario en Surfside. Primera llamada con Patricia Vargas.' },
@@ -806,7 +812,7 @@ const generateSampleProspects = (): Prospect[] => {
       direccion: 'Cl 127 #15-60 Apto 802, Bogotá', correo: 'mariaisabel.rodriguez@outlook.com', telefono: '+57 311 555 0202',
       ocupacion: 'Médica Especialista', proyectos_interes: ['The Palms', 'Bosco di Santa María'],
       forma_contacto: 'Evento', broker_asignado: 'Santiago Mesa', estado: 'Presentación',
-      presupuesto_usd: 320000, fecha_entrada: '2026-05-08',
+      presupuesto_usd: 320000, fecha_entrada: '2026-05-08', fecha_ultima_actividad: '2026-07-14',
       notas: 'Conoció GLP en evento de medicina privada en Bogotá. Perfil LEGADO — quiere asegurar patrimonio para sus hijos. Muy interesada en The Palms.',
       historial: [
         { fecha: '2026-05-08', accion: 'Contacto Inicial', detalle: 'Registrada en evento GLP × Clínica del Country. Primera impresión muy positiva.' },
@@ -823,7 +829,7 @@ const generateSampleProspects = (): Prospect[] => {
       direccion: 'Av El Poblado #43-120, Medellín', correo: 'andres.martinez@gmail.com', telefono: '+57 312 555 0303',
       ocupacion: 'Empresario Textil', proyectos_interes: ['Ipanema Panamá', 'Bayside Resort Panamá'],
       forma_contacto: 'Pagina Web', broker_asignado: 'Valentina Ospina', estado: 'Calificación',
-      presupuesto_usd: 250000, fecha_entrada: '2026-06-01',
+      presupuesto_usd: 250000, fecha_entrada: '2026-06-01', fecha_ultima_actividad: '2026-07-10',
       notas: 'Lead orgánico web. Empresario de Medellín buscando diversificar en Panamá. Perfil ASPIRACIONAL — le atrae el lifestyle de Panamá City.',
       historial: [
         { fecha: '2026-06-01', accion: 'Contacto Inicial', detalle: 'Formulario web — solicita información sobre inversión en Panamá.' },
@@ -838,7 +844,7 @@ const generateSampleProspects = (): Prospect[] => {
       direccion: 'Cra 43 #9-80, Cali', correo: 'laura.sanchez@gmail.com', telefono: '+57 313 555 0404',
       ocupacion: 'Directora Financiera', proyectos_interes: ['Ocean Reef Park'],
       forma_contacto: 'Instagram', broker_asignado: 'Andrés Morales', estado: 'Contacto Inicial',
-      presupuesto_usd: 180000, fecha_entrada: '2026-07-01',
+      presupuesto_usd: 180000, fecha_entrada: '2026-07-01', fecha_ultima_actividad: '2026-07-16',
       notas: 'Lead Instagram. Primera vez que considera inversión en el exterior. Perfil ASPIRACIONAL — reaccionó a video de lifestyle en GLP.',
       historial: [
         { fecha: '2026-07-01', accion: 'Contacto Inicial', detalle: 'DM en Instagram preguntando por precios en Ocean Reef Park. Respondida en menos de 1 hora.' },
@@ -850,7 +856,7 @@ const generateSampleProspects = (): Prospect[] => {
       direccion: 'Cl 72 #10-34 OF 502, Bogotá', correo: 'roberto.castano@outlook.com', telefono: '+57 314 555 0505',
       ocupacion: 'Inversionista', proyectos_interes: ['Surfside'],
       forma_contacto: 'WhatsApp', broker_asignado: 'Felipe Londoño', estado: 'Cierre',
-      presupuesto_usd: 750000, fecha_entrada: '2026-02-10',
+      presupuesto_usd: 750000, fecha_entrada: '2026-02-10', fecha_ultima_actividad: '2026-07-12',
       notas: 'Inversionista sofisticado. Ya tiene propiedades en Miami y Cartagena. Perfil ESTATUS — compra por exclusividad y círculo social. Lista corta: Surfside Torre A Penthouse.',
       historial: [
         { fecha: '2026-02-10', accion: 'Contacto Inicial', detalle: 'WhatsApp directo a Felipe Londoño — referido VIP de evento Sotheby\'s Miami.' },
@@ -870,7 +876,7 @@ const generateSampleProspects = (): Prospect[] => {
       direccion: 'Cra 15 #88-64 Apto 301, Bogotá', correo: 'diana.herrera@gmail.com', telefono: '+57 315 555 0606',
       ocupacion: 'Abogada Tributarista', proyectos_interes: ['Panamá Viejo Residences'],
       forma_contacto: 'Referido', broker_asignado: 'Patricia Vargas', estado: 'Post-venta',
-      presupuesto_usd: 140000, fecha_entrada: '2025-11-15',
+      presupuesto_usd: 140000, fecha_entrada: '2025-11-15', fecha_ultima_actividad: '2026-07-11',
       notas: 'Primera compra cerrada. Unidad 12B en Panamá Viejo Residences. En etapa de trámites. Perfil RACIONAL — negoció cada detalle del contrato.',
       historial: [
         { fecha: '2025-11-15', accion: 'Contacto Inicial', detalle: 'Referida por colega del bufete. Primera reunión con Patricia.' },
@@ -891,7 +897,7 @@ const generateSampleProspects = (): Prospect[] => {
       direccion: 'Cl 34 #76-10 Torre 2, Medellín', correo: 'mauricio.ospina@outlook.com', telefono: '+57 316 555 0707',
       ocupacion: 'Director Financiero', proyectos_interes: ['Oceana Residences & Skyhomes', 'The Palms'],
       forma_contacto: 'LinkedIn', broker_asignado: 'Rodrigo Fernández', estado: 'Negociación',
-      presupuesto_usd: 580000, fecha_entrada: '2026-03-20',
+      presupuesto_usd: 580000, fecha_entrada: '2026-03-20', fecha_ultima_actividad: '2026-07-09',
       notas: 'Contacto LinkedIn. CFO de holding familiar. Maneja portafolio de inversión y busca diversificar USD 500K+ fuera de Colombia. Perfil LEGADO.',
       historial: [
         { fecha: '2026-03-20', accion: 'Contacto Inicial', detalle: 'Conectó vía LinkedIn con Rodrigo. Interés en portafolio diversificado.' },
@@ -909,7 +915,7 @@ const generateSampleProspects = (): Prospect[] => {
       direccion: 'Cl 10 #4-41, Cali', correo: 'valentina.duque@gmail.com', telefono: '+57 317 555 0808',
       ocupacion: 'Odontóloga', proyectos_interes: ['BeachWalk Resort Playa Caracol'],
       forma_contacto: 'TikTok', broker_asignado: 'Andrés Morales', estado: 'Contacto Inicial',
-      presupuesto_usd: 130000, fecha_entrada: '2026-07-08',
+      presupuesto_usd: 130000, fecha_entrada: '2026-07-08', fecha_ultima_actividad: '2026-07-16',
       notas: 'Lead TikTok — vio video de BeachWalk y escribió por DM. Primera vez que considera inversión internacional. Joven, 32 años. Perfil ASPIRACIONAL.',
       historial: [
         { fecha: '2026-07-08', accion: 'Contacto Inicial', detalle: 'DM TikTok: "Vi el video de la piscina con vista al mar, ¿cuánto vale?" — Respondida por Andrés.' },
@@ -921,7 +927,7 @@ const generateSampleProspects = (): Prospect[] => {
       direccion: 'Cra 65 #48-50 OF 312, Medellín', correo: 'felipe.restrepo@outlook.com', telefono: '+57 318 555 0909',
       ocupacion: 'Consultor Financiero', proyectos_interes: ['Ventu', 'Ocean Front'],
       forma_contacto: 'Referido', broker_asignado: 'Felipe Londoño', estado: 'Presentación',
-      presupuesto_usd: 200000, fecha_entrada: '2026-05-25',
+      presupuesto_usd: 200000, fecha_entrada: '2026-05-25', fecha_ultima_actividad: '2026-07-08',
       notas: 'Consultor independiente. Referido de cartera cerrada. Tiene fondos en EEUU. Muy analítico, pide proyecciones de flujo de caja. Perfil RACIONAL.',
       historial: [
         { fecha: '2026-05-25', accion: 'Contacto Inicial', detalle: 'Referido por Diana Herrera. Ya tiene fondos en cuenta bancaria en EEUU.' },
@@ -937,7 +943,7 @@ const generateSampleProspects = (): Prospect[] => {
       direccion: 'Cra 11 #82-70, Bogotá', correo: 'catalina.montoya@gmail.com', telefono: '+57 319 555 1010',
       ocupacion: 'Gerente General', proyectos_interes: ['The Tides – Playa Caracol', 'Aires del Mar – Playa Caracol'],
       forma_contacto: 'Evento', broker_asignado: 'Valentina Ospina', estado: 'Calificación',
-      presupuesto_usd: 280000, fecha_entrada: '2026-06-20',
+      presupuesto_usd: 280000, fecha_entrada: '2026-06-20', fecha_ultima_actividad: '2026-07-13',
       notas: 'Contacto en evento Asobancaria. Gerente de empresa familiar. Busca segunda residencia en Playa Caracol. Perfil ESTATUS.',
       historial: [
         { fecha: '2026-06-20', accion: 'Contacto Inicial', detalle: 'Evento Asobancaria — stand GLP. Intercambio de tarjetas con Valentina.' },
@@ -952,7 +958,7 @@ const generateSampleProspects = (): Prospect[] => {
       direccion: 'Cra 43A #16-50, Barranquilla', correo: 'jorge.salazar@outlook.com', telefono: '+57 320 555 1111',
       ocupacion: 'Arquitecto', proyectos_interes: ['Ocean Reef Park', 'Olas del Mar'],
       forma_contacto: 'Instagram', broker_asignado: 'Santiago Mesa', estado: 'Contacto Inicial',
-      presupuesto_usd: 160000, fecha_entrada: '2026-07-10',
+      presupuesto_usd: 160000, fecha_entrada: '2026-07-10', fecha_ultima_actividad: '2026-07-16',
       notas: 'Arquitecto con aprecio por el diseño. Comentó en post de Instagram sobre Ocean Reef. Primera respuesta positiva. Perfil ASPIRACIONAL.',
       historial: [
         { fecha: '2026-07-10', accion: 'Contacto Inicial', detalle: 'Comentó en Instagram: "¿Tienen unidades disponibles con vista al océano?" — Respondido mismo día.' },
@@ -964,7 +970,7 @@ const generateSampleProspects = (): Prospect[] => {
       direccion: 'Cl 16 #28-51 OF 204, Pereira', correo: 'natalia.jaramillo@gmail.com', telefono: '+57 321 555 1212',
       ocupacion: 'Economista', proyectos_interes: ['Playa Dorada', 'Bayside Resort Panamá'],
       forma_contacto: 'LinkedIn', broker_asignado: 'Rodrigo Fernández', estado: 'Negociación',
-      presupuesto_usd: 220000, fecha_entrada: '2026-04-02',
+      presupuesto_usd: 220000, fecha_entrada: '2026-04-02', fecha_ultima_actividad: '2026-07-07',
       notas: 'Economista con maestría en inversiones. Analiza muy bien los números. Tiene fondos en cuenta en Panamá. Perfil RACIONAL — pidió informe de riesgos del mercado inmobiliario panameño.',
       historial: [
         { fecha: '2026-04-02', accion: 'Contacto Inicial', detalle: 'LinkedIn — artículo sobre inversión en Panamá la llevó al perfil de GLP.' },
@@ -1889,6 +1895,15 @@ export default function CRMDashboard() {
   const [carteraFilter, setCarteraFilter] = useState<'todos'|'verde'|'amarillo'|'rojo'>('todos');
   const [carteraMsgLoading, setCarteraMsgLoading] = useState(false);
   const [carteraMsgResult, setCarteraMsgResult] = useState('');
+  // Modal: Parametrizar Plan de Pagos
+  const [planModal, setPlanModal] = useState(false);
+  const [planForm, setPlanForm] = useState({ monto: 0, numCuotas: 12, frecuencia: 'mensual' as 'mensual'|'bimensual'|'trimestral'|'semestral', fecha_inicio: '', tipo: 'igual' as 'igual'|'creciente' });
+  // Modal: Registrar Pago
+  const [pagoModal, setPagoModal] = useState<string|null>(null);
+  const [pagoForm, setPagoForm] = useState({ fecha: '', monto: 0, medio: 'transferencia' as 'transferencia'|'efectivo'|'cheque'|'pse'|'otro', referencia: '', notas: '' });
+  // Modal: Compromiso de Pago
+  const [compromisoModal, setCompromisoModal] = useState<string|null>(null);
+  const [compromisoForm, setCompromisoForm] = useState({ fecha: '', monto: 0, notas: '' });
   // ────────────────────────────────────────────────────────────────────────────
   const [agentCamiloProspects, setAgentCamiloProspects] = useState(14);
   const [agentSaraMessages, setAgentSaraMessages] = useState(237);
@@ -4990,7 +5005,21 @@ Responde SOLO con JSON sin bloques de código:
 
                         {/* Score */}
                         <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #F3F4F6', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                          <span style={{ fontSize: 9, textTransform: 'uppercase' as const, letterSpacing: '1.5px', color: '#9CA3AF' }}>Score de demanda</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, position: 'relative' as const }}>
+                            <span style={{ fontSize: 9, textTransform: 'uppercase' as const, letterSpacing: '1.5px', color: '#9CA3AF' }}>Score de demanda</span>
+                            <div style={{ position: 'relative' as const, display: 'inline-flex' }}
+                              onMouseEnter={e => { const t = (e.currentTarget as HTMLElement).querySelector('.score-tip') as HTMLElement; if(t) t.style.display='block'; }}
+                              onMouseLeave={e => { const t = (e.currentTarget as HTMLElement).querySelector('.score-tip') as HTMLElement; if(t) t.style.display='none'; }}>
+                              <span style={{ width: 14, height: 14, borderRadius: '50%', background: '#E5E7EB', color: '#6B7280', fontSize: 9, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'default', flexShrink: 0, lineHeight: 1 }}>?</span>
+                              <div className="score-tip" style={{ display: 'none', position: 'absolute' as const, bottom: 20, left: '50%', transform: 'translateX(-50%)', width: 220, background: '#1F2937', color: '#F9FAFB', fontSize: 10, lineHeight: 1.6, padding: '10px 12px', zIndex: 999, pointerEvents: 'none' as const, boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }}>
+                                <div style={{ fontWeight: 700, marginBottom: 6, color: '#B89047', letterSpacing: 1 }}>CÓMO SE CALCULA</div>
+                                <div>Prospectos interesados: <strong>×2 pts</strong></div>
+                                <div>Ventas cerradas: <strong>×3 pts</strong></div>
+                                <div>Leads perdidos: <strong>×1 pt</strong></div>
+                                <div style={{ marginTop: 6, color: '#9CA3AF', fontSize: 9 }}>Refleja la tracción real del proyecto en el mercado. Mayor score = mayor demanda acumulada.</div>
+                              </div>
+                            </div>
+                          </div>
                           <span style={{ fontFamily: T.fontSerif, fontSize: 20, fontWeight: 400, color: rankColors[i] }}>{score} pts</span>
                         </div>
                       </div>
@@ -17622,17 +17651,25 @@ No uses emojis. Firma como "Sara · GLP Wealth Management".`;
                 {/* TAB: CUOTAS */}
                 {carteraTab === 'cuotas' && (
                   <div>
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                      <button onClick={() => {
+                        const montoPendiente = selected.precio_total - selected.cuotas.filter(q=>q.concepto!=='cuota_inicial').reduce((s,q)=>s+q.monto,0);
+                        setPlanForm({ monto: Math.round(montoPendiente * 0.3), numCuotas: 12, frecuencia: 'mensual', fecha_inicio: new Date().toISOString().split('T')[0], tipo: 'igual' });
+                        setPlanModal(true);
+                      }}
+                        style={{ background: S.gold, color: '#fff', border: 'none', padding: '8px 16px', fontSize: 10, fontWeight: 700, letterSpacing: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        ⚙ Parametrizar Plan de Pagos
+                      </button>
                       <button onClick={() => addCuota(selected.id)}
                         style={{ background: S.navy, color: '#fff', border: 'none', padding: '8px 16px', fontSize: 10, fontWeight: 700, letterSpacing: 1, cursor: 'pointer' }}>
-                        + Agregar Cuota
+                        + Cuota manual
                       </button>
                     </div>
                     <div style={{ background: '#fff', border: `1px solid ${S.parch}` }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
                           <tr style={{ background: S.navy }}>
-                            {['#','Concepto','Monto (USD)','Vencimiento','Pago Real','Estado','Acciones'].map(h => (
+                            {['#','Concepto','Monto','Vencimiento','Estado','Compromiso','Acciones'].map(h => (
                               <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: S.gold, textTransform: 'uppercase' }}>{h}</th>
                             ))}
                           </tr>
@@ -17648,16 +17685,15 @@ No uses emojis. Firma como "Sara · GLP Wealth Management".`;
                                 </select>
                               </td>
                               <td style={{ padding: '10px 14px' }}>
-                                <input type="number" value={q.monto} onChange={e => updateCuota(selected.id, q.id, { monto: Number(e.target.value) })}
-                                  style={{ width: 90, border: `1px solid ${S.parch}`, padding: '3px 6px', fontSize: 11, color: S.navy }} />
+                                <div style={{ fontSize: 12, fontWeight: 700, color: S.navy }}>USD {q.monto.toLocaleString()}</div>
+                                {q.estado === 'pagada' && q.monto_pagado && (
+                                  <div style={{ fontSize: 10, color: '#10B981' }}>✓ Pagado: USD {q.monto_pagado.toLocaleString()}</div>
+                                )}
                               </td>
                               <td style={{ padding: '10px 14px' }}>
                                 <input type="date" value={q.fecha_vencimiento} onChange={e => updateCuota(selected.id, q.id, { fecha_vencimiento: e.target.value })}
                                   style={{ border: `1px solid ${S.parch}`, padding: '3px 6px', fontSize: 11, color: S.navy }} />
-                              </td>
-                              <td style={{ padding: '10px 14px' }}>
-                                <input type="date" value={q.fecha_pago || ''} onChange={e => updateCuota(selected.id, q.id, { fecha_pago: e.target.value })}
-                                  style={{ border: `1px solid ${S.parch}`, padding: '3px 6px', fontSize: 11, color: S.navy }} />
+                                {q.fecha_pago && <div style={{ fontSize: 10, color: '#10B981', marginTop: 2 }}>Pagado: {q.fecha_pago}</div>}
                               </td>
                               <td style={{ padding: '10px 14px' }}>
                                 <select value={q.estado} onChange={e => updateCuota(selected.id, q.id, { estado: e.target.value as any })}
@@ -17667,17 +17703,51 @@ No uses emojis. Firma como "Sara · GLP Wealth Management".`;
                                   <option value="pagada">Pagada</option>
                                   <option value="vencida">Vencida</option>
                                 </select>
+                                {q.comprobante_ref && <div style={{ fontSize: 10, color: '#6B7280', marginTop: 2 }}>Ref: {q.comprobante_ref}</div>}
                               </td>
                               <td style={{ padding: '10px 14px' }}>
-                                <button onClick={() => deleteCuota(selected.id, q.id)}
-                                  style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>×</button>
+                                {q.compromiso ? (
+                                  <div style={{ fontSize: 10 }}>
+                                    <div style={{ color: '#F59E0B', fontWeight: 700 }}>📅 {q.compromiso.fecha}</div>
+                                    <div style={{ color: '#6B7280' }}>USD {q.compromiso.monto.toLocaleString()}</div>
+                                    {q.compromiso.notas && <div style={{ color: '#9CA3AF', fontStyle: 'italic' }}>{q.compromiso.notas}</div>}
+                                    <button onClick={() => updateCuota(selected.id, q.id, { compromiso: undefined })}
+                                      style={{ background: 'none', border: 'none', color: '#9CA3AF', fontSize: 9, cursor: 'pointer', padding: 0, marginTop: 2 }}>✕ quitar</button>
+                                  </div>
+                                ) : (
+                                  <span style={{ color: '#D1D5DB', fontSize: 11 }}>—</span>
+                                )}
+                              </td>
+                              <td style={{ padding: '10px 14px' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                  {q.estado !== 'pagada' && (
+                                    <button onClick={() => {
+                                      setPagoForm({ fecha: new Date().toISOString().split('T')[0], monto: q.monto, medio: 'transferencia', referencia: '', notas: '' });
+                                      setPagoModal(q.id);
+                                    }}
+                                      style={{ background: '#10B981', color: '#fff', border: 'none', padding: '4px 8px', fontSize: 9, fontWeight: 700, cursor: 'pointer', letterSpacing: 0.5 }}>
+                                      💳 Pago
+                                    </button>
+                                  )}
+                                  {(q.estado === 'pendiente' || q.estado === 'vencida' || q.estado === 'en_proceso') && (
+                                    <button onClick={() => {
+                                      setCompromisoForm({ fecha: '', monto: q.monto, notas: '' });
+                                      setCompromisoModal(q.id);
+                                    }}
+                                      style={{ background: '#F59E0B', color: '#fff', border: 'none', padding: '4px 8px', fontSize: 9, fontWeight: 700, cursor: 'pointer', letterSpacing: 0.5 }}>
+                                      📅 Promesa
+                                    </button>
+                                  )}
+                                  <button onClick={() => deleteCuota(selected.id, q.id)}
+                                    style={{ background: 'none', border: `1px solid #FCA5A5`, color: '#EF4444', cursor: 'pointer', fontSize: 9, fontWeight: 700, padding: '3px 8px' }}>✕ Eliminar</button>
+                                </div>
                               </td>
                             </tr>
                           ))}
                         </tbody>
                         <tfoot>
                           <tr style={{ background: S.bg, borderTop: `2px solid ${S.parch}` }}>
-                            <td colSpan={2} style={{ padding: '10px 14px', fontSize: 11, fontWeight: 700, color: S.navy }}>TOTAL</td>
+                            <td colSpan={2} style={{ padding: '10px 14px', fontSize: 11, fontWeight: 700, color: S.navy }}>TOTAL CUOTAS</td>
                             <td style={{ padding: '10px 14px', fontSize: 13, fontWeight: 700, color: S.navy, fontFamily: T.serif }}>
                               USD {selected.cuotas.reduce((s,q)=>s+q.monto,0).toLocaleString()}
                             </td>
@@ -17776,6 +17846,238 @@ No uses emojis. Firma como "Sara · GLP Wealth Management".`;
             </div>
           )}
         </div>
+
+        {/* ── Modal: Parametrizar Plan de Pagos ── */}
+        {planModal && carteraSelected && (() => {
+          const sel = carteras.find(c => c.id === carteraSelected)!;
+          const FREQ_MESES: Record<string,number> = { mensual:1, bimensual:2, trimestral:3, semestral:6 };
+          const generarCuotas = () => {
+            const meses = FREQ_MESES[planForm.frecuencia] || 1;
+            const base = Math.floor(planForm.monto / planForm.numCuotas);
+            const resto = planForm.monto - base * planForm.numCuotas;
+            const nuevas: CuotaCartera[] = Array.from({ length: planForm.numCuotas }, (_, idx) => {
+              const d = new Date(planForm.fecha_inicio);
+              d.setMonth(d.getMonth() + idx * meses);
+              let monto = planForm.tipo === 'igual' ? base + (idx === planForm.numCuotas - 1 ? resto : 0)
+                : Math.round(planForm.monto * (idx + 1) / ((planForm.numCuotas * (planForm.numCuotas + 1)) / 2));
+              return { id: `plan-${Date.now()}-${idx}`, numero: idx + 1, concepto: 'cuota_inicial' as const, monto, fecha_vencimiento: d.toISOString().split('T')[0], estado: 'pendiente' as const };
+            });
+            const sinCuotaInicial = sel.cuotas.filter(q => q.concepto !== 'cuota_inicial');
+            saveCarteras(carteras.map(c => c.id === carteraSelected ? { ...c, cuotas: [...sinCuotaInicial, ...nuevas].sort((a,b)=>a.fecha_vencimiento.localeCompare(b.fecha_vencimiento)) } : c));
+            setPlanModal(false);
+          };
+          const preview = (() => {
+            const meses = FREQ_MESES[planForm.frecuencia] || 1;
+            const base = Math.floor(planForm.monto / planForm.numCuotas);
+            return Array.from({ length: Math.min(planForm.numCuotas, 4) }, (_, idx) => {
+              const d = new Date(planForm.fecha_inicio || new Date().toISOString());
+              d.setMonth(d.getMonth() + idx * meses);
+              return { fecha: d.toISOString().split('T')[0], monto: planForm.tipo === 'igual' ? base : Math.round(planForm.monto * (idx + 1) / ((planForm.numCuotas * (planForm.numCuotas + 1)) / 2)) };
+            });
+          })();
+          return (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ background: '#fff', width: 540, maxHeight: '90vh', overflow: 'auto', padding: 32 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: S.navy, fontFamily: T.serif }}>Parametrizar Plan de Pagos</div>
+                    <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }}>{sel.prospectName} · {sel.proyecto}</div>
+                  </div>
+                  <button onClick={() => setPlanModal(false)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#9CA3AF' }}>×</button>
+                </div>
+
+                <div style={{ background: `${S.gold}10`, border: `1px solid ${S.gold}40`, padding: '10px 14px', marginBottom: 20, fontSize: 11, color: '#92400E' }}>
+                  ⚠ Esto reemplazará todas las cuotas de tipo "Cuota Inicial" existentes. Las demás cuotas (crédito, escritura, entrega) se conservan.
+                </div>
+
+                {[
+                  { label: 'Monto total a fraccionar (USD)', key: 'monto', type: 'number' },
+                  { label: 'Número de cuotas', key: 'numCuotas', type: 'number' },
+                  { label: 'Fecha de primera cuota', key: 'fecha_inicio', type: 'date' },
+                ].map(({ label, key, type }) => (
+                  <div key={key} style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, color: '#6B7280', marginBottom: 4, textTransform: 'uppercase' }}>{label}</div>
+                    <input type={type} value={(planForm as any)[key] || ''} onChange={e => setPlanForm(f => ({ ...f, [key]: type === 'number' ? Number(e.target.value) : e.target.value }))}
+                      style={{ width: '100%', boxSizing: 'border-box' as const, border: `1px solid ${S.parch}`, padding: '8px 12px', fontSize: 13, color: S.navy, outline: 'none' }} />
+                  </div>
+                ))}
+
+                <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, color: '#6B7280', marginBottom: 4, textTransform: 'uppercase' }}>Frecuencia</div>
+                    <select value={planForm.frecuencia} onChange={e => setPlanForm(f => ({ ...f, frecuencia: e.target.value as any }))}
+                      style={{ width: '100%', border: `1px solid ${S.parch}`, padding: '8px 12px', fontSize: 13, color: S.navy, background: '#fff' }}>
+                      <option value="mensual">Mensual</option>
+                      <option value="bimensual">Bimensual (cada 2 meses)</option>
+                      <option value="trimestral">Trimestral</option>
+                      <option value="semestral">Semestral</option>
+                    </select>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, color: '#6B7280', marginBottom: 4, textTransform: 'uppercase' }}>Tipo de amortización</div>
+                    <select value={planForm.tipo} onChange={e => setPlanForm(f => ({ ...f, tipo: e.target.value as any }))}
+                      style={{ width: '100%', border: `1px solid ${S.parch}`, padding: '8px 12px', fontSize: 13, color: S.navy, background: '#fff' }}>
+                      <option value="igual">Cuotas iguales</option>
+                      <option value="creciente">Cuotas crecientes</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Preview */}
+                {planForm.monto > 0 && planForm.numCuotas > 0 && planForm.fecha_inicio && (
+                  <div style={{ background: S.bg, border: `1px solid ${S.parch}`, padding: 16, marginBottom: 20 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, color: S.navy, marginBottom: 10, textTransform: 'uppercase' }}>Vista previa (primeras {Math.min(planForm.numCuotas, 4)} de {planForm.numCuotas} cuotas)</div>
+                    {preview.map((p, idx) => (
+                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: `1px solid ${S.parch}`, fontSize: 12 }}>
+                        <span style={{ color: '#6B7280' }}>Cuota {idx + 1} · {p.fecha}</span>
+                        <span style={{ color: S.navy, fontWeight: 700 }}>USD {p.monto.toLocaleString()}</span>
+                      </div>
+                    ))}
+                    {planForm.numCuotas > 4 && <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 6 }}>… y {planForm.numCuotas - 4} cuotas más</div>}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, fontWeight: 700, fontSize: 12 }}>
+                      <span style={{ color: S.navy }}>Total generado</span>
+                      <span style={{ color: S.gold }}>USD {planForm.monto.toLocaleString()}</span>
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                  <button onClick={() => setPlanModal(false)} style={{ background: 'transparent', border: `1px solid ${S.parch}`, padding: '9px 20px', fontSize: 11, cursor: 'pointer', color: '#6B7280' }}>Cancelar</button>
+                  <button onClick={generarCuotas} disabled={!planForm.monto || !planForm.numCuotas || !planForm.fecha_inicio}
+                    style={{ background: S.navy, color: '#fff', border: 'none', padding: '9px 24px', fontSize: 11, fontWeight: 700, letterSpacing: 1, cursor: 'pointer', opacity: (!planForm.monto || !planForm.numCuotas || !planForm.fecha_inicio) ? 0.5 : 1 }}>
+                    Generar {planForm.numCuotas} cuotas
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── Modal: Registrar Pago ── */}
+        {pagoModal && carteraSelected && (() => {
+          const sel = carteras.find(c => c.id === carteraSelected)!;
+          const cuota = sel.cuotas.find(q => q.id === pagoModal)!;
+          if (!cuota) return null;
+          const registrarPago = () => {
+            updateCuota(carteraSelected, pagoModal, {
+              estado: 'pagada',
+              fecha_pago: pagoForm.fecha,
+              monto_pagado: pagoForm.monto,
+              medio_pago: pagoForm.medio,
+              comprobante_ref: pagoForm.referencia,
+              notas: pagoForm.notas || cuota.notas,
+            });
+            setPagoModal(null);
+          };
+          return (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ background: '#fff', width: 460, padding: 32 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: S.navy, fontFamily: T.serif }}>Registrar Pago</div>
+                    <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }}>Cuota #{cuota.numero} · {CONCEPTO_LABEL[cuota.concepto]} · USD {cuota.monto.toLocaleString()}</div>
+                  </div>
+                  <button onClick={() => setPagoModal(null)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#9CA3AF' }}>×</button>
+                </div>
+
+                {[
+                  { label: 'Fecha de pago', key: 'fecha', type: 'date' },
+                  { label: 'Monto pagado (USD)', key: 'monto', type: 'number' },
+                  { label: 'Número de referencia / comprobante', key: 'referencia', type: 'text' },
+                ].map(({ label, key, type }) => (
+                  <div key={key} style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, color: '#6B7280', marginBottom: 4, textTransform: 'uppercase' }}>{label}</div>
+                    <input type={type} value={(pagoForm as any)[key] || ''} onChange={e => setPagoForm(f => ({ ...f, [key]: type === 'number' ? Number(e.target.value) : e.target.value }))}
+                      style={{ width: '100%', boxSizing: 'border-box' as const, border: `1px solid ${S.parch}`, padding: '8px 12px', fontSize: 13, color: S.navy, outline: 'none' }} />
+                  </div>
+                ))}
+
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, color: '#6B7280', marginBottom: 4, textTransform: 'uppercase' }}>Medio de pago</div>
+                  <select value={pagoForm.medio} onChange={e => setPagoForm(f => ({ ...f, medio: e.target.value as any }))}
+                    style={{ width: '100%', border: `1px solid ${S.parch}`, padding: '8px 12px', fontSize: 13, color: S.navy, background: '#fff' }}>
+                    <option value="transferencia">Transferencia bancaria</option>
+                    <option value="efectivo">Efectivo</option>
+                    <option value="cheque">Cheque</option>
+                    <option value="pse">PSE</option>
+                    <option value="otro">Otro</option>
+                  </select>
+                </div>
+
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, color: '#6B7280', marginBottom: 4, textTransform: 'uppercase' }}>Notas</div>
+                  <textarea value={pagoForm.notas} onChange={e => setPagoForm(f => ({ ...f, notas: e.target.value }))}
+                    rows={2} style={{ width: '100%', boxSizing: 'border-box' as const, border: `1px solid ${S.parch}`, padding: '8px 12px', fontSize: 13, color: S.navy, resize: 'vertical' as const, fontFamily: 'inherit' }} />
+                </div>
+
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                  <button onClick={() => setPagoModal(null)} style={{ background: 'transparent', border: `1px solid ${S.parch}`, padding: '9px 20px', fontSize: 11, cursor: 'pointer', color: '#6B7280' }}>Cancelar</button>
+                  <button onClick={registrarPago} disabled={!pagoForm.fecha || !pagoForm.monto}
+                    style={{ background: '#10B981', color: '#fff', border: 'none', padding: '9px 24px', fontSize: 11, fontWeight: 700, letterSpacing: 1, cursor: 'pointer', opacity: (!pagoForm.fecha || !pagoForm.monto) ? 0.5 : 1 }}>
+                    ✓ Confirmar pago
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── Modal: Compromiso de Pago ── */}
+        {compromisoModal && carteraSelected && (() => {
+          const sel = carteras.find(c => c.id === carteraSelected)!;
+          const cuota = sel.cuotas.find(q => q.id === compromisoModal)!;
+          if (!cuota) return null;
+          const registrarCompromiso = () => {
+            updateCuota(carteraSelected, compromisoModal, {
+              estado: 'en_proceso',
+              compromiso: { fecha: compromisoForm.fecha, monto: compromisoForm.monto, notas: compromisoForm.notas },
+            });
+            setCompromisoModal(null);
+          };
+          return (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ background: '#fff', width: 440, padding: 32 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: S.navy, fontFamily: T.serif }}>Compromiso de Pago</div>
+                    <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }}>Cuota #{cuota.numero} · {CONCEPTO_LABEL[cuota.concepto]} · USD {cuota.monto.toLocaleString()}</div>
+                  </div>
+                  <button onClick={() => setCompromisoModal(null)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#9CA3AF' }}>×</button>
+                </div>
+
+                <div style={{ background: '#FEF3C7', border: '1px solid #FDE68A', padding: '10px 14px', marginBottom: 20, fontSize: 11, color: '#92400E' }}>
+                  Registra la promesa del cliente. La cuota pasará a estado "En proceso" y quedará el compromiso visible en la tabla.
+                </div>
+
+                {[
+                  { label: 'Fecha prometida de pago', key: 'fecha', type: 'date' },
+                  { label: 'Monto comprometido (USD)', key: 'monto', type: 'number' },
+                ].map(({ label, key, type }) => (
+                  <div key={key} style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, color: '#6B7280', marginBottom: 4, textTransform: 'uppercase' }}>{label}</div>
+                    <input type={type} value={(compromisoForm as any)[key] || ''} onChange={e => setCompromisoForm(f => ({ ...f, [key]: type === 'number' ? Number(e.target.value) : e.target.value }))}
+                      style={{ width: '100%', boxSizing: 'border-box' as const, border: `1px solid ${S.parch}`, padding: '8px 12px', fontSize: 13, color: S.navy, outline: 'none' }} />
+                  </div>
+                ))}
+
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, color: '#6B7280', marginBottom: 4, textTransform: 'uppercase' }}>Notas del acuerdo</div>
+                  <textarea value={compromisoForm.notas} onChange={e => setCompromisoForm(f => ({ ...f, notas: e.target.value }))}
+                    rows={2} placeholder="Ej: Cliente confirmó por WhatsApp, paga el lunes por la mañana..."
+                    style={{ width: '100%', boxSizing: 'border-box' as const, border: `1px solid ${S.parch}`, padding: '8px 12px', fontSize: 13, color: S.navy, resize: 'vertical' as const, fontFamily: 'inherit' }} />
+                </div>
+
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                  <button onClick={() => setCompromisoModal(null)} style={{ background: 'transparent', border: `1px solid ${S.parch}`, padding: '9px 20px', fontSize: 11, cursor: 'pointer', color: '#6B7280' }}>Cancelar</button>
+                  <button onClick={registrarCompromiso} disabled={!compromisoForm.fecha || !compromisoForm.monto}
+                    style={{ background: '#F59E0B', color: '#fff', border: 'none', padding: '9px 24px', fontSize: 11, fontWeight: 700, letterSpacing: 1, cursor: 'pointer', opacity: (!compromisoForm.fecha || !compromisoForm.monto) ? 0.5 : 1 }}>
+                    📅 Registrar compromiso
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Modal Nuevo/Editar Cliente */}
         {carteraModalOpen && (
