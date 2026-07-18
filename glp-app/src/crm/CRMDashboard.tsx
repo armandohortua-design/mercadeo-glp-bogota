@@ -1900,6 +1900,8 @@ export default function CRMDashboard() {
   });
   const [carteraSelected, setCarteraSelected] = useState<string | null>(null);
   const [carteraTab, setCarteraTab] = useState<'resumen'|'cuotas'|'flujo'|'alertas'>('resumen');
+  const [carteraView, setCarteraView] = useState<'clientes'|'reportes'>('clientes');
+  const [carteraRptFiltro, setCarteraRptFiltro] = useState<{ proyecto: string; riesgo: string; broker: string }>({ proyecto: '', riesgo: '', broker: '' });
   const [carteraModalOpen, setCarteraModalOpen] = useState(false);
   const [carteraForm, setCarteraForm] = useState<Partial<CarteraCliente>>({});
   const [carteraFilter, setCarteraFilter] = useState<'todos'|'verde'|'amarillo'|'rojo'>('todos');
@@ -17480,10 +17482,20 @@ No uses emojis. Firma como "Sara · GLP Wealth Management".`;
               <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, color: '#fff', fontFamily: T.serif, letterSpacing: 0.5 }}>Módulo de Cartera</h1>
               <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 4 }}>Gestión de planes de pago · Seguimiento · Alertas inteligentes</div>
             </div>
-            <button onClick={() => { setCarteraForm({}); setCarteraModalOpen(true); }}
-              style={{ background: S.gold, color: '#fff', border: 'none', padding: '10px 20px', fontSize: 11, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', cursor: 'pointer', fontFamily: T.serif }}>
-              + Nuevo Cliente
-            </button>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div style={{ display: 'flex', background: 'rgba(255,255,255,0.08)', borderRadius: 4, overflow: 'hidden' }}>
+                {([['clientes','👥 Clientes'],['reportes','📊 Reportes']] as const).map(([v,l]) => (
+                  <button key={v} onClick={() => setCarteraView(v)}
+                    style={{ padding: '8px 18px', fontSize: 11, fontWeight: 700, letterSpacing: 0.8, border: 'none', cursor: 'pointer', background: carteraView === v ? S.gold : 'transparent', color: carteraView === v ? '#fff' : '#94A3B8', transition: 'all 0.15s' }}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => { setCarteraForm({}); setCarteraModalOpen(true); }}
+                style={{ background: S.gold, color: '#fff', border: 'none', padding: '10px 20px', fontSize: 11, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', cursor: 'pointer', fontFamily: T.serif }}>
+                + Nuevo Cliente
+              </button>
+            </div>
           </div>
 
           {/* KPI row */}
@@ -17503,7 +17515,201 @@ No uses emojis. Firma como "Sara · GLP Wealth Management".`;
           </div>
         </div>
 
-        <div style={{ display: 'flex', height: 'calc(100vh - 220px)' }}>
+        {/* ── VISTA REPORTES ── */}
+        {carteraView === 'reportes' && (() => {
+          const proyectos = [...new Set(carteras.map(c => c.proyecto))].sort();
+          const brokers = [...new Set(prospects.map(p => p.broker_asignado).filter(Boolean))].sort();
+          const filtradas = carteras.filter(c => {
+            if (carteraRptFiltro.proyecto && c.proyecto !== carteraRptFiltro.proyecto) return false;
+            if (carteraRptFiltro.riesgo && calcRiesgo(c) !== carteraRptFiltro.riesgo) return false;
+            if (carteraRptFiltro.broker) {
+              const p = prospects.find(x => x.id === c.prospectId || String(x.id) === String(c.prospectId));
+              if (!p || p.broker_asignado !== carteraRptFiltro.broker) return false;
+            }
+            return true;
+          });
+          const rptTotal = filtradas.reduce((s, c) => s + c.precio_total, 0);
+          const rptRecaudado = filtradas.reduce((s, c) => s + totalRecaudado(c), 0);
+          const rptPendiente = filtradas.reduce((s, c) => s + totalPendiente(c), 0);
+          const rptMora = filtradas.filter(c => calcRiesgo(c) === 'rojo');
+          const rptCompromisos = filtradas.flatMap(c => c.cuotas.filter(q => q.compromiso).map(q => ({ ...q, clienteName: c.prospectName, proyecto: c.proyecto })));
+          const rptPagosRec = filtradas.flatMap(c => c.cuotas.filter(q => q.estado === 'pagada' && q.fecha_pago).map(q => ({ ...q, clienteName: c.prospectName, proyecto: c.proyecto })));
+
+          // Agrupar por proyecto
+          const porProyecto: Record<string, { total: number; recaudado: number; clientes: number; mora: number }> = {};
+          filtradas.forEach(c => {
+            if (!porProyecto[c.proyecto]) porProyecto[c.proyecto] = { total: 0, recaudado: 0, clientes: 0, mora: 0 };
+            porProyecto[c.proyecto].total += c.precio_total;
+            porProyecto[c.proyecto].recaudado += totalRecaudado(c);
+            porProyecto[c.proyecto].clientes++;
+            if (calcRiesgo(c) === 'rojo') porProyecto[c.proyecto].mora++;
+          });
+
+          return (
+            <div style={{ padding: '24px 40px', overflowY: 'auto', maxHeight: 'calc(100vh - 220px)' }}>
+              {/* Filtros */}
+              <div style={{ display: 'flex', gap: 12, marginBottom: 24, background: '#fff', padding: '16px 20px', border: `1px solid ${S.parch}`, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, color: '#9CA3AF', textTransform: 'uppercase' }}>Filtrar por:</span>
+                <select value={carteraRptFiltro.proyecto} onChange={e => setCarteraRptFiltro(f => ({...f, proyecto: e.target.value}))}
+                  style={{ border: `1px solid ${S.parch}`, padding: '6px 12px', fontSize: 12, color: S.navy, background: '#fff', minWidth: 140 }}>
+                  <option value="">Todos los proyectos</option>
+                  {proyectos.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+                <select value={carteraRptFiltro.riesgo} onChange={e => setCarteraRptFiltro(f => ({...f, riesgo: e.target.value}))}
+                  style={{ border: `1px solid ${S.parch}`, padding: '6px 12px', fontSize: 12, color: S.navy, background: '#fff', minWidth: 130 }}>
+                  <option value="">Todos los estados</option>
+                  <option value="verde">Al día</option>
+                  <option value="amarillo">Próx. a vencer</option>
+                  <option value="rojo">En mora</option>
+                </select>
+                <select value={carteraRptFiltro.broker} onChange={e => setCarteraRptFiltro(f => ({...f, broker: e.target.value}))}
+                  style={{ border: `1px solid ${S.parch}`, padding: '6px 12px', fontSize: 12, color: S.navy, background: '#fff', minWidth: 150 }}>
+                  <option value="">Todos los brokers</option>
+                  {brokers.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+                {(carteraRptFiltro.proyecto || carteraRptFiltro.riesgo || carteraRptFiltro.broker) && (
+                  <button onClick={() => setCarteraRptFiltro({ proyecto: '', riesgo: '', broker: '' })}
+                    style={{ background: 'none', border: `1px solid #EF4444`, color: '#EF4444', padding: '5px 12px', fontSize: 10, fontWeight: 700, cursor: 'pointer', letterSpacing: 1 }}>
+                    ✕ Limpiar filtros
+                  </button>
+                )}
+                <span style={{ marginLeft: 'auto', fontSize: 11, color: '#6B7280' }}>{filtradas.length} cliente{filtradas.length !== 1 ? 's' : ''}</span>
+              </div>
+
+              {/* KPIs resumen */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 24 }}>
+                {[
+                  { l: 'CARTERA FILTRADA', v: `USD ${(rptTotal/1000).toFixed(0)}K`, c: S.gold },
+                  { l: 'RECAUDADO', v: `USD ${(rptRecaudado/1000).toFixed(0)}K`, c: '#10B981' },
+                  { l: 'POR RECAUDAR', v: `USD ${(rptPendiente/1000).toFixed(0)}K`, c: '#F59E0B' },
+                  { l: 'EN MORA', v: `${rptMora.length} clientes`, c: '#EF4444' },
+                ].map((k,i) => (
+                  <div key={i} style={{ background: '#fff', padding: '16px 20px', borderLeft: `3px solid ${k.c}`, border: `1px solid ${S.parch}`, borderLeftWidth: 3, borderLeftColor: k.c }}>
+                    <div style={{ fontSize: 9, letterSpacing: 2, color: '#9CA3AF', marginBottom: 6 }}>{k.l}</div>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: S.navy, fontFamily: T.serif }}>{k.v}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+                {/* Tabla por proyecto */}
+                <div style={{ background: '#fff', border: `1px solid ${S.parch}`, padding: 20 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, color: S.navy, marginBottom: 16, textTransform: 'uppercase' }}>Recaudo por Proyecto</div>
+                  {Object.entries(porProyecto).length === 0
+                    ? <div style={{ color: '#9CA3AF', fontSize: 12 }}>Sin datos para los filtros seleccionados.</div>
+                    : <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                        <thead>
+                          <tr style={{ borderBottom: `2px solid ${S.parch}` }}>
+                            {['Proyecto','Clientes','Total','Recaudado','%','Mora'].map(h => (
+                              <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontSize: 9, letterSpacing: 1, color: '#9CA3AF', fontWeight: 700 }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {Object.entries(porProyecto).map(([proy, d]) => {
+                            const pct = d.total > 0 ? Math.round(d.recaudado / d.total * 100) : 0;
+                            return (
+                              <tr key={proy} style={{ borderBottom: `1px solid ${S.parch}` }}>
+                                <td style={{ padding: '8px', color: S.navy, fontWeight: 600 }}>{proy}</td>
+                                <td style={{ padding: '8px', color: '#6B7280', textAlign: 'center' }}>{d.clientes}</td>
+                                <td style={{ padding: '8px', color: S.navy }}>${(d.total/1000).toFixed(0)}K</td>
+                                <td style={{ padding: '8px', color: '#10B981', fontWeight: 700 }}>${(d.recaudado/1000).toFixed(0)}K</td>
+                                <td style={{ padding: '8px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <div style={{ flex: 1, height: 5, background: S.parch }}>
+                                      <div style={{ width: `${pct}%`, height: '100%', background: pct >= 70 ? '#10B981' : pct >= 40 ? S.gold : '#EF4444' }} />
+                                    </div>
+                                    <span style={{ fontSize: 10, fontWeight: 700, color: S.navy, minWidth: 28 }}>{pct}%</span>
+                                  </div>
+                                </td>
+                                <td style={{ padding: '8px', color: d.mora > 0 ? '#EF4444' : '#10B981', fontWeight: 700, textAlign: 'center' }}>{d.mora}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                  }
+                </div>
+
+                {/* Clientes en mora */}
+                <div style={{ background: '#fff', border: `1px solid ${S.parch}`, padding: 20 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, color: '#EF4444', marginBottom: 16, textTransform: 'uppercase' }}>Clientes en Mora</div>
+                  {rptMora.length === 0
+                    ? <div style={{ color: '#10B981', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ fontSize: 20 }}>✓</span> Sin clientes en mora.</div>
+                    : <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {rptMora.map(c => {
+                          const vencidas = c.cuotas.filter(q => q.estado === 'vencida');
+                          return (
+                            <div key={c.id} onClick={() => { setCarteraSelected(c.id); setCarteraView('clientes'); setCarteraTab('cuotas'); }}
+                              style={{ padding: '10px 14px', border: '1px solid #FCA5A5', borderLeft: '3px solid #EF4444', cursor: 'pointer', background: '#FFF5F5' }}>
+                              <div style={{ fontWeight: 700, fontSize: 13, color: S.navy }}>{c.prospectName}</div>
+                              <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }}>{c.proyecto} · {vencidas.length} cuota(s) vencida(s)</div>
+                              <div style={{ fontSize: 12, color: '#EF4444', fontWeight: 700, marginTop: 2 }}>USD {vencidas.reduce((s,q)=>s+q.monto,0).toLocaleString()} en mora</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                  }
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                {/* Compromisos pendientes */}
+                <div style={{ background: '#fff', border: `1px solid ${S.parch}`, padding: 20 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, color: '#F59E0B', marginBottom: 16, textTransform: 'uppercase' }}>📅 Compromisos de Pago</div>
+                  {rptCompromisos.length === 0
+                    ? <div style={{ color: '#9CA3AF', fontSize: 12 }}>No hay compromisos registrados.</div>
+                    : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {rptCompromisos.sort((a,b) => (a.compromiso!.fecha > b.compromiso!.fecha ? 1 : -1)).map((q: any) => (
+                          <div key={q.id} style={{ padding: '10px 14px', border: `1px solid ${S.parch}`, borderLeft: '3px solid #F59E0B' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                              <div>
+                                <div style={{ fontWeight: 700, fontSize: 12, color: S.navy }}>{q.clienteName}</div>
+                                <div style={{ fontSize: 10, color: '#6B7280' }}>{q.proyecto}</div>
+                              </div>
+                              <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: S.navy }}>USD {q.compromiso.monto.toLocaleString()}</div>
+                                <div style={{ fontSize: 10, color: '#F59E0B', fontWeight: 600 }}>{q.compromiso.fecha}</div>
+                              </div>
+                            </div>
+                            {q.compromiso.notas && <div style={{ fontSize: 10, color: '#6B7280', marginTop: 4, fontStyle: 'italic' }}>{q.compromiso.notas}</div>}
+                          </div>
+                        ))}
+                      </div>
+                  }
+                </div>
+
+                {/* Últimos pagos registrados */}
+                <div style={{ background: '#fff', border: `1px solid ${S.parch}`, padding: 20 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, color: '#10B981', marginBottom: 16, textTransform: 'uppercase' }}>💳 Pagos Registrados</div>
+                  {rptPagosRec.length === 0
+                    ? <div style={{ color: '#9CA3AF', fontSize: 12 }}>No hay pagos con comprobante registrados.</div>
+                    : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {rptPagosRec.sort((a,b) => (a.fecha_pago! > b.fecha_pago! ? -1 : 1)).slice(0, 15).map((q: any) => (
+                          <div key={q.id} style={{ padding: '10px 14px', border: `1px solid ${S.parch}`, borderLeft: '3px solid #10B981' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                              <div>
+                                <div style={{ fontWeight: 700, fontSize: 12, color: S.navy }}>{q.clienteName}</div>
+                                <div style={{ fontSize: 10, color: '#6B7280' }}>{q.proyecto} · {q.medio_pago || 'Transferencia'}</div>
+                              </div>
+                              <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: '#10B981' }}>USD {(q.monto_pagado || q.monto).toLocaleString()}</div>
+                                <div style={{ fontSize: 10, color: '#6B7280' }}>{q.fecha_pago}</div>
+                              </div>
+                            </div>
+                            {q.comprobante_ref && <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 3 }}>Ref: {q.comprobante_ref}</div>}
+                          </div>
+                        ))}
+                      </div>
+                  }
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── VISTA CLIENTES ── */}
+        {carteraView === 'clientes' && <div style={{ display: 'flex', height: 'calc(100vh - 220px)' }}>
           {/* Lista izquierda */}
           <div style={{ width: 320, borderRight: `1px solid ${S.parch}`, background: '#fff', overflow: 'auto', flexShrink: 0 }}>
             {/* Filtro semáforo */}
@@ -17855,7 +18061,7 @@ No uses emojis. Firma como "Sara · GLP Wealth Management".`;
               </div>
             </div>
           )}
-        </div>
+        </div>}
 
         {/* ── Modal: Parametrizar Plan de Pagos ── */}
         {planModal && carteraSelected && (() => {
