@@ -7,16 +7,28 @@ const pool = require('./db');
 
 const TENANT_ID = 'tenant-glp-001';
 
-// Umbrales por etapa (días sin actividad → nivel de alerta)
-// Basado en ciclos de venta inmobiliaria de lujo B2C/B2B
-const THRESHOLDS = {
-  'Contacto Inicial': { tibio: 2,  frio: 5,  critico: 10 },
-  'Calificación':     { tibio: 3,  frio: 7,  critico: 14 },
-  'Presentación':     { tibio: 4,  frio: 8,  critico: 15 },
-  'Negociación':      { tibio: 2,  frio: 4,  critico: 7  },
-  'Cierre':           { tibio: 1,  frio: 2,  critico: 4  },
+// Umbrales por defecto (días sin actividad → nivel de alerta), usados si no hay
+// configuración guardada en business_config. Editable desde Configuración > Reglas de Negocio.
+const DEFAULT_THRESHOLDS = {
+  'Contacto Inicial': { tibio: 5,  frio: 12, critico: 21 },
+  'Calificación':     { tibio: 7,  frio: 14, critico: 25 },
+  'Presentación':     { tibio: 7,  frio: 15, critico: 25 },
+  'Negociación':      { tibio: 4,  frio: 8,  critico: 15 },
+  'Cierre':           { tibio: 2,  frio: 4,  critico: 8  },
   'Post-venta':       { tibio: 14, frio: 30, critico: 60 },
 };
+
+async function getThresholds() {
+  try {
+    const { rows } = await pool.query('SELECT config FROM business_config WHERE tenant_id = $1', [TENANT_ID]);
+    if (rows.length > 0 && rows[0].config && rows[0].config.saraThresholds) {
+      return { ...DEFAULT_THRESHOLDS, ...rows[0].config.saraThresholds };
+    }
+  } catch (err) {
+    console.error('[Monitor] Error leyendo business_config, usando umbrales por defecto:', err.message);
+  }
+  return DEFAULT_THRESHOLDS;
+}
 
 // Tareas sugeridas por nivel y etapa
 function getSuggestedTasks(etapa, nivel, nombre, proyectos) {
@@ -116,6 +128,7 @@ Responde SOLO con JSON: {"asunto":"...","cuerpo":"..."}`
 async function monitorProspects() {
   console.log('[Monitor] Iniciando análisis de prospectos...');
   try {
+    const THRESHOLDS = await getThresholds();
     const { rows: prospectos } = await pool.query(
       `SELECT * FROM prospectos WHERE tenant_id = $1 AND estado NOT IN ('Post-venta', 'Perdido')`,
       [TENANT_ID]

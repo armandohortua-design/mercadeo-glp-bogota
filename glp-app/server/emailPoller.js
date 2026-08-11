@@ -14,6 +14,20 @@ const TENANT_ID = 'tenant-glp-001';
 // Cambia a 'INBOX' para leer todo el inbox (no recomendado con correo personal).
 const MAILBOX = process.env.IMAP_MAILBOX || 'GLP-Leads';
 
+// Dominios y prefijos de remitentes automatizados/transaccionales que NUNCA deben
+// convertirse en prospecto — antes cualquier notificación (ej. un correo de calendly.com)
+// que llegara a la carpeta monitoreada se interpretaba como un lead real.
+const AUTOMATED_SENDER_DOMAINS = [
+  'calendly.com', 'no-reply', 'noreply', 'notifications', 'mailer-daemon',
+  'notification', 'donotreply', 'do-not-reply', 'postmaster', 'zoom.us',
+  'docusign.net', 'stripe.com', 'paypal.com', 'google.com', 'accounts.google.com',
+  'linkedin.com', 'facebookmail.com', 'github.com', 'slack.com',
+];
+function isAutomatedSender(email) {
+  const lower = (email || '').toLowerCase();
+  return AUTOMATED_SENDER_DOMAINS.some(d => lower.includes(d));
+}
+
 // Palabras clave en asunto para filtrar si se usa INBOX directamente.
 // Solo se aplica cuando MAILBOX=INBOX. Deja vacío para procesar todo.
 // Si IMAP_SUBJECT_KEYWORDS no está definida en .env, usa palabras clave por defecto.
@@ -79,8 +93,21 @@ Responde SOLO con JSON:
   }
 }
 
+// Busca el perfil psicográfico Sofía del prospecto (arquetipo, señales, recomendación
+// para Sara) para que el borrador de respuesta hable en el tono correcto — antes esto no
+// existía y Sara redactaba genérico sin importar si el arquetipo era estatus/racional/etc.
+async function getSofiaProfile(prospectoId) {
+  if (!prospectoId) return null;
+  try {
+    const { rows } = await pool.query('SELECT * FROM sofia_profiles WHERE prospecto_id = $1', [prospectoId]);
+    return rows[0] || null;
+  } catch {
+    return null;
+  }
+}
+
 // Genera borrador con OpenAI
-async function generateSaraDraft(tenant, nombre, email, subject, body) {
+async function generateSaraDraft(tenant, nombre, email, subject, body, prospectoId) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     return {
@@ -92,6 +119,15 @@ async function generateSaraDraft(tenant, nombre, email, subject, body) {
   try {
     const { rows: projectRows } = await pool.query('SELECT data FROM projects WHERE tenant_id = $1', [TENANT_ID]);
     const catalogSummary = projectRows.map(r => `- ${r.data?.name}: desde $${r.data?.price} USD`).join('\n') || 'Portafolio disponible';
+
+    const sofia = await getSofiaProfile(prospectoId);
+    const perfilTxt = sofia
+      ? `\nPERFIL PSICOGRÁFICO DEL CLIENTE (detectado por Sofía, IA de perfilamiento):
+- Arquetipo: ${sofia.arquetipo} (confianza ${sofia.confianza}%)
+- Señales detectadas: ${(sofia.senales || []).join('; ')}
+- Recomendación de tono para Sara: ${sofia.recomendacion_sara || 'sin recomendación específica'}
+Ajusta el tono y los argumentos de tu respuesta a este arquetipo específico — no uses un tono genérico.`
+      : '';
 
     const OpenAI = require('openai');
     const openai = new OpenAI({ apiKey });
@@ -111,10 +147,11 @@ ${body.slice(0, 800)}
 
 Catálogo GLP:
 ${catalogSummary}
+${perfilTxt}
 
 Reglas:
-- Responde en español
-- Tono cálido, profesional, de asesor de confianza (no genérico)
+- Responde en español, redacción impecable y natural — sin errores gramaticales ni frases robóticas
+- Tono cálido, profesional, de asesor de confianza (no genérico) y ajustado al arquetipo del cliente si se detectó uno
 - Si el mensaje menciona un proyecto específico, referencia ese proyecto
 - Si el mensaje es una consulta general, invítalo a una videollamada de diagnóstico
 - Máximo 200 palabras
@@ -199,6 +236,13 @@ async function pollInbox() {
     auth: { user, pass },
     logger: false
   });
+  // Sin este listener, un ECONNRESET de red en la conexión IMAP (normal en TLS de larga
+  // vida) se propaga como 'error' event no manejado y Node mata TODO el proceso — tumbando
+  // el CRM completo (dashboard, prospectos, todo en cero) por una simple caída de red del
+  // poller de correo, que debería ser no-crítico y reintentar en el siguiente ciclo.
+  client.on('error', (err) => {
+    console.warn('[IMAP] Error de conexión (no fatal, se reintenta en el próximo ciclo):', err.message);
+  });
 
   try {
     await client.connect();
@@ -233,6 +277,14 @@ async function pollInbox() {
         // Ignorar correos enviados desde la misma cuenta
         if (rawEmail.toLowerCase() === user.toLowerCase()) {
           console.log(`[IMAP] ⏭ Auto-enviado, ignorado.`);
+          await client.messageFlagsAdd({ uid: msg.uid }, ['\\Seen']);
+          continue;
+        }
+
+        // Ignorar remitentes automatizados/transaccionales (calendly.com, no-reply@, etc.)
+        // — nunca deben crear un prospecto falso.
+        if (isAutomatedSender(rawEmail)) {
+          console.log(`[IMAP] ⏭ Remitente automatizado, ignorado: ${rawEmail}`);
           await client.messageFlagsAdd({ uid: msg.uid }, ['\\Seen']);
           continue;
         }
@@ -344,7 +396,7 @@ async function pollInbox() {
 
         if (existingDraft.length === 0) {
           console.log(`[IMAP] Generando borrador SARA...`);
-          const draft = await generateSaraDraft(null, nombre, rawEmail, subject, bodyText);
+          const draft = await generateSaraDraft(null, nombre, rawEmail, subject, bodyText, prospectoId);
           const draftId = `draft-email-${Date.now()}-${Math.floor(Math.random() * 9000)}`;
 
           await pool.query(
@@ -381,4 +433,4 @@ function startEmailPoller() {
   setInterval(pollInbox, POLL_INTERVAL_MS);
 }
 
-module.exports = { startEmailPoller, pollInbox };
+module.exports = { startEmailPoller, pollInbox, generateSaraDraft };

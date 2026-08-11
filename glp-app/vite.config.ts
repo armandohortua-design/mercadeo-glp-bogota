@@ -11,6 +11,7 @@ export default defineConfig({
         crm: resolve(__dirname, 'crm.html'),
         project: resolve(__dirname, 'project.html'),
         superadmin: resolve(__dirname, 'super-admin.html'),
+        portal: resolve(__dirname, 'portal.html'),
       },
     },
   },

@@ -139,8 +139,11 @@ async function getBaselineValorPipeline() {
 
   const r = rows[0];
   return {
+    // Si no hay pipeline en Negociación/Cierre ni esta semana ni la anterior, no hay
+    // baseline real que comparar — devolver 0 evita fabricar una "caída del 100%" contra
+    // un baseline inventado de $1.
     actual: Number(r.valor_actual),
-    baseline: Number(r.valor_semana_ant) || Number(r.valor_actual) || 1,
+    baseline: Number(r.valor_semana_ant) || Number(r.valor_actual) || 0,
   };
 }
 

@@ -1,6 +1,35 @@
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { PROJECTS, PROJECT_IMG, C } from './projectsData';
+import { getImageFor, fetchLiveProjectImages } from './liveProjectImages';
+import { Lightbox, LightboxState } from './Lightbox';
+import { API_ROOT } from './apiRoot';
+import { applyUnidadesToProjects } from './unidadesOverride';
+
+type SessionProspect = { email: string; nombre: string };
+
+const useSessionProspect = (): SessionProspect | null => {
+  const [prospect] = React.useState<SessionProspect | null>(() => {
+    try {
+      const raw = localStorage.getItem('glp_session_prospect');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+  return prospect;
+};
+
+const trackCalculatorSignal = (prospect: SessionProspect | null, accion: string, detalle: string) => {
+  if (!prospect) return;
+  fetch(`${API_ROOT}/api/prospectos/by-email/${encodeURIComponent(prospect.email)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      historial_append: { fecha: new Date().toISOString(), accion, detalle }
+    })
+  }).catch(() => {});
+};
 
 const fmt = (n: number) => {
   const rounded = Math.round(n);
@@ -16,9 +45,9 @@ const formatComma = (num: number) => {
 const getZoneNotes = (zone: string) => {
   const z = zone.toLowerCase();
   if (z.includes('pacífica') || z.includes('pacifica') || z.includes('reef')) {
-    return 'Punta Pacífica/Islas: Cercanía al Hospital Pacífica Salud (afiliado a Johns Hopkins Medicióne), Multiplaza Mall, conexión directa al Corredor Sur y la exclusiva Marina Privada de Ocean Reef.';
+    return 'Punta Pacífica/Islas: Cercanía al Hospital Pacífica Salud (afiliado a Johns Hopkins Medicine), Multiplaza Mall, conexión directa al Corredor Sur y la exclusiva Marina Privada de Ocean Reef.';
   } else if (z.includes('santa maría') || z.includes('santa maria') || z.includes('este') || z.includes('viejo')) {
-    return 'Santa María/Costa del Este: Entorno rodeado por el campo de golf Jack Nicklaus, Town Center Costa del Este, oficiónas corporativas de multinacionales y los colegios bilingües más prestigiosos de la ciudad.';
+    return 'Santa María/Costa del Este: Entorno rodeado por el campo de golf Jack Nicklaus, Town Center Costa del Este, oficinas corporativas de multinacionales y los colegios bilingües más prestigiosos de la ciudad.';
   } else if (z.includes('caracol') || z.includes('chame')) {
     return 'Playa Caracol: 1.2 km de playa privada de arena blanca, academia de surf y proximidad al centro de servicios de Coronado (a 20 minutos) con clínicas y supermercados.';
   } else if (z.includes('dorada') || z.includes('arraiján') || z.includes('arraijan') || z.includes('pacífico') || z.includes('pacifico')) {
@@ -28,19 +57,30 @@ const getZoneNotes = (zone: string) => {
 };
 
 export const ProjectDetailView: React.FC = () => {
+  const [, setImgTick] = React.useState(0);
+  React.useEffect(() => { fetchLiveProjectImages().then(() => setImgTick(t => t + 1)); }, []);
+  const [, setUnidTick] = React.useState(0);
+  React.useEffect(() => {
+    applyUnidadesToProjects().then(changed => {
+      if (!changed) return;
+      setUnidTick(t => t + 1);
+      // El precio inicial de la calculadora se capturó con useState(project.price) ANTES
+      // de que esta llamada mutara PROJECTS con el precio mínimo real del inventario — sin
+      // este resync, la ficha técnica mostraba el precio correcto pero la calculadora
+      // seguía usando el valor viejo de projectsData.ts (marketing estático).
+      const p = PROJECTS.find(pr => pr.name.toLowerCase() === projectName.toLowerCase());
+      if (p) { setPrecio(p.price); setMontoCuotaInicial(Math.round(p.price * 0.5)); }
+    });
+  }, []);
+  const [lightbox, setLightbox] = React.useState<LightboxState | null>(null);
   React.useEffect(() => {
     const paramás = new URLSearchParams(window.location.search);
     const tab = paramás.get('tab');
-    if (tab === 'cuota') {
-      const el = document.getElementById('cuota-inicial-simulator');
+    if (tab === 'cuota' || tab === 'credito') {
+      setActiveCalcTab(tab);
+      const el = document.getElementById('calculadoras-tabs');
       if (el) {
-        setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300);
-      }
-    } else if (tab === 'credito') {
-      setShowCreditCalc(true);
-      const el = document.getElementById('credit-calculator');
-      if (el) {
-        setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300);
+        setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
       }
     }
   }, []);
@@ -59,13 +99,18 @@ export const ProjectDetailView: React.FC = () => {
     );
   }
 
-  const imgs = PROJECT_IMG[project.name];
+  const imgs = getImageFor(project.name, PROJECT_IMG[project.name]);
+
+  const sessionProspect = useSessionProspect();
+  const handleCuotaCalculationComplete = React.useCallback(() => {
+    trackCalculatorSignal(sessionProspect, 'Interacción con calculadora', `Completó un cálculo de cuota inicial (${project.name}).`);
+  }, [sessionProspect, project.name]);
 
   const [precio, setPrecio] = useState(project.price);
   const [montoCuotaInicial, setMontoCuotaInicial] = useState(() => Math.round(project.price * 0.5));
-  const [tasa, setTasa] = useState(8.5); 
-  const [plazo, setPlazo] = useState(20); 
-  const [showCreditCalc, setShowCreditCalc] = useState(false);
+  const [tasa, setTasa] = useState(8.5);
+  const [plazo, setPlazo] = useState(20);
+  const [activeCalcTab, setActiveCalcTab] = useState<'cuota' | 'credito'>('cuota');
   const [showContactModal, setShowContactModal] = useState(false);
 
   const [contactName, setContactName] = useState('');
@@ -193,43 +238,129 @@ export const ProjectDetailView: React.FC = () => {
 
   return (
     <div style={{ background: C.bg, minHeight: '100vh', color: C.text, paddingBottom: 80, fontFamily: C.fontSans }}>
-      {/* Top navbar */}
-      <nav style={{ background: C.teal, padding: '16px 24px', color: C.white, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${C.sand}` }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{
-            width: 36, height: 36, borderRadius: 0,
-            background: 'rgba(255,255,255,0.08)',
-            border: '1.5px solid rgba(255,255,255,0.18)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontWeight: 800, fontSize: '1rem', color: C.white,
-            fontFamily: C.fontSerif,
-          }}>GLP</div>
-          <span style={{ fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: C.fontSans }}>Ficha Técnica Detallada</span>
+      {/* Full-bleed Hero: cover photo as background, nav + title overlaid */}
+      <div style={{
+        position: 'relative', minHeight: 560, display: 'flex', flexDirection: 'column',
+        backgroundImage: imgs?.main ? `linear-gradient(180deg, rgba(0,20,40,0.55) 0%, rgba(0,20,40,0.35) 35%, rgba(0,20,40,0.88) 100%), url(${imgs.main})` : undefined,
+        backgroundColor: C.teal, backgroundSize: 'cover', backgroundPosition: 'center',
+      }}>
+        {/* Top navbar — transparent over the image */}
+        <nav style={{ padding: '18px 28px', color: C.white, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span style={{
+                  background: C.red, color: C.white,
+                  padding: '3px 10px', borderRadius: 4,
+                  fontWeight: 800, fontSize: '1.05rem', letterSpacing: '0.02em',
+                  fontFamily: C.fontSans,
+                }}>GLP</span>
+                <span style={{ fontWeight: 400, fontSize: '1rem', color: C.white, fontFamily: C.fontSans }}>Properties</span>
+              </div>
+              <div style={{ height: 2, width: '100%', background: C.red, marginTop: 4 }} />
+            </div>
+            <span style={{ fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: C.fontSans, color: 'rgba(255,255,255,0.85)' }}>Ficha Técnica Detallada</span>
+          </div>
+          <button onClick={() => {
+            window.location.href = '/';
+          }} style={{
+            background: 'transparent', border: '1px solid rgba(255,255,255,0.4)', color: C.white,
+            padding: '8px 16px', borderRadius: 0, cursor: 'pointer', fontWeight: 600, fontSize: '0.75rem',
+            textTransform: 'uppercase', letterSpacing: '0.05em', transition: 'all 0.2s ease',
+            fontFamily: C.fontSans
+          }}
+            onMouseEnter={e => { e.currentTarget.style.background = C.white; e.currentTarget.style.color = C.teal; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = C.white; }}>
+            Cerrar ✕
+          </button>
+        </nav>
+
+        {/* Hero title block */}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', padding: '0 28px 48px' }}>
+          <div style={{ maxWidth: 1100, margin: '0 auto', width: '100%' }}>
+            <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.85)', textTransform: 'uppercase', letterSpacing: '0.12em', margin: '0 0 10px', fontFamily: C.fontSans, fontWeight: 600 }}>
+              {project.zone}
+            </p>
+            <h1 style={{ fontSize: 'clamp(2.4rem, 6vw, 4.2rem)', fontWeight: 400, color: C.white, margin: 0, fontFamily: C.fontSerif, lineHeight: 1.05, textShadow: '0 2px 24px rgba(0,0,0,0.35)' }}>
+              {project.name}
+            </h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginTop: 24, flexWrap: 'wrap' as const }}>
+              <button
+                onClick={() => setShowContactModal(true)}
+                style={{
+                  background: C.white, color: C.teal, border: 'none', padding: '14px 32px', cursor: 'pointer',
+                  fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.08em',
+                  fontFamily: C.fontSans, transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = C.red; e.currentTarget.style.color = C.white; }}
+                onMouseLeave={e => { e.currentTarget.style.background = C.white; e.currentTarget.style.color = C.teal; }}
+              >
+                Solicitar Información
+              </button>
+              <span style={{ color: 'rgba(255,255,255,0.9)', fontFamily: C.fontSerif, fontSize: '1.2rem' }}>
+                Desde {fmt(project.price)}
+              </span>
+            </div>
+          </div>
         </div>
-        <button onClick={() => {
-          window.location.href = '/';
-        }} style={{
-          background: 'transparent', border: '1px solid rgba(255,255,255,0.3)', color: C.white,
-          padding: '8px 16px', borderRadius: 0, cursor: 'pointer', fontWeight: 600, fontSize: '0.75rem',
-          textTransform: 'uppercase', letterSpacing: '0.05em', transition: 'all 0.2s ease',
-          fontFamily: C.fontSans
-        }}
-          onMouseEnter={e => { e.currentTarget.style.background = C.white; e.currentTarget.style.color = C.teal; }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = C.white; }}>
-          Cerrar ✕
-        </button>
-      </nav>
+      </div>
 
       <div style={{ maxWidth: 1100, margin: '40px auto 0', padding: '0 24px' }}>
-        {/* Main Title Header */}
-        <div style={{ marginBottom: 32 }}>
-          <h1 style={{ fontSize: 'clamp(1.8rem, 4vw, 2.8rem)', fontWeight: 400, color: C.teal, marginTop: 8, marginBottom: 8, fontFamily: C.fontSerif }}>
-            {project.name}
-          </h1>
-          <p style={{ fontSize: '0.9rem', color: C.textSec, display: 'flex', alignItems: 'center', gap: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            {project.zone}
-          </p>
-        </div>
+        {/* Editorial Story Section */}
+        {project.story && (
+          <div style={{ marginBottom: 48 }}>
+            {/* Lead statement — big, bold, pull-quote treatment */}
+            <div style={{ borderLeft: `4px solid ${C.red}`, paddingLeft: 28, marginBottom: 32, maxWidth: 820 }}>
+              <p style={{
+                fontFamily: C.fontSerif, fontWeight: 600, fontStyle: 'italic',
+                fontSize: 'clamp(1.5rem, 3vw, 2.1rem)', lineHeight: 1.35,
+                color: C.teal, margin: 0, letterSpacing: '-0.01em'
+              }}>
+                {project.story.paragraphs[0]}
+              </p>
+            </div>
+
+            <div style={{ maxWidth: 760, marginBottom: 8 }}>
+              {project.story.paragraphs.slice(1).map((p, i) => (
+                <p key={i} style={{
+                  fontFamily: C.fontSerif, fontWeight: 400, fontSize: '1.15rem',
+                  lineHeight: 1.7, color: C.text, margin: '0 0 18px'
+                }}>
+                  {p}
+                </p>
+              ))}
+            </div>
+
+            <div style={{ borderTop: `1px solid ${C.sand}`, paddingTop: 36, marginTop: 16 }}>
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: C.red, textTransform: 'uppercase', letterSpacing: '0.18em', fontFamily: C.fontSans }}>
+                Distribución
+              </span>
+              <h3 style={{
+                fontSize: 'clamp(1.6rem, 3vw, 2.3rem)', fontWeight: 600, color: C.red,
+                fontFamily: C.fontSerif, margin: '8px 0 16px', letterSpacing: '-0.01em', lineHeight: 1.2
+              }}>
+                {project.story.distribucionTitle}
+              </h3>
+              <p style={{ fontSize: '1rem', lineHeight: 1.65, color: C.textSec, margin: '0 0 24px', maxWidth: 720 }}>
+                {project.story.distribucionIntro}
+              </p>
+              <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 24px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px 28px' }}>
+                {project.story.modelos.map((m, i) => (
+                  <li key={i} style={{
+                    fontSize: '0.95rem', color: C.text, fontWeight: 600,
+                    display: 'flex', alignItems: 'baseline', gap: 10,
+                  }}>
+                    <span style={{ color: C.red, fontSize: '0.85rem' }}>✶</span>
+                    {m}
+                  </li>
+                ))}
+              </ul>
+              <p style={{ fontSize: '0.9rem', lineHeight: 1.6, color: C.textSec, fontStyle: 'italic', margin: 0, maxWidth: 720 }}>
+                {project.story.distribucionFooter}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Pictures & Details Grid */}
         <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 32, marginBottom: 40 }}>
@@ -237,18 +368,25 @@ export const ProjectDetailView: React.FC = () => {
           {/* Left Column: Photos & Location */}
           <div>
             {/* Main Photo */}
-            <div style={{ height: 420, borderRadius: 0, overflow: 'hidden', border: `1px solid ${C.sand}`, marginBottom: 20 }}>
+            <div style={{ height: 420, borderRadius: 0, overflow: 'hidden', border: `1px solid ${C.sand}`, marginBottom: 20, cursor: 'zoom-in' }}
+              onClick={() => {
+                const allPhotos = imgs ? [imgs.main, ...imgs.gallery.filter(g => g !== imgs.main)] : [];
+                if (allPhotos.length > 0) setLightbox({ photos: allPhotos, index: 0 });
+              }}>
               <img src={imgs?.main} alt={project.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             </div>
 
             {/* Gallery Grid */}
             {imgs && imgs.gallery && imgs.gallery.length > 0 && (
               <div style={{ marginBottom: 28 }}>
-                <h3 style={{ fontSize: '0.75rem', fontWeight: 600, color: C.teal, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>Galería de Imágenes</h3>
+                <h3 style={{ fontSize: '0.75rem', fontWeight: 600, color: C.red, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>Galería de Imágenes</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
                   {imgs.gallery.map((g, idx) => (
                     <div key={idx} style={{ height: 100, borderRadius: 0, overflow: 'hidden', border: `1px solid ${C.sand}`, cursor: 'zoom-in' }}
-                      onClick={() => window.open(g, '_blank')}>
+                      onClick={() => {
+                        const allPhotos = [imgs.main, ...imgs.gallery.filter(gg => gg !== imgs.main)];
+                        setLightbox({ photos: allPhotos, index: allPhotos.indexOf(g) });
+                      }}>
                       <img src={g} alt={`${project.name} ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.3s' }}
                         onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.05)'}
                         onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'} />
@@ -260,7 +398,7 @@ export const ProjectDetailView: React.FC = () => {
 
             {/* Location & Zonas Cercanías */}
             <div style={{ background: C.white, borderRadius: 0, padding: 24, border: `1px solid ${C.sand}` }}>
-              <h3 style={{ fontSize: '0.75rem', fontWeight: 600, color: C.teal, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
+              <h3 style={{ fontSize: '0.75rem', fontWeight: 600, color: C.red, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
                 Ubicación & Zonas de Interés Cercanías
               </h3>
               <p style={{ fontSize: '0.9rem', lineHeight: 1.6, color: C.textSec, fontStyle: 'italic' }}>
@@ -273,7 +411,7 @@ export const ProjectDetailView: React.FC = () => {
           <div>
             {/* Spec Sheet Table */}
             <div style={{ background: C.white, borderRadius: 0, padding: 24, border: `1px solid ${C.sand}`, marginBottom: 20 }}>
-              <h3 style={{ fontSize: '0.75rem', fontWeight: 600, color: C.teal, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 16 }}>Ficha Técnica</h3>
+              <h3 style={{ fontSize: '0.75rem', fontWeight: 600, color: C.red, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 16 }}>Ficha Técnica</h3>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                 <tbody>
                   <tr style={{ borderBottom: `1px solid ${C.sand}` }}>
@@ -318,41 +456,10 @@ export const ProjectDetailView: React.FC = () => {
               </table>
             </div>
 
-            {/* Solicitar Información CTA Button */}
-            <div style={{ marginBottom: 20 }}>
-              <button
-                onClick={() => setShowContactModal(true)}
-                style={{
-                  width: '100%',
-                  background: C.coral,
-                  color: C.white,
-                  border: `1px solid ${C.coral}`,
-                  borderRadius: 0,
-                  padding: '14px 28px',
-                  fontWeight: 600,
-                  fontSize: '0.85rem',
-                  cursor: 'pointer',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.08em',
-                  transition: 'all 0.3s ease',
-                  fontFamily: C.fontSans
-                }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.color = C.coral;
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.background = C.coral;
-                  e.currentTarget.style.color = C.white;
-                }}
-              >
-                📬 Solicitar Información
-              </button>
-            </div>
 
             {/* Amenities Card */}
             <div style={{ background: C.white, borderRadius: 0, padding: 24, border: `1px solid ${C.sand}` }}>
-              <h3 style={{ fontSize: '0.75rem', fontWeight: 600, color: C.teal, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
+              <h3 style={{ fontSize: '0.75rem', fontWeight: 600, color: C.red, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
                 Amenities del Edificio
               </h3>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -366,61 +473,71 @@ export const ProjectDetailView: React.FC = () => {
           </div>
         </div>
 
-        {/* Cuota Inicial Simulator */}
-        <CuotaInicialSimulator
-          precio={precio}
-          montoCuotaInicial={montoCuotaInicial}
-          setPrecio={setPrecio}
-          setMontoCuotaInicial={setMontoCuotaInicial}
-        />
-
-        {/* Toggle Credit Calculator Button */}
-        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 36, marginBottom: 20 }}>
-          <button
-            onClick={() => setShowCreditCalc(v => !v)}
-            style={{
-              background: showCreditCalc ? 'transparent' : C.teal,
-              color: showCreditCalc ? C.teal : C.white,
-              border: `1px solid ${C.teal}`,
-              borderRadius: 0,
-              padding: '14px 28px',
-              fontWeight: 600,
-              fontSize: '0.85rem',
-              cursor: 'pointer',
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              transition: 'all 0.3s ease',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              fontFamily: C.fontSans
-            }}
-            onMouseEnter={e => {
-              if (showCreditCalc) {
-                e.currentTarget.style.background = 'rgba(0,35,73,0.04)';
-              } else {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = C.teal;
-              }
-            }}
-            onMouseLeave={e => {
-              if (showCreditCalc) {
-                e.currentTarget.style.background = 'transparent';
-              } else {
-                e.currentTarget.style.background = C.teal;
-                e.currentTarget.style.color = C.white;
-              }
-            }}
-          >
-            {showCreditCalc ? 'Ocultar Simulador de Crédito Hipotecario' : 'Simular Crédito Hipotecario'}
-          </button>
+        {/* Calculadoras: Cuota Inicial / Crédito Hipotecario */}
+        <div id="calculadoras-tabs" style={{ marginTop: 36 }}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+            <button
+              onClick={() => setActiveCalcTab('cuota')}
+              style={{
+                flex: 1,
+                background: activeCalcTab === 'cuota' ? C.red : 'transparent',
+                color: activeCalcTab === 'cuota' ? C.white : C.red,
+                border: `1px solid ${C.red}`,
+                borderRadius: 0,
+                padding: '14px 28px',
+                fontWeight: 600,
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                transition: 'all 0.3s ease',
+                fontFamily: C.fontSans
+              }}
+            >
+              Simulación de Cuota Inicial
+            </button>
+            <button
+              onClick={() => {
+                setActiveCalcTab('credito');
+                trackCalculatorSignal(sessionProspect, 'Interacción con calculadora', `Abrió el simulador de crédito hipotecario (${project.name}).`);
+              }}
+              style={{
+                flex: 1,
+                background: activeCalcTab === 'credito' ? C.red : 'transparent',
+                color: activeCalcTab === 'credito' ? C.white : C.red,
+                border: `1px solid ${C.red}`,
+                borderRadius: 0,
+                padding: '14px 28px',
+                fontWeight: 600,
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                transition: 'all 0.3s ease',
+                fontFamily: C.fontSans
+              }}
+            >
+              Simulación de Crédito Hipotecario
+            </button>
+          </div>
         </div>
 
+        {/* Cuota Inicial Simulator */}
+        {activeCalcTab === 'cuota' && (
+          <CuotaInicialSimulator
+            precio={precio}
+            montoCuotaInicial={montoCuotaInicial}
+            setPrecio={setPrecio}
+            setMontoCuotaInicial={setMontoCuotaInicial}
+            onCalculationComplete={handleCuotaCalculationComplete}
+          />
+        )}
+
         {/* Special Credit Calculator */}
-        {showCreditCalc && (
-        <div id="credit-calculator" style={{ background: C.white, borderRadius: 0, padding: 32, border: `1px solid ${C.sand}`, marginTop: 20 }}>
-          <div style={{ borderBottom: `2px solid ${C.teal}`, paddingBottom: 12, marginBottom: 24 }}>
-            <h3 style={{ fontSize: '1.3rem', fontWeight: 400, color: C.teal, fontFamily: C.fontSerif }}>
+        {activeCalcTab === 'credito' && (
+        <div id="credit-calculator" style={{ background: C.white, borderRadius: 0, padding: 32, border: `1px solid ${C.sand}` }}>
+          <div style={{ borderBottom: `2px solid ${C.red}`, paddingBottom: 12, marginBottom: 24 }}>
+            <h3 style={{ fontSize: '1.3rem', fontWeight: 400, color: C.red, fontFamily: C.fontSerif }}>
               Simulación de Crédito
             </h3>
             <p style={{ margin: '6px 0 0', fontSize: '0.85rem', color: C.textSec, fontFamily: C.fontSans }}>
@@ -536,7 +653,7 @@ export const ProjectDetailView: React.FC = () => {
             {/* Results & Schedule */}
             <div style={{ background: C.bg, borderRadius: 0, padding: 24, border: `1px solid ${C.sand}`, display: 'flex', flexDirection: 'column' }}>
               <div>
-                <h4 style={{ fontSize: '0.75rem', fontWeight: 600, color: C.teal, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 16 }}>Análisis de Crédito</h4>
+                <h4 style={{ fontSize: '0.75rem', fontWeight: 600, color: C.red, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 16 }}>Análisis de Crédito</h4>
                 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
                   <div style={{ background: C.white, padding: '10px 14px', borderRadius: 0, border: `1px solid ${C.sand}` }}>
@@ -591,7 +708,7 @@ export const ProjectDetailView: React.FC = () => {
 
           {/* Amortization Schedule Table */}
           <div style={{ marginTop: 32, borderTop: `1px solid ${C.sand}`, paddingTop: 24 }}>
-            <h4 style={{ fontSize: '0.75rem', fontWeight: 600, color: C.teal, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 16 }}>
+            <h4 style={{ fontSize: '0.75rem', fontWeight: 600, color: C.red, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 16 }}>
               Plan de Pagos Detallado (Amortización Año a Año)
             </h4>
             <div style={{ overflowX: 'auto' }}>
@@ -650,7 +767,7 @@ export const ProjectDetailView: React.FC = () => {
               ✕
             </button>
             
-            <h3 style={{ fontSize: '1.3rem', fontWeight: 400, color: C.teal, fontFamily: C.fontSerif, marginBottom: 8, borderBottom: `2px solid ${C.teal}`, paddingBottom: 8 }}>
+            <h3 style={{ fontSize: '1.3rem', fontWeight: 400, color: C.red, fontFamily: C.fontSerif, marginBottom: 8, borderBottom: `2px solid ${C.red}`, paddingBottom: 8 }}>
               Solicitar Información
             </h3>
             <p style={{ fontSize: '0.85rem', color: C.textSec, marginBottom: 20 }}>
@@ -762,6 +879,13 @@ export const ProjectDetailView: React.FC = () => {
           </form>
         </div>
       )}
+      {lightbox && (
+        <Lightbox
+          state={lightbox}
+          onClose={() => setLightbox(null)}
+          onChange={i => setLightbox(prev => prev ? { ...prev, index: i } : prev)}
+        />
+      )}
     </div>
   );
 };
@@ -774,13 +898,15 @@ interface CuotaInicialProps {
   montoCuotaInicial: number;
   setPrecio: (v: number) => void;
   setMontoCuotaInicial: (v: number) => void;
+  onCalculationComplete?: () => void;
 }
 
 const CuotaInicialSimulator: React.FC<CuotaInicialProps> = ({
   precio,
   montoCuotaInicial,
   setPrecio,
-  setMontoCuotaInicial
+  setMontoCuotaInicial,
+  onCalculationComplete
 }) => {
   const [showTable, setShowTable] = React.useState(false);
   const [mesesPlan, setMesesPlan] = React.useState(24);
@@ -794,6 +920,14 @@ const CuotaInicialSimulator: React.FC<CuotaInicialProps> = ({
       setPctCuotaInicial(computedPct);
     }
   }, [precio, montoCuotaInicial]);
+
+  const isFirstRender = React.useRef(true);
+  React.useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return; }
+    if (!onCalculationComplete) return;
+    const timer = setTimeout(() => onCalculationComplete(), 3000);
+    return () => clearTimeout(timer);
+  }, [montoCuotaInicial, mesesPlan, separacion, onCalculationComplete]);
 
   const restante = Math.max(0, montoCuotaInicial - separacion);
   const cuotaMensualPlan = mesesPlan > 0 ? restante / mesesPlan : 0;
@@ -813,8 +947,8 @@ const CuotaInicialSimulator: React.FC<CuotaInicialProps> = ({
       fontFamily: C.fontSans
     }}>
       {/* Header */}
-      <div style={{ borderBottom: `2px solid ${C.teal}`, paddingBottom: 12, marginBottom: 24 }}>
-        <h3 style={{ fontSize: '1.3rem', fontWeight: 400, color: C.teal, margin: 0, fontFamily: C.fontSerif }}>
+      <div style={{ borderBottom: `2px solid ${C.red}`, paddingBottom: 12, marginBottom: 24 }}>
+        <h3 style={{ fontSize: '1.3rem', fontWeight: 400, color: C.red, margin: 0, fontFamily: C.fontSerif }}>
           Plan de Pago de Cuota Inicial (Sin Financiación)
         </h3>
         <p style={{ margin: '6px 0 0', fontSize: '0.85rem', color: C.textSec }}>
