@@ -3,6 +3,75 @@ import { BarChart, Bar, LineChart, Line, ComposedChart, XAxis, YAxis, CartesianG
 import { MARKET_STUDY_DB } from '../marketStudyDb';
 import { supabase, uploadProjectImage, uploadFile, TENANT_ID as SUPABASE_TENANT_ID } from '../lib/supabase';
 import { PROJECT_IMG } from '../projectsData';
+import jsPDF from 'jspdf';
+
+// ── Exportar estudios de Camilo a PDF ────────────────────────────────────
+// Un solo helper reusado por Reporte Semanal, Radar de Competencia e Insights — encabezado
+// de marca GLP + paginación automática por texto envuelto, sin depender del diálogo de
+// impresión del navegador (jsPDF descarga el archivo directo).
+function pdfNewDoc(title: string, subtitle: string) {
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const marginX = 48;
+  let y = 56;
+  doc.setFillColor(0, 26, 55);
+  doc.rect(0, 0, pageWidth, 84, 'F');
+  doc.setTextColor(212, 175, 106);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.text('GLP WEALTH MANAGEMENT · INTELIGENCIA DE MERCADO', marginX, 30);
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(16);
+  doc.text(title, marginX, 54);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(200, 200, 200);
+  doc.text(subtitle, marginX, 70);
+  doc.setTextColor(30, 30, 30);
+  y = 110;
+  return { doc, pageWidth, marginX, y };
+}
+function pdfCheckPageBreak(doc: jsPDF, y: number, needed = 20) {
+  const pageHeight = doc.internal.pageSize.getHeight();
+  if (y + needed > pageHeight - 40) {
+    doc.addPage();
+    return 50;
+  }
+  return y;
+}
+function pdfHeading(doc: jsPDF, marginX: number, y: number, text: string) {
+  y = pdfCheckPageBreak(doc, y, 26);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.setTextColor(0, 26, 55);
+  doc.text(text, marginX, y);
+  return y + 18;
+}
+function pdfParagraph(doc: jsPDF, marginX: number, pageWidth: number, y: number, text: string, opts?: { bold?: boolean; color?: [number, number, number]; size?: number }) {
+  doc.setFont('helvetica', opts?.bold ? 'bold' : 'normal');
+  doc.setFontSize(opts?.size || 10);
+  doc.setTextColor(...(opts?.color || [40, 40, 40]));
+  const lines: string[] = doc.splitTextToSize(text, pageWidth - marginX * 2);
+  for (const line of lines) {
+    y = pdfCheckPageBreak(doc, y, 14);
+    doc.text(line, marginX, y);
+    y += 14;
+  }
+  return y;
+}
+function pdfSave(doc: jsPDF, filename: string) {
+  const pageCount = (doc as any).internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text(`GLP Wealth Management — Confidencial · Página ${i} de ${pageCount}`, pageWidth / 2, pageHeight - 20, { align: 'center' });
+  }
+  doc.save(filename);
+}
 
 // Normaliza nombres de proyecto para buscar en PROJECT_IMG sin que fallen por tildes o
 // pequeñas variantes de escritura entre el catálogo del CRM y el de la Landing
@@ -531,6 +600,7 @@ export type EmailThreadItem = {
   body: string;
   status: 'incoming' | 'draft' | 'sent';
   direction: 'in' | 'out';
+  sentBy?: string;
 };
 
 export type WhatsAppMessageItem = {
@@ -685,6 +755,8 @@ type Prospect = {
   razon_perdida?: string;
   razon_perdida_detalle?: string;
   fecha_perdida?: string;
+  empresa?: string;
+  actividades?: { id: number; tipo: string; descripcion: string; fecha: string; hora: string }[];
 };
 
 type SofiaProfile = {
@@ -1075,6 +1147,7 @@ type EventData = {
   tipo_cita?: string;
   nota?: string;
   broker?: string;
+  estado?: string;
 };
 
 const INITIAL_EVENTS: EventData[] = [
@@ -1083,7 +1156,7 @@ const INITIAL_EVENTS: EventData[] = [
 ];
 
 // ── FAQ DATA ──────────────────────────────────────────────────
-type FAQ = { id: number; categoria: string; pregunta: string; respuesta: string };
+type FAQ = { id: number; categoria: string; pregunta: string; respuesta: string; veces_usada?: number };
 
 const FAQ_CATEGORIES = ['Estabilidad Macroeconómica', 'Financiero y Retornos', 'Fiscal', 'Migratorio'];
 
@@ -1142,16 +1215,31 @@ const NAV_SECTIONS = [
     ],
   },
   {
-    label: 'Operaciones',
+    label: 'Portafolio',
     items: [
       { id: 'portafolio',  label: 'Portafolio GLP' },
       { id: 'calculadora', label: 'Calculadora' },
-      // Legal & Cierre va primero: el proceso de negocio real arranca con la separación
-      // y los compromisos contractuales (fechas de promesa/escritura/entrega) que quedan
-      // ahí — Cartera es la consecuencia de esos compromisos, no al revés.
+    ],
+  },
+  {
+    // Cartera es la consecuencia de los compromisos contractuales (fechas de promesa/
+    // escritura/entrega) que quedan definidos en Legal & Cierre, no al revés — por eso
+    // comparten grupo aunque cada una tenga su propia pestaña de navegación separada.
+    label: 'Legal & Cierre',
+    items: [
       { id: 'legal',       label: 'Legal & Cierre' },
       { id: 'cartera',     label: 'Cartera' },
+    ],
+  },
+  {
+    label: 'Agenda',
+    items: [
       { id: 'eventos',     label: 'Eventos' },
+    ],
+  },
+  {
+    label: 'Soporte',
+    items: [
       { id: 'casos',       label: 'PQRs' },
       { id: 'faqs',        label: 'FAQs' },
     ],
@@ -1187,7 +1275,7 @@ const SECTION_ACCENT: Record<string, string> = {
 const MODULE_ACCENT: Record<string, string> = Object.fromEntries(
   NAV_SECTIONS.flatMap(s => s.items.map((i: any) => [i.id, SECTION_ACCENT[s.label] || '#002349']))
 );
-const MODULES = NAV_SECTIONS.flatMap(s => s.items as any[]);
+const MODULES = NAV_SECTIONS.flatMap(s => s.items as unknown as any[]);
 
 // Roles: superadmin | presidencia | gerencia | broker
 type UserRole = 'superadmin' | 'presidencia' | 'gerencia' | 'broker';
@@ -1249,6 +1337,15 @@ const cardStyle = (extra: Record<string, any> = {}) => ({
   boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
   ...extra,
 });
+
+// Reduce un nombre ("Armando Hortua") o un username ("ahortua") a 1-2 iniciales
+// para el badge de identidad — se usa igual en el header de escritorio y en móvil.
+const userInitials = (nameOrUser: string | null | undefined): string => {
+  if (!nameOrUser) return '?';
+  const parts = nameOrUser.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return nameOrUser.slice(0, 2).toUpperCase();
+};
 
 const btnPrimary = (extra: Record<string, any> = {}) => ({
   background: T.teal,
@@ -1409,13 +1506,33 @@ export default function CRMDashboard() {
     return ROLE_MODULES[currentUserRole];
   }, [currentUserRole, isSuperAdmin]);
 
+  // El estado por defecto de activeModule es 'kpis' (Dashboard) — un perfil que no tiene
+  // 'kpis' entre sus módulos permitidos (p.ej. broker) entraba a una pantalla sin ningún
+  // módulo válido activo, y terminaba viendo lo primero que el árbol de renderModule()
+  // encontrara sin filtrar (en la práctica, Configuración). Al iniciar sesión o cambiar de
+  // rol, si el módulo activo no está permitido, se salta al primero que sí lo esté — el
+  // mismo que aparece primero en su pestaña de navegación.
+  useEffect(() => {
+    if (allowedModules === null) return; // superadmin: sin restricción
+    if (allowedModules.includes(activeModule)) return;
+    const firstAllowed = NAV_SECTIONS
+      .flatMap(s => s.items as unknown as any[])
+      .find(m => allowedModules.includes(m.id));
+    if (firstAllowed) setActiveModule(firstAllowed.id);
+  }, [allowedModules, activeModule]);
+
   // ── Module States ───────────────────────────────────────────
   const [activeDrilldown, setActiveDrilldown] = useState<{
-    type: 'ticket' | 'conversion' | 'funnel' | 'source' | 'prospect' | 'broker' | 'prospects_total' | 'brokers_active' | 'camilo_prospects' | 'sara_history' | 'next_event';
+    type: 'ticket' | 'conversion' | 'funnel' | 'source' | 'prospect' | 'broker' | 'prospects_total' | 'brokers_active' | 'ranking_prospectos' | 'camilo_prospects' | 'sara_history' | 'next_event' | 'top_proyectos';
     stage?: string;
     source?: string;
     id?: number;
-  } | null>(null);
+    data?: any;
+  // Antes el Dashboard abría sin ningún drilldown activo — el usuario llegaba a una pantalla
+  // con solo las 6 tarjetas KPI y tenía que hacer clic en una para ver cualquier detalle. Por
+  // pedido explícito, ahora arranca mostrando el detalle de "Ventas Totales" (mismo tipo que
+  // esa tarjeta ya usaba al hacer clic), sin tocar el comportamiento de las demás tarjetas.
+  } | null>({ type: 'ticket' });
   const [showBudgetDetail, setShowBudgetDetail] = useState(false);
 
   // Portafolio
@@ -1827,7 +1944,7 @@ export default function CRMDashboard() {
     return DEFAULT_BUSINESS_RULES;
   });
   const [businessRulesDirty, setBusinessRulesDirty] = useState(false);
-  const [configTab, setConfigTab] = useState<'general'|'usuarios'|'portal'|'brokers'|'comisiones'|'reglas'|'integraciones'|'backups'>('general');
+  const [configTab, setConfigTab] = useState<'general'|'usuarios'|'portal'|'brokers'|'comisiones'|'reglas'|'integraciones'|'backups'|'costos_ia'>('general');
   const [portalResetMsg, setPortalResetMsg] = useState<Record<string, string>>({});
   const [editingBrokerId, setEditingBrokerId] = useState<number | null>(null);
   useEffect(() => {
@@ -1855,6 +1972,25 @@ export default function CRMDashboard() {
 
   // Prospects
   const [prospects, setProspects] = useState<Prospect[]>([]);
+  // Recarga la lista completa desde el backend — usado por la vista mobile de brokers tras
+  // crear un prospecto o registrar una actividad, para que el cambio se refleje también en
+  // `prospects` (no solo en el objeto local `mobileProspect`/`p`) sin duplicar aquí toda la
+  // normalización de datos legados del efecto de carga inicial.
+  const fetchProspects = useCallback(() => {
+    fetch(`${API_ROOT}/api/prospectos`)
+      .then(res => res.json())
+      .then(data => {
+        if (!Array.isArray(data)) return;
+        setProspects(data.map((p: any) => ({
+          ...p,
+          emailHistory: p.emailHistory || [],
+          estado: FUNNEL_STAGES.includes(p.estado) || p.estado === 'Perdido' ? p.estado : (p.estado === 'Calificado' ? 'Calificación' : 'Contacto Inicial'),
+          proyectos_interes: Array.isArray(p.proyectos_interes) ? p.proyectos_interes : (typeof p.proyectos_interes === 'string' ? JSON.parse(p.proyectos_interes || '[]') : []),
+          historial: Array.isArray(p.historial) ? p.historial : (typeof p.historial === 'string' ? JSON.parse(p.historial || '[]') : []),
+        })));
+      })
+      .catch(e => console.error('Error refrescando prospectos:', e));
+  }, []);
   // Brokers solo ven sus prospectos; otros ven todos
   const visibleProspects = useMemo(() => {
     if (currentUserRole !== 'broker') return prospects;
@@ -1981,6 +2117,7 @@ export default function CRMDashboard() {
       .then(data => { if (Array.isArray(data)) setProspectAlerts(data); })
       .catch(() => {});
     loadCrisisAlerts();
+    loadCrisisCausas();
   }, []);
 
   const refreshAlerts = () => {
@@ -2049,7 +2186,7 @@ export default function CRMDashboard() {
       .catch(() => { /* backend offline: se mantiene sin historial de WhatsApp */ });
   }, [prospectDetail]);
   const [agentHistoryDetail, setAgentHistoryDetail] = useState<string | null>(null);
-  const [agentHistoryTab, setAgentHistoryTab] = useState<'pending' | 'approved' | 'active' | 'bitacora'>('pending');
+  const [agentHistoryTab, setAgentHistoryTab] = useState<'pending' | 'approved' | 'active' | 'bitacora' | 'chat'>('pending');
   const [prospectEdit, setProspectEdit] = useState<number | null>(null);
   const [prospectFilterBroker, setProspectFilterBroker] = useState('all');
   const [prospectFilterStage, setProspectFilterStage] = useState('all');
@@ -2204,6 +2341,7 @@ export default function CRMDashboard() {
           venue: c.proyecto || '',
           broker: '',
           nota: c.notas || '',
+          estado: c.estado || 'pendiente',
           prospect_ids: c.prospecto_id ? [c.prospecto_id] : [],
           proyectos_presentados: [], asistentes: [], proyectos_interes: [],
           presupuesto_asignado: 0, presupuesto_ejecutado: 0, items_costo: [],
@@ -2236,6 +2374,38 @@ export default function CRMDashboard() {
     fetch(`${API_ROOT}/api/eventos-comerciales/${id}`, { method: 'DELETE', headers: { 'x-tenant-id': 'tenant-glp-001' } })
       .catch(() => { /* backend offline: el CRM sigue funcionando con localStorage */ });
   };
+  // Las citas de la Agenda de Brokers (categoria 'agenda') se hidratan desde /api/citas con
+  // un id sintético (900000 + id real) — antes no había forma de editarlas ni cancelarlas,
+  // así que quedaban fijas para siempre aunque el broker necesitara reprogramarlas.
+  const [citaEditId, setCitaEditId] = useState<number | null>(null);
+  const [citaEditForm, setCitaEditForm] = useState({ fecha: '', hora: '', notas: '' });
+  const startEditCita = (ev: EventData) => {
+    setCitaEditId(ev.id);
+    setCitaEditForm({ fecha: ev.fecha, hora: ev.hora || '', notas: ev.nota || '' });
+  };
+  const saveEditCita = (id: number) => {
+    const realId = id - 900000;
+    setEvents(prev => prev.map(e => e.id === id ? { ...e, fecha: citaEditForm.fecha, hora: citaEditForm.hora, nota: citaEditForm.notas } : e));
+    fetch(`${API_ROOT}/api/citas/${realId}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fecha: citaEditForm.fecha, hora: citaEditForm.hora, notas: citaEditForm.notas }),
+    }).catch(() => {});
+    setCitaEditId(null);
+  };
+  const cancelarCita = (id: number) => {
+    const realId = id - 900000;
+    setEvents(prev => prev.map(e => e.id === id ? { ...e, estado: 'cancelada' } : e));
+    fetch(`${API_ROOT}/api/citas/${realId}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ estado: 'cancelada' }),
+    }).catch(() => {});
+  };
+  const eliminarCita = (id: number) => {
+    if (!confirm('¿Eliminar esta cita definitivamente?')) return;
+    const realId = id - 900000;
+    setEvents(prev => prev.filter(e => e.id !== id));
+    fetch(`${API_ROOT}/api/citas/${realId}`, { method: 'DELETE' }).catch(() => {});
+  };
   const [expandedEvent, setExpandedEvent] = useState<number | null>(null);
   const [editEventId, setEditEventId] = useState<number | null>(null);
   const [showEventForm, setShowEventForm] = useState(false);
@@ -2245,7 +2415,9 @@ export default function CRMDashboard() {
     proyectos_interes: [], presupuesto_asignado: 0, presupuesto_ejecutado: 0, items_costo: [],
   });
 
-  // FAQs
+  // FAQs — antes vivían SOLO en localStorage, invisibles para el backend (Sara y el poller
+  // de correo no podían usarlas para redactar respuestas consistentes con la información
+  // oficial). localStorage se conserva como caché/fallback mientras carga la BD.
   const [faqs, setFaqs] = useState<FAQ[]>(() => {
     try {
       const saved = localStorage.getItem('glp_faqs');
@@ -2254,17 +2426,28 @@ export default function CRMDashboard() {
     return INITIAL_FAQS;
   });
   useEffect(() => { try { localStorage.setItem('glp_faqs', JSON.stringify(faqs)); } catch {} }, [faqs]);
+  useEffect(() => {
+    fetch(`${API_ROOT}/api/faqs`).then(r => r.json()).then(data => {
+      if (Array.isArray(data) && data.length > 0) {
+        setFaqs(data.map((f: any) => ({ id: f.id, categoria: f.categoria || FAQ_CATEGORIES[0], pregunta: f.pregunta, respuesta: f.respuesta, veces_usada: f.veces_usada })));
+      } else if (Array.isArray(data) && data.length === 0 && INITIAL_FAQS.length > 0) {
+        // Primera vez con la BD vacía: sube el set inicial para que quede persistido.
+        INITIAL_FAQS.forEach(f => {
+          fetch(`${API_ROOT}/api/faqs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(f) }).catch(() => {});
+        });
+      }
+    }).catch(() => {});
+  }, []);
   const [faqSearch, setFaqSearch] = useState('');
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
-  const [faqStats, setFaqStats] = useState<{ question: string; category: string; source: string; clicked_at: string }[]>([]);
+  const [faqStats, setFaqStats] = useState<{ faq_id: number; question: string; category: string; source: string; clicked_at: string }[]>([]);
 
-  // Fetch FAQ analytics from Supabase
+  // Antes se leía directo del cliente de Supabase (RLS + errores silenciosos). Ahora pasa
+  // por el backend, con faq_id real incluido — también se necesita dentro de Agentes IA
+  // (panel de Sara), que muestra "Más Consultadas" con datos reales de clics.
   useEffect(() => {
-    if (activeModule !== 'faqs') return;
-    supabase.from('faq_clicks').select('question, category, source, clicked_at')
-      .order('clicked_at', { ascending: false })
-      .limit(500)
-      .then(({ data }) => { if (data) setFaqStats(data); });
+    if (activeModule !== 'faqs' && activeModule !== 'agentes') return;
+    fetch(`${API_ROOT}/api/faq-clicks`).then(r => r.json()).then(data => { if (Array.isArray(data)) setFaqStats(data); }).catch(() => {});
   }, [activeModule]);
   const [faqEditId, setFaqEditId] = useState<number | null>(null);
   const [showFaqForm, setShowFaqForm] = useState(false);
@@ -2272,7 +2455,7 @@ export default function CRMDashboard() {
 
   // Mobile view
   const [forceMobileView, setForceMobileView] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [openNavGroup, setOpenNavGroup] = useState<string | null>(null);
   const [isMobileScreen, setIsMobileScreen] = useState(() => window.innerWidth < 768);
   const [mobileTab, setMobileTab] = useState<'portafolio'|'calculadora'|'prospectos'|'actividad'|'nuevo'>('prospectos');
   const [mobileProspect, setMobileProspect] = useState<Prospect | null>(null);
@@ -2571,11 +2754,6 @@ export default function CRMDashboard() {
   const [editCuotaModal, setEditCuotaModal] = useState<string | null>(null);
   const [editCuotaForm, setEditCuotaForm] = useState<{ concepto: CuotaCartera['concepto']; monto: number; fecha_vencimiento: string; estado: CuotaCartera['estado'] }>({ concepto: 'cuota_inicial', monto: 0, fecha_vencimiento: '', estado: 'pendiente' });
   // ────────────────────────────────────────────────────────────────────────────
-  const [agentCamiloProspects, setAgentCamiloProspects] = useState(14);
-  const [agentSaraMessages, setAgentSaraMessages] = useState(237);
-  const [agentSaraAlerts, setAgentSaraAlerts] = useState(3);
-  const [agentValeriaContent, setAgentValeriaContent] = useState(12);
-  const [agentIsabellaPosts, setAgentIsabellaPosts] = useState(8);
 
   // Crisis Swarm States
   const [crisisSwarmRunning, setCrisisSwarmRunning] = useState(false);
@@ -2602,7 +2780,7 @@ export default function CRMDashboard() {
     return 'sk-gpt-4o-mini-always-on';
   });
   const [showOpenaiConfig, setShowOpenaiConfig] = useState(false);
-  const [apiDrafts, setApiDrafts] = useState<Array<{id:string;destinatario:string;project:string;subject:string;body:string;status:string;created_at:string;prioridad?:string}>>([]);
+  const [apiDrafts, setApiDrafts] = useState<Array<{id:string;destinatario:string;project:string;subject:string;body:string;status:string;created_at:string;prioridad?:string;origen?:string;sent_by?:string;sent_at?:string;sentBy?:string}>>([]);
   // Adjuntos pendientes por borrador: { [msgId]: [{filename, content (base64), contentType}] }
   const [draftAttachments, setDraftAttachments] = useState<Record<string, Array<{filename:string;content:string;contentType:string}>>>({});
   const [prospectAlerts, setProspectAlerts] = useState<Array<{
@@ -2648,6 +2826,32 @@ export default function CRMDashboard() {
   const [crisisAlerts, setCrisisAlerts] = useState<CrisisAlert[]>([]);
   const [crisisLoading, setCrisisLoading] = useState(false);
   const [crisisDetecting, setCrisisDetecting] = useState(false);
+
+  // ── CAUSAS DE CAÍDA — para elegir sobre cuál(es) trabajar (en vez de que el enjambre
+  // siempre tome automáticamente las 2 más frecuentes) y marcar cuáles ya se gestionaron.
+  const [crisisCausas, setCrisisCausas] = useState<{ causa: string; total: number; gestionado: boolean; gestionado_por: string | null; gestionado_at: string | null }[]>([]);
+  const [crisisCausasLoading, setCrisisCausasLoading] = useState(false);
+  const [selectedCausas, setSelectedCausas] = useState<string[]>([]);
+  const loadCrisisCausas = async () => {
+    setCrisisCausasLoading(true);
+    try {
+      const r = await fetch(`${API_ROOT}/api/crisis/causas`);
+      const data = await r.json();
+      setCrisisCausas(Array.isArray(data.causas) ? data.causas : []);
+    } catch { /* silencioso */ } finally { setCrisisCausasLoading(false); }
+  };
+  const toggleCausaGestionada = async (causa: string, gestionado: boolean) => {
+    setCrisisCausas(prev => prev.map(c => c.causa === causa ? { ...c, gestionado } : c));
+    try {
+      await fetch(`${API_ROOT}/api/crisis/causas/${encodeURIComponent(causa)}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-user': currentUser || 'desconocido' },
+        body: JSON.stringify({ gestionado }),
+      });
+    } catch { /* silencioso */ }
+  };
+  const toggleCausaSeleccionada = (causa: string) => {
+    setSelectedCausas(prev => prev.includes(causa) ? prev.filter(c => c !== causa) : prev.length >= 2 ? prev : [...prev, causa]);
+  };
 
   // ── BROKER OBJECTIONS ────────────────────────────────────────
   type BrokerObjection = {
@@ -2732,13 +2936,17 @@ export default function CRMDashboard() {
   };
 
   // ── CAMILO PANEL STATE ───────────────────────────────────────
-  const [camiloTab, setCamiloTab] = useState<'insights'|'ranking'|'radar'|'objeciones'|'reporte'|'bitacora'>('insights');
-  const [sofiaTab, setSofiaTab] = useState<'bitacora'|'perfilacion'|'perfiles'>('perfiles');
+  const [camiloTab, setCamiloTab] = useState<'insights'|'radar'|'objeciones'|'reporte'|'chat'>('insights');
+  const [sofiaTab, setSofiaTab] = useState<'bitacora'|'perfilacion'|'perfiles'|'chat'>('perfiles');
+  // Búsqueda de perfiles por nombre de prospecto o por tipo de perfil (arquetipo).
+  const [sofiaSearch, setSofiaSearch] = useState('');
   const [expandedInsight, setExpandedInsight] = useState<string|null>(null);
   const [marketReport, setMarketReport] = useState<{texto:string;fecha:string}|null>(null);
   const [radarData, setRadarData] = useState<{titulo:string;descripcion:string;argumentos:string[];precio_ref?:string;fuentes?:string[]}[]>([]);
+  const [radarScope, setRadarScope] = useState<'panama'|'panama_colombia'|'panama_colombia_usa'|'centroamerica'|'internacional'>('internacional');
   const [generatingReport, setGeneratingReport] = useState(false);
   const [generatingRadar, setGeneratingRadar] = useState(false);
+  const [radarProgressLabel, setRadarProgressLabel] = useState('');
   const [sendingReport, setSendingReport] = useState(false);
 
   // Aprobar insight → disparo agéntico automático de Valeria + Isabella + Sara
@@ -2782,11 +2990,47 @@ DATO: ${ins.datos}
 ACCIÓN REQUERIDA: ${saraAccion}
 
 Genera una respuesta FAQ breve y profesional (3-5 oraciones) que Sara pueda enviar a prospectos colombianos interesados. Tono: cálido, experto, sin tecnicismos excesivos. Incluye un CTA al final.`;
-          const faqResp = await triggerOpenAI(saraPrompt, 'Eres Sara, agente de Customer Success de GLP Panama.');
+          const faqResp = await triggerOpenAI(saraPrompt, 'Eres Sara, agente de Customer Success de GLP Panama.', undefined, 'SARA', 'faq_desde_insight');
           setSaraReportText(prev =>
             `[🤖 AGÉNTICO — Camilo → Sara · ${today()}]\n${ins.titulo}\n\n${faqResp.trim()}\n\n${'─'.repeat(50)}\n\n` + prev
           );
           logA('SARA', `✅ FAQ template generado automáticamente desde insight de Camilo`);
+
+          // Antes CUALQUIER insight solo dejaba un template de FAQ interno (saraReportText)
+          // — nunca llegaba como correo real a la bandeja de Sara. Ahora los insights de
+          // tipo "oportunidad" (explícitos) Y "mercado" (suelen representar oportunidades
+          // de negocio igual de accionables) se empujan además como borrador a la carpeta
+          // "Oportunidades Detectadas", listos para que el asesor defina el destinatario y
+          // apruebe el envío. "crisis" y "audiencia" siguen siendo solo FAQ interno.
+          if (ins.tipo === 'oportunidad' || ins.tipo === 'mercado') {
+            try {
+              const draftRes = await fetch(`${API_ROOT}/api/drafts`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  // Clave estable por insight — si esto se dispara dos veces (doble clic,
+                  // reintento de red) la segunda llamada choca contra la misma fila en vez
+                  // de crear un correo duplicado.
+                  idempotencyKey: `oportunidad-${ins.id}`,
+                  destinatario: '',
+                  project: `Oportunidad · ${ins.titulo}`,
+                  subject: `Oportunidad detectada — ${ins.titulo}`,
+                  body: faqResp.trim(),
+                  prioridad: ins.impacto === 'alto' ? 'alta' : 'normal',
+                  origen: 'oportunidad_camilo',
+                }),
+              });
+              const draft = await draftRes.json();
+              if (draft?.id) setApiDrafts(prev => prev.some(d => d.id === draft.id) ? prev : [draft, ...prev]);
+              logA('SARA', `✉️ Oportunidad enviada a la bandeja (carpeta Oportunidades Detectadas) — falta indicar destinatario`);
+            } catch {
+              logA('SARA', `⚠️ No se pudo enviar la oportunidad a la bandeja — revisar manualmente`);
+            }
+          } else {
+            // Antes esto pasaba en silencio — parecía que "no había pasado nada" al
+            // aprobar un insight de crisis/audiencia, sin ninguna pista de que era
+            // esperado (esos tipos solo generan el FAQ interno, no un correo).
+            logA('SARA', `ℹ️ Insight tipo "${ins.tipo}" — no genera correo en la bandeja (solo aplica a "oportunidad"/"mercado"), quedó como FAQ interno`);
+          }
         } catch {
           logA('SARA', `⚠️ FAQ generado sin IA — revisar manualmente`);
         }
@@ -2825,14 +3069,26 @@ Genera una respuesta FAQ breve y profesional (3-5 oraciones) que Sara pueda envi
   // salían iguales/repetidos sin importar la fecha.
   const generateMarketReport = async () => {
     setGeneratingReport(true);
+    setRadarProgressLabel('Iniciando investigación en 2 rondas con gpt-5…');
+    const jobId = `reporte-${Date.now()}`;
+    const pollProgress = setInterval(() => {
+      fetch(`${API_ROOT}/api/camilo/research/progress/${jobId}`).then(r => r.json()).then(p => {
+        if (p.label) setRadarProgressLabel(p.label);
+      }).catch(() => {});
+    }, 900);
     try {
       const kpiSummary = `Prospectos: ${prospects.length}, en Negociación/Cierre: ${prospects.filter(p=>['Negociación','Cierre'].includes(p.estado)).length}, presupuesto promedio $${prospects.length>0?Math.round(prospects.reduce((s,p)=>s+(p.presupuesto_usd||0),0)/prospects.length).toLocaleString():0} USD`;
       const objSummary = objStats.map(s=>`${s.tipo}: ${s.total} reportes (${s.ultimos_7d} esta semana)`).join(', ') || 'Sin objeciones registradas';
 
       const r = await fetch(`${API_ROOT}/api/camilo/reporte-mercado`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kpiCtx: kpiSummary, objSummary }),
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-user': currentUser || 'desconocido' },
+        body: JSON.stringify({ kpiCtx: kpiSummary, objSummary, jobId }),
       });
+      clearInterval(pollProgress);
+      if (r.status === 409) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(formatAgentLockMessage(err.lockedBy, err.lockedSince));
+      }
       const d = await r.json();
       if (d.error) throw new Error(d.error);
       const report = { texto: d.texto, fecha: today() };
@@ -2845,13 +3101,95 @@ Genera una respuesta FAQ breve y profesional (3-5 oraciones) que Sara pueda envi
       }).catch(()=>{}); // silencioso si falla
     } catch(e:any) {
       alert('Error generando reporte: ' + e.message);
-    } finally { setGeneratingReport(false); }
+    } finally { clearInterval(pollProgress); setGeneratingReport(false); setRadarProgressLabel(''); }
+  };
+
+  const downloadMarketReportPDF = () => {
+    if (!marketReport) return;
+    const { doc, pageWidth, marginX } = pdfNewDoc('Reporte Semanal de Mercado', `Generado el ${marketReport.fecha}`);
+    let y = 110;
+    // El texto viene en markdown ligero (títulos "1) Panorama macro", etc.) — se detectan
+    // líneas cortas seguidas de ":" o que empiezan con número+paréntesis como subtítulos,
+    // el resto como párrafo normal, para que el PDF no salga como un bloque plano de texto.
+    const lines = marketReport.texto.split('\n').filter(l => l.trim());
+    for (const line of lines) {
+      const isHeading = /^\d\)/.test(line.trim()) || /^#{1,3}\s/.test(line.trim());
+      const clean = line.replace(/^#{1,3}\s/, '').replace(/\*\*/g, '');
+      if (isHeading) {
+        y = pdfCheckPageBreak(doc, y, 26);
+        y += 8;
+        y = pdfHeading(doc, marginX, y, clean);
+      } else {
+        y = pdfParagraph(doc, marginX, pageWidth, y, clean);
+        y += 4;
+      }
+    }
+    pdfSave(doc, `Reporte-Mercado-GLP-${marketReport.fecha}.pdf`);
+  };
+
+  const downloadRadarPDF = () => {
+    if (radarData.length === 0) return;
+    const scopeLabels: Record<string, string> = { panama: 'Solo Panamá', panama_colombia: 'Panamá vs Colombia', panama_colombia_usa: 'Panamá, Colombia y USA', centroamerica: 'Centroamérica', internacional: 'Internacional' };
+    const { doc, pageWidth, marginX } = pdfNewDoc('Radar de Competencia', `Alcance: ${scopeLabels[radarScope] || radarScope} · ${today()}`);
+    let y = 110;
+    radarData.forEach((r, i) => {
+      if (i > 0) y += 10;
+      y = pdfHeading(doc, marginX, y, r.titulo);
+      if (r.precio_ref) y = pdfParagraph(doc, marginX, pageWidth, y, `Precio de referencia: ${r.precio_ref}`, { bold: true, color: [59, 130, 246] });
+      y = pdfParagraph(doc, marginX, pageWidth, y, r.descripcion);
+      y += 4;
+      y = pdfParagraph(doc, marginX, pageWidth, y, 'Argumentos GLP vs esta opción:', { bold: true, size: 9.5 });
+      r.argumentos.forEach(arg => { y = pdfParagraph(doc, marginX, pageWidth, y, `• ${arg}`); });
+      if (r.fuentes && r.fuentes.length > 0) {
+        y += 2;
+        y = pdfParagraph(doc, marginX, pageWidth, y, `Fuentes: ${r.fuentes.join(' · ')}`, { size: 8, color: [130, 130, 130] });
+      }
+      y += 10;
+    });
+    pdfSave(doc, `Radar-Competencia-GLP-${radarScope}-${today()}.pdf`);
+  };
+
+  const downloadInsightsPDF = () => {
+    if (camiloInsights.length === 0) return;
+    const { doc, pageWidth, marginX } = pdfNewDoc('Inteligencia de Mercado — Insights', `Camilo · ${today()}`);
+    let y = 110;
+    camiloInsights.forEach((ins, i) => {
+      if (i > 0) y += 10;
+      y = pdfHeading(doc, marginX, y, `[${ins.tipo.toUpperCase()} · Impacto ${ins.impacto}] ${ins.titulo}`);
+      y = pdfParagraph(doc, marginX, pageWidth, y, ins.datos || ins.resumen);
+      if (ins.fuentes && ins.fuentes.length > 0) {
+        y += 2;
+        y = pdfParagraph(doc, marginX, pageWidth, y, `Fuentes: ${ins.fuentes.join(' · ')}`, { size: 8, color: [130, 130, 130] });
+      }
+      y += 10;
+    });
+    pdfSave(doc, `Camilo-Insights-GLP-${today()}.pdf`);
   };
 
   const generateRadar = async () => {
     setGeneratingRadar(true);
+    setRadarProgressLabel('Iniciando investigación en 2 rondas con gpt-5…');
+    // Deep search en 2 rondas (gpt-5 busca, identifica huecos, vuelve a buscar) tarda
+    // 30-60s, no segundos como el modo anterior de un solo disparo — se hace polling del
+    // mismo mecanismo de progreso real que ya usa Camilo → Research (server/index.js:
+    // camiloResearchProgress) para no dejar el botón "Analizando…" sin feedback ese tiempo.
+    const jobId = `radar-${Date.now()}`;
+    const pollProgress = setInterval(() => {
+      fetch(`${API_ROOT}/api/camilo/research/progress/${jobId}`).then(r => r.json()).then(p => {
+        if (p.label) setRadarProgressLabel(p.label);
+      }).catch(() => {});
+    }, 900);
     try {
-      const r = await fetch(`${API_ROOT}/api/camilo/radar-competencia`, { method: 'POST' });
+      const r = await fetch(`${API_ROOT}/api/camilo/radar-competencia`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-user': currentUser || 'desconocido' },
+        body: JSON.stringify({ scope: radarScope, jobId }),
+      });
+      clearInterval(pollProgress);
+      if (r.status === 409) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(formatAgentLockMessage(err.lockedBy, err.lockedSince));
+      }
       const d = await r.json();
       if (d.error) throw new Error(d.error);
       const clean = (d.choices?.[0]?.message?.content || '').replace(/```json/g,'').replace(/```/g,'').trim();
@@ -2859,7 +3197,7 @@ Genera una respuesta FAQ breve y profesional (3-5 oraciones) que Sara pueda envi
       setRadarData(Array.isArray(data) ? data : []);
     } catch(e:any) {
       alert('Error generando radar: ' + e.message);
-    } finally { setGeneratingRadar(false); }
+    } finally { clearInterval(pollProgress); setGeneratingRadar(false); setRadarProgressLabel(''); }
   };
 
   const sendReportEmail = async () => {
@@ -2897,8 +3235,23 @@ Genera una respuesta FAQ breve y profesional (3-5 oraciones) que Sara pueda envi
   const [valeriaGenerating, setValeriaGenerating] = useState(false);
   const [valeriaSelectedCanal, setValeriaSelectedCanal] = useState<string>('Reel Instagram');
   const [valeriaFilterCanal, setValeriaFilterCanal] = useState<string>('todos');
-  const [valeriaTab, setValeriaTab] = useState<'bitacora' | 'contenido' | 'perfil'>('contenido');
-  const [saraPanelTab, setSaraPanelTab] = useState<'correos' | 'bitacora'>('correos');
+  const [valeriaTab, setValeriaTab] = useState<'bitacora' | 'contenido' | 'perfil' | 'chat'>('contenido');
+  const [saraPanelTab, setSaraPanelTab] = useState<'correos' | 'chat'>('correos');
+  const [saraChatMsgs, setSaraChatMsgs] = useState<{ role: 'user' | 'agent'; content: string; citas?: { id: number; nombre: string }[] }[]>([]);
+  const [saraChatInput, setSaraChatInput] = useState('');
+  const [saraChatLoading, setSaraChatLoading] = useState(false);
+  // Bandeja de Sara al estilo Outlook: lista compacta (remitente/fecha/asunto) a la
+  // izquierda + panel de detalle a la derecha, en vez de la secuencia vertical de correos
+  // completos que obligaba a scrollear mucho para encontrar uno — null = ninguno
+  // seleccionado, se autoselecciona el primero de la lista al cargar/filtrar.
+  const [saraSelectedMsgId, setSaraSelectedMsgId] = useState<string | null>(null);
+  // Carpetas de la bandeja de Sara — clasifican cada correo por su origen real (quién/qué
+  // lo generó) en vez de mostrar una sola lista cronológica mezclada. 'todos' = sin filtro.
+  const [saraFolder, setSaraFolder] = useState<string>('pendientes');
+  // Filtro de origen — refina DENTRO de la carpeta de estado activa (null = todos los orígenes).
+  const [saraOrigenFilter, setSaraOrigenFilter] = useState<string | null>(null);
+  // Búsqueda de texto libre dentro de la carpeta activa (asunto, cuerpo, destinatario).
+  const [saraSearchQuery, setSaraSearchQuery] = useState('');
   const [valeriaContentSubTab, setValeriaContentSubTab] = useState<'crisis' | 'inteligencia' | 'clientes'>('inteligencia');
   const [isabellaContentSubTab, setIsabellaContentSubTab] = useState<'crisis' | 'inteligencia' | 'clientes'>('inteligencia');
   const [brandProfile, setBrandProfile] = useState<GlpBrandProfile>(DEFAULT_BRAND_PROFILE);
@@ -3107,20 +3460,65 @@ Genera una respuesta FAQ breve y profesional (3-5 oraciones) que Sara pueda envi
   const [swarmLogs, setSwarmLogs] = useState<Array<{ time: string; agent: string; msg: string }>>([
     { time: '10:00', agent: 'SISTEMA', msg: 'Enjambre listo para inicializarse por el administrador.' }
   ]);
+  // Visibilidad proactiva del candado (Fase 1): antes solo te enterabas de que alguien más
+  // ya estaba corriendo un agente cuando hacías clic y te rebotaba con 409. Con este polling,
+  // ni siquiera hace falta hacer clic — se ve "en curso" apenas otro usuario del mismo tenant
+  // lo dispara. Solo corre mientras el módulo de Agentes IA está abierto.
+  const [activeAgentRuns, setActiveAgentRuns] = useState<Array<{ agent_name: string; action: string; triggered_by: string; started_at: string }>>([]);
+  useEffect(() => {
+    if (activeModule !== 'agentes') return;
+    const poll = () => {
+      fetch(`${API_ROOT}/api/agent-runs/active`, { headers: { 'x-tenant-id': 'tenant-glp-001' } })
+        .then(r => r.json()).then(rows => Array.isArray(rows) && setActiveAgentRuns(rows))
+        .catch(() => {});
+    };
+    poll();
+    const interval = setInterval(poll, 5000);
+    return () => clearInterval(interval);
+  }, [activeModule]);
+
+  // Fase 2: gasto real de IA por agente — "medir primero" antes de fijar cualquier tope
+  // (decisión tomada explícitamente en ARQUITECTURA_AGENTICA_MULTIUSUARIO.md). Solo visible
+  // para roles con visibilidad de equipo, no brokers individuales.
+  const [agentCostSummary, setAgentCostSummary] = useState<{ days: number; porAgente: any[]; total: any } | null>(null);
+  useEffect(() => {
+    if (activeModule !== 'agentes' || currentUserRole === 'broker') return;
+    fetch(`${API_ROOT}/api/agent-runs/resumen-costo?days=30`, { headers: { 'x-tenant-id': 'tenant-glp-001' } })
+      .then(r => r.json()).then(setAgentCostSummary).catch(() => {});
+  }, [activeModule, currentUserRole]);
 
   // ── OPENAI & INTERACTIVE AGENTS FUNCTIONS ──────────────────
-  const triggerOpenAI = async (prompt: string, systemPrompt: string, max_tokens?: number): Promise<string> => {
+  // Traduce el 409 "ya_en_curso" del candado (Fase 1) a un mensaje legible — en vez de
+  // reintentar en silencio o mostrar un error genérico, le decimos al usuario exactamente
+  // quién ya está corriendo esa acción y hace cuánto, para que decida esperar.
+  const formatAgentLockMessage = (lockedBy?: string, lockedSince?: string): string => {
+    if (!lockedSince) return `Ya hay una ejecución en curso${lockedBy ? ` (iniciada por ${lockedBy})` : ''}. Espera a que termine.`;
+    const seconds = Math.max(0, Math.round((Date.now() - new Date(lockedSince).getTime()) / 1000));
+    const hace = seconds < 60 ? `hace ${seconds}s` : `hace ${Math.round(seconds / 60)} min`;
+    return `Ya en curso, iniciado por ${lockedBy || 'otro usuario'} ${hace}. Espera a que termine antes de volver a intentarlo.`;
+  };
+
+  // agentName identifica en la bitácora (agent_runs) cuál de los agentes disparó esta llamada
+  // — antes /api/ai era una ruta genérica sin ningún rastro de quién/qué la usó. x-user manda
+  // el usuario logueado, necesario ahora que varias personas del mismo tenant usan el CRM a
+  // la vez (ver ARQUITECTURA_AGENTICA_MULTIUSUARIO.md, Fase 0).
+  const triggerOpenAI = async (prompt: string, systemPrompt: string, max_tokens?: number, agentName?: string, action?: string): Promise<string> => {
     const response = await fetch(`${API_ROOT}/api/ai`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-user': currentUser || 'desconocido' },
       body: JSON.stringify({
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt }
         ],
-        ...(max_tokens ? { max_tokens } : {})
+        ...(max_tokens ? { max_tokens } : {}),
+        ...(agentName ? { agentName, action } : {})
       })
     });
+    if (response.status === 409) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(formatAgentLockMessage(err.lockedBy, err.lockedSince));
+    }
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
       throw new Error(err.error || `Error del servidor (${response.status})`);
@@ -3177,10 +3575,14 @@ Diferenciadores: ${brandProfile.diferenciadores.slice(0,3).join(' · ')}`;
         const projectsList = PROJECTS.map(p=>`• ${p.name} (${p.zone}) desde $${p.minPrice?.toLocaleString()||'consultar'} USD`).join('\n');
         const deepRes = await fetch(`${API_ROOT}/api/camilo/research`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'x-user': currentUser || 'desconocido' },
           body: JSON.stringify({ kpiCtx, brandCtx: brandCtxSummary, projectsList, jobId })
         });
         clearInterval(pollProgress);
+        if (deepRes.status === 409) {
+          const err = await deepRes.json().catch(() => ({}));
+          throw new Error(formatAgentLockMessage((err as any).lockedBy, (err as any).lockedSince));
+        }
         if (!deepRes.ok) {
           const err = await deepRes.json().catch(() => ({}));
           throw new Error((err as any).error || `Error del servidor (${deepRes.status})`);
@@ -3302,7 +3704,6 @@ Diferenciadores: ${brandProfile.diferenciadores.slice(0,3).join(' · ')}`;
 
       setProspects(prev => [...formattedList, ...prev]);
       formattedList.forEach(p => postNewProspectBackend(p));
-      setAgentCamiloProspects(p => p + formattedList.length);
       setAgentCamiloLastRun(new Date().toLocaleString());
       logMsg(`Completado. Camilo encontró e insertó ${formattedList.length} prospectos reales vía Apollo.io.`);
     } catch (e: any) {
@@ -3328,12 +3729,17 @@ Diferenciadores: ${brandProfile.diferenciadores.slice(0,3).join(' · ')}`;
       const prospectList = currentProspectsList || prospects;
       const response = await fetch(`${API_ROOT}/api/sara/process-prospects`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-user': currentUser || 'desconocido' },
         body: JSON.stringify({ prospects: prospectList })
       });
-      
+
+      if (response.status === 409) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(formatAgentLockMessage(err.lockedBy, err.lockedSince));
+      }
+
       const data = await response.json();
-      
+
       if (!data.success) {
          throw new Error(data.error || 'Error al procesar prospectos con SARA');
       }
@@ -3390,8 +3796,7 @@ Diferenciadores: ${brandProfile.diferenciadores.slice(0,3).join(' · ')}`;
 
         setSaraReportText(reportStr);
         setSaraAlertsList(prev => [...newAlerts, ...prev].slice(0, 8));
-        setAgentSaraAlerts(prev => prev + newAlerts.length);
-        
+
         setProspects(updatedList);
         // Persistir actualizaciones
         processedResults.forEach((result: any) => {
@@ -3409,7 +3814,6 @@ Diferenciadores: ${brandProfile.diferenciadores.slice(0,3).join(' · ')}`;
         setSaraReportText(reportStr);
       }
 
-      setAgentSaraMessages(m => m + processedResults.length);
       logMsg('Completado. SARA terminó el análisis de prospectos del CRM con GPT-4 real.');
 
     } catch (e: any) {
@@ -3454,7 +3858,7 @@ Devuelve UN ARREGLO JSON EXACTAMENTE con este formato, sin bloques de código ma
 [{"prospectId": <id numérico exacto del prospecto>, "arquetipo": "estatus|legado|racional|aspiracional", "confianza": <número 50-95>, "senales": ["señal concreta 1", "señal concreta 2", "señal concreta 3"], "recomendacion_sara": "cómo debe comunicarse Sara con este prospecto específico", "recomendacion_valeria": "qué tipo de contenido/copy debe crear Valeria para este perfil"}]`;
 
     try {
-      const res = await triggerOpenAI(prompt, 'Eres Sofía, psicóloga del consumidor especializada en bienes raíces de lujo. Respondes siempre en JSON válido.');
+      const res = await triggerOpenAI(prompt, 'Eres Sofía, psicóloga del consumidor especializada en bienes raíces de lujo. Respondes siempre en JSON válido.', undefined, 'SOFÍA', 'perfilacion');
       const cleanRes = res.replace(/```json/g, '').replace(/```/g, '').trim();
       const parsed: any[] = JSON.parse(cleanRes);
 
@@ -3671,6 +4075,13 @@ Incluir: indicaciones de plano, texto en pantalla, voz en off completa.`,
 
     const instruccionCanal = toneByCanal[canal] || 'tono profesional y persuasivo';
 
+    // FAQs oficiales — antes Valeria nunca las veía, así que podía redactar un argumento
+    // (ej. sobre impuestos o financiamiento) que contradijera la respuesta que Sara ya le
+    // da al mismo cliente por correo. Mismo contenido, ambas fuentes de verdad alineadas.
+    const faqCtx = faqs.length > 0
+      ? `\nPREGUNTAS FRECUENTES OFICIALES (para que tus argumentos no contradigan lo que Sara ya responde a los clientes):\n${faqs.map(f => `- P: ${f.pregunta}\n  R: ${f.respuesta}`).join('\n')}\n`
+      : '';
+
     try {
       logMsg('Conectando con OpenAI — construyendo copy con contexto real y estrategia de marca...');
       const prompt = `Eres Valeria, Copywriter estrella y Estratega de Contenidos de GLP Wealth Management, firma de inversión inmobiliaria de lujo en Panamá.
@@ -3689,7 +4100,7 @@ ${prospectosActivos}
 
 CONTEXTO OPERATIVO (Reporte SARA):
 ${saraCtx}
-${sofiaToValeriaContext ? `
+${faqCtx}${sofiaToValeriaContext ? `
 PERFIL CONDUCTUAL DEL PROSPECTO (Análisis Sofía — PRIORIDAD ALTA):
 Nombre: ${sofiaToValeriaContext.prospectName}
 Ocupación: ${sofiaToValeriaContext.ocupacion} · Presupuesto: USD ${(sofiaToValeriaContext.presupuesto||0).toLocaleString()}
@@ -3708,7 +4119,7 @@ REGLAS ABSOLUTAS:
 Responde SOLO con JSON sin bloques de código markdown:
 {"asunto": "título o asunto del contenido", "contenido": "el copy completo con toda la estructura pedida", "tags": ["tag1","tag2","tag3"], "contexto_generacion": "qué dato real del portafolio o de los prospectos motivó este contenido específico"}`;
 
-      const res = await triggerOpenAI(prompt, 'Eres Valeria, la copywriter más efectiva del sector inmobiliario de lujo en Latinoamérica.');
+      const res = await triggerOpenAI(prompt, 'Eres Valeria, la copywriter más efectiva del sector inmobiliario de lujo en Latinoamérica.', undefined, 'VALERIA', 'generar_contenido');
       const cleanRes = res.replace(/```json/g, '').replace(/```/g, '').trim();
       const parsed = JSON.parse(cleanRes);
 
@@ -3729,7 +4140,6 @@ Responde SOLO con JSON sin bloques de código markdown:
 
       setValeriaDrafts(prev => [newDraft, ...prev]);
       dbPost(`${API}/valeria/drafts`, newDraft);
-      setAgentValeriaContent(c => c + 1);
       logMsg(`✅ ${canal} generado: "${parsed.asunto}" — listo para revisión del administrador.`);
     } catch (e: any) {
       logMsg(`Error en redacción de Valeria: ${e.message}`);
@@ -3796,7 +4206,7 @@ Tu misión: Convierte este contenido de Valeria en un Reel de 45 segundos que Is
 Responde SOLO con JSON sin bloques de código:
 {"titulo": "título del reel", "duracion": "45s", "contenido": "guion completo con secciones GANCHO/DESARROLLO/CTA, texto en pantalla por sección, planos sugeridos y activos de video a usar", "notas_produccion": "notas para el equipo de producción", "assets_requeridos": ["asset 1", "asset 2"]}`;
 
-      const res = await triggerOpenAI(prompt, 'Eres Isabella, presentadora de GLP. Adaptas copies de marketing a guiones de video ejecutables.');
+      const res = await triggerOpenAI(prompt, 'Eres Isabella, presentadora de GLP. Adaptas copies de marketing a guiones de video ejecutables.', undefined, 'ISABELLA', 'adaptar_guion');
       const parsed = JSON.parse(res.replace(/```json/g,'').replace(/```/g,'').trim());
 
       const newScript: AgentDraft = {
@@ -3936,7 +4346,7 @@ REGLAS ABSOLUTAS:
 Responde SOLO con JSON sin bloques de código:
 {"titulo": "título del video", "duracion": "duración total", "contenido": "el guion completo con todas las secciones estructuradas", "notas_produccion": "notas técnicas para el equipo de producción (equipamiento, locación sugerida, vestuario Isabella, etc.)", "assets_requeridos": ["lista de activos visuales necesarios del banco de contenido"]}`;
 
-      const res = await triggerOpenAI(prompt, 'Eres Isabella, presentadora y brand ambassador de GLP Wealth Management. Tu guion debe ser ejecutable en producción real.');
+      const res = await triggerOpenAI(prompt, 'Eres Isabella, presentadora y brand ambassador de GLP Wealth Management. Tu guion debe ser ejecutable en producción real.', undefined, 'ISABELLA', 'generar_guion');
       const cleanRes = res.replace(/```json/g, '').replace(/```/g, '').trim();
       const parsed = JSON.parse(cleanRes);
 
@@ -4004,7 +4414,6 @@ Responde SOLO con JSON sin bloques de código:
         logMsg(`✅ Coordinación activada: Valeria recibió tarea de caption para "${parsed.titulo}"`);
       }
 
-      setAgentIsabellaPosts(p => p + 1);
       logMsg(`✅ Guion de producción "${parsed.titulo}" listo para revisión del administrador.`);
     } catch (e: any) {
       logMsg(`Error en Isabella: ${e.message}`);
@@ -4118,7 +4527,17 @@ Responde SOLO con JSON sin bloques de código:
 
     let data: any;
     try {
-      const r = await fetch(`${API_ROOT}/api/crisis/analizar-caidas`, { method: 'POST' });
+      const r = await fetch(`${API_ROOT}/api/crisis/analizar-caidas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-user': currentUser || 'desconocido' },
+        body: JSON.stringify({ causas: selectedCausas }),
+      });
+      if (r.status === 409) {
+        const err = await r.json().catch(() => ({}));
+        setCrisisSwarmLogs(prev => [...prev, { time: timeStr(), agent: 'SISTEMA', msg: `⚠️ ${formatAgentLockMessage(err.lockedBy, err.lockedSince)}` }]);
+        setCrisisSwarmStep(null); setCrisisSwarmRunning(false);
+        return;
+      }
       data = await r.json();
     } catch {
       setCrisisSwarmLogs(prev => [...prev, { time: timeStr(), agent: 'SISTEMA', msg: '⚠️ No se pudo conectar con el servidor para analizar las caídas.' }]);
@@ -4193,25 +4612,15 @@ Responde SOLO con JSON sin bloques de código:
       { label: 'Isabella (Guión)', icon: '🎬' }
     ];
 
+    // El disparador de ejecución vive ahora justo encima (botón "Analizar causa(s)
+    // seleccionada(s)" del selector de causas) — esta consola solo muestra el progreso
+    // y los resultados, para no tener dos botones distintos haciendo lo mismo.
+    if (!crisisSwarmRunning && crisisSwarmLogs.length === 0) return null;
     return (
       <div style={{ background: T.card, borderRadius: 4, padding: 18, border: `1px solid ${T.border}`, marginTop: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 20 }}>🤖</span>
-            <div style={{ fontWeight: 700, fontSize: 13, color: T.text }}>Consola de Gestión de Crisis & Objeciones IA</div>
-          </div>
-          <button
-            type="button"
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); runCrisisSwarm(); }}
-            disabled={crisisSwarmRunning}
-            style={btnPrimary({
-              padding: '8px 16px', fontSize: 12,
-              background: crisisSwarmRunning ? T.textSec : T.teal,
-              cursor: crisisSwarmRunning ? 'not-allowed' : 'pointer'
-            })}
-          >
-            {crisisSwarmRunning ? 'Ejecutando...' : 'Gestión de Ventas Caídas'}
-          </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <span style={{ fontSize: 20 }}>🤖</span>
+          <div style={{ fontWeight: 700, fontSize: 13, color: T.text }}>Consola de Gestión de Crisis & Objeciones IA</div>
         </div>
 
         {/* Swarm Stepper Progress — navy para activo/completado, gris para pendiente;
@@ -4309,6 +4718,33 @@ Responde SOLO con JSON sin bloques de código:
                       {c.emailValeria && <><strong>Email:</strong><p style={{ margin: '4px 0 8px' }}>{c.emailValeria}</p></>}
                       {c.postValeria && <><strong>Post:</strong><p style={{ margin: '4px 0 0' }}>{c.postValeria}</p></>}
                     </div>
+                    {/* Antes este email de recuperación solo vivía como contenido de Valeria
+                        (campaña masiva) — sin forma de mandarlo a la bandeja de Sara como
+                        correo real para aprobar y enviar a un cliente puntual. */}
+                    {c.emailValeria && (
+                      <button onClick={e => {
+                        const btn = e.currentTarget;
+                        if (btn.disabled) return; // evita doble clic mientras la llamada está en curso
+                        btn.disabled = true;
+                        fetch(`${API_ROOT}/api/drafts`, {
+                          method: 'POST', headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            destinatario: '',
+                            project: `Recuperación · ${c.causa}`,
+                            subject: `Recuperación — ${c.causa}`,
+                            body: c.emailValeria,
+                            prioridad: 'alta',
+                            origen: 'crisis_recuperacion',
+                          }),
+                        }).then(r => r.json()).then(draft => {
+                          if (draft?.id) setApiDrafts(prev => prev.some(d => d.id === draft.id) ? prev : [draft, ...prev]);
+                          alert('Enviado a la bandeja de Sara (carpeta Recuperación de Crisis) para completar destinatario y aprobar.');
+                        }).catch(() => alert('No se pudo enviar a la bandeja de Sara.'))
+                          .finally(() => { btn.disabled = false; });
+                      }} style={{ marginTop: 6, background: 'transparent', border: `1px solid ${T.coral}`, color: T.coral, padding: '5px 10px', fontSize: 9, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' as const, cursor: 'pointer' }}>
+                        ✉️ Enviar a Sara
+                      </button>
+                    )}
                   </div>
                 )}
                 {(c.scriptIsabella || c.campanaIsabella) && (
@@ -4352,6 +4788,85 @@ Responde SOLO con JSON sin bloques de código:
     return principal * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
   }, []);
 
+  // ── Chat interactivo por agente — mismo patrón que Sara, generalizado para
+  // reutilizarlo en Camilo, Sofía y Valeria sin repetir la UI 3 veces más. Cada
+  // agente guarda su propio historial en `agentChats[agentKey]`.
+  const [agentChats, setAgentChats] = useState<Record<string, { msgs: { role: 'user' | 'agent'; content: string; citas?: { id: number; nombre: string }[] }[]; input: string; loading: boolean }>>({});
+  const getAgentChat = (key: string) => agentChats[key] || { msgs: [], input: '', loading: false };
+  const setAgentChatField = (key: string, patch: Partial<{ msgs: any[]; input: string; loading: boolean }>) => {
+    setAgentChats(prev => ({ ...prev, [key]: { ...getAgentChat(key), ...patch } }));
+  };
+  const sendAgentChat = async (agentKey: string) => {
+    const chat = getAgentChat(agentKey);
+    const q = chat.input.trim();
+    if (!q || chat.loading) return;
+    const history = chat.msgs.map(m => ({ role: m.role, content: m.content }));
+    setAgentChatField(agentKey, { msgs: [...chat.msgs, { role: 'user', content: q }], input: '', loading: true });
+    try {
+      const res = await fetch(`${API_ROOT}/api/agents/chat`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent: agentKey, question: q, history }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error');
+      setAgentChatField(agentKey, { msgs: [...getAgentChat(agentKey).msgs, { role: 'agent', content: data.answer, citas: data.citas }], loading: false });
+    } catch (e: any) {
+      setAgentChatField(agentKey, { msgs: [...getAgentChat(agentKey).msgs, { role: 'agent', content: `No pude responder eso — ${e.message || 'intenta de nuevo'}.` }], loading: false });
+    }
+  };
+  // navy/gold/border son los colores locales de CADA panel (no siempre son los mismos
+  // hex — Camilo/Sofía/Valeria tienen su propia paleta local histórica), así que se pasan
+  // como parámetro en vez de asumir un solo esquema de color.
+  const renderAgentChatPanel = (agentKey: string, navy: string, gold: string, border: string, placeholder: string) => {
+    const chat = getAgentChat(agentKey);
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column' as const, height: 'calc(100vh - 180px)', maxWidth: 760, margin: '0 auto' }}>
+        <div style={{ flex: 1, overflowY: 'auto' as const, padding: '24px 4px', display: 'flex', flexDirection: 'column' as const, gap: 12 }}>
+          {chat.msgs.length === 0 && (
+            <div style={{ textAlign: 'center' as const, color: '#9CA3AF', fontSize: 12, marginTop: 40 }}>{placeholder}</div>
+          )}
+          {chat.msgs.map((m, i) => (
+            <div key={i} style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '86%' }}>
+              <div style={{
+                fontSize: 12.5, lineHeight: 1.5, padding: '10px 13px', borderRadius: 10,
+                background: m.role === 'user' ? '#EAF1F8' : '#fff',
+                border: m.role === 'agent' ? `1px solid ${border}` : 'none',
+                color: navy,
+                borderBottomRightRadius: m.role === 'user' ? 3 : 10,
+                borderBottomLeftRadius: m.role === 'agent' ? 3 : 10,
+              }}>
+                {m.content}
+              </div>
+              {m.citas && m.citas.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6, marginTop: 6 }}>
+                  {m.citas.map((c: any) => (
+                    <button key={c.id} onClick={() => { setAgentHistoryDetail(null); setPreviousModule('agentes'); setActiveModule('prospectos'); }}
+                      style={{ fontSize: 10, padding: '3px 9px', borderRadius: 20, background: '#fff', border: `1px solid ${border}`, color: '#6B7280', cursor: 'pointer' }}>
+                      📎 {c.nombre}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+          {chat.loading && (
+            <div style={{ alignSelf: 'flex-start', fontSize: 12, color: '#9CA3AF', padding: '10px 13px' }}>Pensando…</div>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '12px 4px', borderTop: `1px solid ${border}` }}>
+          <input type="text" value={chat.input} onChange={e => setAgentChatField(agentKey, { input: e.target.value })}
+            onKeyDown={e => { if (e.key === 'Enter') sendAgentChat(agentKey); }}
+            placeholder="Escribe tu pregunta..."
+            style={{ flex: 1, border: `1px solid ${border}`, borderRadius: 20, padding: '9px 14px', fontSize: 12.5, fontFamily: T.fontSans, color: navy, outline: 'none' }} />
+          <button onClick={() => sendAgentChat(agentKey)} disabled={chat.loading}
+            style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: gold, color: '#fff', cursor: chat.loading ? 'default' : 'pointer', flexShrink: 0 }}>
+            ↑
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   // ── Select Calc Project ─────────────────────────────────
   const selectCalcProject = (name: string) => {
     setCalcProject(name);
@@ -4391,9 +4906,18 @@ Responde SOLO con JSON sin bloques de código:
 
 
 
-  const sectionTitle = (text: string) => (
-    <h3 style={{ fontSize: 22, fontWeight: 300, color: T.text, margin: '0 0 20px 0', fontFamily: T.fontSerif, letterSpacing: '0.03em', borderBottom: `1px solid ${T.border}`, paddingBottom: 10 }}>{text}</h3>
-  );
+  // A pedido del usuario: se quita el marcador circular con la inicial (quedaba decorativo,
+  // sin aportar información) y el título/subtítulo van pegados al borde izquierdo en vez de
+  // indentados tras el círculo.
+  const sectionTitle = (text: string) => {
+    const [title, subtitle] = text.split(' · ');
+    return (
+      <div style={{ margin: '0 0 20px 0', paddingBottom: 14, borderBottom: `1px solid ${T.border}`, textAlign: 'left' as const }}>
+        <h3 style={{ fontSize: 22, fontWeight: 800, color: T.text, margin: 0, fontFamily: T.fontSans, letterSpacing: '-0.01em' }}>{title}</h3>
+        {subtitle && <div style={{ marginTop: 5, fontSize: 12, color: T.textSec, letterSpacing: '0.02em' }}>{subtitle}</div>}
+      </div>
+    );
+  };
 
   const registrarActividad = (prospectId: number, accion: string, detalle: string) => {
     const entry: HistEntry = { fecha: new Date().toISOString().slice(0,10), accion, detalle };
@@ -4868,11 +5392,11 @@ Responde SOLO con JSON sin bloques de código:
                             ['Zona', p.zoneShort || p.zone, true],
                             ['Tipo', p.tipo, true],
                             ['Entrega', p.entrega, true],
-                            ['Precio total', rango?.minPrice != null ? `${usd(rango.minPrice)}–${usd(rango.maxPrice)}` : null, false],
+                            ['Precio total', rango?.minPrice != null && rango?.maxPrice != null ? `${usd(rango.minPrice)}–${usd(rango.maxPrice)}` : null, false],
                             ['Área', rango?.areaMin != null ? `${rango.areaMin}–${rango.areaMax} m²` : null, false],
                             ['Habitaciones', rango?.bedrooms ?? null, false],
                             ['Baños', rango?.banos ?? null, false],
-                            ['Condominio', rango?.condominioMin != null ? (rango.condominioMin === rango.condominioMax ? `${usd(rango.condominioMin)}/mes` : `${usd(rango.condominioMin)}–${usd(rango.condominioMax)}/mes`) : null, false],
+                            ['Condominio', rango?.condominioMin != null && rango?.condominioMax != null ? (rango.condominioMin === rango.condominioMax ? `${usd(rango.condominioMin)}/mes` : `${usd(rango.condominioMin)}–${usd(rango.condominioMax)}/mes`) : null, false],
                             ['Cap Rate (estimado de mercado)', `${p.capRateMin}–${p.capRateMax}%`, true],
                           ].map(([label, val, siempreDisponible]) => (
                             <div key={label as string}>
@@ -5407,17 +5931,17 @@ Responde SOLO con JSON sin bloques de código:
       return (
         <div>
           <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
-            <div style={{ background: T.bg, padding: 12, borderRadius: 8, flex: 1, border: `1px solid ${T.borderLight}` }}>
-              <div style={{ fontSize: 11, color: T.textSec }}>Suma Total de Ventas Cerradas</div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: T.teal }}>{usd(total)}</div>
+            <div style={{ background: T.card, padding: '12px 14px', borderRadius: 6, flex: 1, border: `1px solid ${T.borderLight}`, borderTop: '3px solid #2E5C8A' }}>
+              <div style={{ fontSize: 10, color: T.textSec, letterSpacing: '0.04em', fontWeight: 600 }}>Suma Total de Ventas Cerradas</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: T.text, fontFamily: T.fontSans, fontVariantNumeric: 'tabular-nums', marginTop: 4 }}>{usd(total)}</div>
             </div>
-            <div style={{ background: T.bg, padding: 12, borderRadius: 8, flex: 1, border: `1px solid ${T.borderLight}` }}>
-              <div style={{ fontSize: 11, color: T.textSec }}>Total de Transacciones</div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: T.teal }}>{closedSales.length} cierres</div>
+            <div style={{ background: T.card, padding: '12px 14px', borderRadius: 6, flex: 1, border: `1px solid ${T.borderLight}`, borderTop: '3px solid #2E5C8A' }}>
+              <div style={{ fontSize: 10, color: T.textSec, letterSpacing: '0.04em', fontWeight: 600 }}>Total de Transacciones</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: T.text, fontFamily: T.fontSans, fontVariantNumeric: 'tabular-nums', marginTop: 4 }}>{closedSales.length} cierres</div>
             </div>
-            <div style={{ background: T.bg, padding: 12, borderRadius: 8, flex: 1, border: `1px solid ${T.borderLight}` }}>
-              <div style={{ fontSize: 11, color: T.textSec }}>Ticket Promedio Real Calculado</div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: T.palm }}>{usd(avg)}</div>
+            <div style={{ background: T.card, padding: '12px 14px', borderRadius: 6, flex: 1, border: `1px solid ${T.borderLight}`, borderTop: '3px solid #3E7CB8' }}>
+              <div style={{ fontSize: 10, color: T.textSec, letterSpacing: '0.04em', fontWeight: 600 }}>Ticket Promedio Real Calculado</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: '#2E5C8A', fontFamily: T.fontSans, fontVariantNumeric: 'tabular-nums', marginTop: 4 }}>{usd(avg)}</div>
             </div>
           </div>
           
@@ -5452,19 +5976,20 @@ Responde SOLO con JSON sin bloques de código:
       return (
         <div>
           <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
-            <div style={{ background: T.card, padding: 12, borderRadius: 8, flex: 1, border: `1px solid ${T.borderLight}` }}>
-              <div style={{ fontSize: 11, color: T.textSec }}>Valor de Ventas Caídas</div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: T.danger }}>{usd(totalLost)}</div>
+            <div style={{ background: T.card, padding: '12px 14px', borderRadius: 6, flex: 1, border: `1px solid ${T.borderLight}`, borderTop: `3px solid ${T.danger}` }}>
+              <div style={{ fontSize: 10, color: T.textSec, letterSpacing: '0.04em', fontWeight: 600 }}>Valor de Ventas Caídas</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: T.danger, fontFamily: T.fontSans, fontVariantNumeric: 'tabular-nums', marginTop: 4 }}>{usd(totalLost)}</div>
             </div>
-            <div style={{ background: T.bg, padding: 12, borderRadius: 8, flex: 1, border: `1px solid ${T.borderLight}` }}>
-              <div style={{ fontSize: 11, color: T.textSec }}>Negocios Caídos Registrados</div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: T.textSec }}>{lostSales.length} objeciones</div>
+            <div style={{ background: T.card, padding: '12px 14px', borderRadius: 6, flex: 1, border: `1px solid ${T.borderLight}`, borderTop: '3px solid #2E5C8A' }}>
+              <div style={{ fontSize: 10, color: T.textSec, letterSpacing: '0.04em', fontWeight: 600 }}>Negocios Caídos Registrados</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: T.text, fontFamily: T.fontSans, fontVariantNumeric: 'tabular-nums', marginTop: 4 }}>{lostSales.length} objeciones</div>
             </div>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 12 }}>
             <div style={{ fontSize: 12, color: T.textSec }}>
-              Registro detallado de negocios perdidos y objeciones fiscales o hipotecarias. Use la consola de crisis a continuación para activar los agentes de IA.
+              Registro detallado de negocios perdidos y objeciones fiscales o hipotecarias. Para activar el enjambre de IA por causa, ve a{' '}
+              <span onClick={() => { setPreviousModule(activeModule); setActiveModule('agentes'); }} style={{ color: T.sky, textDecoration: 'underline', cursor: 'pointer' }}>Agentes IA → Respuesta a Crisis</span>.
             </div>
             <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
               <button onClick={() => {
@@ -5479,13 +6004,15 @@ Responde SOLO con JSON sin bloques de código:
                 CSV
               </button>
               <button onClick={() => {
-                const ws = XLSX.utils.json_to_sheet(lostSales.map(s => ({
-                  Cliente: s.prospect, Proyecto: s.project, Broker: s.broker, 'Fecha Caída': s.date,
-                  Motivo: s.category || 'Sin categorizar', 'Razón Específica': s.reason, 'Valor USD': s.value,
-                })));
-                const wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, ws, 'Ventas Caídas');
-                XLSX.writeFile(wb, `GLP_Ventas_Caidas_${today()}.xlsx`);
+                import('xlsx').then(XLSX => {
+                  const ws = XLSX.utils.json_to_sheet(lostSales.map(s => ({
+                    Cliente: s.prospect, Proyecto: s.project, Broker: s.broker, 'Fecha Caída': s.date,
+                    Motivo: s.category || 'Sin categorizar', 'Razón Específica': s.reason, 'Valor USD': s.value,
+                  })));
+                  const wb = XLSX.utils.book_new();
+                  XLSX.utils.book_append_sheet(wb, ws, 'Ventas Caídas');
+                  XLSX.writeFile(wb, `GLP_Ventas_Caidas_${today()}.xlsx`);
+                });
               }} style={btnSecondary({ padding: '5px 12px', fontSize: 11 })}>
                 Excel
               </button>
@@ -5574,8 +6101,6 @@ Responde SOLO con JSON sin bloques de código:
               </div>
             </div>
           )}
-
-          {renderCrisisSwarmConsole()}
         </div>
       );
     };
@@ -5730,6 +6255,70 @@ Responde SOLO con JSON sin bloques de código:
       );
     };
 
+    // Mismo cálculo que la pestaña "Ranking Prospectos" del panel de Camilo (Agentes IA) —
+    // se repite aquí porque ese cálculo vive dentro del render del panel de Camilo, con
+    // scope propio, y el Dashboard general lo necesita para su propio drilldown.
+    const renderRankingProspectosDrilldown = () => {
+      const ranked = [...prospects]
+        .filter(p => !['Post-venta', 'Perdido'].includes(p.estado))
+        .map(p => ({
+          ...p,
+          score: getProspectScore(p),
+          timing: getTimingDays(p),
+          objActivasTipo: objections.filter(o => o.prospecto && p.nombre && o.prospecto.toLowerCase().includes(p.nombre.toLowerCase())).map(o => o.tipo),
+        }))
+        .sort((a, b) => b.score - a.score);
+      return (
+        <div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ borderBottom: `2px solid ${T.border}` }}>
+                  {['#', 'Prospecto', 'Etapa', 'Score %', 'Cierre est.', 'Objeciones activas', 'Recomendación Sara'].map(h => (
+                    <th key={h} style={{ padding: '8px 10px', textAlign: 'left', color: T.textSec, fontSize: 11, fontWeight: 700 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {ranked.map((p, i) => {
+                  const scoreBg = p.score >= 70 ? '#10B98120' : p.score >= 40 ? '#F59E0B20' : '#EF444420';
+                  const scoreColor = p.score >= 70 ? '#10B981' : p.score >= 40 ? '#F59E0B' : '#EF4444';
+                  const rec = p.score >= 70 ? 'Llamar hoy — cierre inminente' :
+                    p.score >= 50 ? 'Enviar propuesta actualizada' :
+                    p.score >= 30 ? 'Email de valor + agenda reunión' : 'Reactivar con incentivo especial';
+                  return (
+                    <tr key={p.id} style={{ borderBottom: `1px solid ${T.borderLight}`, background: i % 2 === 0 ? T.bg : 'transparent' }}>
+                      <td style={{ padding: '8px 10px', color: T.textSec, fontWeight: 700 }}>{i + 1}</td>
+                      <td style={{ padding: '8px 10px' }}>
+                        <div style={{ fontWeight: 600, color: T.text }}>{p.nombre} {p.apellido}</div>
+                        <div style={{ fontSize: 10, color: T.textSec }}>${(p.presupuesto_usd || 0).toLocaleString()} USD · {p.ocupacion || '—'}</div>
+                      </td>
+                      <td style={{ padding: '8px 10px', color: T.text }}>{p.estado}</td>
+                      <td style={{ padding: '8px 10px' }}>
+                        <div style={{ display: 'inline-block', background: scoreBg, color: scoreColor, fontWeight: 800, fontSize: 13, padding: '3px 10px', borderRadius: 6 }}>{p.score}%</div>
+                      </td>
+                      <td style={{ padding: '8px 10px', color: T.text }}>{p.timing > 0 ? `~${p.timing}d` : 'Cerrado'}</td>
+                      <td style={{ padding: '8px 10px' }}>
+                        {p.objActivasTipo.length > 0
+                          ? p.objActivasTipo.map((t, idx) => (
+                            <span key={idx} style={{ fontSize: 10, background: '#EF444420', color: '#EF4444', padding: '2px 6px', borderRadius: 4, marginRight: 4 }}>
+                              {OBJECTION_TIPOS.find(o => o.value === t)?.icon} {t}
+                            </span>
+                          ))
+                          : <span style={{ fontSize: 10, color: T.textSec }}>Sin objeciones</span>
+                        }
+                      </td>
+                      <td style={{ padding: '8px 10px', fontSize: 11, color: T.text, maxWidth: 180 }}>{rec}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    };
+
     const renderBrokersActiveDrilldown = () => {
       const activeBrokersList = brokers.filter(b => b.estado === 'activo');
       return (
@@ -5787,8 +6376,16 @@ Responde SOLO con JSON sin bloques de código:
 
     return (
       <div style={{ width: '100%' }}>
+        {previousModule && (
+          <div style={{ marginBottom: 14 }}>
+            <button onClick={() => { const dest = previousModule; setPreviousModule(null); setActiveDrilldown(null); setActiveModule(dest); }}
+              style={{ background: 'transparent', border: 'none', padding: 0, fontSize: 11, fontWeight: 400, color: '#6B7280', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, textTransform: 'uppercase' as const, letterSpacing: '1.5px', fontFamily: 'Inter, sans-serif' }}>
+              ← Volver a {({'kpis':'Dashboard','dashboard':'Dashboard','eventos':'Agenda de Brokers','gerencial':'Análisis Gerencial','reportes':'Reportes','agentes':'Agentes IA','brokers':'Brokers'} as Record<string,string>)[previousModule] || previousModule.charAt(0).toUpperCase()+previousModule.slice(1)}
+            </button>
+          </div>
+        )}
         {sectionTitle('Dashboard KPIs · Control Comercial')}
-        
+
         {/* Top metric cards */}
         {(() => {
           const today = new Date();
@@ -5813,21 +6410,44 @@ Responde SOLO con JSON sin bloques de código:
             'conversion':     { tip:`Cálculo: prospectos en Cierre o Post-venta ÷ total de prospectos. ${prospects.filter(p => ['Cierre','Post-venta'].includes(p.estado)).length} de ${prospects.length} prospectos cerraron.`, benchmark:'Inmobiliario premium: 10–20% · Top performers: >25%' },
             'prospects_total':{ tip:'Total de prospectos registrados en el CRM. Incluye todos los estados. Haz clic para ver el detalle por etapa.', benchmark:'Volumen mínimo para estadísticas confiables: ≥50 prospectos' },
             'brokers_active': { tip:'Número de brokers con estado activo. Un broker activo debe gestionar entre 15 y 25 prospectos simultáneamente para ser productivo.', benchmark:'Ratio óptimo: 1 broker por cada 20–25 prospectos activos' },
+            'ranking_prospectos': { tip:'Prospecto activo con mayor score de conversión (mismo cálculo que la pestaña Ranking de Camilo: etapa, presupuesto, objeciones y timing). Haz clic para ver el ranking completo.', benchmark:'Score ≥70%: contactar hoy · 40–69%: seguimiento activo · <40%: reactivar' },
             'camilo_prospects':{ tip:'Prospectos que el Agente Camilo está investigando o ha calificado automáticamente. Camilo pre-califica leads antes de asignarlos a un broker.', benchmark:undefined },
             'sara_history':   { tip:'Número de correos gestionados por Sara, la agente de seguimiento por email. Un alto volumen indica buena automatización del nurturing.', benchmark:undefined },
             'next_event':     { tip:'Días hasta el próximo evento comercial programado. Los eventos son una fuente clave de prospectos nuevos.', benchmark:'Frecuencia recomendada: al menos 1 evento comercial por mes' },
           };
+          // Rediseño aprobado tras varias rondas de mockups con el usuario: franja de acento
+          // con degradado azul cobalto (antes: tarjeta plana blanca con solo una línea de
+          // color debajo del número) + ícono propio por métrica en vez de genérico, y la
+          // cifra en Inter 800 con números tabulares en vez de serif — el "dato duro" que
+          // pidió explícitamente en la ronda de la opción F.
+          const KPI_ACCENT = 'linear-gradient(135deg, #1E3A5F, #3E7CB8)';
+          const KPI_ICONS: Record<string, React.ReactNode> = {
+            ticket: <path d="M3 17l6-6 4 4 8-8M15 7h6v6" />,
+            conversion: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" /></>,
+            prospects_total: <><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" /><circle cx="10" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></>,
+            ranking_prospectos: <path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 16.9 5.8 20.3l1.6-6.8-5.2-4.6 6.9-.6z" />,
+            next_event: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M8 3v4M16 3v4M3 10h18" /></>,
+            top_proyectos: <path d="M3 21V9l9-6 9 6v12M9 21v-6h6v6" />,
+          };
+          const kpiIcon = (type: string) => (
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C9DCEF" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{KPI_ICONS[type]}</svg>
+          );
           const kpiCard = (type: string, _icon: string, value: React.ReactNode, label: string, sub: string, color: string) => {
             const tipData = DASH_TIPS[type];
+            const active = activeDrilldown?.type === type;
             return (
-            <div onClick={() => { const next = activeDrilldown?.type === type ? null : { type } as any; setActiveDrilldown(next); setCarteraRightOpen(next?.type === 'ticket'); }}
-              style={cardStyle({ textAlign: 'center' as const, cursor: 'pointer', background: T.card, border: activeDrilldown?.type === type ? `1.5px solid ${color}` : `1px solid ${T.border}`, transition: 'all 0.2s', padding: '24px 20px' })}>
-              <div style={{ fontSize: 8, fontWeight: 600, color: T.textSec, letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
-                {label}{tipData && <InfoTip text={tipData.tip} benchmark={tipData.benchmark}/>}
+            <div onClick={() => { const next = active ? null : { type } as any; setActiveDrilldown(next); setCarteraRightOpen(next?.type === 'ticket'); }}
+              style={{ background: T.card, border: `1px solid ${active ? color : T.border}`, borderRadius: 6, overflow: 'hidden', cursor: 'pointer', transition: 'all 0.2s', boxShadow: active ? `0 0 0 1px ${color}` : 'none' }}>
+              <div style={{ background: KPI_ACCENT, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                {kpiIcon(type)}
+                <div style={{ fontSize: 9, fontWeight: 700, color: '#C9DCEF', letterSpacing: '0.14em', textTransform: 'uppercase' as const, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {label}{tipData && <InfoTip text={tipData.tip} benchmark={tipData.benchmark}/>}
+                </div>
               </div>
-              <div style={{ fontSize: 34, fontWeight: 300, color: T.teal, lineHeight: 1.05, fontFamily: T.fontSerif }}>{value}</div>
-              <div style={{ width: 28, height: 1, background: color, margin: '12px auto 10px' }} />
-              <div style={{ fontSize: 8, color, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase' as const }}>{sub}</div>
+              <div style={{ padding: '16px 18px 18px' }}>
+                <div style={{ fontSize: 30, fontWeight: 800, color: T.text, lineHeight: 1, fontFamily: T.fontSans, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>{value}</div>
+                <div style={{ fontSize: 10.5, color: T.textSec, marginTop: 8, fontWeight: 600 }}>{sub}</div>
+              </div>
             </div>
           );};
           return (
@@ -5844,9 +6464,12 @@ Responde SOLO con JSON sin bloques de código:
                   const maxVal = top3[0]?.[1] || 1;
                   return (
                     <div onClick={() => { setActiveDrilldown(activeDrilldown?.type === 'top_proyectos' ? null : { type: 'top_proyectos', data: { top3, count } } as any); setCarteraRightOpen(false); }}
-                      style={cardStyle({ cursor: 'pointer', background: T.card, border: activeDrilldown?.type === 'top_proyectos' ? `1.5px solid ${T.teal}` : `1px solid ${T.border}`, transition: 'all 0.2s', padding: '24px 20px' })}>
-                      <div style={{ fontSize: 8, fontWeight: 600, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.14em', marginBottom: 10, textAlign: 'center' as const }}>Top Proyectos</div>
-                      <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 7 }}>
+                      style={{ background: T.card, border: `1px solid ${activeDrilldown?.type === 'top_proyectos' ? T.teal : T.border}`, borderRadius: 6, overflow: 'hidden', cursor: 'pointer', transition: 'all 0.2s', boxShadow: activeDrilldown?.type === 'top_proyectos' ? `0 0 0 1px ${T.teal}` : 'none' }}>
+                      <div style={{ background: KPI_ACCENT, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {kpiIcon('top_proyectos')}
+                        <div style={{ fontSize: 9, fontWeight: 700, color: '#C9DCEF', letterSpacing: '0.14em', textTransform: 'uppercase' as const }}>Top Proyectos</div>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 7, padding: '16px 18px 18px' }}>
                         {top3.map(([name, score], i) => {
                           const colors = [T.teal, T.coral, `${T.teal}77`];
                           const pct = Math.round((score / maxVal) * 100);
@@ -5868,18 +6491,38 @@ Responde SOLO con JSON sin bloques de código:
                 })()}
                 {kpiCard('conversion',     'trend-up',   <>{fmt(kpiConversion)}%</>,         'Conversión Global',  'Ver Detalle (Objeciones)', T.teal)}
                 {kpiCard('prospects_total','users',       <>{prospects.length}</>,                                                                   'Prospectos Totales', 'Ver Detalle (Drilldown)', T.teal)}
-                {kpiCard('brokers_active', 'handshake',  <>{brokers.filter(b => b.estado === 'activo').length}</>,                                  'Brokers Activos',    'Ver Detalle (Drilldown)', T.teal)}
+                {(() => {
+                  // Mismo cálculo de score que la pestaña "Ranking Prospectos" de Camilo —
+                  // reemplaza el tile de "Brokers Activos" (conteo estático, poco accionable
+                  // día a día) por el prospecto activo mejor rankeado, que sí dice qué hacer
+                  // hoy. Los brokers activos siguen visibles en el módulo Brokers.
+                  const top = [...prospects]
+                    .filter(p => !['Post-venta', 'Perdido'].includes(p.estado))
+                    .map(p => ({ ...p, score: getProspectScore(p) }))
+                    .sort((a, b) => b.score - a.score)[0];
+                  const rec = !top ? '' : top.score >= 70 ? 'Llamar hoy — cierre inminente' :
+                    top.score >= 50 ? 'Enviar propuesta actualizada' :
+                    top.score >= 30 ? 'Email de valor + agenda reunión' : 'Reactivar con incentivo especial';
+                  return kpiCard('ranking_prospectos', 'handshake',
+                    top ? <>{top.score}%</> : <>—</>,
+                    top ? `Top: ${top.nombre}` : 'Ranking Prospectos',
+                    top ? rec : 'Sin prospectos activos', T.teal);
+                })()}
                 <div onClick={() => { setActiveDrilldown(activeDrilldown?.type === 'next_event' ? null : { type: 'next_event' }); setCarteraRightOpen(false); }}
-                  style={cardStyle({ textAlign: 'center' as const, cursor: nextEvent ? 'pointer' : 'default', background: T.card, border: activeDrilldown?.type === 'next_event' ? `1.5px solid ${T.teal}` : `1px solid ${T.border}`, transition: 'all 0.2s', padding: '24px 20px' })}>
-                  <div style={{ fontSize: 8, fontWeight: 600, color: T.textSec, letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginBottom: 12 }}>Eventos Este Trimestre</div>
-                  <div style={{ fontSize: 34, fontWeight: 300, color: T.teal, lineHeight: 1.05, fontFamily: T.fontSerif }}>
+                  style={{ background: T.card, border: `1px solid ${activeDrilldown?.type === 'next_event' ? T.teal : T.border}`, borderRadius: 6, overflow: 'hidden', cursor: nextEvent ? 'pointer' : 'default', transition: 'all 0.2s', boxShadow: activeDrilldown?.type === 'next_event' ? `0 0 0 1px ${T.teal}` : 'none' }}>
+                  <div style={{ background: KPI_ACCENT, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {kpiIcon('next_event')}
+                    <div style={{ fontSize: 9, fontWeight: 700, color: '#C9DCEF', letterSpacing: '0.14em', textTransform: 'uppercase' as const }}>Eventos Este Trimestre</div>
+                  </div>
+                  <div style={{ padding: '16px 18px 18px' }}>
+                  <div style={{ fontSize: 30, fontWeight: 800, color: T.text, lineHeight: 1, fontFamily: T.fontSans, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
                     {eventosTrimestre.length}
                   </div>
-                  <div style={{ width: 28, height: 1, background: T.teal, margin: '12px auto 10px' }} />
-                  <div style={{ fontSize: 8, color: T.teal, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase' as const }}>
+                  <div style={{ fontSize: 10.5, color: T.textSec, marginTop: 8, fontWeight: 600 }}>
                     {nextEvent
                       ? `Próximo: ${new Date(nextEvent.fecha + 'T12:00:00').toLocaleDateString('es-CO', {month:'short', day:'numeric'})} · ${nextEvent.titulo.slice(0, 16)}${nextEvent.titulo.length > 16 ? '…' : ''}`
                       : 'Sin eventos próximos'}
+                  </div>
                   </div>
                 </div>
               </div>
@@ -5899,18 +6542,20 @@ Responde SOLO con JSON sin bloques de código:
                   {activeDrilldown.type === 'source' && 'Canal de captación'}
                   {activeDrilldown.type === 'prospects_total' && 'Registro general'}
                   {activeDrilldown.type === 'brokers_active' && 'Red comercial'}
+                  {activeDrilldown.type === 'ranking_prospectos' && 'Priorización comercial'}
                   {activeDrilldown.type === 'camilo_prospects' && 'Inteligencia IA'}
                   {activeDrilldown.type === 'sara_history' && 'Seguimiento IA'}
                   {activeDrilldown.type === 'next_event' && 'Agenda comercial'}
                   {activeDrilldown.type === 'top_proyectos' && 'Portafolio GLP'}
                 </div>
-                <h3 style={{ margin: 0, fontSize: 20, fontWeight: 400, color: '#111827', fontFamily: T.fontSerif, letterSpacing: '0.02em' }}>
+                <h3 style={{ margin: 0, fontSize: 19, fontWeight: 700, color: '#111827', fontFamily: T.fontSans, letterSpacing: '-0.01em' }}>
                   {activeDrilldown.type === 'ticket' && 'Detalle de Ticket Promedio'}
                   {activeDrilldown.type === 'conversion' && 'Conversión · Objeciones · Crisis'}
                   {activeDrilldown.type === 'funnel' && `Pipeline — ${activeDrilldown.stage}`}
                   {activeDrilldown.type === 'source' && `Leads por Fuente — ${activeDrilldown.source}`}
                   {activeDrilldown.type === 'prospects_total' && 'Prospectos Registrados'}
                   {activeDrilldown.type === 'brokers_active' && 'Red de Brokers Activos'}
+                  {activeDrilldown.type === 'ranking_prospectos' && 'Ranking de Prospectos por Score'}
                   {activeDrilldown.type === 'camilo_prospects' && 'Prospectos Identificados por Camilo'}
                   {activeDrilldown.type === 'sara_history' && 'Historial de Correos y Registros de Sara'}
                   {activeDrilldown.type === 'next_event' && 'Próximo Evento Comercial'}
@@ -5928,6 +6573,7 @@ Responde SOLO con JSON sin bloques de código:
             {activeDrilldown.type === 'source' && renderSourceDrilldown(activeDrilldown.source || '')}
             {activeDrilldown.type === 'prospects_total' && renderProspectsTotalDrilldown()}
             {activeDrilldown.type === 'brokers_active' && renderBrokersActiveDrilldown()}
+            {activeDrilldown.type === 'ranking_prospectos' && renderRankingProspectosDrilldown()}
             {activeDrilldown.type === 'camilo_prospects' && renderCamiloProspectsDrilldown()}
             {activeDrilldown.type === 'sara_history' && renderSaraHistoryDrilldown()}
             {activeDrilldown.type === 'top_proyectos' && (() => {
@@ -6048,9 +6694,9 @@ Responde SOLO con JSON sin bloques de código:
                       { label: 'Invitados', value: String(totalInvitados), color: T.sky },
                       { label: 'Presupuesto asignado', value: usd(ev.presupuesto_asignado), color: T.palm },
                     ].map(item => (
-                      <div key={item.label} style={{ background: T.bg, padding: 12, borderRadius: 8, border: `1px solid ${T.borderLight}`, textAlign: 'center' as const }}>
-                        <div style={{ fontSize: 10, color: T.textSec, marginBottom: 4 }}>{item.label}</div>
-                        <div style={{ fontSize: 16, fontWeight: 700, color: item.color }}>{item.value}</div>
+                      <div key={item.label} style={{ background: T.card, padding: '12px 10px', borderRadius: 6, border: `1px solid ${T.borderLight}`, borderTop: `3px solid ${item.color}`, textAlign: 'center' as const }}>
+                        <div style={{ fontSize: 9.5, color: T.textSec, marginBottom: 5, letterSpacing: '0.04em', fontWeight: 600 }}>{item.label}</div>
+                        <div style={{ fontSize: 16, fontWeight: 800, color: T.text, fontFamily: T.fontSans, fontVariantNumeric: 'tabular-nums' }}>{item.value}</div>
                       </div>
                     ))}
                   </div>
@@ -7003,7 +7649,12 @@ Responde SOLO con JSON sin bloques de código:
     const filtered = prospects
       .filter(p => {
         if (prospectFilterBroker !== 'all' && p.broker_asignado !== prospectFilterBroker) return false;
-        if (prospectFilterStage !== 'all' && p.estado !== prospectFilterStage) return false;
+        // 'activos' es un filtro compuesto (todo lo que NO es Post-venta/Perdido) — mismo
+        // criterio que usan los KPIs "Prospectos activos" de Agentes IA, para que el
+        // drilldown llegue con el filtro ya aplicado en vez de soltar al usuario en la
+        // lista completa sin ningún contexto de por qué llegó ahí.
+        if (prospectFilterStage === 'activos') { if (['Post-venta', 'Perdido'].includes(p.estado)) return false; }
+        else if (prospectFilterStage !== 'all' && p.estado !== prospectFilterStage) return false;
         if (prospectFilterProject !== 'all' && !p.proyectos_interes.includes(prospectFilterProject)) return false;
         return true;
       })
@@ -7465,7 +8116,10 @@ Responde SOLO con JSON sin bloques de código:
                           subject: dpAlerta.borrador_asunto,
                           body: dpAlerta.borrador_cuerpo,
                           status: 'pending',
-                          prioridad: dpAlerta.nivel
+                          prioridad: dpAlerta.nivel,
+                          // 'oportunidad' es un prospecto de alto presupuesto en etapa inicial —
+                          // carpeta distinta de la reactivación de leads fríos/estancados.
+                          origen: dpAlerta.nivel === 'oportunidad' ? 'oportunidad_detectada' : 'reactivacion_alerta',
                         })
                       }).then(() => alert('Borrador enviado al Buzón SARA para aprobación'));
                     }}
@@ -7606,21 +8260,36 @@ Responde SOLO con JSON sin bloques de código:
         )}
         {sectionTitle('Prospectos · Sistema Operativo Inmobiliario')}
 
+        {/* Contexto del drilldown "Prospectos activos" — sin esto, el usuario llegaba a la
+            lista completa sin ninguna pista de por qué el KPI que clicó decía un número
+            distinto al total mostrado aquí. */}
+        {prospectFilterStage === 'activos' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: `${T.teal}12`, border: `1px solid ${T.teal}40`, borderRadius: 6, padding: '8px 14px', marginBottom: 14 }}>
+            <span style={{ fontSize: 12, color: T.teal }}>
+              Filtrado por <strong>Prospectos activos</strong> — excluye Post-venta y Perdido ({filtered.length} de {prospects.length})
+            </span>
+            <button onClick={() => setProspectFilterStage('all')} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: T.teal, fontSize: 11, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}>
+              Quitar filtro
+            </button>
+          </div>
+        )}
+
         {/* Funnel summary filters */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 20, overflowX: 'auto' as const }}>
           {FUNNEL_STAGES.map(s => {
             const count = prospects.filter(p => p.estado === s).length;
+            const active = prospectFilterStage === s;
             return (
-              <div key={s} onClick={() => setProspectFilterStage(prospectFilterStage === s ? 'all' : s)}
-                style={{ ...cardStyle({ padding: '10px 16px', cursor: 'pointer', minWidth: 100, textAlign: 'center' as const }), border: prospectFilterStage === s ? `2px solid ${T.teal}` : `1px solid ${T.borderLight}` }}>
-                <div style={{ fontSize: 20, fontWeight: 700, color: T.teal }}>{count}</div>
+              <div key={s} onClick={() => setProspectFilterStage(active ? 'all' : s)}
+                style={{ ...cardStyle({ padding: '10px 16px', cursor: 'pointer', minWidth: 100, textAlign: 'center' as const }), borderTop: `3px solid #2E5C8A`, border: active ? `2px solid #2E5C8A` : `1px solid ${T.borderLight}`, borderTopWidth: 3 }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: T.text, fontFamily: T.fontSans, fontVariantNumeric: 'tabular-nums' }}>{count}</div>
                 <div style={{ fontSize: 10, color: T.textSec }}>{s}</div>
               </div>
             );
           })}
           <div onClick={() => setProspectFilterStage('all')}
-            style={{ ...cardStyle({ padding: '10px 16px', cursor: 'pointer', minWidth: 100, textAlign: 'center' as const }), border: prospectFilterStage === 'all' ? `2px solid ${T.navy}` : `1px solid ${T.borderLight}`, background: prospectFilterStage === 'all' ? `${T.navy}08` : T.card }}>
-            <div style={{ fontSize: 20, fontWeight: 700, color: T.navy }}>{prospects.length}</div>
+            style={{ ...cardStyle({ padding: '10px 16px', cursor: 'pointer', minWidth: 100, textAlign: 'center' as const }), borderTop: '3px solid #3E7CB8', border: prospectFilterStage === 'all' ? `2px solid #3E7CB8` : `1px solid ${T.borderLight}`, borderTopWidth: 3, background: prospectFilterStage === 'all' ? '#3E7CB808' : T.card }}>
+            <div style={{ fontSize: 20, fontWeight: 800, color: T.text, fontFamily: T.fontSans, fontVariantNumeric: 'tabular-nums' }}>{prospects.length}</div>
             <div style={{ fontSize: 10, color: T.textSec, fontWeight: 600 }}>TOTAL</div>
           </div>
         </div>
@@ -8010,10 +8679,10 @@ Responde SOLO con JSON sin bloques de código:
           {/* Fila superior: título + controles */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
             <div>
-              <h2 style={{ fontFamily: sStyle.headingFont, fontSize: 28, fontWeight: 400, margin: '0 0 4px 0', letterSpacing: '0.5px' }}>
+              <h2 style={{ fontFamily: T.fontSans, fontSize: 26, fontWeight: 800, margin: 0, letterSpacing: '-0.01em' }}>
                 {eventosTab === 'comercial' ? 'Eventos Comerciales' : 'Agenda de Brokers'}
               </h2>
-              <div style={{ fontSize: 13, color: sStyle.textMuted, textTransform: 'uppercase', letterSpacing: '1px' }}>
+              <div style={{ fontSize: 13, color: sStyle.textMuted, textTransform: 'uppercase', letterSpacing: '1px', marginTop: 6 }}>
                 {eventosTab === 'comercial' ? 'Cenas, seminarios, lanzamientos · Presupuesto y CAC' : 'Citas, llamadas y seguimientos del equipo'}
               </div>
             </div>
@@ -8099,7 +8768,7 @@ Responde SOLO con JSON sin bloques de código:
           const firstDay = new Date(year, month, 1).getDay();
           const daysInMonth = new Date(year, month + 1, 0).getDate();
           const today = new Date();
-          const isGerente = currentUser?.role === 'gerencia' || currentUser?.role === 'presidencia';
+          const isGerente = currentUserRole === 'gerencia' || currentUserRole === 'presidencia';
 
           const filteredEvents = events.filter(ev => {
             if (!ev.fecha) return false;
@@ -8284,14 +8953,39 @@ Responde SOLO con JSON sin bloques de código:
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                         {evs.map(ev => {
                           const prospect = prospects.find(p => (ev.prospect_ids||[]).includes(p.id));
+                          // Solo las citas reales (hidratadas desde /api/citas, id sintético
+                          // >= 900000) se pueden editar/cancelar aquí — antes ninguna cita de
+                          // esta vista tenía forma de reprogramarse o cancelarse.
+                          const isCita = ev.id >= 900000;
+                          const isCancelada = ev.estado === 'cancelada';
+                          if (citaEditId === ev.id) {
+                            return (
+                              <div key={ev.id} style={{ paddingBottom: 16, borderBottom: `1px solid ${sStyle.border}`, background: '#FAFAF8', padding: 12 }}>
+                                <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' as const }}>
+                                  <input type="date" value={citaEditForm.fecha} onChange={e => setCitaEditForm(f => ({ ...f, fecha: e.target.value }))}
+                                    style={{ padding: '6px 8px', border: `1px solid ${sStyle.border}`, fontSize: 12 }} />
+                                  <input type="time" value={citaEditForm.hora} onChange={e => setCitaEditForm(f => ({ ...f, hora: e.target.value }))}
+                                    style={{ padding: '6px 8px', border: `1px solid ${sStyle.border}`, fontSize: 12 }} />
+                                </div>
+                                <textarea value={citaEditForm.notas} onChange={e => setCitaEditForm(f => ({ ...f, notas: e.target.value }))}
+                                  placeholder="Notas de la cita..." rows={2}
+                                  style={{ width: '100%', boxSizing: 'border-box' as const, padding: '6px 8px', border: `1px solid ${sStyle.border}`, fontSize: 12, marginBottom: 8 }} />
+                                <div style={{ display: 'flex', gap: 8 }}>
+                                  <button onClick={() => saveEditCita(ev.id)} style={{ fontSize: 10, textTransform: 'uppercase' as const, letterSpacing: '1px', background: sStyle.text, color: '#fff', border: 'none', padding: '6px 14px', cursor: 'pointer' }}>Guardar</button>
+                                  <button onClick={() => setCitaEditId(null)} style={{ fontSize: 10, textTransform: 'uppercase' as const, letterSpacing: '1px', background: 'transparent', border: `1px solid ${sStyle.border}`, padding: '6px 14px', cursor: 'pointer', color: sStyle.textMuted }}>Cancelar edición</button>
+                                </div>
+                              </div>
+                            );
+                          }
                           return (
                             <div key={ev.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 16, alignItems: 'start',
-                              paddingBottom: 16, borderBottom: `1px solid ${sStyle.border}` }}>
+                              paddingBottom: 16, borderBottom: `1px solid ${sStyle.border}`, opacity: isCancelada ? 0.5 : 1 }}>
                               <div>
                                 <div style={{ fontSize: 10, textTransform: 'uppercase' as const, letterSpacing: '1.5px',
                                   color: isPast ? '#C4C4C4' : sStyle.textMuted, marginBottom: 6 }}>
                                   {ev.tipo_cita || 'Actividad'}
                                   {ev.hora && <span style={{ marginLeft: 12 }}>{ev.hora}{ev.duracion ? ` · ${ev.duracion} min` : ''}</span>}
+                                  {isCancelada && <span style={{ marginLeft: 12, color: '#DC2626', fontWeight: 700 }}>CANCELADA</span>}
                                 </div>
                                 <div style={{ fontFamily: sStyle.headingFont, fontSize: 18, fontWeight: 400,
                                   color: isPast ? '#9CA3AF' : sStyle.text, marginBottom: 6, lineHeight: 1.2 }}>
@@ -8309,15 +9003,41 @@ Responde SOLO con JSON sin bloques de código:
                                   </div>
                                 )}
                               </div>
-                              {prospect && (
-                                <button onClick={() => { setPreviousModule('eventos'); setProspectDetail(prospect.id); setActiveProspect(prospect); setActiveModule('prospectos'); }}
-                                  style={{ fontSize: 10, textTransform: 'uppercase' as const, letterSpacing: '1px',
-                                    background: 'transparent', border: `1px solid ${sStyle.text}`, padding: '6px 14px',
-                                    cursor: 'pointer', color: sStyle.text, whiteSpace: 'nowrap' as const,
-                                    opacity: isPast ? 0.4 : 1 }}>
-                                  Ver perfil
-                                </button>
-                              )}
+                              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                                {isCita && !isCancelada && (
+                                  <>
+                                    <button onClick={() => startEditCita(ev)}
+                                      style={{ fontSize: 10, textTransform: 'uppercase' as const, letterSpacing: '1px',
+                                        background: 'transparent', border: `1px solid ${sStyle.border}`, padding: '6px 12px',
+                                        cursor: 'pointer', color: sStyle.textMuted, whiteSpace: 'nowrap' as const }}>
+                                      Editar
+                                    </button>
+                                    <button onClick={() => cancelarCita(ev.id)}
+                                      style={{ fontSize: 10, textTransform: 'uppercase' as const, letterSpacing: '1px',
+                                        background: 'transparent', border: '1px solid #DC2626', padding: '6px 12px',
+                                        cursor: 'pointer', color: '#DC2626', whiteSpace: 'nowrap' as const }}>
+                                      Cancelar
+                                    </button>
+                                  </>
+                                )}
+                                {isCita && isCancelada && (
+                                  <button onClick={() => eliminarCita(ev.id)}
+                                    style={{ fontSize: 10, textTransform: 'uppercase' as const, letterSpacing: '1px',
+                                      background: 'transparent', border: '1px solid #DC2626', padding: '6px 12px',
+                                      cursor: 'pointer', color: '#DC2626', whiteSpace: 'nowrap' as const }}>
+                                    Eliminar
+                                  </button>
+                                )}
+                                {prospect && (
+                                  <button onClick={() => { setPreviousModule('eventos'); setProspectDetail(prospect.id); setActiveProspect(prospect); setActiveModule('prospectos'); }}
+                                    style={{ fontSize: 10, textTransform: 'uppercase' as const, letterSpacing: '1px',
+                                      background: 'transparent', border: `1px solid ${sStyle.text}`, padding: '6px 14px',
+                                      cursor: 'pointer', color: sStyle.text, whiteSpace: 'nowrap' as const,
+                                      opacity: isPast ? 0.4 : 1 }}>
+                                    Ver perfil
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           );
                         })}
@@ -8899,7 +9619,7 @@ Responde SOLO con JSON sin bloques de código:
       if (prospect && draft) {
         fetch(`${API_ROOT}/api/sara/send-email`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'x-user': currentUser || 'desconocido' },
           body: JSON.stringify({
             to: prospect.correo,
             subject: draft.subject,
@@ -8913,9 +9633,11 @@ Responde SOLO con JSON sin bloques de código:
         }).catch(e => console.error('[Sara] Error SMTP:', e));
       }
 
+      // Registra quién aprobó/envió — antes no quedaba ningún rastro de qué usuario hizo
+      // clic en "Aprobar y Enviar", solo un status 'sent' sin autor.
       setProspects(prev => prev.map(p => {
         if (p.id === prospectId) {
-          const newEmailHistory = (p.emailHistory || []).map(eh => eh.id === draftId ? { ...eh, status: 'sent' as const } : eh);
+          const newEmailHistory = (p.emailHistory || []).map(eh => eh.id === draftId ? { ...eh, status: 'sent' as const, sentBy: currentUser || 'desconocido' } : eh);
           const updated = {
             ...p,
             emailHistory: newEmailHistory,
@@ -8924,7 +9646,7 @@ Responde SOLO con JSON sin bloques de código:
               {
                 fecha: new Date().toISOString().split('T')[0],
                 accion: 'Correo SARA Enviado',
-                detalle: `Respuesta/Cotización preparada por SARA para ${project} fue aprobada y enviada por el administrador.`
+                detalle: `Respuesta/Cotización preparada por SARA para ${project} fue aprobada y enviada por ${currentUser || 'el administrador'}.`
               }
             ]
           };
@@ -8952,6 +9674,27 @@ Responde SOLO con JSON sin bloques de código:
       'Arquetipos detectados':    { tip: 'Tipos de compradores identificados: precio-sensitivo, estatus-motivado, aversión al riesgo o decisor racional. Sofía clasifica cada prospecto en su categoría dominante.', benchmark: 'Distribución típica HNWI: 40% estatus · 30% racional · 20% riesgo · 10% precio' },
       'Señales conductuales':     { tip: 'Observaciones psicológicas extraídas de conversaciones con Sara: patrones de pregunta, objeciones recurrentes, señales de compra y señales de deserción.', benchmark: undefined },
     };
+    // Antes estos 3 números eran contadores locales con una base falsa fija
+    // (agentCamiloProspects arrancaba en 14, agentSaraMessages en 237, agentSaraAlerts en
+    // 3) que solo subían cuando corrías la acción del agente — nunca reflejaban lo que de
+    // verdad había en la bandeja/base de datos, así que al hacer clic el número no cuadraba
+    // con lo que mostraba el panel de detalle. Ahora se calculan directamente de los datos
+    // reales, igual que hace el panel al que llevan.
+    const camiloProspectsReal = prospects.filter(p =>
+      (p.notas || '').includes('minado por Camilo') ||
+      (p.historial || []).some(h => (h.detalle || '').includes('Minería real de Camilo'))
+    ).length;
+    const saraMessagesReal = apiDrafts.filter(d => d.status === 'pending' || d.status === 'sent').length +
+      prospects.reduce((sum, p) => sum + (p.emailHistory || []).filter(eh => ['draft', 'sent', 'incoming'].includes(eh.status)).length, 0);
+    const saraAlertsReal = prospectAlerts.length;
+    // El panel de Sofía lee "liveProfiles" directo de localStorage (para sobrevivir resets
+    // de HMR sin perder perfiles) mientras esta tarjeta usaba el estado de React
+    // (sofiaProfiles) — ambos deberían coincidir, pero si algo escribe a localStorage sin
+    // pasar por setSofiaProfiles quedan desincronizados. Se lee la misma fuente aquí para
+    // que el número de la tarjeta y el del panel sean SIEMPRE el mismo.
+    const sofiaProfilesReal: SofiaProfile[] = (() => {
+      try { return JSON.parse(localStorage.getItem('glp_sofia_profiles') || '[]'); } catch { return sofiaProfiles; }
+    })();
     const agents = [
       {
         name: 'CAMILO', emoji: '🕵️‍♂️', role: 'VP de Investigación y Mercados',
@@ -8967,9 +9710,9 @@ Responde SOLO con JSON sin bloques de código:
         ],
         lastRun: agentCamiloLastRun,
         stats: [
-          { label: 'Prospectos generados', value: agentCamiloProspects },
-          { label: 'Insights producidos', value: camiloInsights.length },
-          { label: 'Tareas en flujo', value: workflowTasks.filter(t => t.from === 'CAMILO' && t.status === 'pendiente').length },
+          { label: 'Prospectos generados', value: camiloProspectsReal, onClick: () => { setPreviousModule('agentes'); setActiveModule('prospectos'); } },
+          { label: 'Insights producidos', value: camiloInsights.length, onClick: () => setAgentHistoryDetail('CAMILO') },
+          { label: 'Tareas en flujo', value: workflowTasks.filter(t => t.from === 'CAMILO' && t.status === 'pendiente').length, onClick: () => setAgentHistoryDetail('WORKFLOW') },
         ],
         status: agentCamiloActive ? (camiloMode === 'research' ? 'Investigando...' : 'Prospectando...') : 'Listo',
         statusColor: agentCamiloActive ? T.success : T.textSec,
@@ -8979,7 +9722,7 @@ Responde SOLO con JSON sin bloques de código:
             { time: '08:00', msg: 'Sin insights generados aún. Usa "Research de Mercado" o activa el Enjambre.' },
           ],
         actions: [
-          { label: '🕵️ Panel de Inteligencia', icon: 'eye', onClick: () => setAgentHistoryDetail('CAMILO') },
+          { label: 'Panel de Inteligencia', icon: 'eye', onClick: () => setAgentHistoryDetail('CAMILO') },
         ],
       },
       {
@@ -8996,8 +9739,8 @@ Responde SOLO con JSON sin bloques de código:
         ],
         lastRun: 'Activo en tiempo real',
         stats: [
-          { label: 'Mensajes analizados', value: agentSaraMessages },
-          { label: 'Alertas activas', value: agentSaraAlerts },
+          { label: 'Mensajes analizados', value: saraMessagesReal, onClick: () => setAgentHistoryDetail('SARA') },
+          { label: 'Alertas activas', value: saraAlertsReal, onClick: () => setAgentHistoryDetail('SARA') },
           { label: 'Tiempo resp. prom.', value: '4.2 min' },
         ],
         status: agentSaraActive ? 'Analizando...' : 'Monitoreando',
@@ -9016,7 +9759,7 @@ Responde SOLO con JSON sin bloques de código:
       {
         name: 'SOFÍA', emoji: '🧠', role: 'PhD · Psicología del Consumidor de Lujo',
         photo: '/img/agents/sofia.png',
-        color: '#EC4899',
+        color: '#0D9488',
         tags: ['Neuromarketing', 'HNWI Profiling', 'Arquetipos', 'Economía Conductual'],
         inputs: ['CAMILO', 'SARA'],
         outputs: ['SARA', 'VALERIA'],
@@ -9025,24 +9768,25 @@ Responde SOLO con JSON sin bloques de código:
           'Decodifica señales conductuales digitales — urgencia real vs. urgencia performativa, lenguaje de anclaje de precio, especificidad financiera, tipo de objeción recurrente — a partir de las conversaciones que Sara captura en WhatsApp, email, chatbot y FAQs.',
           'Produce briefs de influencia accionables: para Sara, el protocolo exacto de respuesta por arquetipo (qué decir, cuándo, con qué evidencia); para Valeria, los sesgos cognitivos a activar en el copy (escasez, prueba social de élite, identidad aspiracional, preservación de patrimonio, efecto de dotación).',
         ],
-        lastRun: sofiaProfiles.length > 0 ? `Último análisis: ${sofiaProfiles[sofiaProfiles.length - 1].fecha}` : 'Sin análisis aún',
+        lastRun: sofiaProfilesReal.length > 0 ? `Último análisis: ${sofiaProfilesReal[sofiaProfilesReal.length - 1].fecha}` : 'Sin análisis aún',
         stats: [
-          { label: 'Perfiles psicográficos', value: sofiaProfiles.length },
-          { label: 'Arquetipos detectados', value: [...new Set(sofiaProfiles.map(p => p.arquetipo))].length },
-          { label: 'Señales conductuales', value: sofiaProfiles.reduce((a, p) => a + p.senales.length, 0) },
+          { label: 'Perfiles psicográficos', value: sofiaProfilesReal.length, onClick: () => { setSofiaTab('perfiles'); setAgentHistoryDetail('SOFIA'); } },
+          { label: 'Arquetipos detectados', value: [...new Set(sofiaProfilesReal.map(p => p.arquetipo))].length, onClick: () => { setSofiaTab('perfiles'); setAgentHistoryDetail('SOFIA'); } },
+          { label: 'Señales conductuales', value: sofiaProfilesReal.reduce((a, p) => a + p.senales.length, 0), onClick: () => { setSofiaTab('perfiles'); setAgentHistoryDetail('SOFIA'); } },
         ],
-        status: agentSofiaActive ? 'Analizando...' : sofiaProfiles.length > 0 ? `${sofiaProfiles.length} perfiles activos` : 'Lista',
-        statusColor: agentSofiaActive ? '#EC4899' : sofiaProfiles.length > 0 ? '#10B981' : '#EC4899',
-        logs: sofiaProfiles.length > 0
-          ? sofiaProfiles.slice(-4).map(p => ({ time: p.fecha, msg: `[${p.arquetipo.toUpperCase()}] ${p.prospectName} · Confianza: ${p.confianza}% · ${p.senales[0] || ''}` }))
+        status: agentSofiaActive ? 'Analizando...' : sofiaProfilesReal.length > 0 ? `${sofiaProfilesReal.length} perfiles activos` : 'Lista',
+        statusColor: agentSofiaActive ? '#0D9488' : sofiaProfilesReal.length > 0 ? '#10B981' : '#0D9488',
+        logs: sofiaProfilesReal.length > 0
+          ? sofiaProfilesReal.slice(-4).map(p => ({ time: p.fecha, msg: `[${p.arquetipo.toUpperCase()}] ${p.prospectName} · Confianza: ${p.confianza}% · ${p.senales[0] || ''}` }))
           : [
             { time: 'SISTEMA', msg: 'Módulo de perfilamiento conductual inicializado · Arquetipos HNWI cargados.' },
             { time: 'MODELO',  msg: 'Coleccionista de Estatus · Preservador de Legado · Decisor Racional · Aspiracional.' },
             { time: 'ESPERA',  msg: 'Sin perfiles aún · Pulsa "Perfilar Prospectos" para comenzar.' },
           ],
+        // "Perfilar Prospectos" (ejecuta IA) se movió al panel de detalle (pestaña
+        // Perfilación) — la tarjeta del grid ya no dispara acciones, solo navega a ver.
         actions: [
-          { label: agentSofiaActive ? 'Analizando...' : 'Perfilar Prospectos', icon: 'brain', onClick: () => handleSofia() },
-          { label: 'Ver Perfiles', icon: 'eye', onClick: () => setAgentHistoryDetail('SOFIA') },
+          { label: 'Ver Perfiles', icon: 'eye', onClick: () => { setSofiaTab('perfiles'); setAgentHistoryDetail('SOFIA'); } },
         ],
       },
       {
@@ -9059,9 +9803,9 @@ Responde SOLO con JSON sin bloques de código:
         ],
         lastRun: valeriaDrafts.length > 0 ? `Último: ${valeriaDrafts[0].canal || valeriaDrafts[0].type} · ${valeriaDrafts[0].date}` : 'Sin contenido generado aún',
         stats: [
-          { label: 'Contenidos generados', value: valeriaDrafts.length },
-          { label: 'Publicados / Activos', value: valeriaDrafts.filter(d => d.status === 'active').length },
-          { label: 'Pendientes revisión', value: valeriaDrafts.filter(d => d.status === 'pending').length },
+          { label: 'Contenidos generados', value: valeriaDrafts.length, onClick: () => { setValeriaTab('bitacora'); setAgentHistoryDetail('VALERIA'); } },
+          { label: 'Publicados / Activos', value: valeriaDrafts.filter(d => d.status === 'active').length, onClick: () => { setValeriaTab('contenido'); setAgentHistoryTab('active'); setAgentHistoryDetail('VALERIA'); } },
+          { label: 'Pendientes revisión', value: valeriaDrafts.filter(d => d.status === 'pending').length, onClick: () => { setValeriaTab('contenido'); setAgentHistoryTab('pending'); setAgentHistoryDetail('VALERIA'); } },
         ],
         status: agentValeriaActive ? 'Redactando...' : 'Listo',
         statusColor: agentValeriaActive ? T.coral : T.sky,
@@ -9086,24 +9830,30 @@ Responde SOLO con JSON sin bloques de código:
         ],
         lastRun: isabellaScripts.length > 0 ? `Último: ${isabellaScripts[0].asunto || isabellaScripts[0].type} · ${isabellaScripts[0].date}` : 'Sin guiones generados aún',
         stats: [
-          { label: 'Guiones generados', value: isabellaScripts.length },
-          { label: 'Listos para producción', value: isabellaScripts.filter(s => s.status === 'approved' || s.status === 'active').length },
-          { label: 'Pendientes revisión', value: isabellaScripts.filter(s => s.status === 'pending').length },
+          { label: 'Guiones generados', value: isabellaScripts.length, onClick: () => { setAgentHistoryTab('bitacora'); setAgentHistoryDetail('ISABELLA'); } },
+          { label: 'Listos para producción', value: isabellaScripts.filter(s => s.status === 'approved' || s.status === 'active').length, onClick: () => { setAgentHistoryTab('approved'); setAgentHistoryDetail('ISABELLA'); } },
+          { label: 'Pendientes revisión', value: isabellaScripts.filter(s => s.status === 'pending').length, onClick: () => { setAgentHistoryTab('pending'); setAgentHistoryDetail('ISABELLA'); } },
         ],
         status: agentIsabellaActive ? 'Generando...' : 'Lista',
         statusColor: agentIsabellaActive ? T.coral : T.palm,
         logs: isabellaScripts.length > 0
           ? isabellaScripts.slice(0, 4).map(s => ({ time: s.date, msg: `${s.canal || s.type}: "${s.asunto || s.content.slice(0, 50)}..." — ${s.status === 'active' ? '🎬 En producción' : s.status === 'approved' ? '✅ Aprobado' : '📝 Pendiente'}` }))
           : [{ time: '--:--', msg: 'Sin guiones aún. Usa "Crear Guion" para generar producción de video con el perfil de marca GLP.' }],
+        // "Crear Guion" (ejecuta IA) se movió al panel de detalle — ver header de la
+        // sección ISABELLA más abajo. La tarjeta del grid ya no dispara acciones.
         actions: [
-          { label: agentIsabellaActive ? 'Generando...' : 'Crear Guion', icon: 'video', onClick: () => handleIsabella() },
           { label: 'Ver Historial', icon: 'eye', onClick: () => setAgentHistoryDetail('ISABELLA') },
         ],
       },
     ];
 
 
-    if (agentHistoryDetail && !['WORKFLOW', 'OBJECTIONS', 'CRISIS', 'SOFIA'].includes(agentHistoryDetail)) {
+    // Antes era una lista negra (todo lo que no fuera WORKFLOW/OBJECTIONS/CRISIS/SOFIA
+    // entraba aquí) y el panel de Isabella vivía como el "resto" implícito al final de
+    // este bloque, sin su propio `if` — cualquier valor no reconocido de
+    // agentHistoryDetail habría caído silenciosamente en el panel de Isabella. Ahora es
+    // una lista blanca explícita de los 4 agentes que sí viven en este bloque.
+    if (agentHistoryDetail && ['CAMILO', 'SARA', 'VALERIA', 'ISABELLA'].includes(agentHistoryDetail)) {
       // ── PANEL CAMILO ────────────────────────────────────────────
       if (agentHistoryDetail === 'CAMILO') {
         const TIPO_COLOR: Record<string,string> = { mercado:'#3B82F6', crisis:'#EF4444', oportunidad:'#10B981', audiencia:'#8B5CF6' };
@@ -9120,59 +9870,61 @@ Responde SOLO con JSON sin bloques de código:
           }))
           .sort((a,b) => b.score - a.score);
 
-        const C_NAVY = '#001A37'; const C_GOLD = '#B89047'; const C_GOLD_L = '#D4AF6A'; const C_CREAM = '#F7F4EF'; const C_PARCH = '#EDE8DF';
+        // Antes navy oscuro/dorado/serif ("Sotheby's") — se realinea al estándar claro
+        // de la plataforma (blanco + azul cobalto + Inter). C_GOLD/C_GOLD_L se mantienen
+        // como nombres para no tocar los ~30 usos existentes más abajo en este panel,
+        // pero ahora apuntan a cobalto en vez de dorado.
+        const C_NAVY = '#001A37'; const C_GOLD = '#3E7CB8'; const C_GOLD_L = '#2E5C8A'; const C_CREAM = '#F4F5F7'; const C_PARCH = '#E8ECF0';
         const TIPO_LABEL: Record<string,string> = { mercado:'Mercado', crisis:'Crisis', oportunidad:'Oportunidad', audiencia:'Audiencia' };
         const TABS = [
           { key:'insights', label:'Inteligencia', badge: camiloInsights.filter(i=>i.status==='nuevo').length },
-          { key:'ranking', label:'Ranking Prospectos', badge:0 },
           { key:'radar', label:'Radar Competencia', badge:0 },
           { key:'objeciones', label:'Mapa Objeciones', badge:0 },
-          { key:'reporte', label:'Reporte Semanal', badge:0 },
-          { key:'bitacora', label:'Bitácora', badge:0 },
+          // Renombrado de "Reporte Semanal": es un texto narrativo único pensado para
+          // ENVIAR por correo a alguien externo (tiene botón "Enviar por Correo"), distinto
+          // de "Inteligencia" (tarjetas de trabajo accionables). El nombre anterior sonaba
+          // a otra bandeja de trabajo, cuando en realidad es la versión para compartir.
+          { key:'reporte', label:'Resumen Ejecutivo', badge:0 },
+          { key:'chat', label:'Preguntar a Camilo', badge:0 },
         ] as const;
-
-        const camiloBitacoraItems = [
-          ...camiloInsights.map(i => ({ fecha: i.fecha, tipo: 'Insight', titulo: i.titulo, detalle: `[${TIPO_LABEL[i.tipo] || i.tipo}] Impacto ${i.impacto} · ${i.status}` })),
-          ...workflowTasks.filter(t => t.from === 'CAMILO').map(t => ({ fecha: t.fecha, tipo: 'Tarea enviada', titulo: `${t.titulo} → ${t.to}`, detalle: `${t.tipo} · ${t.status}` })),
-        ].sort((a,b) => (b.fecha||'').localeCompare(a.fecha||''));
 
         return (
           <div style={{ background: C_CREAM, minHeight:'100%' }}>
 
-            {/* ── HEADER SOTHEBY'S ── */}
-            <div style={{ background: C_NAVY, borderTop:`3px solid ${C_GOLD}`, padding:'32px 40px 0' }}>
-              <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-between', gap:16, paddingBottom:28 }}>
+            {/* ── HEADER — blanco/cobalto/Inter, igual que el resto de la plataforma. Sin
+                referencia a "GLP Wealth Management": el logo ya vive en la barra superior
+                y esta línea era pura decoración redundante. ── */}
+            <div style={{ background: '#fff', borderTop:`3px solid ${C_GOLD}`, borderBottom: `1px solid ${C_PARCH}`, padding:'28px 40px 0' }}>
+              <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-between', gap:16, paddingBottom:22 }}>
                 <div>
-                  <div style={{ fontSize:9, letterSpacing:5, color:C_GOLD, fontWeight:700, textTransform:'uppercase', marginBottom:10 }}>
-                    GLP Wealth Management · Agente de Inteligencia
-                  </div>
-                  <h2 style={{ margin:0, fontSize:28, fontFamily:T.fontSerif, fontWeight:300, color:'#fff', letterSpacing:1, lineHeight:1.1 }}>
+                  <h2 style={{ margin:0, fontSize:26, fontFamily:T.fontSans, fontWeight:800, color:C_NAVY, letterSpacing:'-0.01em', lineHeight:1.1 }}>
                     Camilo
                   </h2>
-                  <div style={{ width:36, height:1, background:C_GOLD, margin:'10px 0' }} />
-                  <div style={{ fontSize:10, color:'rgba(255,255,255,0.4)', letterSpacing:3, textTransform:'uppercase' }}>
+                  <div style={{ fontSize:11, color:'#6B7280', marginTop:6 }}>
                     VP de Investigación y Mercados
                   </div>
                 </div>
-                <button onClick={() => setAgentHistoryDetail(null)}
-                  style={{ background:'transparent', border:`1px solid rgba(184,144,71,0.3)`, padding:'8px 20px', color:'rgba(255,255,255,0.5)', fontSize:9, fontWeight:700, letterSpacing:3, textTransform:'uppercase', cursor:'pointer', marginBottom:4 }}>
-                  ← Volver
-                </button>
+                <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:4 }}>
+                  <button onClick={() => setAgentHistoryDetail(null)}
+                    style={{ background:'transparent', border:`1px solid ${C_PARCH}`, borderRadius:8, padding:'8px 16px', color:'#6B7280', fontSize:12, fontWeight:600, fontFamily:T.fontSans, cursor:'pointer' }}>
+                    ← Volver
+                  </button>
+                </div>
               </div>
 
               {/* Tabs nav */}
-              <div style={{ display:'flex', gap:0, borderTop:`1px solid rgba(184,144,71,0.15)` }}>
+              <div style={{ display:'flex', gap:0, borderTop:`1px solid ${C_PARCH}` }}>
                 {TABS.map(t => (
                   <button key={t.key} onClick={()=>setCamiloTab(t.key)} style={{
-                    padding:'13px 22px', border:'none', background:'transparent', cursor:'pointer',
-                    fontSize:9, fontWeight:700, letterSpacing:3, textTransform:'uppercase',
+                    padding:'12px 18px', border:'none', background:'transparent', cursor:'pointer',
+                    fontSize:12, fontWeight:600, fontFamily:T.fontSans,
                     borderBottom: camiloTab===t.key ? `2px solid ${C_GOLD}` : '2px solid transparent',
-                    color: camiloTab===t.key ? C_GOLD_L : 'rgba(255,255,255,0.65)',
+                    color: camiloTab===t.key ? C_GOLD : '#6B7280',
                     display:'flex', alignItems:'center', gap:8, transition:'color 0.2s', marginBottom:-1,
                   }}>
                     {t.label}
                     {t.badge > 0 && (
-                      <span style={{ background:C_GOLD, color:C_NAVY, padding:'1px 7px', fontSize:8, fontWeight:800, letterSpacing:0 }}>{t.badge}</span>
+                      <span style={{ background:C_GOLD, color:'#fff', padding:'1px 7px', borderRadius:10, fontSize:10, fontWeight:700 }}>{t.badge}</span>
                     )}
                   </button>
                 ))}
@@ -9185,24 +9937,29 @@ Responde SOLO con JSON sin bloques de código:
             {/* TAB: INSIGHTS */}
             {camiloTab === 'insights' && (
               <div>
-                {camiloInsights.length > 0 && (
-                  <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:16 }}>
-                    <button onClick={() => handleCamilo(false, false, 'research')} disabled={agentCamiloActive}
-                      style={{ background: agentCamiloActive ? 'rgba(184,144,71,0.3)' : C_NAVY, color: agentCamiloActive ? 'rgba(255,255,255,0.4)' : C_GOLD, border:'none', padding:'10px 26px', fontSize:9, fontWeight:800, letterSpacing:3, textTransform:'uppercase', cursor: agentCamiloActive ? 'default':'pointer' }}>
-                      {agentCamiloActive ? '⏳ Investigando...' : '▶ Nuevo Research de Mercado'}
+                {/* Botón de ejecutar research dentro de la pestaña "Inteligencia", con el
+                    mismo formato que "Generar Reporte" en Resumen Ejecutivo — antes vivía en
+                    el header del panel (visible en todas las pestañas) y a la vez repetido
+                    aquí abajo; ahora vive en un solo lugar, consistente con el patrón de las
+                    demás pestañas (cada una genera su propio contenido con su propio botón). */}
+                <div style={{ display:'flex', gap:10, marginBottom:24, alignItems:'center', flexWrap:'wrap' }}>
+                  <button onClick={() => handleCamilo(false, false, 'research')} disabled={agentCamiloActive}
+                    style={{ background: agentCamiloActive ? '#9CA3AF' : C_NAVY, color:'#fff', border:'none', borderRadius:8, padding:'9px 20px', fontSize:12.5, fontWeight:600, fontFamily:T.fontSans, cursor: agentCamiloActive ? 'default' : 'pointer' }}>
+                    {agentCamiloActive ? 'Investigando…' : 'Research'}
+                  </button>
+                  {camiloInsights.length > 0 && (
+                    <button onClick={downloadInsightsPDF}
+                      style={{ background:'transparent', color:C_NAVY, border:`1px solid ${C_PARCH}`, borderRadius:8, padding:'9px 20px', fontSize:12.5, fontWeight:600, fontFamily:T.fontSans, cursor:'pointer' }}>
+                      Descargar PDF
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
                 {camiloInsights.length === 0 && (
                   <div style={{ background:'#fff', border:`1px solid rgba(184,144,71,0.2)`, padding:'48px 40px', textAlign:'center' }}>
                     <div style={{ fontSize:9, letterSpacing:4, color:C_GOLD, fontWeight:700, textTransform:'uppercase', marginBottom:12 }}>Sin datos</div>
-                    <div style={{ fontSize:13, fontFamily:T.fontSerif, fontWeight:300, color:C_NAVY, marginBottom:24 }}>
-                      Ejecuta un Research de Mercado para generar inteligencia con deep search.
+                    <div style={{ fontSize:13, fontFamily:T.fontSerif, fontWeight:300, color:C_NAVY }}>
+                      Usa el botón "Research" de arriba para generar inteligencia con deep search.
                     </div>
-                    <button onClick={() => handleCamilo(false, false, 'research')} disabled={agentCamiloActive}
-                      style={{ background: agentCamiloActive ? 'rgba(184,144,71,0.3)' : C_NAVY, color: agentCamiloActive ? 'rgba(255,255,255,0.4)' : C_GOLD, border:'none', padding:'12px 32px', fontSize:9, fontWeight:800, letterSpacing:3, textTransform:'uppercase', cursor: agentCamiloActive ? 'default':'pointer' }}>
-                      {agentCamiloActive ? '⏳ Investigando...' : '▶ Research de Mercado'}
-                    </button>
                   </div>
                 )}
                 {camiloInsights.map((ins, idx) => {
@@ -9262,6 +10019,43 @@ Responde SOLO con JSON sin bloques de código:
                               </div>
                             )}
 
+                            {/* Reenviar oportunidad a la bandeja de Sara — cubre insights de
+                                tipo "oportunidad"/"mercado" ya aprobados antes de que existiera
+                                el envío automático, o si el asesor quiere generar un correo
+                                nuevo. */}
+                            {isExpanded && (ins.tipo === 'oportunidad' || ins.tipo === 'mercado') && ins.status === 'revisado' && (
+                              <button onClick={async e => {
+                                const btn = e.currentTarget;
+                                if (btn.disabled) return; // evita doble clic mientras la llamada está en curso
+                                btn.disabled = true;
+                                try {
+                                  const saraAccion = (ins as any).acciones_sara || `Generar respuesta informativa sobre: ${ins.titulo}`;
+                                  const prompt = `Eres Sara, Customer Success Agent de GLP (inmobiliaria de lujo en Panamá).\nCamilo (científico de datos) te envía este insight de mercado y te pide una acción concreta.\n\nINSIGHT: "${ins.titulo}"\nDATO: ${ins.datos}\nACCIÓN REQUERIDA: ${saraAccion}\n\nGenera una respuesta FAQ breve y profesional (3-5 oraciones) que Sara pueda enviar a prospectos colombianos interesados. Tono: cálido, experto, sin tecnicismos excesivos. Incluye un CTA al final.`;
+                                  const faqResp = await triggerOpenAI(prompt, 'Eres Sara, agente de Customer Success de GLP Panama.', undefined, 'SARA', 'faq_desde_insight');
+                                  const draftRes = await fetch(`${API_ROOT}/api/drafts`, {
+                                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                      destinatario: '',
+                                      project: `Oportunidad · ${ins.titulo}`,
+                                      subject: `Oportunidad detectada — ${ins.titulo}`,
+                                      body: faqResp.trim(),
+                                      prioridad: ins.impacto === 'alto' ? 'alta' : 'normal',
+                                      origen: 'oportunidad_camilo',
+                                    }),
+                                  });
+                                  const draft = await draftRes.json();
+                                  if (draft?.id) setApiDrafts(prev => prev.some(d => d.id === draft.id) ? prev : [draft, ...prev]);
+                                  alert('Enviado a la bandeja de Sara (carpeta Oportunidades Detectadas) — falta indicar destinatario antes de aprobar.');
+                                } catch {
+                                  alert('No se pudo enviar a la bandeja de Sara.');
+                                } finally {
+                                  btn.disabled = false;
+                                }
+                              }} style={{ marginTop:14, background:'transparent', border:`1px solid ${C_GOLD}`, color:C_GOLD, padding:'6px 14px', fontSize:9, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase' as const, cursor:'pointer' }}>
+                                ✉️ Enviar a Sara
+                              </button>
+                            )}
+
                             {/* Fuentes */}
                             {isExpanded && ins.fuentes?.length > 0 && (
                               <div style={{ marginTop:12, fontSize:9, color:'#9CA3AF', letterSpacing:1 }}>
@@ -9279,7 +10073,7 @@ Responde SOLO con JSON sin bloques de código:
                           {isNew && (
                             <div style={{ display:'flex', flexDirection:'column', gap:6, flexShrink:0 }}>
                               <button onClick={() => approveInsight(ins)} style={{
-                                background: C_NAVY, color: C_GOLD_L, border:'none',
+                                background: C_NAVY, color: '#fff', border:'none',
                                 padding:'9px 22px', fontSize:9, fontWeight:700, letterSpacing:2, textTransform:'uppercase', cursor:'pointer',
                               }}>Aprobar</button>
                               <button onClick={() => rejectInsight(ins.id)} style={{
@@ -9318,69 +10112,31 @@ Responde SOLO con JSON sin bloques de código:
               </div>
             )}
 
-            {/* TAB: RANKING PROSPECTOS */}
-            {camiloTab === 'ranking' && (
-              <div style={{ ...cardStyle() }}>
-                <div style={{ fontWeight:700, fontSize:14, color:T.text, marginBottom:14 }}>
-                  Ranking de conversión — {rankedProspects.length} prospectos activos
-                </div>
-                <div style={{ overflowX:'auto' }}>
-                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
-                    <thead>
-                      <tr style={{ borderBottom:`2px solid ${T.border}` }}>
-                        {['#','Prospecto','Etapa','Score %','Cierre est.','Objeciones activas','Recomendación Sara'].map(h=>(
-                          <th key={h} style={{ padding:'8px 10px', textAlign:'left', color:T.textSec, fontSize:11, fontWeight:700 }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rankedProspects.map((p, i) => {
-                        const objTipos = p.objActivasTipo;
-                        const scoreBg = p.score >= 70 ? '#10B98120' : p.score >= 40 ? '#F59E0B20' : '#EF444420';
-                        const scoreColor = p.score >= 70 ? '#10B981' : p.score >= 40 ? '#F59E0B' : '#EF4444';
-                        const rec = p.score >= 70 ? 'Llamar hoy — cierre inminente' :
-                                    p.score >= 50 ? 'Enviar propuesta actualizada' :
-                                    p.score >= 30 ? 'Email de valor + agenda reunión' : 'Reactivar con incentivo especial';
-                        return (
-                          <tr key={p.id} style={{ borderBottom:`1px solid ${T.borderLight}`, background: i%2===0?T.bg:'transparent' }}>
-                            <td style={{ padding:'8px 10px', color:T.textSec, fontWeight:700 }}>{i+1}</td>
-                            <td style={{ padding:'8px 10px' }}>
-                              <div style={{ fontWeight:600, color:T.text }}>{p.nombre} {p.apellido}</div>
-                              <div style={{ fontSize:10, color:T.textSec }}>${(p.presupuesto_usd||0).toLocaleString()} USD · {p.ocupacion||'—'}</div>
-                            </td>
-                            <td style={{ padding:'8px 10px', color:T.text }}>{p.estado}</td>
-                            <td style={{ padding:'8px 10px' }}>
-                              <div style={{ display:'inline-block', background:scoreBg, color:scoreColor, fontWeight:800, fontSize:13, padding:'3px 10px', borderRadius:6 }}>{p.score}%</div>
-                            </td>
-                            <td style={{ padding:'8px 10px', color:T.text }}>{p.timing > 0 ? `~${p.timing}d` : 'Cerrado'}</td>
-                            <td style={{ padding:'8px 10px' }}>
-                              {objTipos.length > 0
-                                ? objTipos.map((t,idx)=>(
-                                  <span key={idx} style={{ fontSize:10, background:'#EF444420', color:'#EF4444', padding:'2px 6px', borderRadius:4, marginRight:4 }}>
-                                    {OBJECTION_TIPOS.find(o=>o.value===t)?.icon} {t}
-                                  </span>
-                                ))
-                                : <span style={{ fontSize:10, color:T.textSec }}>Sin objeciones</span>
-                              }
-                            </td>
-                            <td style={{ padding:'8px 10px', fontSize:11, color:T.text, maxWidth:180 }}>{rec}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
             {/* TAB: RADAR DE COMPETENCIA */}
             {camiloTab === 'radar' && (
               <div>
-                <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:14 }}>
+                <div style={{ display:'flex', gap:10, marginBottom:24, alignItems:'center', flexWrap:'wrap' }}>
+                  <select value={radarScope} onChange={e => setRadarScope(e.target.value as typeof radarScope)} disabled={generatingRadar}
+                    style={{ background:'#fff', border:`1px solid ${T.borderLight}`, color:T.text, padding:'10px 14px', fontSize:11, fontWeight:600, borderRadius:4, cursor: generatingRadar ? 'default' : 'pointer' }}>
+                    <option value="panama">Solo Panamá</option>
+                    <option value="panama_colombia">Panamá vs Colombia</option>
+                    <option value="panama_colombia_usa">Panamá, Colombia y USA</option>
+                    <option value="centroamerica">Centroamérica</option>
+                    <option value="internacional">Internacional (Costa Rica, Portugal, Miami, Panamá)</option>
+                  </select>
                   <button onClick={generateRadar} disabled={generatingRadar}
-                    style={{ background:'#3B82F6', color:'#fff', border:'none', borderRadius:8, padding:'8px 18px', fontWeight:700, fontSize:12, cursor:'pointer' }}>
-                    {generatingRadar ? '⏳ Analizando...' : '🎯 Actualizar Radar'}
+                    style={{ background: generatingRadar ? 'rgba(0,26,55,0.4)' : C_NAVY, color:'#fff', border:'none', padding:'11px 28px', fontSize:9, fontWeight:700, letterSpacing:3, textTransform:'uppercase', cursor: generatingRadar ? 'default' : 'pointer' }}>
+                    {generatingRadar ? 'Analizando…' : 'Actualizar Radar'}
                   </button>
+                  {radarData.length > 0 && (
+                    <button onClick={downloadRadarPDF}
+                      style={{ background:'transparent', color:C_NAVY, border:`1px solid rgba(0,26,55,0.3)`, padding:'11px 28px', fontSize:9, fontWeight:700, letterSpacing:3, textTransform:'uppercase', cursor:'pointer' }}>
+                      Descargar PDF
+                    </button>
+                  )}
+                  {generatingRadar && radarProgressLabel && (
+                    <span style={{ fontSize:11, color:T.textSec, fontStyle:'italic' }}>{radarProgressLabel}</span>
+                  )}
                 </div>
                 {radarData.length === 0 && !generatingRadar && (
                   <div style={{ ...cardStyle(), textAlign:'center', color:T.textSec, padding:40 }}>
@@ -9453,9 +10209,9 @@ Responde SOLO con JSON sin bloques de código:
             {/* TAB: REPORTE SEMANAL */}
             {camiloTab === 'reporte' && (
               <div>
-                <div style={{ display:'flex', gap:1, marginBottom:24 }}>
+                <div style={{ display:'flex', gap:10, marginBottom:24, alignItems:'center', flexWrap:'wrap' }}>
                   <button onClick={generateMarketReport} disabled={generatingReport}
-                    style={{ background: generatingReport ? 'rgba(0,26,55,0.4)' : C_NAVY, color:C_GOLD_L, border:'none', padding:'11px 28px', fontSize:9, fontWeight:700, letterSpacing:3, textTransform:'uppercase', cursor:'pointer' }}>
+                    style={{ background: generatingReport ? 'rgba(0,26,55,0.4)' : C_NAVY, color:'#fff', border:'none', padding:'11px 28px', fontSize:9, fontWeight:700, letterSpacing:3, textTransform:'uppercase', cursor:'pointer' }}>
                     {generatingReport ? 'Generando…' : 'Generar Reporte'}
                   </button>
                   {marketReport && (
@@ -9464,19 +10220,28 @@ Responde SOLO con JSON sin bloques de código:
                       {sendingReport ? 'Enviando…' : 'Enviar por Correo'}
                     </button>
                   )}
+                  {marketReport && (
+                    <button onClick={downloadMarketReportPDF}
+                      style={{ background:'transparent', color:C_NAVY, border:`1px solid rgba(0,26,55,0.3)`, padding:'11px 28px', fontSize:9, fontWeight:700, letterSpacing:3, textTransform:'uppercase', cursor:'pointer' }}>
+                      Descargar PDF
+                    </button>
+                  )}
+                  {generatingReport && radarProgressLabel && (
+                    <span style={{ fontSize:11, color:T.textSec, fontStyle:'italic' }}>{radarProgressLabel}</span>
+                  )}
                 </div>
                 {!marketReport && !generatingReport && (
                   <div style={{ background:'#fff', border:`1px solid rgba(184,144,71,0.2)`, padding:'48px 40px', textAlign:'center' }}>
-                    <div style={{ fontSize:9, letterSpacing:4, color:C_GOLD, fontWeight:700, textTransform:'uppercase', marginBottom:12 }}>Reporte Semanal</div>
+                    <div style={{ fontSize:9, letterSpacing:4, color:C_GOLD, fontWeight:700, textTransform:'uppercase', marginBottom:12 }}>Resumen Ejecutivo</div>
                     <div style={{ fontSize:13, fontFamily:T.fontSerif, fontWeight:300, color:C_NAVY }}>
-                      Genera el reporte de inteligencia de mercado inmobiliario y financiero de Panamá y Colombia.
+                      Genera un resumen narrativo de inteligencia de mercado inmobiliario y financiero de Panamá y Colombia, listo para enviar por correo.
                     </div>
                   </div>
                 )}
                 {marketReport && (
                   <div style={{ background:'#fff', borderLeft:`3px solid ${C_GOLD}` }}>
                     <div style={{ padding:'20px 28px', borderBottom:`1px solid rgba(184,144,71,0.15)`, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                      <div style={{ fontSize:12, fontFamily:T.fontSerif, fontWeight:400, color:C_NAVY }}>Reporte Semanal · {marketReport.fecha}</div>
+                      <div style={{ fontSize:12, fontFamily:T.fontSerif, fontWeight:400, color:C_NAVY }}>Resumen Ejecutivo · {marketReport.fecha}</div>
                       <span style={{ fontSize:8, letterSpacing:3, color:C_GOLD, textTransform:'uppercase', fontWeight:700 }}>Contexto global activo</span>
                     </div>
                     <div style={{ padding:'24px 28px', fontSize:12, color:'#374151', whiteSpace:'pre-wrap', lineHeight:1.85 }}>{marketReport.texto}</div>
@@ -9485,59 +10250,58 @@ Responde SOLO con JSON sin bloques de código:
               </div>
             )}
 
-            {/* TAB: BITÁCORA */}
-            {camiloTab === 'bitacora' && (
-              <div>
-                {camiloBitacoraItems.length === 0 && (
-                  <div style={{ background:'#fff', border:`1px solid rgba(184,144,71,0.2)`, padding:'48px 40px', textAlign:'center' }}>
-                    <div style={{ fontSize:9, letterSpacing:4, color:C_GOLD, fontWeight:700, textTransform:'uppercase', marginBottom:12 }}>Sin actividad</div>
-                    <div style={{ fontSize:13, fontFamily:T.fontSerif, fontWeight:300, color:C_NAVY }}>
-                      Aún no hay insights generados ni tareas enviadas al equipo.
-                    </div>
-                  </div>
-                )}
-                {camiloBitacoraItems.map((item, idx) => (
-                  <div key={idx} style={{
-                    background:'#fff', borderTop: idx === 0 ? 'none' : `1px solid rgba(184,144,71,0.15)`,
-                    padding:'18px 32px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:16,
-                  }}>
-                    <div>
-                      <div style={{ fontSize:12, fontFamily:T.fontSerif, color:C_NAVY, marginBottom:4 }}>{item.titulo}</div>
-                      <div style={{ fontSize:10, color:'#6B7280' }}>{item.detalle}</div>
-                    </div>
-                    <div style={{ textAlign:'right', flexShrink:0 }}>
-                      <span style={{ fontSize:8, letterSpacing:2, color:C_GOLD, fontWeight:700, textTransform:'uppercase' }}>{item.tipo}</span>
-                      <div style={{ fontSize:9, color:'#9CA3AF', marginTop:2 }}>{item.fecha}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            {/* TAB: CHAT */}
+            {camiloTab === 'chat' && renderAgentChatPanel('CAMILO', C_NAVY, C_GOLD, C_PARCH, 'Pregúntale a Camilo sobre el mercado, insights o el ranking de prospectos — ej. "¿qué oportunidades detectaste esta semana?"')}
+
             </div>
           </div>
         );
       }
 
       if (agentHistoryDetail === 'SARA') {
+        // Misma paleta cálida "Sotheby's" que ya se retiró del resto de la plataforma —
+        // se realinea a azul cobalto + gris frío (el panel de Sara usa estas constantes
+        // en decenas de lugares, así que redefinirlas aquí cascada correctamente).
         const S_NAVY = '#001A37';
-        const S_GOLD = '#B89047';
-        const S_GOLD_L = '#D4AF6A';
-        const S_CREAM = '#F7F4EF';
-        const S_PARCH = '#EDE8DF';
+        const S_GOLD = '#3E7CB8';
+        const S_GOLD_L = '#6E9CC7';
+        const S_CREAM = '#F4F5F7';
+        const S_PARCH = '#E8ECF0';
 
+        // Antes editar asunto/cuerpo de un borrador solo tocaba el estado local de React —
+        // al aprobar y enviar, /api/send-draft volvía a leer la fila ORIGINAL de la base de
+        // datos, así que la edición nunca se guardaba de verdad. Se persiste en el blur
+        // (no en cada tecla) para no saturar de PUTs mientras se escribe.
+        const persistDraftEdit = (draftId: string, field: 'destinatario' | 'subject' | 'body', value: string) => {
+          fetch(`${API_ROOT}/api/drafts/${draftId}`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ [field]: value }),
+          }).catch(() => {});
+        };
+
+        // Estos registros de emailHistory son de un modelo anterior (vivían solo en
+        // localStorage/JSONB del prospecto, sin columna de origen) — no sabemos con
+        // certeza de dónde vinieron, así que se infiere por heurística: un correo
+        // entrante real (direction 'in') solo puede ser un correo real recibido; el resto
+        // se asume solicitud de cliente, el origen más común históricamente en esos datos.
         const allDraftsFromHistory = (prospects.flatMap(p => (p.emailHistory || []).map(eh => ({
           id: eh.id, to: `${p.nombre} ${p.apellido} (${p.correo})`,
           prospectId: p.id, project: p.proyectos_interes.join(', '),
           subject: eh.subject, body: eh.body,
           status: eh.status, date: eh.date, direction: eh.direction,
-          isApi: false,
+          isApi: false, origen: eh.direction === 'in' ? 'correo_entrante' : 'solicitud_cliente',
         })))).filter(d => ['draft','sent','incoming'].includes(d.status));
 
-        const apiDraftsMapped = apiDrafts.filter(d => d.status === 'pending').map(d => ({
+        // Antes solo se mapeaban los drafts 'pending' — en cuanto un draft se marcaba
+        // 'sent' desaparecía por completo de allMsgs (nunca llegaba ni a la lista de
+        // Correos ni a un registro de Enviados). Ahora se incluyen también los enviados,
+        // con su fecha real de envío y quién lo aprobó.
+        const apiDraftsMapped = apiDrafts.filter(d => d.status === 'pending' || d.status === 'sent').map(d => ({
           id: d.id, to: d.destinatario, prospectId: -1,
           project: d.project, subject: d.subject, body: d.body,
-          status: 'draft', date: d.created_at, direction: 'out',
-          isApi: true, prioridad: d.prioridad,
+          status: d.status === 'sent' ? 'sent' as const : 'draft' as const,
+          date: (d as any).sent_at || d.created_at, direction: 'out' as const,
+          isApi: true, prioridad: d.prioridad, origen: d.origen || 'manual', sentBy: (d as any).sentBy || (d as any).sent_by,
         }));
 
         const allMsgs = [...allDraftsFromHistory, ...apiDraftsMapped]
@@ -9545,76 +10309,95 @@ Responde SOLO con JSON sin bloques de código:
 
         const pendingCount = allMsgs.filter(m => m.status === 'draft').length;
 
-        const ALERT_ACCENT: Record<string,string> = { critico:'#B91C1C', frio:'#C2410C', tibio:'#B45309', oportunidad: S_NAVY };
-        const ALERT_LABEL: Record<string,string> = { critico:'CRÍTICO', frio:'FRÍO', tibio:'TIBIO', oportunidad:'OPORTUNIDAD' };
+        // Carpetas — cada una agrupa uno o más orígenes reales. 'todos' no filtra.
+        // 'enviados' filtra por status en vez de origen — agrupa lo que efectivamente
+        // salió sin importar de qué carpeta vino, con la misma navegación lista/detalle
+        // que el resto de carpetas (antes era una pestaña separada con su propia lista
+        // plana, duplicando la UI en vez de ser una carpeta más).
+        // El origen es un REFINAMIENTO del estado, no una lista aparte — antes ambos ejes
+        // vivían como carpetas hermanas, y para saber "de los pendientes, cuántos son
+        // solicitudes de cliente" el usuario tenía que abrir dos carpetas distintas y sumar
+        // a mano. Ahora la barra lateral solo tiene estado (jerarquía real, mutuamente
+        // excluyente) y el origen es una fila de chips que filtra DENTRO del estado activo,
+        // con conteos que ya reflejan esa intersección — no hay que sumar nada.
+        const SARA_FOLDERS: Array<{ key: string; label: string; icon: string; statusFilter?: string }> = [
+          { key: 'pendientes', label: 'Pendientes de Aprobación', icon: '⏳', statusFilter: 'draft' },
+          { key: 'enviados', label: 'Enviados', icon: '✓', statusFilter: 'sent' },
+        ];
+        const ORIGEN_FILTERS: Array<{ key: string; label: string; origenes: string[] }> = [
+          { key: 'solicitudes', label: 'Solicitudes de Clientes', origenes: ['solicitud_cliente', 'correo_entrante'] },
+          { key: 'seguimiento', label: 'Seguimiento de Sara', origenes: ['seguimiento_sara'] },
+          { key: 'crisis', label: 'Recuperación de Crisis', origenes: ['crisis_recuperacion'] },
+          { key: 'oportunidades', label: 'Oportunidades Detectadas', origenes: ['oportunidad_detectada', 'oportunidad_camilo'] },
+          { key: 'reactivacion', label: 'Reactivación', origenes: ['reactivacion_alerta'] },
+          { key: 'cobranza', label: 'Cobranza (Cartera)', origenes: ['cobranza_cartera'] },
+          { key: 'otros', label: 'Sin clasificar', origenes: ['manual'] },
+        ];
+        const activeFolder = SARA_FOLDERS.find(f => f.key === saraFolder) || SARA_FOLDERS[0];
+        const activeOrigenFilter = ORIGEN_FILTERS.find(o => o.key === saraOrigenFilter) || null;
+        const msgsInFolder = allMsgs.filter(m => !activeFolder.statusFilter || m.status === activeFolder.statusFilter);
+        const searchQ = saraSearchQuery.trim().toLowerCase();
+        const visibleMsgs = msgsInFolder.filter(m => {
+          if (activeOrigenFilter && !activeOrigenFilter.origenes.includes((m as any).origen || 'manual')) return false;
+          if (searchQ && !(
+            (m.subject || '').toLowerCase().includes(searchQ) ||
+            (m.body || '').toLowerCase().includes(searchQ) ||
+            (m.to || '').toLowerCase().includes(searchQ)
+          )) return false;
+          return true;
+        });
 
         return (
           <div style={{ background: S_CREAM, minHeight: '100%' }}>
 
-            {/* Header */}
-            <div style={{ background: S_NAVY, padding: '24px 32px 20px' }}>
+            {/* Header — blanco/cobalto/Inter, sin el eyebrow "Sara · Directora de
+                Experiencia de Cliente" (redundante con el título de la página). */}
+            <div style={{ background: '#fff', borderTop: `3px solid ${S_GOLD}`, borderBottom: `1px solid ${S_PARCH}`, padding: '24px 32px 20px' }}>
               <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:16 }}>
                 <div>
-                  <div style={{ fontSize:9, letterSpacing:4, color:S_GOLD, fontWeight:700, textTransform:'uppercase', marginBottom:5 }}>Sara · Directora de Experiencia de Cliente</div>
-                  <h2 style={{ margin:0, fontSize:22, fontFamily:T.fontSerif, fontWeight:400, color:'#fff', letterSpacing:0.5 }}>
-                    Bandeja de Comunicaciones
+                  <h2 style={{ margin:0, fontSize:22, fontFamily:T.fontSans, fontWeight:800, color:S_NAVY, letterSpacing:'-0.01em' }}>
+                    {saraPanelTab === 'chat' ? 'Preguntar a Sara' : 'Bandeja de Comunicaciones'}
                   </h2>
-                  <div style={{ fontSize:11, color:'rgba(255,255,255,0.45)', marginTop:3, fontStyle:'italic' }}>
-                    Correos entrantes · Cotizaciones pendientes · Alertas de prospectos
+                  <div style={{ fontSize:11, color:'#6B7280', marginTop:5 }}>
+                    {saraPanelTab === 'chat' ? 'Chat interactivo · respuestas con datos reales de tu cartera de prospectos' : 'Correos entrantes · Cotizaciones pendientes · Alertas de prospectos'}
                   </div>
                 </div>
                 <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                  {pendingCount > 0 && (
-                    <div style={{ background:`${S_GOLD}20`, border:`1px solid ${S_GOLD}`, borderRadius:3, padding:'6px 14px', display:'flex', alignItems:'center', gap:8 }}>
-                      <span style={{ width:6, height:6, borderRadius:'50%', background:S_GOLD, display:'inline-block', animation:'pulse 1.5s infinite' }} />
-                      <span style={{ fontSize:11, color:S_GOLD_L, fontWeight:600 }}>{pendingCount} pendiente{pendingCount>1?'s':''} de aprobación</span>
-                    </div>
+                  {/* Alterna entre la bandeja de 3 columnas y el chat a pantalla completa —
+                      un chat comprimido en una cuarta columna angosta no tendría espacio
+                      para las citas de fuente. */}
+                  <div style={{ display:'flex', background:S_PARCH, borderRadius:8, padding:2 }}>
+                    {([['correos','Bandeja'],['chat','Chat']] as const).map(([id,label]) => (
+                      <button key={id} onClick={() => setSaraPanelTab(id)}
+                        style={{ padding:'6px 14px', borderRadius:6, border:'none', cursor:'pointer', fontSize:12, fontWeight:600, background: saraPanelTab===id ? S_GOLD : 'transparent', color: saraPanelTab===id ? '#fff' : '#6B7280', fontFamily: T.fontSans }}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {/* El conteo de pendientes ya vive en la barra de herramientas de la lista
+                      ("N mensajes · N pendientes") y en el contador de la carpeta del
+                      sidebar — este badge repetía el mismo número una tercera vez. */}
+                  {/* Antes vivía como CTA suelto en el encabezado de la sección "II ·
+                      Experiencia de Cliente" en la vista de tarjetas, separado de las demás
+                      acciones de Sara — ahora está junto a ellas, dentro de su propio panel.
+                      Renombrado de "Analizar Consultas" a "Generar Seguimientos" — el nombre
+                      anterior sonaba a sinónimo de "Sincronizar Correo" (revisar bandeja),
+                      cuando en realidad genera correos de reactivación hacia prospectos
+                      estancados, no analiza nada que haya llegado. */}
+                  {saraPanelTab === 'correos' && (
+                    <button onClick={() => handleSara()} disabled={agentSaraActive}
+                      style={{ background: agentSaraActive ? '#9CA3AF' : S_GOLD, color: '#fff', border:'none', borderRadius:8, padding:'8px 16px', fontSize:12, fontWeight:600, cursor: agentSaraActive ? 'default' : 'pointer', fontFamily: T.fontSans }}>
+                      {agentSaraActive ? 'Generando…' : 'Generar Seguimientos'}
+                    </button>
                   )}
                   <button onClick={() => { setAgentHistoryDetail(null); setAgentHistoryTab('pending'); }}
-                    style={{ background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.15)', borderRadius:3, padding:'7px 16px', color:'rgba(255,255,255,0.6)', fontSize:10, fontWeight:700, letterSpacing:1, textTransform:'uppercase', cursor:'pointer' }}>
+                    style={{ background:'transparent', border:`1px solid ${S_PARCH}`, borderRadius:8, padding:'7px 14px', color:'#6B7280', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily: T.fontSans }}>
                     ← Volver
                   </button>
                 </div>
               </div>
 
-              {/* Tabs nav */}
-              <div style={{ display:'flex', gap:0, marginTop:16, borderBottom:'1px solid rgba(255,255,255,0.1)' }}>
-                {([
-                  { key:'correos',  label:'Correos' },
-                  { key:'bitacora', label:'Bitácora' },
-                ] as const).map(t => (
-                  <button key={t.key} onClick={() => setSaraPanelTab(t.key)} style={{
-                    padding:'10px 22px', fontSize:10, fontWeight:700, letterSpacing:2, textTransform:'uppercase', cursor:'pointer', border:'none', background:'transparent', marginBottom:-1,
-                    borderBottom: saraPanelTab===t.key ? `2px solid ${S_GOLD}` : '2px solid transparent',
-                    color: saraPanelTab===t.key ? S_GOLD_L : 'rgba(255,255,255,0.65)',
-                  }}>{t.label}</button>
-                ))}
-              </div>
             </div>
-
-            {/* TAB: BITÁCORA */}
-            {saraPanelTab === 'bitacora' && (
-              <div style={{ padding:'24px 32px' }}>
-                {allMsgs.length === 0 ? (
-                  <div style={{ padding:40, textAlign:'center', border:'1px dashed #D6CEBC', background:'#fff' }}>
-                    <div style={{ fontSize:11, color:'#9CA3AF' }}>Sin actividad registrada aún.</div>
-                  </div>
-                ) : (
-                  allMsgs.map((m, idx) => (
-                    <div key={m.id} style={{ background:'#fff', borderTop: idx===0 ? 'none' : '1px solid #EDE8DF', padding:'14px 18px', display:'flex', justifyContent:'space-between', alignItems:'center', gap:16 }}>
-                      <div>
-                        <div style={{ fontSize:12, fontFamily:T.fontSerif, color:S_NAVY }}>{m.subject || '(sin asunto)'}</div>
-                        <div style={{ fontSize:9, color:'#9CA3AF', marginTop:2, letterSpacing:1, textTransform:'uppercase' as const }}>{m.to} · {m.direction === 'in' ? 'Entrante' : 'Saliente'}</div>
-                      </div>
-                      <div style={{ textAlign:'right' as const, flexShrink:0 }}>
-                        <span style={{ fontSize:8, letterSpacing:2, color:S_GOLD, fontWeight:700, textTransform:'uppercase' as const }}>{m.status}</span>
-                        <div style={{ fontSize:9, color:'#9CA3AF', marginTop:2 }}>{m.date}</div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
 
             {saraPanelTab === 'correos' && <>
             {/* ── BANNER CONTEXTO SOFÍA ── */}
@@ -9627,7 +10410,7 @@ Responde SOLO con JSON sin bloques de código:
               };
               const cfg = ARQC[sofiaToSaraContext.arquetipo] || ARQC.aspiracional;
               return (
-                <div style={{ background:'#fff', borderLeft:`4px solid ${cfg.color}`, padding:'14px 24px', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12, borderBottom:'1px solid #EDE8DF' }}>
+                <div style={{ background:'#fff', borderLeft:`4px solid ${cfg.color}`, padding:'14px 24px', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12, borderBottom:'1px solid #E8ECF0' }}>
                   <div>
                     <div style={{ fontSize:7, letterSpacing:3, color:cfg.color, fontWeight:800, textTransform:'uppercase' as const, marginBottom:5 }}>Contexto de Sofía · Perfil Conductual</div>
                     <div style={{ fontSize:13, fontFamily:T.fontSerif, fontWeight:600, color:S_NAVY, marginBottom:3 }}>{sofiaToSaraContext.prospectName}</div>
@@ -9648,54 +10431,41 @@ Responde SOLO con JSON sin bloques de código:
 
             <div style={{ display:'grid', gridTemplateColumns:'300px 1fr', gap:0, minHeight:'calc(100vh - 180px)' }}>
 
-              {/* ── LEFT SIDEBAR ── */}
-              <div style={{ background: S_PARCH, borderRight:`1px solid #D6CEBC`, padding:'20px 0' }}>
+              {/* ── LEFT SIDEBAR ── alignSelf:'start' para que no se estire a la altura
+                  completa de la fila del grid (que crece con la lista de mensajes de la
+                  derecha) — antes, cuando no había FAQs con consultas registradas, el
+                  contenido real medía dos líneas y el resto quedaba como un bloque gris
+                  vacío enorme, pareciendo un control roto. */}
+              <div style={{ background: S_PARCH, borderRight:`1px solid #DDE1E7`, padding:'20px 0', alignSelf:'start', minHeight: 160 }}>
 
-                {/* Alertas de prospectos */}
-                <div style={{ padding:'0 20px 20px', borderBottom:`1px solid #D6CEBC` }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-                    <div style={{ fontSize:9, letterSpacing:3, color:'#9CA3AF', fontWeight:700, textTransform:'uppercase' }}>Alertas de Prospectos</div>
-                    <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                      {prospectAlerts.length > 0 && <span style={{ background:S_NAVY, color:S_GOLD, fontSize:9, fontWeight:800, padding:'2px 7px', borderRadius:2 }}>{prospectAlerts.length}</span>}
-                      <button onClick={() => fetch(`${API_ROOT}/api/sara/monitor`,{method:'POST'}).then(()=>refreshAlerts())}
-                        style={{ background:'transparent', border:`1px solid #D6CEBC`, borderRadius:2, padding:'3px 8px', fontSize:9, color:'#6B7280', cursor:'pointer', fontWeight:600 }}>↻</button>
-                    </div>
-                  </div>
-                  {prospectAlerts.length === 0 ? (
-                    <div style={{ fontSize:11, color:'#9CA3AF', textAlign:'center', padding:'16px 0', fontStyle:'italic' }}>Sin alertas activas</div>
-                  ) : (
-                    <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:260, overflowY:'auto' }}>
-                      {prospectAlerts.map(a => (
-                        <div key={a.id} style={{ background:'#fff', borderLeft:`3px solid ${ALERT_ACCENT[a.nivel]||S_NAVY}`, padding:'9px 12px', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
-                          <div style={{ flex:1, minWidth:0 }}>
-                            <div style={{ fontSize:8, letterSpacing:2, fontWeight:700, color:ALERT_ACCENT[a.nivel]||S_NAVY, textTransform:'uppercase', marginBottom:2 }}>{ALERT_LABEL[a.nivel]||a.nivel}</div>
-                            <div style={{ fontSize:11, fontWeight:600, color:S_NAVY, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.nombre} {a.apellido}</div>
-                            <div style={{ fontSize:10, color:'#6B7280', marginTop:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.motivo}</div>
-                          </div>
-                          <div style={{ display:'flex', flexDirection:'column', gap:4, flexShrink:0 }}>
-                            <button onClick={() => { setProspectDetail(a.prospecto_id); setPreviousModule('agentes'); setActiveModule('prospectos'); }}
-                              style={{ background:ALERT_ACCENT[a.nivel]||S_NAVY, color:'#fff', border:'none', borderRadius:2, padding:'3px 8px', fontSize:9, fontWeight:700, cursor:'pointer', letterSpacing:0.5 }}>Ficha</button>
-                            <button onClick={() => dismissAlert(a.id)}
-                              style={{ background:'transparent', color:'#9CA3AF', border:'1px solid #E5E7EB', borderRadius:2, padding:'3px 8px', fontSize:9, cursor:'pointer' }}>✓</button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* FAQs frecuentes */}
-                <div style={{ padding:'20px 20px 20px', borderBottom:`1px solid #D6CEBC` }}>
+                {/* FAQs frecuentes — antes el conteo era una fórmula fija por posición en la
+                    lista (3+i*4+...), sin relación con uso real. Ahora combina uso real de
+                    dos fuentes: veces_usada (Sara/poller la usó para redactar una respuesta)
+                    + clics reales registrados en faq_clicks (alguien la abrió en el CRM o en
+                    la landing). Si ninguna FAQ tiene uso aún, se avisa en vez de inventar un
+                    número. */}
+                <div style={{ padding:'20px 20px 20px', borderBottom:`1px solid #DDE1E7` }}>
                   <div style={{ fontSize:9, letterSpacing:3, color:'#9CA3AF', fontWeight:700, textTransform:'uppercase', marginBottom:12 }}>FAQs Más Consultadas</div>
-                  {faqs.slice(0,4).map((f,i) => (
-                    <div key={f.id} style={{ display:'flex', gap:10, alignItems:'flex-start', padding:'8px 0', borderBottom:`1px solid #E9E4DA` }}>
-                      <div style={{ fontSize:14, fontWeight:800, color:S_GOLD, fontFamily:T.fontSerif, minWidth:18, textAlign:'right', flexShrink:0 }}>{i+1}</div>
-                      <div>
-                        <div style={{ fontSize:11, color:S_NAVY, fontWeight:500, lineHeight:1.4 }}>{f.pregunta}</div>
-                        <div style={{ fontSize:9, color:'#9CA3AF', marginTop:2 }}>{3+i*4+Math.floor(i*2.3)} consultas recientes</div>
+                  {(() => {
+                    const clicksByFaqId: Record<number, number> = {};
+                    faqStats.forEach(s => { if (s.faq_id) clicksByFaqId[s.faq_id] = (clicksByFaqId[s.faq_id] || 0) + 1; });
+                    const ranked = [...faqs]
+                      .map(f => ({ ...f, totalUses: (f.veces_usada || 0) + (clicksByFaqId[f.id] || 0) }))
+                      .sort((a, b) => b.totalUses - a.totalUses)
+                      .slice(0, 4);
+                    if (ranked.every(f => f.totalUses === 0)) {
+                      return <div style={{ fontSize:10, color:'#9CA3AF', fontStyle:'italic' }}>Aún sin consultas registradas.</div>;
+                    }
+                    return ranked.map((f, i) => (
+                      <div key={f.id} style={{ display:'flex', gap:10, alignItems:'flex-start', padding:'8px 0', borderBottom:`1px solid #E8ECF0` }}>
+                        <div style={{ fontSize:14, fontWeight:800, color:S_GOLD, fontFamily:T.fontSerif, minWidth:18, textAlign:'right', flexShrink:0 }}>{i+1}</div>
+                        <div>
+                          <div style={{ fontSize:11, color:S_NAVY, fontWeight:500, lineHeight:1.4 }}>{f.pregunta}</div>
+                          <div style={{ fontSize:9, color:'#9CA3AF', marginTop:2 }}>{f.totalUses} consulta{f.totalUses !== 1 ? 's' : ''}</div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ));
+                  })()}
                 </div>
 
               </div>
@@ -9713,187 +10483,379 @@ Responde SOLO con JSON sin bloques de código:
                       .then(r=>r.json())
                       .then(()=>fetch(`${API_ROOT}/api/drafts`).then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setApiDrafts(data); }))
                       .catch(e=>console.error('Error revisando bandeja:',e));
-                  }} style={{ background:'transparent', border:`1px solid #D6CEBC`, borderRadius:2, padding:'6px 14px', fontSize:9, color:'#6B7280', cursor:'pointer', fontWeight:700, letterSpacing:1, textTransform:'uppercase' }}>
-                    ↻ Revisar bandeja
+                  }} style={{ background:'transparent', border:`1px solid #DDE1E7`, borderRadius:2, padding:'6px 14px', fontSize:9, color:'#6B7280', cursor:'pointer', fontWeight:700, letterSpacing:1, textTransform:'uppercase' }}>
+                    🔄 Sincronizar Correo
                   </button>
                 </div>
 
-                {/* Message list */}
-                <div style={{ maxHeight:'calc(100vh - 260px)', overflowY:'auto' }}>
-                  {allMsgs.length === 0 && (
-                    <div style={{ textAlign:'center', padding:60, color:'#9CA3AF', fontStyle:'italic', fontSize:13 }}>
-                      Bandeja vacía. Sin correos entrantes ni cotizaciones pendientes.
-                    </div>
-                  )}
-                  {allMsgs.map((msg, idx) => {
-                    const isDraft = msg.status === 'draft';
-                    const isIncoming = msg.status === 'incoming';
-                    const isSent = msg.status === 'sent';
-                    const pEstado = msg.prospectId > 0 ? prospects.find(p=>p.id===msg.prospectId)?.estado || '' : '';
-                    const probCierre = pEstado==='Contacto Inicial'?10:pEstado==='Calificación'?30:pEstado==='Presentación'?50:pEstado==='Negociación'?75:pEstado==='Cierre'?95:0;
+                {/* Bandeja al estilo Outlook: lista compacta (remitente/fecha/asunto) a la
+                    izquierda + panel de detalle a la derecha con el mensaje seleccionado —
+                    antes era una secuencia vertical de correos completos, uno tras otro, que
+                    obligaba a scrollear mucho para encontrar un correo específico. */}
+                {(() => {
+                  const selectedMsg = visibleMsgs.find(m => m.id === saraSelectedMsgId) || visibleMsgs[0] || null;
+                  const isDraft = selectedMsg?.status === 'draft';
+                  const isIncoming = selectedMsg?.status === 'incoming';
+                  const isSent = selectedMsg?.status === 'sent';
+                  const pEstado = selectedMsg && selectedMsg.prospectId > 0 ? prospects.find(p=>p.id===selectedMsg.prospectId)?.estado || '' : '';
+                  const probCierre = pEstado==='Contacto Inicial'?10:pEstado==='Calificación'?30:pEstado==='Presentación'?50:pEstado==='Negociación'?75:pEstado==='Cierre'?95:0;
 
-                    return (
-                      <div key={msg.id} style={{ borderBottom:`1px solid ${S_PARCH}`, padding:'18px 24px',
-                        background: isDraft ? '#FFFDF7' : '#fff',
-                        borderLeft: isDraft ? `3px solid ${S_GOLD}` : isSent ? `3px solid #10B981` : isIncoming ? `3px solid ${S_NAVY}` : '3px solid transparent' }}>
+                  return (
+                    <div style={{ display:'grid', gridTemplateColumns:'220px 300px 1fr', minHeight:'calc(100vh - 260px)' }}>
 
-                        {/* Row 1: meta */}
-                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6, gap:12 }}>
-                          <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
-                            {isIncoming && <span style={{ fontSize:8, letterSpacing:2, fontWeight:700, color:S_NAVY, background:`${S_NAVY}12`, padding:'2px 8px', textTransform:'uppercase' }}>Entrante</span>}
-                            {isDraft && <span style={{ fontSize:8, letterSpacing:2, fontWeight:700, color:S_GOLD, background:`${S_GOLD}18`, padding:'2px 8px', textTransform:'uppercase' }}>Pendiente aprobación</span>}
-                            {isSent && <span style={{ fontSize:8, letterSpacing:2, fontWeight:700, color:'#10B981', background:'#F0FDF4', padding:'2px 8px', textTransform:'uppercase' }}>Enviado</span>}
-                            {(msg as any).prioridad === 'alta' && <span style={{ fontSize:8, letterSpacing:2, fontWeight:700, color:'#B91C1C', background:'#FEF2F2', padding:'2px 8px', textTransform:'uppercase' }}>Alta prioridad</span>}
-                            {msg.project === 'Cartera' && <span style={{ fontSize:8, letterSpacing:2, fontWeight:700, color:'#C2410C', background:'#FFF7ED', border:'1px solid #FDBA7440', padding:'2px 8px', textTransform:'uppercase' }}>📋 Generado por Cartera</span>}
-                            {(() => { const sp = msg.prospectId > 0 ? liveProfiles.find(p => p.prospectId === msg.prospectId) : null; if (!sp) return null; const ARQC: Record<string,string> = { estatus:'#6D28D9', legado:'#1D4ED8', racional:'#047857', aspiracional:'#B45309' }; const c = ARQC[sp.arquetipo] || '#B89047'; return (<span style={{ display:'inline-flex', alignItems:'center', gap:4, background:`${c}10`, border:`1px solid ${c}40`, padding:'2px 8px' }}><span style={{ width:5, height:5, borderRadius:'50%', background:'#B89047', flexShrink:0, display:'inline-block' }}/><span style={{ fontSize:8, fontWeight:800, letterSpacing:1.5, color:'#B89047', textTransform:'uppercase' }}>Sofía</span><span style={{ fontSize:8, color:c, fontWeight:700, letterSpacing:1 }}>· {sp.arquetipo.toUpperCase()}</span></span>); })()}
-                            <span style={{ fontSize:11, color:'#374151', fontWeight:500 }}>{isIncoming?'De:':'Para:'} <span style={{ fontWeight:700, color:S_NAVY }}>{msg.to}</span></span>
-                          </div>
-                          <div style={{ fontSize:10, color:'#9CA3AF', flexShrink:0 }}>
-                            {new Date(msg.date).toLocaleDateString('es-CO',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}
-                          </div>
-                        </div>
-
-                        {/* Row 2: subject */}
-                        {isDraft ? (
-                          <input
-                            value={msg.subject}
-                            onChange={e => {
-                              const newSubject = e.target.value;
-                              if ((msg as any).isApi) {
-                                setApiDrafts(prev => prev.map(d => d.id === msg.id ? { ...d, subject: newSubject } : d));
-                              } else {
-                                setProspects(prev => prev.map(p => p.id === msg.prospectId ? { ...p, emailHistory: (p.emailHistory||[]).map(eh => eh.id === msg.id ? { ...eh, subject: newSubject } : eh) } : p));
-                              }
-                            }}
-                            style={{ width:'100%', boxSizing:'border-box' as const, fontSize:13, fontWeight:600, color:S_NAVY, fontFamily:T.fontSerif, marginBottom:10, letterSpacing:0.2, background:'transparent', border:'none', borderBottom:`1px solid ${S_GOLD}40`, outline:'none', padding:'2px 0' }}
-                          />
-                        ) : (
-                          <div style={{ fontSize:13, fontWeight:600, color:S_NAVY, fontFamily:T.fontSerif, marginBottom:10, letterSpacing:0.2 }}>
-                            {msg.subject}
-                          </div>
-                        )}
-
-                        {/* Row 3: body */}
-                        {isIncoming ? (
-                          <div style={{ fontSize:11, color:'#4B5563', lineHeight:1.7, whiteSpace:'pre-wrap', background:S_CREAM, padding:'12px 14px', borderLeft:`2px solid #D6CEBC`, marginBottom:12 }}>
-                            {msg.body}
-                          </div>
-                        ) : (
-                          <textarea
-                            value={msg.body}
-                            onChange={e => {
-                              const newBody = e.target.value;
-                              if ((msg as any).isApi) {
-                                setApiDrafts(prev => prev.map(d => d.id === msg.id ? { ...d, body: newBody } : d));
-                              } else {
-                                setProspects(prev => prev.map(p => p.id === msg.prospectId ? { ...p, emailHistory: (p.emailHistory||[]).map(eh => eh.id === msg.id ? { ...eh, body: newBody } : eh) } : p));
-                              }
-                            }}
-                            style={{ width:'100%', boxSizing:'border-box' as const, fontSize:11, color:'#374151', lineHeight:1.7, background:S_PARCH, padding:'12px 14px', borderLeft:`2px solid #D6CEBC`, border:`1px solid #D6CEBC`, marginBottom:12, minHeight:120, resize:'vertical' as const, fontFamily:'inherit', outline:'none' }}
-                          />
-                        )}
-
-                        {/* Row 4: footer */}
-                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                          <div style={{ display:'flex', gap:16, alignItems:'center' }}>
-                            {pEstado && probCierre > 0 && (
-                              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                                <div style={{ fontSize:9, color:'#9CA3AF', letterSpacing:1, textTransform:'uppercase' }}>Probabilidad cierre</div>
-                                <div style={{ width:80, height:4, background:'#E9E4DA', borderRadius:0, overflow:'hidden' }}>
-                                  <div style={{ width:`${probCierre}%`, height:'100%', background: probCierre>=75?S_GOLD:probCierre>=50?'#D97706':S_NAVY }} />
+                      {/* ── CARPETAS — solo estado, jerarquía real y mutuamente excluyente.
+                          Los orígenes se despliegan como sub-filas debajo de la carpeta
+                          activa (en vez de una fila de chips sobre la lista de correos), así
+                          la sección de correos queda limpia y el refinamiento vive donde
+                          corresponde: colgando del estado que lo contiene. ── */}
+                      <div style={{ borderRight:`1px solid ${S_PARCH}`, background:S_CREAM, padding:'12px 0' }}>
+                        {SARA_FOLDERS.map(f => {
+                          const count = allMsgs.filter(m => !f.statusFilter || m.status === f.statusFilter).length;
+                          const isActive = saraFolder === f.key;
+                          const folderMsgs = allMsgs.filter(m => !f.statusFilter || m.status === f.statusFilter);
+                          return (
+                            <div key={f.key}>
+                              <div onClick={() => { setSaraFolder(f.key); setSaraOrigenFilter(null); setSaraSelectedMsgId(null); }}
+                                style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, padding:'9px 18px', cursor:'pointer',
+                                  background: isActive ? '#fff' : 'transparent',
+                                  borderLeft: isActive ? `3px solid ${S_GOLD}` : '3px solid transparent' }}>
+                                <span style={{ fontSize:11, color: isActive ? S_NAVY : '#6B7280', fontWeight: isActive ? 700 : 500, display:'flex', alignItems:'center', gap:7 }}>
+                                  <span>{f.icon}</span>{f.label}
+                                </span>
+                                <span style={{ fontSize:9, color: isActive ? S_GOLD : '#9CA3AF', fontWeight:700, background: isActive ? `${S_GOLD}18` : '#F4F5F7', padding:'1px 7px', borderRadius:8 }}>{count}</span>
+                              </div>
+                              {isActive && (
+                                <div style={{ background:'#fff', padding:'2px 0 6px' }}>
+                                  {/* Sin fila "Todas": duplicaría el conteo que ya está junto
+                                      al nombre de la carpeta. Para quitar el filtro basta con
+                                      volver a hacer clic sobre el origen activo. */}
+                                  {ORIGEN_FILTERS.map(o => {
+                                    const oCount = folderMsgs.filter(m => o.origenes.includes((m as any).origen || 'manual')).length;
+                                    if (oCount === 0) return null;
+                                    const oActive = saraOrigenFilter === o.key;
+                                    return (
+                                      <div key={o.key} onClick={() => setSaraOrigenFilter(oActive ? null : o.key)}
+                                        style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, padding:'6px 18px 6px 38px', cursor:'pointer',
+                                          color: oActive ? S_GOLD : '#9CA3AF', fontWeight: oActive ? 700 : 500 }}>
+                                        <span style={{ fontSize:10 }}>{o.label}</span>
+                                        <span style={{ fontSize:9 }}>{oCount}</span>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
-                                <div style={{ fontSize:10, fontWeight:700, color:S_NAVY }}>{probCierre}%</div>
-                              </div>
-                            )}
-                            {msg.project && <div style={{ fontSize:10, color:'#9CA3AF' }}>Proyecto: <span style={{ color:'#374151', fontWeight:600 }}>{msg.project}</span></div>}
-                          </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
 
-                          <div style={{ display:'flex', flexDirection:'column', gap:6, alignItems:'flex-end' }}>
-                            {/* Adjuntos seleccionados */}
-                            {(draftAttachments[msg.id] || []).length > 0 && (
-                              <div style={{ display:'flex', flexWrap:'wrap', gap:4, justifyContent:'flex-end' }}>
-                                {(draftAttachments[msg.id] || []).map((att, ai) => (
-                                  <div key={ai} style={{ display:'flex', alignItems:'center', gap:4, background:`${S_GOLD}15`, border:`1px solid ${S_GOLD}`, padding:'2px 8px', fontSize:9 }}>
-                                    <span>📎</span>
-                                    <span style={{ color:S_NAVY, fontWeight:600 }}>{att.filename}</span>
-                                    <button onClick={() => setDraftAttachments(prev => ({ ...prev, [msg.id]: (prev[msg.id]||[]).filter((_,i)=>i!==ai) }))}
-                                      style={{ background:'none', border:'none', color:'#DC2626', cursor:'pointer', fontSize:11, padding:0, lineHeight:1 }}>×</button>
-                                  </div>
-                                ))}
+                      {/* ── LISTA COMPACTA ── */}
+                      <div style={{ borderRight:`1px solid ${S_PARCH}`, maxHeight:'calc(100vh - 260px)', overflowY:'auto' }}>
+                        {/* Búsqueda dentro de la carpeta activa — antes no había forma de
+                            encontrar un correo específico sin scrollear toda la lista. */}
+                        <div style={{ padding:'10px 14px', borderBottom:`1px solid ${S_PARCH}`, position:'sticky' as const, top:0, background:'#fff', zIndex:1 }}>
+                          <input
+                            value={saraSearchQuery}
+                            onChange={e => setSaraSearchQuery(e.target.value)}
+                            placeholder="🔍 Buscar por asunto, contenido o destinatario..."
+                            style={{ width:'100%', boxSizing:'border-box' as const, fontSize:11, padding:'7px 10px', border:`1px solid ${S_PARCH}`, borderRadius:3, outline:'none', color:S_NAVY }}
+                          />
+                        </div>
+                        {visibleMsgs.length === 0 && (
+                          <div style={{ textAlign:'center', padding:'40px 16px', color:'#9CA3AF', fontStyle:'italic', fontSize:12 }}>
+                            {searchQ ? 'Sin resultados para tu búsqueda.' : allMsgs.length === 0 ? 'Bandeja vacía. Sin correos entrantes ni cotizaciones pendientes.' : 'Sin correos en esta carpeta.'}
+                          </div>
+                        )}
+                        {visibleMsgs.map(msg => {
+                          const mIsDraft = msg.status === 'draft';
+                          const mIsIncoming = msg.status === 'incoming';
+                          const mIsSent = msg.status === 'sent';
+                          const isSelected = selectedMsg?.id === msg.id;
+                          return (
+                            <div key={msg.id} onClick={() => setSaraSelectedMsgId(msg.id)} style={{
+                              padding:'12px 16px', cursor:'pointer', borderBottom:`1px solid ${S_PARCH}`,
+                              background: isSelected ? '#EEF2FF' : mIsDraft ? '#FFFFFF' : '#fff',
+                              borderLeft: isSelected ? `3px solid ${S_NAVY}` : mIsDraft ? `3px solid ${S_GOLD}` : mIsSent ? `3px solid #10B981` : mIsIncoming ? `3px solid ${S_NAVY}` : '3px solid transparent',
+                            }}>
+                              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', gap:8, marginBottom:3 }}>
+                                <div style={{ fontSize:11, fontWeight:700, color:S_NAVY, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                                  {msg.to}
+                                </div>
+                                <div style={{ fontSize:9, color:'#9CA3AF', flexShrink:0 }}>
+                                  {new Date(msg.date).toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}
+                                </div>
+                              </div>
+                              <div style={{ fontSize:11, color: mIsDraft ? '#374151' : '#6B7280', fontWeight: mIsDraft ? 600 : 400, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:5 }}>
+                                {msg.subject || '(sin asunto)'}
+                              </div>
+                              <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+                                {mIsIncoming && <span style={{ fontSize:7, letterSpacing:1, fontWeight:700, color:S_NAVY, background:`${S_NAVY}12`, padding:'1px 6px', textTransform:'uppercase' }}>Entrante</span>}
+                                {mIsDraft && <span style={{ fontSize:7, letterSpacing:1, fontWeight:700, color:S_GOLD, background:`${S_GOLD}18`, padding:'1px 6px', textTransform:'uppercase' }}>Pendiente</span>}
+                                {mIsSent && <span style={{ fontSize:7, letterSpacing:1, fontWeight:700, color:'#10B981', background:'#F0FDF4', padding:'1px 6px', textTransform:'uppercase' }}>Enviado</span>}
+                                {(msg as any).prioridad === 'alta' && <span style={{ fontSize:7, letterSpacing:1, fontWeight:700, color:'#B91C1C', background:'#FEF2F2', padding:'1px 6px', textTransform:'uppercase' }}>Alta</span>}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* ── PANEL DE DETALLE ── */}
+                      <div style={{ maxHeight:'calc(100vh - 260px)', overflowY:'auto', padding: selectedMsg ? '24px 32px' : 0 }}>
+                        {!selectedMsg ? (
+                          <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#9CA3AF', fontStyle:'italic', fontSize:13 }}>
+                            Selecciona un correo de la lista para ver su detalle.
+                          </div>
+                        ) : (() => { const msg = selectedMsg; return (
+                          <div>
+                            {/* Row 1: meta */}
+                            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10, gap:12 }}>
+                              <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+                                {isIncoming && <span style={{ fontSize:8, letterSpacing:2, fontWeight:700, color:S_NAVY, background:`${S_NAVY}12`, padding:'2px 8px', textTransform:'uppercase' }}>Entrante</span>}
+                                {isDraft && <span style={{ fontSize:8, letterSpacing:2, fontWeight:700, color:S_GOLD, background:`${S_GOLD}18`, padding:'2px 8px', textTransform:'uppercase' }}>Pendiente aprobación</span>}
+                                {isSent && <span style={{ fontSize:8, letterSpacing:2, fontWeight:700, color:'#10B981', background:'#F0FDF4', padding:'2px 8px', textTransform:'uppercase' }}>Enviado</span>}
+                                {(msg as any).prioridad === 'alta' && <span style={{ fontSize:8, letterSpacing:2, fontWeight:700, color:'#B91C1C', background:'#FEF2F2', padding:'2px 8px', textTransform:'uppercase' }}>Alta prioridad</span>}
+                                {msg.project === 'Cartera' && <span style={{ fontSize:8, letterSpacing:2, fontWeight:700, color:'#2E5C8A', background:'#EAF1F8', border:'1px solid #8FAFC940', padding:'2px 8px', textTransform:'uppercase' }}>📋 Generado por Cartera</span>}
+                                {(() => { const sp = msg.prospectId > 0 ? sofiaProfiles.find(p => p.prospectId === msg.prospectId) : null; if (!sp) return null; const ARQC: Record<string,string> = { estatus:'#6D28D9', legado:'#1D4ED8', racional:'#047857', aspiracional:'#B45309' }; const c = ARQC[sp.arquetipo] || '#0D9488'; return (<span style={{ display:'inline-flex', alignItems:'center', gap:4, background:`${c}10`, border:`1px solid ${c}40`, padding:'2px 8px' }}><span style={{ width:5, height:5, borderRadius:'50%', background:'#0D9488', flexShrink:0, display:'inline-block' }}/><span style={{ fontSize:8, fontWeight:800, letterSpacing:1.5, color:'#0D9488', textTransform:'uppercase' }}>Sofía</span><span style={{ fontSize:8, color:c, fontWeight:700, letterSpacing:1 }}>· {sp.arquetipo.toUpperCase()}</span></span>); })()}
+                                {isDraft && (msg as any).isApi ? (
+                                  <span style={{ fontSize:11, color:'#374151', fontWeight:500, display:'inline-flex', alignItems:'center', gap:6 }}>
+                                    Para:
+                                    <input
+                                      value={msg.to}
+                                      placeholder="correo@ejemplo.com — pega el destinatario aquí"
+                                      onChange={e => setApiDrafts(prev => prev.map(d => d.id === msg.id ? { ...d, destinatario: e.target.value } : d))}
+                                      onBlur={e => persistDraftEdit(msg.id, 'destinatario', e.target.value)}
+                                      style={{ fontSize:11, fontWeight:700, color: msg.to ? S_NAVY : '#DC2626', background:'transparent', border:'none', borderBottom:`1px solid ${S_GOLD}60`, outline:'none', minWidth:220, padding:'1px 0' }}
+                                    />
+                                  </span>
+                                ) : (
+                                  <span style={{ fontSize:11, color:'#374151', fontWeight:500 }}>{isIncoming?'De:':'Para:'} <span style={{ fontWeight:700, color:S_NAVY }}>{msg.to}</span></span>
+                                )}
+                              </div>
+                              <div style={{ fontSize:10, color:'#9CA3AF', flexShrink:0 }}>
+                                {new Date(msg.date).toLocaleDateString('es-CO',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}
+                              </div>
+                            </div>
+
+                            {/* Row 2: subject */}
+                            {isDraft ? (
+                              <input
+                                value={msg.subject}
+                                onChange={e => {
+                                  const newSubject = e.target.value;
+                                  if ((msg as any).isApi) {
+                                    setApiDrafts(prev => prev.map(d => d.id === msg.id ? { ...d, subject: newSubject } : d));
+                                  } else {
+                                    setProspects(prev => prev.map(p => p.id === msg.prospectId ? { ...p, emailHistory: (p.emailHistory||[]).map(eh => eh.id === msg.id ? { ...eh, subject: newSubject } : eh) } : p));
+                                  }
+                                }}
+                                onBlur={e => { if ((msg as any).isApi) persistDraftEdit(msg.id, 'subject', e.target.value); }}
+                                style={{ width:'100%', boxSizing:'border-box' as const, fontSize:15, fontWeight:600, color:S_NAVY, fontFamily:T.fontSerif, marginBottom:14, letterSpacing:0.2, background:'transparent', border:'none', borderBottom:`1px solid ${S_GOLD}40`, outline:'none', padding:'2px 0' }}
+                              />
+                            ) : (
+                              <div style={{ fontSize:15, fontWeight:600, color:S_NAVY, fontFamily:T.fontSerif, marginBottom:14, letterSpacing:0.2 }}>
+                                {msg.subject}
                               </div>
                             )}
-                            <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                            {isSent && <span style={{ fontSize:10, color:'#10B981', fontWeight:600, letterSpacing:0.5 }}>✓ Aprobado y enviado</span>}
-                            {isIncoming && <span style={{ fontSize:10, color:S_NAVY, fontWeight:500 }}>Recibido</span>}
-                            {isDraft && (
-                              <>
-                                {/* Botón adjuntar */}
-                                <label style={{ background:'transparent', border:`1px solid ${S_GOLD}`, color:S_GOLD, padding:'6px 10px', fontSize:9, fontWeight:700, letterSpacing:1, textTransform:'uppercase', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:4 }}>
-                                  📎 Adjuntar
-                                  <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" multiple style={{ display:'none' }}
-                                    onChange={e => {
-                                      const files = Array.from(e.target.files || []);
-                                      files.forEach(file => {
-                                        const reader = new FileReader();
-                                        reader.onload = ev => {
-                                          const base64 = (ev.target?.result as string).split(',')[1];
-                                          setDraftAttachments(prev => ({
-                                            ...prev,
-                                            [msg.id]: [...(prev[msg.id] || []), { filename: file.name, content: base64, contentType: file.type }]
-                                          }));
-                                        };
-                                        reader.readAsDataURL(file);
-                                      });
-                                      e.target.value = '';
-                                    }} />
-                                </label>
-                                {/* Botón enviar */}
-                                {!(msg as any).isApi && (
-                                  <button onClick={() => handleApproveDraft(msg.id, msg.prospectId, msg.project, draftAttachments[msg.id])}
-                                    style={{ background:S_NAVY, color:S_GOLD_L, border:'none', padding:'7px 18px', fontSize:9, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', cursor:'pointer' }}>
-                                    Aprobar y Enviar
-                                  </button>
-                                )}
-                                {(msg as any).isApi && (
-                                  <button onClick={() => {
-                                    fetch(`${API_ROOT}/api/send-draft`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id: msg.id, attachments: draftAttachments[msg.id] || [] }) })
-                                      .then(() => { setApiDrafts(prev => prev.map(d => d.id===msg.id ? {...d,status:'sent'} : d)); setDraftAttachments(prev => { const n={...prev}; delete n[msg.id]; return n; }); })
-                                      .catch(e => console.error('Error enviando draft:', e));
-                                  }} style={{ background:S_NAVY, color:S_GOLD_L, border:'none', padding:'7px 18px', fontSize:9, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', cursor:'pointer' }}>
-                                    Aprobar y Enviar
-                                  </button>
-                                )}
-                              </>
+
+                            {/* Row 3: body — un correo ya enviado se muestra de solo lectura,
+                                igual que uno entrante, en vez del textarea editable de un
+                                borrador (editarlo no tendría ningún efecto real). */}
+                            {(isIncoming || isSent) ? (
+                              <div style={{ fontSize:12, color:'#4B5563', lineHeight:1.7, whiteSpace:'pre-wrap', background:S_CREAM, padding:'14px 16px', borderLeft:`2px solid #DDE1E7`, marginBottom:16 }}>
+                                {msg.body}
+                              </div>
+                            ) : (
+                              <textarea
+                                value={msg.body}
+                                onChange={e => {
+                                  const newBody = e.target.value;
+                                  if ((msg as any).isApi) {
+                                    setApiDrafts(prev => prev.map(d => d.id === msg.id ? { ...d, body: newBody } : d));
+                                  } else {
+                                    setProspects(prev => prev.map(p => p.id === msg.prospectId ? { ...p, emailHistory: (p.emailHistory||[]).map(eh => eh.id === msg.id ? { ...eh, body: newBody } : eh) } : p));
+                                  }
+                                }}
+                                onBlur={e => { if ((msg as any).isApi) persistDraftEdit(msg.id, 'body', e.target.value); }}
+                                style={{ width:'100%', boxSizing:'border-box' as const, fontSize:12, color:'#374151', lineHeight:1.7, background:S_PARCH, padding:'14px 16px', borderLeft:`2px solid #DDE1E7`, border:`1px solid #DDE1E7`, marginBottom:16, minHeight:260, resize:'vertical' as const, fontFamily:'inherit', outline:'none' }}
+                              />
                             )}
-                            <button onClick={() => {
-                              if (!window.confirm('¿Eliminar este correo de la bandeja?')) return;
-                              if ((msg as any).isApi) {
-                                fetch(`${API_ROOT}/api/drafts/${msg.id}`, { method:'DELETE', headers:{'x-tenant-id':'tenant-glp-001'} }).catch(()=>{});
-                                setApiDrafts(prev => prev.filter(d => d.id !== msg.id));
-                              } else {
-                                // Este correo vive en prospectos.email_history (JSONB) — solo actualizar
-                                // el estado local no persiste el borrado, y reaparecía al recargar.
-                                const target = prospects.find(p => p.id === msg.prospectId);
-                                if (target) {
-                                  const updated = { ...target, emailHistory: target.emailHistory?.filter(e => e.id !== msg.id) };
-                                  setProspects(prev => prev.map(p => p.id === msg.prospectId ? updated : p));
-                                  saveProspectBackend(updated);
-                                }
-                              }
-                            }} style={{ background:'transparent', border:`1px solid #FECACA`, color:'#DC2626', padding:'6px 10px', fontSize:9, fontWeight:700, letterSpacing:1, textTransform:'uppercase', cursor:'pointer' }}
-                              title="Eliminar correo">
-                              🗑 Eliminar
-                            </button>
+
+                            {/* Row 4: footer */}
+                            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:12 }}>
+                              <div style={{ display:'flex', gap:16, alignItems:'center' }}>
+                                {pEstado && probCierre > 0 && (
+                                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                                    <div style={{ fontSize:9, color:'#9CA3AF', letterSpacing:1, textTransform:'uppercase' }}>Probabilidad cierre</div>
+                                    <div style={{ width:80, height:4, background:'#E8ECF0', borderRadius:0, overflow:'hidden' }}>
+                                      <div style={{ width:`${probCierre}%`, height:'100%', background: probCierre>=75?S_GOLD:probCierre>=50?'#D97706':S_NAVY }} />
+                                    </div>
+                                    <div style={{ fontSize:10, fontWeight:700, color:S_NAVY }}>{probCierre}%</div>
+                                  </div>
+                                )}
+                                {msg.project && <div style={{ fontSize:10, color:'#9CA3AF' }}>Proyecto: <span style={{ color:'#374151', fontWeight:600 }}>{msg.project}</span></div>}
+                              </div>
+
+                              <div style={{ display:'flex', flexDirection:'column', gap:6, alignItems:'flex-end' }}>
+                                {/* Adjuntos seleccionados */}
+                                {(draftAttachments[msg.id] || []).length > 0 && (
+                                  <div style={{ display:'flex', flexWrap:'wrap', gap:4, justifyContent:'flex-end' }}>
+                                    {(draftAttachments[msg.id] || []).map((att, ai) => (
+                                      <div key={ai} style={{ display:'flex', alignItems:'center', gap:4, background:`${S_GOLD}15`, border:`1px solid ${S_GOLD}`, padding:'2px 8px', fontSize:9 }}>
+                                        <span>📎</span>
+                                        <span style={{ color:S_NAVY, fontWeight:600 }}>{att.filename}</span>
+                                        <button onClick={() => setDraftAttachments(prev => ({ ...prev, [msg.id]: (prev[msg.id]||[]).filter((_,i)=>i!==ai) }))}
+                                          style={{ background:'none', border:'none', color:'#DC2626', cursor:'pointer', fontSize:11, padding:0, lineHeight:1 }}>×</button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                                {isSent && <span style={{ fontSize:10, color:'#10B981', fontWeight:600, letterSpacing:0.5 }}>✓ Aprobado y enviado{(msg as any).sentBy ? ` por ${(msg as any).sentBy}` : ''}</span>}
+                                {isIncoming && <span style={{ fontSize:10, color:S_NAVY, fontWeight:500 }}>Recibido</span>}
+                                {isDraft && (
+                                  <>
+                                    {/* Botón adjuntar */}
+                                    <label style={{ background:'transparent', border:`1px solid ${S_GOLD}`, color:S_GOLD, padding:'6px 10px', fontSize:9, fontWeight:700, letterSpacing:1, textTransform:'uppercase', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:4 }}>
+                                      📎 Adjuntar
+                                      <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" multiple style={{ display:'none' }}
+                                        onChange={e => {
+                                          const files = Array.from(e.target.files || []);
+                                          files.forEach(file => {
+                                            const reader = new FileReader();
+                                            reader.onload = ev => {
+                                              const base64 = (ev.target?.result as string).split(',')[1];
+                                              setDraftAttachments(prev => ({
+                                                ...prev,
+                                                [msg.id]: [...(prev[msg.id] || []), { filename: file.name, content: base64, contentType: file.type }]
+                                              }));
+                                            };
+                                            reader.readAsDataURL(file);
+                                          });
+                                          e.target.value = '';
+                                        }} />
+                                    </label>
+                                    {/* Botón enviar */}
+                                    {!(msg as any).isApi && (
+                                      <button onClick={() => handleApproveDraft(msg.id, msg.prospectId, msg.project, draftAttachments[msg.id])}
+                                        style={{ background:S_NAVY, color:S_GOLD_L, border:'none', padding:'7px 18px', fontSize:9, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', cursor:'pointer' }}>
+                                        Aprobar y Enviar
+                                      </button>
+                                    )}
+                                    {(msg as any).isApi && (
+                                      <button onClick={() => {
+                                        fetch(`${API_ROOT}/api/send-draft`, { method:'POST', headers:{'Content-Type':'application/json', 'x-user': currentUser || 'desconocido'}, body: JSON.stringify({ id: msg.id, attachments: draftAttachments[msg.id] || [] }) })
+                                          .then(() => { setApiDrafts(prev => prev.map(d => d.id===msg.id ? {...d,status:'sent', sentBy: currentUser || 'desconocido'} : d)); setDraftAttachments(prev => { const n={...prev}; delete n[msg.id]; return n; }); })
+                                          .catch(e => console.error('Error enviando draft:', e));
+                                      }} style={{ background:S_NAVY, color:S_GOLD_L, border:'none', padding:'7px 18px', fontSize:9, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', cursor:'pointer' }}>
+                                        Aprobar y Enviar
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                                <button onClick={() => {
+                                  if (!window.confirm('¿Eliminar este correo de la bandeja?')) return;
+                                  if ((msg as any).isApi) {
+                                    fetch(`${API_ROOT}/api/drafts/${msg.id}`, { method:'DELETE', headers:{'x-tenant-id':'tenant-glp-001'} }).catch(()=>{});
+                                    setApiDrafts(prev => prev.filter(d => d.id !== msg.id));
+                                  } else {
+                                    // Este correo vive en prospectos.email_history (JSONB) — solo actualizar
+                                    // el estado local no persiste el borrado, y reaparecía al recargar.
+                                    const target = prospects.find(p => p.id === msg.prospectId);
+                                    if (target) {
+                                      const updated = { ...target, emailHistory: target.emailHistory?.filter(e => e.id !== msg.id) };
+                                      setProspects(prev => prev.map(p => p.id === msg.prospectId ? updated : p));
+                                      saveProspectBackend(updated);
+                                    }
+                                  }
+                                  setSaraSelectedMsgId(null);
+                                }} style={{ background:'transparent', border:`1px solid #FECACA`, color:'#DC2626', padding:'6px 10px', fontSize:9, fontWeight:700, letterSpacing:1, textTransform:'uppercase', cursor:'pointer' }}
+                                  title="Eliminar correo">
+                                  🗑 Eliminar
+                                </button>
+                                </div>
+                              </div>
                             </div>
                           </div>
-                        </div>
+                        ); })()}
                       </div>
-                    );
-                  })}
-                </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
             </>}
+
+            {saraPanelTab === 'chat' && (() => {
+              const sendSaraChat = async () => {
+                const q = saraChatInput.trim();
+                if (!q || saraChatLoading) return;
+                const history = saraChatMsgs.map(m => ({ role: m.role, content: m.content }));
+                setSaraChatMsgs(prev => [...prev, { role: 'user', content: q }]);
+                setSaraChatInput('');
+                setSaraChatLoading(true);
+                try {
+                  const res = await fetch(`${API_ROOT}/api/sara/chat`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question: q, history }),
+                  });
+                  const data = await res.json();
+                  if (!res.ok) throw new Error(data.error || 'Error');
+                  setSaraChatMsgs(prev => [...prev, { role: 'agent', content: data.answer, citas: data.citas }]);
+                } catch (e: any) {
+                  setSaraChatMsgs(prev => [...prev, { role: 'agent', content: `No pude responder eso — ${e.message || 'intenta de nuevo'}.` }]);
+                } finally {
+                  setSaraChatLoading(false);
+                }
+              };
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column' as const, height: 'calc(100vh - 180px)', maxWidth: 760, margin: '0 auto' }}>
+                  <div style={{ flex: 1, overflowY: 'auto' as const, padding: '24px 4px', display: 'flex', flexDirection: 'column' as const, gap: 12 }}>
+                    {saraChatMsgs.length === 0 && (
+                      <div style={{ textAlign: 'center' as const, color: '#9CA3AF', fontSize: 12, marginTop: 40 }}>
+                        Pregúntale a Sara sobre tus prospectos, mensajes pendientes o alertas — ej. "¿qué leads llevan más de 5 días sin respuesta?"
+                      </div>
+                    )}
+                    {saraChatMsgs.map((m, i) => (
+                      <div key={i} style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '86%' }}>
+                        <div style={{
+                          fontSize: 12.5, lineHeight: 1.5, padding: '10px 13px', borderRadius: 10,
+                          background: m.role === 'user' ? '#EAF1F8' : '#fff',
+                          border: m.role === 'agent' ? `1px solid ${S_PARCH}` : 'none',
+                          color: S_NAVY,
+                          borderBottomRightRadius: m.role === 'user' ? 3 : 10,
+                          borderBottomLeftRadius: m.role === 'agent' ? 3 : 10,
+                        }}>
+                          {m.content}
+                        </div>
+                        {m.citas && m.citas.length > 0 && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6, marginTop: 6 }}>
+                            {m.citas.map(c => (
+                              <button key={c.id} onClick={() => { setAgentHistoryDetail(null); setPreviousModule('agentes'); setActiveModule('prospectos'); }}
+                                style={{ fontSize: 10, padding: '3px 9px', borderRadius: 20, background: '#fff', border: `1px solid ${S_PARCH}`, color: '#6B7280', cursor: 'pointer' }}>
+                                📎 {c.nombre}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {saraChatLoading && (
+                      <div style={{ alignSelf: 'flex-start', fontSize: 12, color: '#9CA3AF', padding: '10px 13px' }}>Sara está pensando…</div>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '12px 4px', borderTop: `1px solid ${S_PARCH}` }}>
+                    <input type="text" value={saraChatInput} onChange={e => setSaraChatInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') sendSaraChat(); }}
+                      placeholder="Escribe tu pregunta para Sara..."
+                      style={{ flex: 1, border: `1px solid ${S_PARCH}`, borderRadius: 20, padding: '9px 14px', fontSize: 12.5, fontFamily: T.fontSans, color: S_NAVY, outline: 'none' }} />
+                    <button onClick={sendSaraChat} disabled={saraChatLoading}
+                      style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: S_GOLD, color: '#fff', cursor: saraChatLoading ? 'default' : 'pointer', flexShrink: 0 }}>
+                      ↑
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         );
       }
@@ -9912,54 +10874,55 @@ Responde SOLO con JSON sin bloques de código:
         const vApproved = valeriaDrafts.filter(d => d.status === 'approved').length;
         const vPublished = valeriaDrafts.filter(d => d.status === 'active').length;
 
-        const V_NAVY = '#001A37'; const V_GOLD = '#B89047'; const V_GOLD_L = '#D4AF6A'; const V_CREAM = '#F7F4EF'; const V_PARCH = '#EDE8DF';
+        const V_NAVY = '#001A37'; const V_GOLD = '#3E7CB8'; const V_GOLD_L = '#2E5C8A'; const V_CREAM = '#F4F5F7'; const V_PARCH = '#E8ECF0';
 
         return (
           <div style={{ background: V_CREAM, minHeight: '100%' }}>
 
-            {/* Header Sotheby's */}
-            <div style={{ background: V_NAVY, padding: '24px 32px 20px' }}>
-              <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:16, flexWrap:'wrap' }}>
+            {/* Header — blanco/cobalto/Inter, sin el eyebrow "Valeria · VP de Medios"
+                (redundante, ya es el título de la página que se abrió desde su tarjeta). */}
+            <div style={{ background: '#fff', borderTop: `3px solid ${V_GOLD}`, borderBottom: `1px solid ${V_PARCH}`, padding: '24px 32px 0' }}>
+              <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:16, flexWrap:'wrap', paddingBottom: 18 }}>
                 <div>
-                  <div style={{ fontSize:9, letterSpacing:4, color:V_GOLD, fontWeight:700, textTransform:'uppercase', marginBottom:5 }}>Valeria · VP de Medios</div>
-                  <h2 style={{ margin:0, fontSize:22, fontFamily:T.fontSerif, fontWeight:400, color:'#fff', letterSpacing:0.5 }}>Gestión de Contenidos</h2>
-                  <div style={{ fontSize:11, color:'rgba(255,255,255,0.45)', marginTop:3, fontStyle:'italic' }}>
+                  <h2 style={{ margin:0, fontSize:24, fontFamily:T.fontSans, fontWeight:800, color:V_NAVY, letterSpacing:'-0.01em' }}>Gestión de Contenidos</h2>
+                  <div style={{ fontSize:11, color:'#6B7280', marginTop:5 }}>
                     Contenido IA con perfil de marca editable · Aprobable por administrador
                   </div>
                 </div>
                 <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
                   {valeriaTab === 'contenido' && <>
                     <select value={valeriaSelectedCanal} onChange={e => setValeriaSelectedCanal(e.target.value)}
-                      style={{ background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.18)', borderRadius:2, padding:'7px 10px', color:'#fff', fontSize:11, outline:'none', minWidth:160 }}>
-                      {CANALES_VALERIA.map(c => <option key={c} value={c} style={{background:V_NAVY}}>{CANAL_ICONS[c]} {c}</option>)}
+                      style={{ background:'#fff', border:`1px solid ${V_PARCH}`, borderRadius:8, padding:'7px 10px', color:V_NAVY, fontSize:12, fontFamily:T.fontSans, outline:'none', minWidth:160 }}>
+                      {CANALES_VALERIA.map(c => <option key={c} value={c}>{CANAL_ICONS[c]} {c}</option>)}
                     </select>
                     <button onClick={() => handleValeria(false, false, undefined, valeriaSelectedCanal)} disabled={valeriaGenerating}
-                      style={{ background: valeriaGenerating ? 'rgba(184,144,71,0.4)' : V_GOLD, color: V_NAVY, border:'none', borderRadius:2, padding:'8px 18px', fontSize:10, fontWeight:800, letterSpacing:1.5, textTransform:'uppercase', cursor: valeriaGenerating ? 'default':'pointer' }}>
+                      style={{ background: valeriaGenerating ? '#9CA3AF' : V_GOLD, color: '#fff', border:'none', borderRadius:8, padding:'8px 16px', fontSize:12.5, fontWeight:600, fontFamily:T.fontSans, cursor: valeriaGenerating ? 'default':'pointer' }}>
                       {valeriaGenerating ? 'Generando...' : 'Generar con IA'}
                     </button>
                   </>}
                   <button onClick={() => { setAgentHistoryDetail(null); setAgentHistoryTab('pending'); }}
-                    style={{ background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.15)', borderRadius:2, padding:'7px 16px', color:'rgba(255,255,255,0.6)', fontSize:10, fontWeight:700, letterSpacing:1, textTransform:'uppercase', cursor:'pointer' }}>
+                    style={{ background:'transparent', border:`1px solid ${V_PARCH}`, borderRadius:8, padding:'8px 16px', color:'#6B7280', fontSize:12, fontWeight:600, fontFamily:T.fontSans, cursor:'pointer' }}>
                     ← Volver
                   </button>
                 </div>
               </div>
 
               {/* Tabs nav */}
-              <div style={{ display:'flex', gap:0, marginTop:20, borderBottom:'1px solid rgba(255,255,255,0.1)' }}>
+              <div style={{ display:'flex', gap:0, borderTop:`1px solid ${V_PARCH}` }}>
                 {([
                   { key:'bitacora',  label:'Bitácora' },
                   { key:'contenido', label:'Borradores Pendientes' },
                   { key:'perfil',    label:'Perfil de Marca' },
+                  { key:'chat',      label:'Preguntar a Valeria' },
                 ] as const).map(t => (
                   <button key={t.key} onClick={() => setValeriaTab(t.key)} style={{
-                    padding:'10px 22px', fontSize:10, fontWeight:700, letterSpacing:2, textTransform:'uppercase', cursor:'pointer', border:'none', background:'transparent',
+                    padding:'12px 18px', fontSize:12, fontWeight:600, fontFamily:T.fontSans, cursor:'pointer', border:'none', background:'transparent',
                     borderBottom: valeriaTab === t.key ? `2px solid ${V_GOLD}` : '2px solid transparent',
-                    color: valeriaTab === t.key ? V_GOLD_L : 'rgba(255,255,255,0.65)', marginBottom:-1,
+                    color: valeriaTab === t.key ? V_GOLD : '#6B7280', marginBottom:-1,
                   }}>{t.label}</button>
                 ))}
                 {profileDirty && (
-                  <span style={{ marginLeft:'auto', fontSize:10, color:V_GOLD, alignSelf:'center', fontWeight:700, letterSpacing:1 }}>
+                  <span style={{ marginLeft:'auto', fontSize:11, color:V_GOLD, alignSelf:'center', fontWeight:600 }}>
                     ● Sin guardar
                   </span>
                 )}
@@ -10173,6 +11136,9 @@ Responde SOLO con JSON sin bloques de código:
                 );
               })()}
 
+              {/* ── TAB CHAT ── */}
+              {valeriaTab === 'chat' && renderAgentChatPanel('VALERIA', V_NAVY, V_GOLD, V_PARCH, 'Pregúntale a Valeria sobre contenido, campañas o el calendario editorial — ej. "¿qué contenidos están pendientes de aprobación?"')}
+
               {/* ── TAB BITÁCORA ── */}
               {valeriaTab === 'bitacora' && (
                 <div>
@@ -10216,7 +11182,7 @@ Responde SOLO con JSON sin bloques de código:
                   <div key={s.label} style={{ background:'#fff', border:`1px solid #D6CEBC`, padding:'16px 20px', display:'flex', alignItems:'center', gap:14 }}>
                     <div style={{ width:3, alignSelf:'stretch', background:s.accent, flexShrink:0 }} />
                     <div>
-                      <div style={{ fontSize:28, fontWeight:300, fontFamily:T.fontSerif, color:s.accent, lineHeight:1 }}>{s.value}</div>
+                      <div style={{ fontSize:26, fontWeight:800, fontFamily:T.fontSans, fontVariantNumeric:'tabular-nums', color:s.accent, lineHeight:1 }}>{s.value}</div>
                       <div style={{ fontSize:9, letterSpacing:2, color:'#9CA3AF', textTransform:'uppercase', marginTop:3 }}>{s.label}</div>
                     </div>
                   </div>
@@ -10332,7 +11298,7 @@ Responde SOLO con JSON sin bloques de código:
                           {item.status === 'pending' && (
                             <button onClick={() => { setValeriaDrafts(prev => prev.map(x => x.id === item.id
                               ? { ...x, status:'approved', aprobado_por:'Admin', fecha_aprobacion:today() } : x)); dbPatch(`${API}/valeria/drafts/${item.id}`, { status:'approved', aprobado_por:'Admin', fecha_aprobacion:today() }); }}
-                              style={{ background:V_NAVY, color:V_GOLD_L, border:'none', padding:'6px 16px', fontSize:9, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', cursor:'pointer' }}>
+                              style={{ background:V_NAVY, color:'#fff', border:'none', padding:'6px 16px', fontSize:9, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', cursor:'pointer' }}>
                               Aprobar
                             </button>
                           )}
@@ -10399,7 +11365,7 @@ Responde SOLO con JSON sin bloques de código:
       }
 
       // ── ISABELLA ─────────────────────────────────────────────
-      const I_NAVY = '#001A37'; const I_GOLD = '#B89047'; const I_GOLD_L = '#D4AF6A'; const I_CREAM = '#F7F4EF'; const I_PARCH = '#EDE8DF';
+      const I_NAVY = '#001A37'; const I_GOLD = '#3E7CB8'; const I_GOLD_L = '#2E5C8A'; const I_CREAM = '#F4F5F7'; const I_PARCH = '#E8ECF0';
       const historyItems = isabellaScripts;
       const setHistoryItems = setIsabellaScripts;
       const filteredItems = historyItems.filter(i => i.status === agentHistoryTab);
@@ -10410,38 +11376,51 @@ Responde SOLO con JSON sin bloques de código:
       return (
         <div style={{ background: I_CREAM, minHeight:'100%' }}>
 
-          {/* Header */}
-          <div style={{ background: I_NAVY, padding:'24px 32px 0' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:16, flexWrap:'wrap', paddingBottom:20 }}>
+          {/* Header — blanco/cobalto/Inter, sin el eyebrow "Isabella · Embajadora de
+              Marca GLP" (redundante con el título de la página). */}
+          <div style={{ background: '#fff', borderTop: `3px solid ${I_GOLD}`, borderBottom: `1px solid ${I_PARCH}`, padding:'24px 32px 0' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:16, flexWrap:'wrap', paddingBottom:18 }}>
               <div>
-                <div style={{ fontSize:9, letterSpacing:4, color:I_GOLD, fontWeight:700, textTransform:'uppercase', marginBottom:5 }}>Isabella · Embajadora de Marca GLP</div>
-                <h2 style={{ margin:0, fontSize:22, fontFamily:T.fontSerif, fontWeight:400, color:'#fff', letterSpacing:0.5 }}>Historial y Aprobaciones</h2>
-                <div style={{ fontSize:11, color:'rgba(255,255,255,0.4)', marginTop:3, fontStyle:'italic' }}>Guiones de video · Reels · Producción audiovisual</div>
+                <h2 style={{ margin:0, fontSize:22, fontFamily:T.fontSans, fontWeight:800, color:I_NAVY, letterSpacing:'-0.01em' }}>Historial y Aprobaciones</h2>
+                <div style={{ fontSize:11, color:'#6B7280', marginTop:5 }}>Guiones de video · Reels · Producción audiovisual</div>
               </div>
-              <button onClick={() => { setAgentHistoryDetail(null); setAgentHistoryTab('pending'); }}
-                style={{ background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.15)', borderRadius:2, padding:'7px 16px', color:'rgba(255,255,255,0.6)', fontSize:10, fontWeight:700, letterSpacing:1, textTransform:'uppercase', cursor:'pointer' }}>
-                ← Volver
-              </button>
+              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                {/* Ejecutar IA vive solo aquí, dentro del panel de detalle — ya no en la
+                    tarjeta del grid, para que un clic accidental en la vista general no
+                    dispare una generación de contenido. */}
+                <button onClick={() => handleIsabella()} disabled={agentIsabellaActive}
+                  style={{ background: agentIsabellaActive ? '#9CA3AF' : I_GOLD, color: '#fff', border:'none', borderRadius:8, padding:'8px 16px', fontSize:12.5, fontWeight:600, fontFamily:T.fontSans, cursor: agentIsabellaActive ? 'default' : 'pointer' }}>
+                  {agentIsabellaActive ? 'Generando...' : 'Crear Guion'}
+                </button>
+                <button onClick={() => { setAgentHistoryDetail(null); setAgentHistoryTab('pending'); }}
+                  style={{ background:'transparent', border:`1px solid ${I_PARCH}`, borderRadius:8, padding:'7px 14px', color:'#6B7280', fontSize:12, fontWeight:600, fontFamily:T.fontSans, cursor:'pointer' }}>
+                  ← Volver
+                </button>
+              </div>
             </div>
 
             {/* Tab nav */}
-            <div style={{ display:'flex', gap:0, borderBottom:'1px solid rgba(255,255,255,0.1)' }}>
+            <div style={{ display:'flex', gap:0, borderTop:`1px solid ${I_PARCH}` }}>
               {([
                 { key:'pending',  label:`Borradores (${iPending})` },
                 { key:'approved', label:`Aprobados (${iApproved})` },
                 { key:'active',   label:`Publicados (${iActive})` },
                 { key:'bitacora', label:'Bitácora' },
+                { key:'chat',     label:'Preguntar a Isabella' },
               ] as const).map(t => (
                 <button key={t.key} onClick={() => setAgentHistoryTab(t.key)} style={{
-                  padding:'10px 22px', fontSize:10, fontWeight:700, letterSpacing:2, textTransform:'uppercase', cursor:'pointer', border:'none', background:'transparent', marginBottom:-1,
+                  padding:'12px 18px', fontSize:12, fontWeight:600, fontFamily:T.fontSans, cursor:'pointer', border:'none', background:'transparent', marginBottom:-1,
                   borderBottom: agentHistoryTab===t.key ? `2px solid ${I_GOLD}` : '2px solid transparent',
-                  color: agentHistoryTab===t.key ? I_GOLD_L : 'rgba(255,255,255,0.65)',
+                  color: agentHistoryTab===t.key ? I_GOLD : '#6B7280',
                 }}>{t.label}</button>
               ))}
             </div>
           </div>
 
           <div style={{ padding:'24px 32px' }}>
+            {/* TAB: CHAT */}
+            {agentHistoryTab === 'chat' && renderAgentChatPanel('ISABELLA', I_NAVY, I_GOLD, I_PARCH, 'Pregúntale a Isabella sobre guiones, producción o el calendario de video — ej. "¿qué guiones están listos para producción?"')}
+
             {/* TAB: BITÁCORA */}
             {agentHistoryTab === 'bitacora' && (
               <div>
@@ -10483,7 +11462,7 @@ Responde SOLO con JSON sin bloques de código:
                 <div key={s.label} style={{ background:'#fff', border:'1px solid #D6CEBC', padding:'16px 20px', display:'flex', alignItems:'center', gap:14 }}>
                   <div style={{ width:3, alignSelf:'stretch', background:s.accent, flexShrink:0 }} />
                   <div>
-                    <div style={{ fontSize:28, fontWeight:300, fontFamily:T.fontSerif, color:s.accent, lineHeight:1 }}>{s.value}</div>
+                    <div style={{ fontSize:26, fontWeight:800, fontFamily:T.fontSans, fontVariantNumeric:'tabular-nums', color:s.accent, lineHeight:1 }}>{s.value}</div>
                     <div style={{ fontSize:9, letterSpacing:2, color:'#9CA3AF', textTransform:'uppercase', marginTop:3 }}>{s.label}</div>
                   </div>
                 </div>
@@ -10508,7 +11487,7 @@ Responde SOLO con JSON sin bloques de código:
                       )}
                       {agentHistoryTab !== 'approved' && iApproved > 0 && (
                         <button onClick={() => setAgentHistoryTab('approved')}
-                          style={{ background:I_NAVY, border:'none', color:I_GOLD_L, padding:'7px 18px', fontSize:9, fontWeight:700, letterSpacing:2, textTransform:'uppercase' as const, cursor:'pointer' }}>
+                          style={{ background:I_NAVY, border:'none', color:'#fff', padding:'7px 18px', fontSize:9, fontWeight:700, letterSpacing:2, textTransform:'uppercase' as const, cursor:'pointer' }}>
                           Ver Aprobados ({iApproved})
                         </button>
                       )}
@@ -10579,7 +11558,7 @@ Responde SOLO con JSON sin bloques de código:
                         </button>
                         {item.status === 'pending' && (
                           <button onClick={() => setHistoryItems(prev => prev.map(x => x.id===item.id ? {...x,status:'approved'} : x))}
-                            style={{ background:I_NAVY, color:I_GOLD_L, border:'none', padding:'6px 18px', fontSize:9, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', cursor:'pointer' }}>
+                            style={{ background:I_NAVY, color:'#fff', border:'none', padding:'6px 18px', fontSize:9, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', cursor:'pointer' }}>
                             Aprobar
                           </button>
                         )}
@@ -10646,7 +11625,7 @@ Responde SOLO con JSON sin bloques de código:
 
     // ── PANEL SOFÍA ─────────────────────────────────────────
     if (agentHistoryDetail === 'SOFIA') {
-      const C_ROSE = '#EC4899'; const C_NAVY = '#001A37'; const C_GOLD = '#B89047'; const C_CREAM = '#F7F4EF'; const C_PARCH = '#EDE8DF';
+      const C_ROSE = '#0D9488'; const C_NAVY = '#001A37'; const C_GOLD = '#3E7CB8'; const C_CREAM = '#F4F5F7'; const C_PARCH = '#E8ECF0';
       // Read directly from localStorage so HMR state resets don't cause empty panels
       const liveProfiles: SofiaProfile[] = (() => { try { return JSON.parse(localStorage.getItem('glp_sofia_profiles') || '[]'); } catch { return []; } })();
       // Paleta Sotheby's: cada arquetipo tiene un color base, un fondo claro del mismo tono
@@ -10657,10 +11636,10 @@ Responde SOLO con JSON sin bloques de código:
         aspiracional: { label: 'Comprador Aspiracional',    tag: 'ASPIRACIONAL', color: '#B45309', bg: '#B45309' },
       };
       const ARQUETIPOS = [
-        { id: 'estatus',    label: 'Coleccionista de Estatus',  subtag: 'I',  desc: 'Compra por distinción y reconocimiento social. Responde a exclusividad, prueba social de élite y escasez. Evitar lenguaje de precio.', ...ARQCFG.estatus },
-        { id: 'legado',     label: 'Preservador de Legado',     subtag: 'II', desc: 'Motivado por preservación de patrimonio y herencia familiar. Responde a datos de valorización, estabilidad y protección fiscal.',    ...ARQCFG.legado },
-        { id: 'racional',   label: 'Decisor Racional',          subtag: 'III',desc: 'Requiere evidencia cuantitativa: ROI, comparativos, modelos financieros. Desconfía del discurso emocional.',                          ...ARQCFG.racional },
-        { id: 'aspiracional', label: 'Comprador Aspiracional',  subtag: 'IV', desc: 'Motivado por identidad y pertenencia a un estilo de vida. Responde a storytelling, lifestyle y aspiración.',                           ...ARQCFG.aspiracional },
+        { id: 'estatus',    subtag: 'I',  desc: 'Compra por distinción y reconocimiento social. Responde a exclusividad, prueba social de élite y escasez. Evitar lenguaje de precio.', ...ARQCFG.estatus },
+        { id: 'legado',     subtag: 'II', desc: 'Motivado por preservación de patrimonio y herencia familiar. Responde a datos de valorización, estabilidad y protección fiscal.',    ...ARQCFG.legado },
+        { id: 'racional',   subtag: 'III',desc: 'Requiere evidencia cuantitativa: ROI, comparativos, modelos financieros. Desconfía del discurso emocional.',                          ...ARQCFG.racional },
+        { id: 'aspiracional', subtag: 'IV', desc: 'Motivado por identidad y pertenencia a un estilo de vida. Responde a storytelling, lifestyle y aspiración.',                           ...ARQCFG.aspiracional },
       ];
       const countByArq = (id: string) => liveProfiles.filter(p => p.arquetipo === id).length;
 
@@ -10770,32 +11749,33 @@ Responde SOLO con JSON sin bloques de código:
 
       return (
         <div style={{ height: '100%', overflowY: 'auto', background: C_CREAM }}>
-          {/* Header */}
-          <div style={{ background: C_NAVY, padding: '24px 32px 20px' }}>
-            <button onClick={() => setAgentHistoryDetail(null)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 10, cursor: 'pointer', padding: 0, marginBottom: 14, letterSpacing: 1.5, textTransform: 'uppercase' as const }}>← Volver</button>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+          {/* Header — blanco/cobalto/Inter, sin eyebrow "Agente IA · Perfiladora
+              Conductual" (redundante con el nombre y el rol de abajo). */}
+          <div style={{ background: '#fff', borderTop: `3px solid ${C_GOLD}`, borderBottom: `1px solid ${C_PARCH}`, padding: '24px 32px 0' }}>
+            <button onClick={() => setAgentHistoryDetail(null)} style={{ background: 'transparent', border: `1px solid ${C_PARCH}`, borderRadius: 8, color: '#6B7280', fontSize: 12, fontWeight: 600, fontFamily: T.fontSans, cursor: 'pointer', padding: '8px 16px', marginBottom: 16 }}>← Volver</button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingBottom: 18 }}>
               <div>
-                <div style={{ fontSize: 8, letterSpacing: 4, color: C_GOLD, fontWeight: 700, textTransform: 'uppercase' as const, marginBottom: 6 }}>Agente IA · Perfiladora Conductual</div>
-                <div style={{ fontSize: 24, fontFamily: T.fontSerif, fontWeight: 300, color: '#fff', letterSpacing: 2 }}>SOFÍA</div>
-                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', marginTop: 3, letterSpacing: 0.5 }}>PhD · Psicología del Consumidor de Lujo · Neuromarketing HNWI</div>
+                <div style={{ fontSize: 24, fontFamily: T.fontSans, fontWeight: 800, color: C_NAVY, letterSpacing: '-0.01em' }}>SOFÍA</div>
+                <div style={{ fontSize: 11, color: '#6B7280', marginTop: 4 }}>PhD · Psicología del Consumidor de Lujo · Neuromarketing HNWI</div>
               </div>
               <div style={{ textAlign: 'right' as const }}>
-                <div style={{ fontSize: 22, fontFamily: T.fontSerif, fontWeight: 300, color: C_GOLD }}>{liveProfiles.length}</div>
-                <div style={{ fontSize: 8, letterSpacing: 2, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' as const }}>Perfiles activos</div>
+                <div style={{ fontSize: 22, fontFamily: T.fontSans, fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: C_GOLD }}>{liveProfiles.length}</div>
+                <div style={{ fontSize: 9, letterSpacing: 1, color: '#9CA3AF', textTransform: 'uppercase' as const }}>Perfiles activos</div>
               </div>
             </div>
 
             {/* Tabs nav */}
-            <div style={{ display:'flex', gap:0, marginTop:20, borderBottom:'1px solid rgba(255,255,255,0.1)' }}>
+            <div style={{ display:'flex', gap:0, borderTop:`1px solid ${C_PARCH}` }}>
               {([
                 { key:'bitacora', label:'Bitácora' },
                 { key:'perfilacion', label:'Perfilación' },
                 { key:'perfiles', label:'Ver Perfiles' },
+                { key:'chat', label:'Preguntar a Sofía' },
               ] as const).map(t => (
                 <button key={t.key} onClick={() => setSofiaTab(t.key)} style={{
-                  padding:'10px 22px', fontSize:10, fontWeight:700, letterSpacing:2, textTransform:'uppercase', cursor:'pointer', border:'none', background:'transparent',
+                  padding:'12px 18px', fontSize:12, fontWeight:600, fontFamily:T.fontSans, cursor:'pointer', border:'none', background:'transparent',
                   borderBottom: sofiaTab === t.key ? `2px solid ${C_GOLD}` : '2px solid transparent',
-                  color: sofiaTab === t.key ? C_GOLD : 'rgba(255,255,255,0.65)', marginBottom:-1,
+                  color: sofiaTab === t.key ? C_GOLD : '#6B7280', marginBottom:-1,
                 }}>{t.label}</button>
               ))}
             </div>
@@ -10862,12 +11842,27 @@ Responde SOLO con JSON sin bloques de código:
           )}
 
           {/* TAB: VER PERFILES */}
-          {sofiaTab === 'perfiles' && (
+          {sofiaTab === 'perfiles' && (() => {
+            const q = sofiaSearch.trim().toLowerCase();
+            const filteredProfiles = q
+              ? liveProfiles.filter(prof =>
+                  prof.prospectName.toLowerCase().includes(q) ||
+                  prof.arquetipo.toLowerCase().includes(q) ||
+                  (ARQCFG[prof.arquetipo]?.label || '').toLowerCase().includes(q)
+                )
+              : liveProfiles;
+            return (
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, borderBottom: `1px solid ${C_PARCH}`, paddingBottom: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, borderBottom: `1px solid ${C_PARCH}`, paddingBottom: 8, gap: 12, flexWrap: 'wrap' as const }}>
               <div style={{ fontSize: 8, letterSpacing: 3, color: C_GOLD, fontWeight: 700, textTransform: 'uppercase' as const }}>
-                Perfiles Psicográficos · {liveProfiles.length} prospectos
+                Perfiles Psicográficos · {filteredProfiles.length} de {liveProfiles.length} prospectos
               </div>
+              <input
+                value={sofiaSearch}
+                onChange={e => setSofiaSearch(e.target.value)}
+                placeholder="🔍 Buscar por nombre o tipo de perfil (ej. estatus, legado)..."
+                style={{ fontSize: 11, padding: '6px 10px', border: `1px solid ${C_PARCH}`, borderRadius: 3, outline: 'none', color: C_NAVY, minWidth: 260 }}
+              />
             </div>
 
             {liveProfiles.length === 0 ? (
@@ -10875,9 +11870,13 @@ Responde SOLO con JSON sin bloques de código:
                 <div style={{ fontSize: 11, fontFamily: T.fontSerif, color: C_NAVY, marginBottom: 6 }}>Sin perfiles generados aún</div>
                 <div style={{ fontSize: 10, color: '#9CA3AF', lineHeight: 1.7 }}>Pulsa "Perfilar Prospectos" en la tarjeta de Sofía.</div>
               </div>
+            ) : filteredProfiles.length === 0 ? (
+              <div style={{ background: '#fff', border: `1px solid ${C_PARCH}`, padding: '32px 20px', textAlign: 'center' as const }}>
+                <div style={{ fontSize: 11, fontFamily: T.fontSerif, color: C_NAVY }}>Sin resultados para "{sofiaSearch}"</div>
+              </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
-                {liveProfiles.map(prof => {
+                {filteredProfiles.map(prof => {
                   const cfg = ARQCFG[prof.arquetipo] || ARQCFG.aspiracional;
                   return (
                     <div key={prof.prospectId} style={{ background: '#fff', border: `1px solid ${C_PARCH}`, borderLeft: `3px solid ${cfg.color}`, padding: '12px 16px' }}>
@@ -10908,7 +11907,8 @@ Responde SOLO con JSON sin bloques de código:
               </div>
             )}
           </div>
-          )}
+            );
+          })()}
           </div>
 
           {/* ── CHATBOT OVERLAY ── */}
@@ -10971,7 +11971,7 @@ Responde SOLO con JSON sin bloques de código:
                         <div style={{ background: '#fff', border: `1px solid ${C_PARCH}`, borderTop: `3px solid ${cfg.bg}`, padding: '16px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                             <div style={{ fontSize: 8, fontWeight: 800, color: '#fff', background: cfg.bg, padding: '3px 10px', letterSpacing: 1.5 }}>{cfg.tag}</div>
-                            <div style={{ fontSize: 20, fontWeight: 300, fontFamily: T.fontSerif, color: cfg.bg }}>{r.confianza}%</div>
+                            <div style={{ fontSize: 20, fontWeight: 800, fontFamily: T.fontSans, fontVariantNumeric: 'tabular-nums', color: cfg.bg }}>{r.confianza}%</div>
                           </div>
                           <div style={{ fontSize: 13, fontFamily: T.fontSerif, fontWeight: 600, color: C_NAVY, marginBottom: 4 }}>{r.prospectName}</div>
                           <div style={{ fontSize: 10, color: '#6B7280', marginBottom: 12 }}>{cfg.label}</div>
@@ -11049,6 +12049,8 @@ Responde SOLO con JSON sin bloques de código:
               </div>
             );
           })()}
+
+          {sofiaTab === 'chat' && renderAgentChatPanel('SOFIA', C_NAVY, C_ROSE, C_PARCH, 'Pregúntale a Sofía sobre perfiles psicográficos, arquetipos o señales conductuales — ej. "¿qué arquetipo predomina entre los prospectos de Ocean Reef?"')}
         </div>
       );
     }
@@ -11063,28 +12065,32 @@ Responde SOLO con JSON sin bloques de código:
         workflowTab === 'pendiente' ? ['pendiente','en_revision'].includes(t.status) : ['aprobado','rechazado','completado'].includes(t.status)
       );
       const pendingCount = workflowTasks.filter(t => t.status === 'pendiente').length;
+      // Mismo look & feel navy/dorado/pergamino del resto de paneles de agentes.
+      const W_NAVY = '#001A37'; const W_GOLD = '#B89047'; const W_GOLD_L = '#D4AF6A'; const W_CREAM = '#F7F4EF'; const W_PARCH = '#EDE8DF';
 
       return (
-        <div>
-          <button onClick={() => setAgentHistoryDetail(null)} style={btnSecondary({ marginBottom: 16, display: 'inline-flex', alignItems: 'center', gap: 6 })}>
-            {renderButtonIcon('arrow-left')}<span>Volver a Agentes</span>
-          </button>
-
-          <div style={cardStyle()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ background: W_CREAM, minHeight: '100%', margin: '-24px', padding: 24 }}>
+          <div style={{ background: W_NAVY, padding: '20px 28px', marginBottom: 20 }}>
+            <button onClick={() => setAgentHistoryDetail(null)}
+              style={{ background:'none', border:'none', color:'rgba(255,255,255,0.4)', fontSize:10, cursor:'pointer', padding:0, marginBottom:14, letterSpacing:1.5, textTransform:'uppercase' as const }}>
+              ← Volver a Agentes
+            </button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12 }}>
               <div>
-                <h2 style={{ margin: 0, fontSize: 20, color: T.text }}>🔄 Flujo de Trabajo entre Agentes</h2>
-                <div style={{ fontSize: 12, color: T.textSec, marginTop: 4 }}>
+                <div style={{ fontSize:9, letterSpacing:4, color:W_GOLD, fontWeight:700, textTransform:'uppercase' as const, marginBottom:5 }}>Flujo entre Agentes</div>
+                <div style={{ fontSize: 22, fontFamily:T.fontSerif, fontWeight: 300, color: '#fff', letterSpacing: 1 }}>🔄 Flujo de Trabajo entre Agentes</div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 6 }}>
                   Tareas generadas automáticamente por Camilo → Sara / Valeria / Isabella. El admin aprueba, redirige o descarta.
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={() => handleCamilo(false, false, 'research')} disabled={agentCamiloActive}
-                  style={btnPrimary({ padding: '8px 14px', fontSize: 12, background: '#3B82F6', opacity: agentCamiloActive ? 0.6 : 1 })}>
-                  {agentCamiloActive ? '⏳ Investigando...' : '🔍 Nuevo Research (Camilo)'}
-                </button>
-              </div>
+              <button onClick={() => handleCamilo(false, false, 'research')} disabled={agentCamiloActive}
+                style={{ background: agentCamiloActive ? 'rgba(184,144,71,0.4)' : W_GOLD, color: W_NAVY, border:'none', padding:'8px 16px', fontSize:10, fontWeight:800, letterSpacing:1.5, textTransform:'uppercase' as const, cursor: agentCamiloActive ? 'default' : 'pointer' }}>
+                {agentCamiloActive ? '⏳ Investigando...' : '🔍 Nuevo Research (Camilo)'}
+              </button>
             </div>
+          </div>
+
+          <div style={{ background: '#fff', padding: 20, border: `1px solid ${W_PARCH}` }}>
 
             {/* Stats flujo */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 20 }}>
@@ -11254,24 +12260,39 @@ Responde SOLO con JSON sin bloques de código:
 
     // ── PANEL OBJECIONES DE BROKERS ──────────────────────────────
     if (agentHistoryDetail === 'OBJECTIONS') {
+      // Mismo look & feel navy/dorado/pergamino del resto de paneles de Sara (y del resto
+      // de Agentes IA) — antes este panel usaba los tokens genéricos T.* de fondo claro,
+      // lo que lo dejaba en blanco y desentonaba con el resto del módulo.
+      const O_NAVY = '#001A37';
+      const O_GOLD = '#B89047';
+      const O_GOLD_L = '#D4AF6A';
+      const O_CREAM = '#F7F4EF';
+      const O_PARCH = '#EDE8DF';
       const CANAL_OPTS = ['llamada','reunion','correo','whatsapp','formulario'];
       const TIPO_COLOR: Record<string,string> = {
         peso_dolar:'#3B82F6', dian:'#EF4444', competencia:'#8B5CF6',
         entrega:'#F59E0B', precio:'#10B981', otro:'#6B7280'
       };
+      const objInputStyle = { width:'100%', boxSizing:'border-box' as const, padding:'8px 10px', border:`1px solid ${O_PARCH}`, background:'#fff', color:O_NAVY, fontSize:13 };
 
       return (
-        <div>
-          <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
+        <div style={{ background: O_CREAM, minHeight: '100%', margin: '-24px', padding: 24 }}>
+          {/* ── Header navy, igual patrón que el resto de paneles de agentes ── */}
+          <div style={{ background: O_NAVY, padding: '20px 28px', marginBottom: 20 }}>
             <button onClick={() => setAgentHistoryDetail(null)}
-              style={{ background:'none', border:`1px solid ${T.border}`, borderRadius:8, padding:'6px 12px', color:T.textSec, cursor:'pointer', fontSize:12 }}>
+              style={{ background:'none', border:'none', color:'rgba(255,255,255,0.4)', fontSize:10, cursor:'pointer', padding:0, marginBottom:14, letterSpacing:1.5, textTransform:'uppercase' as const }}>
               ← Volver
             </button>
-            <h2 style={{ margin:0, fontSize:20, color:T.text }}>📋 Reporte de Objeciones de Brokers</h2>
-            <button onClick={loadObjections} disabled={objLoading}
-              style={{ marginLeft:'auto', background:'none', border:`1px solid ${T.border}`, borderRadius:8, padding:'6px 14px', color:T.textSec, cursor:'pointer', fontSize:12 }}>
-              {objLoading ? 'Cargando...' : '↻ Actualizar'}
-            </button>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', gap:12 }}>
+              <div>
+                <div style={{ fontSize:9, letterSpacing:4, color:O_GOLD, fontWeight:700, textTransform:'uppercase' as const, marginBottom:5 }}>Sara · Directora de Experiencia de Cliente</div>
+                <div style={{ fontSize:22, fontFamily:T.fontSerif, fontWeight:300, color:'#fff', letterSpacing:1 }}>Reporte de Objeciones de Brokers</div>
+              </div>
+              <button onClick={loadObjections} disabled={objLoading}
+                style={{ background:'none', border:`1px solid ${O_GOLD}55`, color:O_GOLD_L, padding:'6px 14px', cursor:'pointer', fontSize:10, letterSpacing:1, textTransform:'uppercase' as const, flexShrink:0 }}>
+                {objLoading ? 'Cargando...' : '↻ Actualizar'}
+              </button>
+            </div>
           </div>
 
           {/* Estadísticas por tipo */}
@@ -11280,11 +12301,11 @@ Responde SOLO con JSON sin bloques de código:
               {objStats.map(s => {
                 const info = OBJECTION_TIPOS.find(t=>t.value===s.tipo);
                 return (
-                  <div key={s.tipo} style={{ ...cardStyle(), textAlign:'center', border:`1.5px solid ${TIPO_COLOR[s.tipo] || T.border}` }}>
+                  <div key={s.tipo} style={{ background:'#fff', textAlign:'center', padding:14, border:`1.5px solid ${TIPO_COLOR[s.tipo] || O_PARCH}` }}>
                     <div style={{ fontSize:22 }}>{info?.icon || '💬'}</div>
-                    <div style={{ fontSize:11, fontWeight:700, color:T.text, margin:'4px 0 2px' }}>{info?.label || s.tipo}</div>
-                    <div style={{ fontSize:18, fontWeight:800, color:TIPO_COLOR[s.tipo] || T.text }}>{s.total}</div>
-                    <div style={{ fontSize:10, color: Number(s.ultimos_7d) >= 3 ? T.danger : T.textSec }}>
+                    <div style={{ fontSize:11, fontWeight:700, color:O_NAVY, margin:'4px 0 2px' }}>{info?.label || s.tipo}</div>
+                    <div style={{ fontSize:18, fontWeight:800, color:TIPO_COLOR[s.tipo] || O_NAVY }}>{s.total}</div>
+                    <div style={{ fontSize:10, color: Number(s.ultimos_7d) >= 3 ? '#DC2626' : '#6B7280' }}>
                       {s.ultimos_7d} esta semana{Number(s.ultimos_7d) >= 3 ? ' ⚠️' : ''}
                     </div>
                   </div>
@@ -11294,84 +12315,84 @@ Responde SOLO con JSON sin bloques de código:
           )}
 
           {/* Formulario nuevo reporte */}
-          <div style={{ ...cardStyle(), marginBottom:16, border:`1.5px solid ${T.teal}` }}>
-            <div style={{ fontWeight:700, fontSize:14, color:T.text, marginBottom:14 }}>➕ Registrar Objeción</div>
+          <div style={{ background:'#fff', marginBottom:16, padding:18, border:`1px solid ${O_PARCH}`, borderLeft:`3px solid ${O_GOLD}` }}>
+            <div style={{ fontSize:9, letterSpacing:2, color:O_GOLD, fontWeight:700, textTransform:'uppercase' as const, marginBottom:14 }}>➕ Registrar Objeción</div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
               <div>
-                <div style={{ fontSize:11, color:T.textSec, marginBottom:4 }}>Broker *</div>
+                <div style={{ fontSize:11, color:'#6B7280', marginBottom:4 }}>Broker *</div>
                 <input value={objForm.broker} onChange={e=>setObjForm(p=>({...p,broker:e.target.value}))}
                   placeholder="Nombre del broker"
-                  style={{ width:'100%', boxSizing:'border-box', padding:'8px 10px', borderRadius:8, border:`1px solid ${T.border}`, background:T.bg, color:T.text, fontSize:13 }} />
+                  style={objInputStyle} />
               </div>
               <div>
-                <div style={{ fontSize:11, color:T.textSec, marginBottom:4 }}>Prospecto (opcional)</div>
+                <div style={{ fontSize:11, color:'#6B7280', marginBottom:4 }}>Prospecto (opcional)</div>
                 <input value={objForm.prospecto} onChange={e=>setObjForm(p=>({...p,prospecto:e.target.value}))}
                   placeholder="Nombre del cliente"
-                  style={{ width:'100%', boxSizing:'border-box', padding:'8px 10px', borderRadius:8, border:`1px solid ${T.border}`, background:T.bg, color:T.text, fontSize:13 }} />
+                  style={objInputStyle} />
               </div>
               <div>
-                <div style={{ fontSize:11, color:T.textSec, marginBottom:4 }}>Tipo de objeción *</div>
+                <div style={{ fontSize:11, color:'#6B7280', marginBottom:4 }}>Tipo de objeción *</div>
                 <select value={objForm.tipo} onChange={e=>setObjForm(p=>({...p,tipo:e.target.value as BrokerObjection['tipo']}))}
-                  style={{ width:'100%', padding:'8px 10px', borderRadius:8, border:`1px solid ${T.border}`, background:T.bg, color:T.text, fontSize:13 }}>
+                  style={objInputStyle}>
                   {OBJECTION_TIPOS.map(t => <option key={t.value} value={t.value}>{t.icon} {t.label}</option>)}
                 </select>
               </div>
               <div>
-                <div style={{ fontSize:11, color:T.textSec, marginBottom:4 }}>Canal donde se recibió</div>
+                <div style={{ fontSize:11, color:'#6B7280', marginBottom:4 }}>Canal donde se recibió</div>
                 <select value={objForm.canal} onChange={e=>setObjForm(p=>({...p,canal:e.target.value}))}
-                  style={{ width:'100%', padding:'8px 10px', borderRadius:8, border:`1px solid ${T.border}`, background:T.bg, color:T.text, fontSize:13 }}>
+                  style={objInputStyle}>
                   {CANAL_OPTS.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase()+c.slice(1)}</option>)}
                 </select>
               </div>
               <div>
-                <div style={{ fontSize:11, color:T.textSec, marginBottom:4 }}>Proyecto (opcional)</div>
+                <div style={{ fontSize:11, color:'#6B7280', marginBottom:4 }}>Proyecto (opcional)</div>
                 <select value={objForm.proyecto} onChange={e=>setObjForm(p=>({...p,proyecto:e.target.value}))}
-                  style={{ width:'100%', padding:'8px 10px', borderRadius:8, border:`1px solid ${T.border}`, background:T.bg, color:T.text, fontSize:13 }}>
+                  style={objInputStyle}>
                   <option value="">-- Todos / No específico --</option>
                   {PROJECTS.map(pr => <option key={pr.name} value={pr.name}>{pr.name}</option>)}
                 </select>
               </div>
             </div>
             <div style={{ marginBottom:12 }}>
-              <div style={{ fontSize:11, color:T.textSec, marginBottom:4 }}>Descripción de la objeción *</div>
+              <div style={{ fontSize:11, color:'#6B7280', marginBottom:4 }}>Descripción de la objeción *</div>
               <textarea value={objForm.descripcion} onChange={e=>setObjForm(p=>({...p,descripcion:e.target.value}))}
                 placeholder="¿Qué dijo exactamente el cliente? Incluye contexto, tono y si pidió algo específico..."
                 rows={3}
-                style={{ width:'100%', boxSizing:'border-box', padding:'8px 10px', borderRadius:8, border:`1px solid ${T.border}`, background:T.bg, color:T.text, fontSize:13, resize:'vertical' }} />
+                style={{ ...objInputStyle, resize:'vertical' as const }} />
             </div>
-            {objSuccess && <div style={{ color:T.success, fontSize:12, fontWeight:600, marginBottom:8 }}>✅ Objeción registrada correctamente.</div>}
+            {objSuccess && <div style={{ color:'#059669', fontSize:12, fontWeight:600, marginBottom:8 }}>✅ Objeción registrada correctamente.</div>}
             <button onClick={submitObjection} disabled={objSaving || !objForm.broker || !objForm.descripcion}
-              style={{ background:T.teal, color:'#fff', border:'none', borderRadius:8, padding:'9px 20px', fontWeight:700, fontSize:13, cursor:'pointer', opacity: (!objForm.broker||!objForm.descripcion) ? 0.5 : 1 }}>
+              style={{ background:O_NAVY, color:O_GOLD_L, border:'none', padding:'9px 22px', fontWeight:700, fontSize:9, letterSpacing:2, textTransform:'uppercase' as const, cursor:'pointer', opacity: (!objForm.broker||!objForm.descripcion) ? 0.5 : 1 }}>
               {objSaving ? 'Guardando...' : '📋 Registrar Objeción'}
             </button>
           </div>
 
           {/* Historial de objeciones */}
-          <div style={{ ...cardStyle() }}>
-            <div style={{ fontWeight:700, fontSize:14, color:T.text, marginBottom:12 }}>
+          <div style={{ background:'#fff', padding:18, border:`1px solid ${O_PARCH}` }}>
+            <div style={{ fontSize:9, letterSpacing:2, color:O_GOLD, fontWeight:700, textTransform:'uppercase' as const, marginBottom:12 }}>
               Historial ({objections.length} registros)
             </div>
             {objections.length === 0 && !objLoading && (
-              <div style={{ textAlign:'center', color:T.textSec, fontSize:13, padding:24 }}>
+              <div style={{ textAlign:'center', color:'#9CA3AF', fontSize:13, padding:24 }}>
                 Sin registros aún. Sé el primero en reportar una objeción.
               </div>
             )}
             {objections.slice(0,30).map(obj => {
               const info = OBJECTION_TIPOS.find(t=>t.value===obj.tipo);
               return (
-                <div key={obj.id} style={{ display:'flex', gap:12, alignItems:'flex-start', padding:'10px 0', borderBottom:`1px solid ${T.borderLight}` }}>
+                <div key={obj.id} style={{ display:'flex', gap:12, alignItems:'flex-start', padding:'10px 0', borderBottom:`1px solid ${O_PARCH}` }}>
                   <div style={{ fontSize:22, minWidth:28 }}>{info?.icon || '💬'}</div>
                   <div style={{ flex:1 }}>
-                    <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap', marginBottom:4 }}>
-                      <span style={{ fontSize:11, fontWeight:700, color:'#fff', background:TIPO_COLOR[obj.tipo]||T.textSec, padding:'2px 8px', borderRadius:4 }}>{info?.label||obj.tipo}</span>
-                      <span style={{ fontSize:11, color:T.textSec }}>{obj.broker}</span>
-                      {obj.prospecto && <span style={{ fontSize:11, color:T.textSec }}>→ {obj.prospecto}</span>}
-                      {obj.proyecto && <span style={{ fontSize:10, color:T.textSec, background:T.bgAlt||T.borderLight, padding:'1px 6px', borderRadius:4 }}>{obj.proyecto}</span>}
-                      <span style={{ fontSize:10, color:T.textSec, marginLeft:'auto' }}>
+                    <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' as const, marginBottom:4 }}>
+                      <span style={{ fontSize:11, fontWeight:700, color:'#fff', background:TIPO_COLOR[obj.tipo]||'#6B7280', padding:'2px 8px' }}>{info?.label||obj.tipo}</span>
+                      <span style={{ fontSize:11, color:'#6B7280' }}>{obj.broker}</span>
+                      {obj.prospecto && <span style={{ fontSize:11, color:'#6B7280' }}>→ {obj.prospecto}</span>}
+                      {obj.proyecto && <span style={{ fontSize:10, color:'#6B7280', background:O_PARCH, padding:'1px 6px' }}>{obj.proyecto}</span>}
+                      <span style={{ fontSize:10, color:'#9CA3AF', marginLeft:'auto' }}>
                         {new Date(obj.created_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}
                       </span>
                     </div>
-                    <div style={{ fontSize:12, color:T.text }}>{obj.descripcion}</div>
+                    <div style={{ fontSize:12, color:O_NAVY }}>{obj.descripcion}</div>
                   </div>
                 </div>
               );
@@ -11396,24 +12417,31 @@ Responde SOLO con JSON sin bloques de código:
 
       const activas = crisisAlerts.filter(a => !['resuelta','descartada'].includes(a.status));
       const resueltas = crisisAlerts.filter(a => ['resuelta','descartada'].includes(a.status));
+      // Mismo look & feel navy/dorado/pergamino del resto de paneles de agentes.
+      const X_NAVY = '#001A37'; const X_GOLD = '#B89047'; const X_CREAM = '#F7F4EF'; const X_PARCH = '#EDE8DF';
 
       return (
-        <div>
-          <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
+        <div style={{ background: X_CREAM, minHeight: '100%', margin: '-24px', padding: 24 }}>
+          <div style={{ background: X_NAVY, padding: '20px 28px', marginBottom: 20 }}>
             <button onClick={() => setAgentHistoryDetail(null)}
-              style={{ background:'none', border:`1px solid ${T.border}`, borderRadius:8, padding:'6px 12px', color:T.textSec, cursor:'pointer', fontSize:12 }}>
+              style={{ background:'none', border:'none', color:'rgba(255,255,255,0.4)', fontSize:10, cursor:'pointer', padding:0, marginBottom:14, letterSpacing:1.5, textTransform:'uppercase' as const }}>
               ← Volver
             </button>
-            <h2 style={{ margin:0, fontSize:20, color:T.text }}>🚨 Monitor de Crisis de Ventas</h2>
-            <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
-              <button onClick={loadCrisisAlerts} disabled={crisisLoading}
-                style={{ background:'none', border:`1px solid ${T.border}`, borderRadius:8, padding:'6px 14px', color:T.textSec, cursor:'pointer', fontSize:12 }}>
-                {crisisLoading ? 'Cargando...' : '↻ Actualizar'}
-              </button>
-              <button onClick={triggerCrisisDetect} disabled={crisisDetecting}
-                style={{ background: crisisDetecting ? T.textSec : '#EF4444', border:'none', borderRadius:8, padding:'6px 16px', color:'#fff', cursor:'pointer', fontWeight:700, fontSize:12 }}>
-                {crisisDetecting ? '⏳ Analizando...' : '🔍 Ejecutar Análisis Ahora'}
-              </button>
+            <div style={{ display:'flex', justifyContent: 'space-between', alignItems:'flex-end', flexWrap: 'wrap', gap: 12 }}>
+              <div>
+                <div style={{ fontSize:9, letterSpacing:4, color:X_GOLD, fontWeight:700, textTransform:'uppercase' as const, marginBottom:5 }}>Respuesta a Crisis</div>
+                <div style={{ fontSize: 22, fontFamily:T.fontSerif, fontWeight: 300, color: '#fff', letterSpacing: 1 }}>🚨 Monitor de Crisis de Ventas</div>
+              </div>
+              <div style={{ display:'flex', gap:8 }}>
+                <button onClick={loadCrisisAlerts} disabled={crisisLoading}
+                  style={{ background:'none', border:`1px solid ${X_GOLD}55`, color:'#D4AF6A', padding:'7px 14px', cursor:'pointer', fontSize:10, letterSpacing:1, textTransform:'uppercase' as const }}>
+                  {crisisLoading ? 'Cargando...' : '↻ Actualizar'}
+                </button>
+                <button onClick={triggerCrisisDetect} disabled={crisisDetecting}
+                  style={{ background: crisisDetecting ? 'rgba(220,38,38,0.4)' : '#DC2626', border:'none', padding:'7px 16px', color:'#fff', cursor:'pointer', fontWeight:700, fontSize:10, letterSpacing:1, textTransform:'uppercase' as const }}>
+                  {crisisDetecting ? '⏳ Analizando...' : '🔍 Ejecutar Análisis Ahora'}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -11525,6 +12553,10 @@ Responde SOLO con JSON sin bloques de código:
     const GOLD_LIGHT = '#D4AF6A';
     const CREAM = '#F7F4EF';
     const PARCHMENT = '#EDE8DF';
+    // Acento cobalto estándar de la plataforma — los botones de acción de cada tarjeta
+    // de agente usan este único color en vez del color propio de cada agente, para que
+    // los 5 pies de tarjeta se vean consistentes entre sí.
+    const AGENT_ACCENT = '#3E7CB8';
 
     return (
       <div style={{ background: CREAM, minHeight: '100%' }}>
@@ -11533,16 +12565,13 @@ Responde SOLO con JSON sin bloques de código:
           <div style={{ padding: '32px 40px 28px' }}>
             <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 24 }}>
               <div>
-                <div style={{ fontSize: 9, letterSpacing: 5, color: GOLD, fontWeight: 700, textTransform: 'uppercase', marginBottom: 10 }}>
-                  GLP Wealth Management · Plataforma de Inteligencia
-                </div>
-                <h2 style={{ margin: 0, fontSize: 30, fontFamily: T.fontSerif, fontWeight: 300, color: NAVY, letterSpacing: 1, lineHeight: 1.1 }}>
+                {/* Antes decía "GLP Wealth Management · Plataforma de Inteligencia" —
+                    redundante, el logo ya vive en la barra superior. */}
+                <h2 style={{ margin: 0, fontSize: 28, fontFamily: T.fontSans, fontWeight: 800, color: NAVY, letterSpacing: '-0.01em', lineHeight: 1.1 }}>
                   Comando de Inteligencia Agéntica
                 </h2>
-                <div style={{ width: 48, height: 1, background: GOLD, margin: '12px 0' }} />
-                <div style={{ fontSize: 11, color: '#6B7280', letterSpacing: 2, textTransform: 'uppercase', fontWeight: 400 }}>
-                  Camilo &nbsp;·&nbsp; Sara &nbsp;·&nbsp; Sofía &nbsp;·&nbsp; Valeria &nbsp;·&nbsp; Isabella
-                </div>
+                {/* Antes repetía los 5 nombres aquí — ya aparecen en cada tarjeta más
+                    abajo, era información duplicada. */}
               </div>
               {/* Status indicators — minimal */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end', paddingBottom: 2 }}>
@@ -11562,70 +12591,33 @@ Responde SOLO con JSON sin bloques de código:
 
         </div>
 
-        {/* ── PIPELINE TIMELINE ── */}
-        <div style={{ background: '#fff', borderBottom: `1px solid rgba(184,144,71,0.2)` }}>
-          <div style={{ display: 'flex', alignItems: 'stretch' }}>
-            {[
-              { idx: 0, name: 'Camilo',   role: 'Investigación & Mercados', num: 'I' },
-              { idx: 1, name: 'Sofía',    role: 'Perfiladora Conductual',   num: 'II' },
-              { idx: 2, name: 'Sara',     role: 'Experiencia de Cliente',   num: 'III' },
-              { idx: 3, name: 'Valeria',  role: 'Medios & Contenido',       num: 'IV' },
-              { idx: 4, name: 'Isabella', role: 'Embajadora de Marca',      num: 'V' },
-            ].map((step, sIdx) => {
-              const active = swarmStep === step.idx;
-              const completed = swarmStep !== null && swarmStep > step.idx;
+        {/* ── CANDADOS ACTIVOS — visibilidad proactiva multiusuario (Fase 1) ── */}
+        {activeAgentRuns.length > 0 && (
+          <div style={{ background: '#FFFBEB', borderBottom: '1px solid #FDE68A', padding: '8px 40px', display: 'flex', flexWrap: 'wrap' as const, gap: 16 }}>
+            {activeAgentRuns.map((r, i) => {
+              const seconds = Math.max(0, Math.round((Date.now() - new Date(r.started_at).getTime()) / 1000));
+              const hace = seconds < 60 ? `hace ${seconds}s` : `hace ${Math.round(seconds / 60)} min`;
               return (
-                <div key={step.idx} style={{
-                  flex: 1, display: 'flex', alignItems: 'center',
-                  borderRight: sIdx < 4 ? `1px solid rgba(184,144,71,0.15)` : 'none',
-                  background: active ? `rgba(184,144,71,0.05)` : '#fff',
-                  transition: 'background 0.3s',
-                  borderBottom: active ? `2px solid ${GOLD}` : '2px solid transparent',
-                }}>
-                  <div style={{ flex: 1, padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 14 }}>
-                    <span style={{
-                      fontFamily: T.fontSerif, fontSize: 16, fontWeight: 300, color: active ? GOLD : completed ? '#10B981' : 'rgba(0,26,55,0.2)',
-                      minWidth: 28, letterSpacing: 0.5,
-                    }}>{step.num}</span>
-                    <div>
-                      <div style={{ fontSize: 11, fontFamily: T.fontSerif, fontWeight: 600, color: active ? NAVY : completed ? '#374151' : '#C4BFB5', letterSpacing: 0.3, marginBottom: 1 }}>{step.name}</div>
-                      <div style={{ fontSize: 9, letterSpacing: 2, textTransform: 'uppercase', color: active ? GOLD : completed ? '#10B981' : '#C4BFB5', fontWeight: 600 }}>
-                        {completed ? 'Completado' : active ? 'Activo' : step.role}
-                      </div>
-                    </div>
-                  </div>
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#92400E' }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#D97706', display: 'inline-block', animation: 'pulse 1.2s infinite' }} />
+                  <strong>{r.agent_name}</strong> ({r.action}) en curso por <strong>{r.triggered_by}</strong> {hace}
                 </div>
               );
             })}
           </div>
-        </div>
+        )}
 
-        {/* ── INTELLIGENCE CONSOLE ── */}
-        <div style={{ background: '#fff', borderBottom: `1px solid ${PARCHMENT}` }}>
-          <div style={{ padding: '8px 40px 4px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: `1px solid ${PARCHMENT}` }}>
-            <span style={{ width: 5, height: 5, borderRadius: '50%', background: GOLD, display: 'inline-block', opacity: 0.7 }} />
-            <span style={{ fontSize: 8, letterSpacing: 4, color: '#9C7A3C', textTransform: 'uppercase', fontWeight: 700 }}>Intelligence Console</span>
-          </div>
-          <div style={{ height: 78, overflowY: 'auto', padding: '8px 40px 8px', fontFamily: 'monospace', fontSize: 10, background: '#FAFAF7' }}>
-            {swarmLogs.length === 0 ? (
-              <span style={{ color: '#9CA3AF', fontStyle: 'italic' }}>_ Sistema en espera. Active el enjambre para iniciar.</span>
-            ) : swarmLogs.map((log, i) => (
-              <div key={i} style={{ display: 'flex', gap: 12, marginBottom: 3, lineHeight: 1.5 }}>
-                <span style={{ color: '#B0987A', minWidth: 48, flexShrink: 0 }}>{log.time}</span>
-                <span style={{ color: log.agent==='SISTEMA' ? '#9C7A3C' : log.agent==='SARA' ? '#059669' : log.agent==='CAMILO' ? '#2563EB' : log.agent==='VALERIA' ? '#7C3AED' : '#B45309', fontWeight: 700, minWidth: 62, flexShrink: 0 }}>{log.agent}</span>
-                <span style={{ color: '#4B5563' }}>{log.msg}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+        {/* El gasto de IA se movió a Configuración → Costos de IA (solo superadmin) — antes
+            era una barra siempre visible aquí, útil solo para quien controla el
+            presupuesto y no para el resto del equipo que usa este panel a diario. */}
 
         {/* ── CENTRO DE COMANDO: TRES VERTICALES ── */}
         {(() => {
           // ── Helper: encabezado de vertical ──────────────────────
           const vHeader = (
             num: string, label: string, sub: string, accent: string,
-            metrics: { label: string; value: number; color: string }[],
-            cta: { label: string; onClick: () => void; disabled: boolean }
+            metrics: { label: string; value: number; color: string; onClick?: () => void }[],
+            cta?: { label: string; onClick: () => void; disabled: boolean }
           ) => (
             <div style={{ background: '#fff', borderLeft: `4px solid ${accent}`, borderBottom: `1px solid ${PARCHMENT}`, padding: '14px 40px', display: 'flex', alignItems: 'center', gap: 20 }}>
               <div style={{ flex: 1 }}>
@@ -11634,16 +12626,21 @@ Responde SOLO con JSON sin bloques de código:
               </div>
               <div style={{ display: 'flex', gap: 0 }}>
                 {metrics.map((m, i) => (
-                  <div key={m.label} style={{ textAlign: 'center', padding: '0 18px', borderLeft: i > 0 ? `1px solid ${PARCHMENT}` : 'none' }}>
-                    <div style={{ fontSize: 18, fontFamily: T.fontSerif, fontWeight: 300, color: m.value > 0 ? m.color : '#C4BFB5' }}>{m.value}</div>
-                    <div style={{ fontSize: 7, letterSpacing: 2, color: '#9CA3AF', textTransform: 'uppercase' as const, marginTop: 2 }}>{m.label}</div>
+                  <div key={m.label} onClick={m.onClick} title={m.onClick ? 'Ver detalle' : undefined}
+                    style={{ textAlign: 'center', padding: '0 18px', borderLeft: i > 0 ? `1px solid ${PARCHMENT}` : 'none', cursor: m.onClick ? 'pointer' : 'default' }}
+                    onMouseEnter={e => { if (m.onClick) (e.currentTarget.querySelector('div') as HTMLElement).style.textDecoration = 'underline'; }}
+                    onMouseLeave={e => { if (m.onClick) (e.currentTarget.querySelector('div') as HTMLElement).style.textDecoration = 'none'; }}>
+                    <div style={{ fontSize: 18, fontFamily: T.fontSans, fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: m.value > 0 ? m.color : '#C4BFB5' }}>{m.value}</div>
+                    <div style={{ fontSize: 7, letterSpacing: 2, color: '#9CA3AF', textTransform: 'uppercase' as const, marginTop: 2 }}>{m.label}{m.onClick ? ' ↗' : ''}</div>
                   </div>
                 ))}
               </div>
-              <button onClick={cta.onClick} disabled={cta.disabled}
-                style={{ background: cta.disabled ? 'transparent' : accent, color: cta.disabled ? '#B0B7BF' : NAVY, border: cta.disabled ? `1px solid ${PARCHMENT}` : 'none', padding: '10px 22px', fontSize: 9, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase' as const, cursor: cta.disabled ? 'default' : 'pointer', whiteSpace: 'nowrap' as const, flexShrink: 0, marginLeft: 16 }}>
-                {cta.label}
-              </button>
+              {cta && (
+                <button onClick={cta.onClick} disabled={cta.disabled}
+                  style={{ background: cta.disabled ? 'transparent' : accent, color: cta.disabled ? '#B0B7BF' : NAVY, border: cta.disabled ? `1px solid ${PARCHMENT}` : 'none', padding: '10px 22px', fontSize: 9, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase' as const, cursor: cta.disabled ? 'default' : 'pointer', whiteSpace: 'nowrap' as const, flexShrink: 0, marginLeft: 16 }}>
+                  {cta.label}
+                </button>
+              )}
             </div>
           );
 
@@ -11656,38 +12653,52 @@ Responde SOLO con JSON sin bloques de código:
               agent.name === 'ISABELLA' ? isabellaScripts.filter(d => d.status === 'pending' && d.origen_agentivo).length :
               agent.name === 'SARA'     ? (saraReportText.startsWith('[🤖') ? 1 : 0) : 0;
             return (
-              <div key={agent.name} style={{ background: '#fff', position: 'relative', transition: 'all 0.3s' }}>
+              <div key={agent.name} style={{ background: '#fff', border: `1px solid ${PARCHMENT}`, borderRadius: 12, overflow: 'hidden', position: 'relative', transition: 'all 0.3s' }}>
 
-                {/* ── FOTO HERO — full width. Antes usaba height fijo + object-fit:cover, que
-                    recortaba la cara del agente en fotos con proporción distinta a la del
-                    contenedor. Ahora es más baja (menos "pesada" visualmente) y usa
-                    object-fit:contain para que la foto se vea completa, nunca truncada. ── */}
-                <div style={{ position: 'relative', width: '100%', height: 148, overflow: 'hidden', background: NAVY }}>
-                  <img src={agent.photo} alt={agent.name}
-                    onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }}
-                    style={{ width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'center',
-                      filter: isAgentActive ? 'none' : 'grayscale(20%) brightness(0.9)',
-                      transition: 'filter 0.4s' }} />
-                  {/* gradient overlay */}
-                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,10,26,0.88) 0%, rgba(0,10,26,0.1) 55%, transparent 100%)' }} />
-                  {/* active color bar */}
-                  {isAgentActive && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: (agent as any).color || GOLD }} />}
-                  {/* name overlay */}
-                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '20px 28px 18px' }}>
-                    <div style={{ fontSize: 9, letterSpacing: 4, color: GOLD, fontWeight: 700, textTransform: 'uppercase', marginBottom: 5 }}>Agente IA</div>
-                    <div style={{ fontSize: 22, fontFamily: T.fontSerif, fontWeight: 300, color: '#fff', letterSpacing: 1, lineHeight: 1.1 }}>{agent.name}</div>
-                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', marginTop: 4, letterSpacing: 1 }}>{agent.role}</div>
+                {/* ── FOTO + INFO en fila — antes la foto ocupaba todo el ancho con espacio
+                    lateral desperdiciado a los costados (retratos verticales centrados dejan
+                    franjas vacías a izquierda/derecha). Ahora la foto es angosta a la izquierda
+                    y ese espacio lateral se usa para nombre/rol/funciones, igual para los 5
+                    agentes — incluida Sofía, cuyas funciones (tags cortos) ahora tienen el
+                    ancho suficiente para no verse como un bloque de texto tipo "hoja de vida". ── */}
+                {/* Fondo blanco + tipografía estándar (Inter) en vez del navy oscuro
+                    original — mismo criterio que el resto de la plataforma. */}
+                <div style={{ display: 'flex', background: '#fff', borderBottom: `1px solid ${PARCHMENT}` }}>
+                  <div style={{ position: 'relative', width: 96, height: 130, flexShrink: 0, overflow: 'hidden', background: '#fff' }}>
+                    <img src={agent.photo} alt={agent.name}
+                      onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center',
+                        filter: isAgentActive ? 'none' : 'grayscale(15%)',
+                        transition: 'filter 0.4s' }} />
+                    {isAgentActive && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: (agent as any).color || GOLD }} />}
                   </div>
-                  {/* status dot */}
-                  <div style={{ position: 'absolute', top: 16, right: 16, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(0,10,26,0.6)', padding: '4px 10px' }}>
-                      <span style={{ width: 5, height: 5, borderRadius: '50%', background: isAgentActive ? ((agent as any).color || GOLD) : '#10B981', display: 'inline-block', animation: isAgentActive ? 'pulse 1.2s infinite' : 'none' }} />
-                      <span style={{ fontSize: 8, letterSpacing: 2, color: isAgentActive ? ((agent as any).color || GOLD_LIGHT) : '#10B981', fontWeight: 700, textTransform: 'uppercase' }}>
-                        {isAgentActive ? 'Procesando' : agent.status}
-                      </span>
+                  <div style={{ flex: 1, minWidth: 0, padding: '12px 16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 16, fontFamily: T.fontSans, fontWeight: 800, color: NAVY, letterSpacing: '-0.01em', lineHeight: 1.1 }}>{agent.name}</div>
+                        <div style={{ fontSize: 10, color: '#6B7280', marginTop: 4, letterSpacing: 1 }}>{agent.role}</div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                        <span style={{ width: 5, height: 5, borderRadius: '50%', background: isAgentActive ? ((agent as any).color || GOLD) : '#10B981', display: 'inline-block', animation: isAgentActive ? 'pulse 1.2s infinite' : 'none' }} />
+                        <span style={{ fontSize: 8, letterSpacing: 1.5, color: isAgentActive ? ((agent as any).color || GOLD) : '#9CA3AF', fontWeight: 700, textTransform: 'uppercase', whiteSpace: 'nowrap' as const }}>
+                          {isAgentActive ? 'Procesando' : agent.status}
+                        </span>
+                      </div>
                     </div>
+                    {(agent as any).tags && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4, marginTop: 8 }}>
+                        {/* Sin fondo de color — antes cada etiqueta llevaba un lavado del
+                            color del agente detrás, que se sumaba al filete lateral y al
+                            estado y quedaba recargado. Solo borde + texto en el color. */}
+                        {((agent as any).tags as string[]).map((tag: string) => (
+                          <span key={tag} style={{ fontSize: 8, letterSpacing: 1, fontWeight: 700, textTransform: 'uppercase' as const, padding: '2px 7px', background: 'transparent', color: (agent as any).color || GOLD, border: `1px solid ${(agent as any).color || GOLD}45`, whiteSpace: 'nowrap' as const }}>
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     {pendingAgentico > 0 && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: `rgba(184,144,71,0.92)`, padding: '3px 8px' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: `rgba(184,144,71,0.92)`, padding: '3px 8px', marginTop: 8 }}>
                         <span style={{ fontSize: 9 }}>🤖</span>
                         <span style={{ fontSize: 8, letterSpacing: 1.5, color: '#001A37', fontWeight: 800, textTransform: 'uppercase' as const }}>{pendingAgentico} de Camilo</span>
                       </div>
@@ -11695,86 +12706,22 @@ Responde SOLO con JSON sin bloques de código:
                   </div>
                 </div>
 
-                {/* ── CONTENT PANEL ── */}
-                <div style={{ padding: '24px 28px 20px' }}>
-                {/* Thin color rule */}
-                <div style={{ borderTop: `2px solid ${(agent as any).color || GOLD}40`, marginBottom: 12 }} />
-
-                {/* Capability tags */}
-                {(agent as any).tags && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4, marginBottom: 12 }}>
-                    {((agent as any).tags as string[]).map((tag: string) => (
-                      <span key={tag} style={{ fontSize: 8, letterSpacing: 1, fontWeight: 700, textTransform: 'uppercase' as const, padding: '2px 7px', background: `${(agent as any).color || GOLD}18`, color: (agent as any).color || GOLD, border: `1px solid ${(agent as any).color || GOLD}35` }}>
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {/* Description — bullets */}
-                <ul style={{ margin: '0 0 12px', paddingLeft: 16, color: '#6B7280', fontSize: 11, lineHeight: 1.85 }}>
-                  {((agent as any).desc as string[]).map((b: string, i: number) => (
-                    <li key={i} style={{ marginBottom: 3 }}>{b}</li>
-                  ))}
-                </ul>
-
-                {/* Inputs / Outputs relationship chips */}
-                {((agent as any).inputs || (agent as any).outputs) && (
-                  <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 5, marginBottom: 16, padding: '8px 10px', background: '#F9FAFB', border: '1px solid #F0F0F0' }}>
-                    {(agent as any).inputs && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' as const }}>
-                        <span style={{ fontSize: 8, color: '#9CA3AF', letterSpacing: 1.5, textTransform: 'uppercase' as const, fontWeight: 700, minWidth: 52 }}>Recibe</span>
-                        {((agent as any).inputs as string[]).map((inp: string) => (
-                          <span key={inp} style={{ fontSize: 8, padding: '1px 6px', background: '#fff', color: '#6B7280', border: '1px solid #E5E7EB', fontWeight: 600 }}>{inp}</span>
-                        ))}
-                      </div>
-                    )}
-                    {(agent as any).outputs && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' as const }}>
-                        <span style={{ fontSize: 8, color: '#9CA3AF', letterSpacing: 1.5, textTransform: 'uppercase' as const, fontWeight: 700, minWidth: 52 }}>Entrega</span>
-                        {((agent as any).outputs as string[]).map((out: string) => (
-                          <span key={out} style={{ fontSize: 8, padding: '1px 6px', background: `${(agent as any).color || GOLD}12`, color: (agent as any).color || GOLD, border: `1px solid ${(agent as any).color || GOLD}30`, fontWeight: 700 }}>{out}</span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Stats — horizontal con divisores (informativos, no interactivos) */}
-                <div style={{ display: 'flex', borderTop: `1px solid ${(agent as any).color || GOLD}30`, borderBottom: `1px solid ${(agent as any).color || GOLD}30`, marginBottom: 18 }}>
-                  {agent.stats.map((s, si) => {
-                    const agentColor = (agent as any).color || GOLD;
-                    return (
-                      <div key={s.label}
-                        style={{ flex: 1, padding: '14px 0', textAlign: 'center',
-                          borderRight: si < 2 ? `1px solid ${agentColor}25` : 'none' }}>
-                        <div style={{ fontSize: 22, fontFamily: T.fontSerif, fontWeight: 300, color: NAVY, letterSpacing: 0.5 }}>{s.value}</div>
-                        <div style={{ fontSize: 8, letterSpacing: 2, color: '#9CA3AF', textTransform: 'uppercase', marginTop: 4, fontWeight: 600 }}>
-                          {s.label}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Last run */}
-                <div style={{ fontSize: 10, color: '#9CA3AF', marginBottom: 12, letterSpacing: 0.3 }}>
-                  Última actividad: <span style={{ color: '#6B7280' }}>{agent.lastRun}</span>
-                </div>
-
-                {/* Agent Actions */}
-                <div style={{ display: 'flex', gap: 1, borderTop: `1px solid rgba(184,144,71,0.2)`, paddingTop: 16, marginTop: 8 }}>
+                {/* ── Agent Actions — botón sólido en azul cobalto con espacio real
+                    respecto al borde de la tarjeta, en vez de la franja crema de borde a
+                    borde. Único contenido tras la foto; el resto (descripción, tags de
+                    entrada/salida, stats, última actividad) vive en el panel de detalle al
+                    que estos botones llevan. ── */}
+                <div style={{ display: 'flex', gap: 8, padding: '12px 16px 14px', borderTop: `1px solid ${PARCHMENT}` }}>
                   {agent.actions.map((act, aIdx) => (
                     <button type="button" key={act.label} onClick={act.onClick}
-                      style={{ flex: 1, padding: '11px 14px', fontSize: 9, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase',
-                        cursor: 'pointer', border: 'none', transition: 'all 0.2s',
-                        background: aIdx === 0 ? NAVY : 'transparent',
-                        color: aIdx === 0 ? GOLD_LIGHT : '#9CA3AF',
-                        borderRight: aIdx === 0 ? `1px solid rgba(184,144,71,0.2)` : 'none' }}>
+                      style={{ flex: 1, padding: '10px 0', fontSize: 12.5, fontWeight: 600, fontFamily: T.fontSans,
+                        cursor: 'pointer', border: 'none', borderRadius: 8, transition: 'background 0.15s',
+                        background: AGENT_ACCENT, color: '#fff' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = '#2E5C8A'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = AGENT_ACCENT; }}>
                       {act.label}
                     </button>
                   ))}
-                </div>
                 </div>
               </div>
             );
@@ -11796,57 +12743,106 @@ Responde SOLO con JSON sin bloques de código:
           ) as any[];
           const crisisActivas = crisisAlertsActivasDedup.length;
 
-          return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: 'rgba(184,144,71,0.1)' }}>
+          // Separador visual entre equipos: cada vertical vive en un solo lugar dentro de
+          // Agentes IA (no se reparte en pestañas separadas de la barra horizontal — eso
+          // rompería la lectura de "un solo enjambre" que alimenta al siguiente agente en
+          // la cadena). Lo que sí se refuerza es la separación DENTRO de la página: cada
+          // equipo tiene su propio bloque con un lavado de color muy suave del acento de
+          // esa vertical y espacio real entre bloques, en vez del gap de 1px que hacía que
+          // las 4 verticales se leyeran como una sola masa continua.
+          const vertical = (accent: string, content: React.ReactNode) => (
+            <div style={{ background: `${accent}08`, border: `1px solid ${accent}25`, borderRadius: 10, overflow: 'hidden' }}>
+              {content}
+            </div>
+          );
 
-              {/* ── I · INTELIGENCIA DE MERCADO ── */}
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20, background: T.bg, padding: '20px 24px' }}>
+
+              {/* ── I · INTELIGENCIA — investigan y perfilan, alimentan al resto del enjambre.
+                  Antes esta vertical agrupaba a Camilo+Sofía+Valeria+Isabella bajo un solo
+                  rótulo ("Inteligencia de Mercado"), mezclando investigación/perfilación con
+                  producción de contenido — funciones distintas en el flujo real. Ahora cada
+                  equipo agrupa agentes con el mismo tipo de trabajo, siguiendo el mismo orden
+                  del pipeline de arriba (Camilo → Sofía → Sara → Valeria → Isabella). ── */}
+              {vertical(GOLD,
               <div>
                 {vHeader(
-                  'I', 'Inteligencia de Mercado',
-                  'Camilo investiga · Sofía perfila · Valeria e Isabella generan contenido de captación',
+                  'I', 'Inteligencia',
+                  'Camilo investiga el mercado · Sofía perfila al prospecto — alimentan con datos reales al resto del equipo',
                   GOLD,
                   [
-                    { label: 'Insights nuevos', value: camiloInsights.filter(i => i.status === 'nuevo').length, color: GOLD },
-                    { label: 'En producción', value: valeriaDrafts.filter(d => d.origen_agentivo && d.status === 'pending').length + isabellaScripts.filter(s => s.origen_agentivo && s.status === 'pending').length, color: '#A78BFA' },
-                    { label: 'Completados', value: valeriaDrafts.filter(d => d.origen_agentivo && d.status !== 'pending').length + isabellaScripts.filter(s => s.origen_agentivo && s.status !== 'pending').length, color: '#10B981' },
-                  ],
-                  { label: agentCamiloActive ? '⏳ Investigando...' : '▶ Research', onClick: () => handleCamilo(false, false, 'research'), disabled: agentCamiloActive }
+                    { label: 'Insights nuevos', value: camiloInsights.filter(i => i.status === 'nuevo').length, color: GOLD, onClick: () => setAgentHistoryDetail('CAMILO') },
+                    { label: 'Perfiles generados', value: sofiaProfilesReal.length, color: '#A78BFA', onClick: () => { setSofiaTab('perfiles'); setAgentHistoryDetail('SOFIA'); } },
+                    { label: 'Prospectos activos', value: prospects.filter(p => !['Post-venta', 'Perdido'].includes(p.estado)).length, color: '#10B981', onClick: () => { setPreviousModule('agentes'); setProspectFilterStage('activos'); setActiveModule('prospectos'); } },
+                  ]
                 )}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
-                  {agents.filter(a => ['CAMILO', 'SOFÍA', 'VALERIA', 'ISABELLA'].includes(a.name)).map(renderCard)}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, padding: 12 }}>
+                  {agents.filter(a => ['CAMILO', 'SOFÍA'].includes(a.name)).map(renderCard)}
                 </div>
-              </div>
+              </div>)}
 
-              {/* ── II · GESTIÓN DE CRISIS ── */}
+              {/* ── II · EXPERIENCIA DE CLIENTE — conversación directa con prospectos reales. ── */}
+              {vertical('#10B981',
               <div>
                 {vHeader(
-                  'II', 'Gestión de Crisis',
+                  'II', 'Experiencia de Cliente',
+                  'Sara gestiona prospectos · FAQs · correos y scoring de seguimiento',
+                  '#10B981',
+                  [
+                    { label: 'Mensajes', value: saraMessagesReal, color: '#34D399', onClick: () => setAgentHistoryDetail('SARA') },
+                    { label: 'Alertas', value: saraAlertsReal, color: '#FBBF24', onClick: () => setAgentHistoryDetail('SARA') },
+                    { label: 'Prospectos activos', value: prospects.filter(p => !['Post-venta', 'Perdido'].includes(p.estado)).length, color: '#34D399', onClick: () => { setPreviousModule('agentes'); setProspectFilterStage('activos'); setActiveModule('prospectos'); } },
+                  ]
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12, padding: 12 }}>
+                  {agents.filter(a => a.name === 'SARA').map(renderCard)}
+                </div>
+              </div>)}
+
+              {/* ── III · CONTENIDO & MARCA — producen contenido a partir de los insights de
+                  Camilo/Sofía y de la conversación con Sara (ver approveInsight). ── */}
+              {vertical('#7C3AED',
+              <div>
+                {vHeader(
+                  'III', 'Contenido & Marca',
+                  'Valeria redacta campañas · Isabella produce video — ambas parten de insights reales, no de plantillas genéricas',
+                  '#7C3AED',
+                  [
+                    { label: 'En producción', value: valeriaDrafts.filter(d => d.origen_agentivo && d.status === 'pending').length + isabellaScripts.filter(s => s.origen_agentivo && s.status === 'pending').length, color: '#A78BFA', onClick: () => { setValeriaTab('contenido'); setAgentHistoryTab('pending'); setAgentHistoryDetail('VALERIA'); } },
+                    { label: 'Completados', value: valeriaDrafts.filter(d => d.origen_agentivo && d.status !== 'pending').length + isabellaScripts.filter(s => s.origen_agentivo && s.status !== 'pending').length, color: '#10B981', onClick: () => { setValeriaTab('contenido'); setAgentHistoryTab('active'); setAgentHistoryDetail('VALERIA'); } },
+                    { label: 'Insights disponibles', value: camiloInsights.filter(i => i.status === 'nuevo').length, color: GOLD, onClick: () => setAgentHistoryDetail('CAMILO') },
+                  ]
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, padding: 12 }}>
+                  {agents.filter(a => ['VALERIA', 'ISABELLA'].includes(a.name)).map(renderCard)}
+                </div>
+              </div>)}
+
+              {/* ── IV · RESPUESTA A CRISIS — no es un equipo fijo, es una función transversal
+                  que activa a todo el enjambre cuando un KPI cae fuera de rango. ── */}
+              {vertical('#DC2626',
+              <div>
+                {vHeader(
+                  'IV', 'Respuesta a Crisis',
                   'Detección automática de KPIs en riesgo · enjambre de contingencia cross-equipo',
                   '#DC2626',
                   [
+                    // "Alertas activas"/"Resueltas" no llevan a ningún lado — ya están
+                    // completamente representadas más abajo en esta misma sección (o en el
+                    // estado vacío "Sin alertas activas"), así que un drilldown sería
+                    // redundante consigo mismo, no decorativo.
                     { label: 'Alertas activas', value: crisisActivas, color: '#F87171' },
                     { label: 'Resueltas', value: crisisAlerts.filter(a => a.status === 'resuelta').length, color: '#10B981' },
-                    { label: 'Contenidos crisis', value: valeriaDrafts.filter(d => (d.type || '').toLowerCase().includes('crisis') || (d.canal || '').toLowerCase().includes('crisis')).length, color: '#FBBF24' },
+                    { label: 'Contenidos crisis', value: valeriaDrafts.filter(d => (d.type || '').toLowerCase().includes('crisis') || (d.canal || '').toLowerCase().includes('crisis')).length, color: '#FBBF24', onClick: () => { setValeriaTab('contenido'); setAgentHistoryDetail('VALERIA'); } },
                   ],
                   { label: kpiCrisisRunning ? '⏳ Generando...' : '▶ Respuesta Coordinada', onClick: () => runKpiCrisisResponse(), disabled: kpiCrisisRunning || crisisActivas === 0 }
                 )}
                 <div style={{ background: '#fff', padding: '20px 40px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {crisisActivas === 0 ? (
+                  {crisisActivas === 0 && (
                     <div style={{ padding: '18px 0', textAlign: 'center', color: '#9CA3AF', fontSize: 11 }}>
                       <span style={{ fontSize: 20, display: 'block', marginBottom: 6 }}>✓</span>
                       Sin alertas de crisis activas — KPIs en rango normal
-                    </div>
-                  ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-                      {crisisAlertsActivasDedup.map(alert => (
-                        <div key={alert.id} style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderLeft: '3px solid #DC2626', padding: '12px 14px' }}>
-                          <div style={{ fontSize: 8, letterSpacing: 2, color: '#DC2626', fontWeight: 800, textTransform: 'uppercase' as const, marginBottom: 4 }}>
-                            {alert.nivel} · {(alert.tipo || '').replace(/_/g, ' ')}
-                          </div>
-                          <div style={{ fontSize: 12, color: '#1F2937', fontFamily: T.fontSerif, marginBottom: 4 }}>{alert.titulo}</div>
-                          <div style={{ fontSize: 10, color: '#6B7280' }}>{(alert.descripcion || '').slice(0, 90)}…</div>
-                        </div>
-                      ))}
                     </div>
                   )}
                   {/* Respuesta generada — antes se perdía dentro de saraReportText compartido
@@ -11864,35 +12860,49 @@ Responde SOLO con JSON sin bloques de código:
                       )}
                     </div>
                   )}
-                  <div style={{ display: 'flex', gap: 8, paddingTop: 12, borderTop: '1px solid #F3EFE7', flexWrap: 'wrap' as const }}>
-                    {/* Distinto del anterior: esto es la gestión de VENTAS CAÍDAS (razón de baja
-                        real por prospecto), no las alertas de KPI de arriba — antes ambos
-                        conceptos vivían mezclados bajo el mismo nombre "Gestión de Crisis". */}
-                    <button onClick={() => { setPreviousModule('agentes'); setActiveModule('kpis'); setActiveDrilldown({ type: 'conversion' } as any); }}
-                      style={{ padding: '7px 16px', background: 'transparent', border: `1px solid rgba(16,185,129,0.3)`, color: '#059669', fontSize: 9, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, cursor: 'pointer' }}>
-                      Gestión de Ventas Caídas →
+                  {/* ── GESTIÓN DE VENTAS CAÍDAS — antes vivía en el Dashboard de KPIs (drilldown
+                      de Conversión), separada de esta sección aunque es el mismo enjambre de
+                      agentes respondiendo a una señal de riesgo. Ahora vive aquí, junto al
+                      resto de "Respuesta a Crisis". Distinto de las alertas de KPI de arriba:
+                      esto trabaja sobre razón de baja real capturada por prospecto. ── */}
+                  <div style={{ borderTop: '1px solid #F3EFE7', paddingTop: 14, marginTop: 4 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#374151', letterSpacing: 0.5 }}>Gestión de Ventas Caídas — por causa</div>
+                      <button onClick={loadCrisisCausas} disabled={crisisCausasLoading}
+                        style={{ background: 'none', border: 'none', color: '#9CA3AF', fontSize: 10, cursor: 'pointer' }}>
+                        {crisisCausasLoading ? 'Cargando...' : '↻ Actualizar'}
+                      </button>
+                    </div>
+                    {crisisCausas.length === 0 ? (
+                      <div style={{ fontSize: 11, color: '#9CA3AF', padding: '8px 0' }}>Sin ventas caídas registradas todavía.</div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 6, marginBottom: 12 }}>
+                        {crisisCausas.map(c => {
+                          const isSelected = selectedCausas.includes(c.causa);
+                          return (
+                            <div key={c.causa} onClick={() => toggleCausaSeleccionada(c.causa)}
+                              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: isSelected ? '#ECFDF5' : '#fff', border: `1px solid ${isSelected ? '#059669' : '#F3EFE7'}`, cursor: 'pointer' }}>
+                              <input type="checkbox" checked={isSelected} onChange={() => toggleCausaSeleccionada(c.causa)} onClick={e => e.stopPropagation()} style={{ cursor: 'pointer' }} />
+                              <div style={{ flex: 1, fontSize: 11, color: '#1F2937', fontWeight: 600 }}>{c.causa}</div>
+                              <div style={{ fontSize: 10, color: '#6B7280' }}>{c.total} caso(s)</div>
+                              <button onClick={e => { e.stopPropagation(); toggleCausaGestionada(c.causa, !c.gestionado); }}
+                                style={{ fontSize: 8, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' as const, padding: '3px 8px', border: `1px solid ${c.gestionado ? '#10B981' : '#D1D5DB'}`, background: c.gestionado ? '#10B981' : 'transparent', color: c.gestionado ? '#fff' : '#9CA3AF', cursor: 'pointer', flexShrink: 0 }}
+                                title={c.gestionado ? `Gestionada por ${c.gestionado_por || '—'}` : 'Marcar como gestionada'}>
+                                {c.gestionado ? '✓ Gestionada' : 'Pendiente'}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <button onClick={runCrisisSwarm} disabled={crisisSwarmRunning || crisisCausas.length === 0}
+                      style={{ padding: '8px 16px', background: crisisSwarmRunning ? '#9CA3AF' : '#059669', border: 'none', color: '#fff', fontSize: 9, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' as const, cursor: crisisSwarmRunning || crisisCausas.length === 0 ? 'not-allowed' : 'pointer' }}>
+                      {crisisSwarmRunning ? 'Ejecutando...' : selectedCausas.length > 0 ? `Analizar ${selectedCausas.length} causa(s) seleccionada(s)` : 'Analizar 2 causas más frecuentes'}
                     </button>
+                    {renderCrisisSwarmConsole()}
                   </div>
                 </div>
-              </div>
-
-              {/* ── III · CLIENTES ACTIVOS ── */}
-              <div>
-                {vHeader(
-                  'III', 'Clientes Activos',
-                  'Sara gestiona prospectos · FAQs · correos y scoring de seguimiento',
-                  '#10B981',
-                  [
-                    { label: 'Mensajes', value: agentSaraMessages, color: '#34D399' },
-                    { label: 'Alertas', value: agentSaraAlerts, color: '#FBBF24' },
-                    { label: 'Prospectos activos', value: prospects.filter(p => !['Post-venta', 'Perdido'].includes(p.estado)).length, color: '#34D399' },
-                  ],
-                  { label: agentSaraActive ? '⏳ Analizando...' : '▶ Analizar Consultas', onClick: () => handleSara(), disabled: agentSaraActive }
-                )}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 1 }}>
-                  {agents.filter(a => a.name === 'SARA').map(renderCard)}
-                </div>
-              </div>
+              </div>)}
 
             </div>
           );
@@ -11915,17 +12925,24 @@ Responde SOLO con JSON sin bloques de código:
 
     const addFaq = () => {
       if (!newFaq.pregunta || !newFaq.respuesta) return;
-      setFaqs([...faqs, { id: Date.now(), ...newFaq }]);
+      const tempId = Date.now();
+      setFaqs([...faqs, { id: tempId, ...newFaq }]);
       setNewFaq({ categoria: FAQ_CATEGORIES[0], pregunta: '', respuesta: '' });
       setShowFaqForm(false);
+      fetch(`${API_ROOT}/api/faqs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newFaq) })
+        .then(r => r.json())
+        .then(saved => { if (saved?.id) setFaqs(prev => prev.map(f => f.id === tempId ? { ...f, id: saved.id } : f)); })
+        .catch(() => {});
     };
 
     const deleteFaq = (id: number) => {
       setFaqs(faqs.filter(f => f.id !== id));
+      fetch(`${API_ROOT}/api/faqs/${id}`, { method: 'DELETE' }).catch(() => {});
     };
 
     const updateFaq = (id: number, field: string, value: string) => {
       setFaqs(faqs.map(f => f.id === id ? { ...f, [field]: value } : f));
+      fetch(`${API_ROOT}/api/faqs/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: value }) }).catch(() => {});
     };
 
     return (
@@ -12021,7 +13038,7 @@ Responde SOLO con JSON sin bloques de código:
                   <div key={faq.id} style={{ ...cardStyle({ marginBottom: 8, padding: '14px 20px', cursor: 'pointer' }) }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                       onClick={() => {
-                        if (!expanded) supabase.from('faq_clicks').insert({ question: faq.pregunta, category: cat, source: 'crm' }).then(() => {});
+                        if (!expanded) fetch(`${API_ROOT}/api/faq-clicks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ faq_id: faq.id, source: 'crm' }) }).catch(() => {});
                         setExpandedFaq(expanded ? null : faq.id);
                       }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: T.text, flex: 1 }}>
@@ -13345,20 +14362,23 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
       <div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <div style={{ fontSize: 22, fontWeight: 300, color: T.text, fontFamily: T.fontSerif, letterSpacing: '0.03em' }}>Catálogo de Proyectos</div>
-            <div style={{ fontSize: 11, color: T.textSec, marginTop: 3, letterSpacing: '0.06em' }}>{catalogProjects.length} proyectos · {cats.slice(1).map(c => `${catalogProjects.filter(p=>p.category===c).length} ${c}`).join(' · ')}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: T.text, fontFamily: T.fontSans, letterSpacing: '-0.01em' }}>Catálogo de Proyectos</div>
+            <div style={{ fontSize: 11, color: T.textSec, marginTop: 5, letterSpacing: '0.06em' }}>{catalogProjects.length} proyectos · {cats.slice(1).map(c => `${catalogProjects.filter(p=>p.category===c).length} ${c}`).join(' · ')}</div>
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: T.teal, color: T.card, borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-              📊 Importar Excel
+            {/* Sin emojis como íconos de botón (se veía genérico/plantilla) y sin el morado
+                suelto — "Leer Datos con IA" pasa a la misma familia azul cobalto del resto
+                de la plataforma en vez de un color sin relación con la paleta. */}
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 0, padding: '8px 14px', background: T.teal, color: T.card, borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: T.fontSans }}>
+              Importar Excel
               <input type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={handleExcel} />
             </label>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: 'transparent', color: T.teal, border: `1.5px solid ${T.teal}`, borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-              🖼️ Importar Imagen
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 0, padding: '8px 14px', background: 'transparent', color: T.teal, border: `1.5px solid ${T.teal}`, borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: T.fontSans }}>
+              Importar Imagen
               <input type="file" accept=".jpg,.jpeg,image/jpeg" multiple style={{ display: 'none' }} onChange={handleImageImport} />
             </label>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: visionLoading ? T.textSec : '#6B46C1', color: '#fff', borderRadius: 8, cursor: visionLoading ? 'wait' : 'pointer', fontSize: 12, fontWeight: 600, opacity: visionLoading ? 0.7 : 1 }}>
-              {visionLoading ? '⏳ Leyendo con IA…' : '🔎 Leer Datos con IA'}
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 0, padding: '8px 14px', background: visionLoading ? T.textSec : '#3E7CB8', color: '#fff', borderRadius: 8, cursor: visionLoading ? 'wait' : 'pointer', fontSize: 12, fontWeight: 600, fontFamily: T.fontSans, opacity: visionLoading ? 0.7 : 1 }}>
+              {visionLoading ? 'Leyendo con IA…' : 'Leer Datos con IA'}
               <input type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" style={{ display: 'none' }} onChange={handleImageDataExtract} disabled={visionLoading} />
             </label>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -13377,7 +14397,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                 {catalogSort.dir === 'asc' ? '↑' : '↓'}
               </button>
             </div>
-            <button onClick={() => setCatalogTab(catalogTab === 'tabla' ? 'tarjetas' : 'tabla')} style={{ padding: '8px 14px', background: T.sand, border: `1px solid ${T.border}`, borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: T.text }}>
+            <button onClick={() => setCatalogTab(catalogTab === 'tabla' ? 'tarjetas' : 'tabla')} style={{ padding: '8px 14px', background: 'transparent', border: `1.5px solid ${T.border}`, borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: T.teal, fontFamily: T.fontSans }}>
               {catalogTab === 'tabla' ? 'Ver Tarjetas' : 'Ver Tabla'}
             </button>
           </div>
@@ -13613,6 +14633,10 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
       { id: 'reglas', label: 'Reglas de Negocio', icon: 'chart-bar' },
       { id: 'integraciones', label: 'Integraciones', icon: 'plug' },
       { id: 'backups', label: 'Backups', icon: 'backup' },
+      // Antes vivía como una barra siempre visible en Agentes IA — visible para todo
+      // el equipo aunque solo le sirviera a quien controla el presupuesto. Se mueve
+      // aquí, solo para superadmin, junto con el resto de la configuración del sistema.
+      ...(isSuperAdmin ? [{ id: 'costos_ia' as const, label: 'Costos de IA', icon: 'chart-bar' }] : []),
     ];
 
     const editBroker = (idx: number, field: keyof Broker, value: string) => {
@@ -14086,16 +15110,55 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
             {renderBackups()}
           </div>
         )}
+
+        {configTab === 'costos_ia' && (
+          <div style={{ ...cardStyle() }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Icon name="chart-bar" size={16} color={T.teal} /> Costos de IA
+            </div>
+            <div style={{ fontSize: 11, color: T.textSec, marginBottom: 18 }}>
+              Informativo — sin tope de gasto configurado todavía. Solo visible para superadministrador.
+            </div>
+            {agentCostSummary && agentCostSummary.total?.ejecuciones > 0 ? (
+              <>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 16 }}>
+                  <span style={{ fontSize: 28, fontWeight: 800, color: T.teal, fontFamily: 'Inter, sans-serif', fontVariantNumeric: 'tabular-nums' }}>
+                    ${Number(agentCostSummary.total?.costo_total_usd || 0).toFixed(4)} USD
+                  </span>
+                  <span style={{ fontSize: 12, color: T.textSec }}>últimos {agentCostSummary.days}d · {agentCostSummary.total?.ejecuciones} llamadas</span>
+                </div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' as const }}>
+                  {agentCostSummary.porAgente.map((a: any) => (
+                    <div key={a.agent_name} style={{ border: `1px solid ${T.border}`, borderRadius: 6, padding: '10px 14px', minWidth: 140 }}>
+                      <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: T.textSec, fontWeight: 700 }}>{a.agent_name}</div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>${Number(a.costo_total_usd).toFixed(4)}</div>
+                      <div style={{ fontSize: 10, color: T.textSec }}>{a.ejecuciones} llamadas</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: 12, color: T.textSec }}>Sin ejecuciones registradas todavía.</div>
+            )}
+          </div>
+        )}
       </div>
     );
   };
 
   const renderReportes = () => {
-    const G = T.coral; const N = T.teal;
+    // Paleta de Reportes: solo azules y grises (sin dorado ni tonos oscuros que
+    // rechinen contra las tarjetas KPI cobalto) — G y B son ambos acentos azules,
+    // uno más claro/steel para "acento secundario" y otro medio para líneas/trazos.
+    const G = '#4E7FAD'; const N = T.teal; const B = '#2E5C8A';
     const CREAM = T.bg; const PARCH = T.parchment;
     const SERIF = T.fontSerif; const SANS = T.fontSans;
-    const PALETTE = ['#0F3B66','#B89047','#4A87A8','#6FA394','#8C6D3F','#5B7BA6','#C9A45C','#3D5F82','#7FA6A0','#9A7B4F'];
-    // Progresión monocromática navy → dorado en orden de negocio (Contacto → Cierre),
+    // Con solo variación de brillo en un mismo azul, dos o tres brokers seguían siendo
+    // difíciles de distinguir en la misma barra apilada. Se abre a una familia fría
+    // multi-matiz (navy, azul, índigo-violeta, teal, azul claro) — todos siguen leyendo
+    // "fríos/corporativos", pero cada uno es identificable sin comparar tonos casi iguales.
+    const PALETTE = ['#0F2A47','#2E6CA4','#5B4B8A','#0B8793','#7FB2DB','#94A3B8','#1D4E7A','#B9DAF0'];
+    // Progresión monocromática de azules en orden de negocio (Contacto → Cierre),
     // en vez de una paleta arcoíris sin relación con el avance real del prospecto.
     // Post-venta y Lead Frío quedan fuera del degradado porque no son parte del avance
     // lineal del embudo (uno es el destino final, el otro una salida temprana).
@@ -14177,7 +15240,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
     const filterBar = (
       <div style={{background:'#fff',border:`1px solid ${T.border}`,borderRadius:4,padding:'10px 16px',marginBottom:16,display:'flex',flexWrap:'wrap',gap:10,alignItems:'center'}}>
         <span style={{fontSize:9,letterSpacing:2,color:G,fontWeight:700,textTransform:'uppercase',fontFamily:SANS}}>Período</span>
-        <div style={{display:'flex',gap:2,background:PARCH,borderRadius:3,padding:2}}>
+        <div style={{display:'flex',gap:2,background:'#EEF1F5',borderRadius:3,padding:2}}>
           {periodos.map(p=>(
             <button key={p.d} onClick={()=>{setRptDias(p.d);setRptFechaInicio('');setRptFechaFin('');}} style={{padding:'4px 10px',borderRadius:2,border:'none',cursor:'pointer',fontSize:11,fontWeight:600,fontFamily:SANS,background:rptDias===p.d?N:'transparent',color:rptDias===p.d?'#fff':T.textSec,transition:'all 0.12s'}}>
               {p.l}
@@ -14186,7 +15249,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
         </div>
         {showAgrup && <>
           <span style={{fontSize:9,letterSpacing:2,color:G,fontWeight:700,textTransform:'uppercase',fontFamily:SANS}}>Agrupar</span>
-          <div style={{display:'flex',gap:2,background:PARCH,borderRadius:3,padding:2}}>
+          <div style={{display:'flex',gap:2,background:'#EEF1F5',borderRadius:3,padding:2}}>
             {agrupOpts.map(a=>(
               <button key={a.k} onClick={()=>setRptAgrup(a.k)} style={{padding:'4px 10px',borderRadius:2,border:'none',cursor:'pointer',fontSize:11,fontWeight:600,fontFamily:SANS,background:rptAgrup===a.k?G:'transparent',color:rptAgrup===a.k?'#fff':T.textSec,transition:'all 0.12s'}}>
                 {a.l}
@@ -14248,14 +15311,18 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
     const kpiCard = (label:string, value:string|number, sub:string, trend?:string) => {
       const tipData = RPT_TIPS[label];
       return (
-      <div style={{background:'#fff',border:`1px solid ${T.border}`,borderTop:`3px solid ${G}`,borderRadius:3,padding:'16px 18px'}}>
-        <div style={{fontSize:9,color:'#94a3b8',fontWeight:700,textTransform:'uppercase',letterSpacing:1.4,marginBottom:6,fontFamily:SANS,display:'flex',alignItems:'center'}}>
-          {label}{tipData && <InfoTip text={tipData.tip} benchmark={tipData.benchmark}/>}
+      <div style={{background:'#fff',border:`1px solid ${T.border}`,borderRadius:6,overflow:'hidden'}}>
+        <div style={{background:'linear-gradient(135deg, #1E3A5F, #3E7CB8)',padding:'8px 14px'}}>
+          <div style={{fontSize:9,color:'#C9DCEF',fontWeight:700,textTransform:'uppercase',letterSpacing:1.4,fontFamily:SANS,display:'flex',alignItems:'center'}}>
+            {label}{tipData && <InfoTip text={tipData.tip} benchmark={tipData.benchmark}/>}
+          </div>
         </div>
-        <div style={{fontSize:24,fontWeight:700,color:N,lineHeight:1.1,fontFamily:SERIF}}>{rptLoading?'…':value}</div>
-        <div style={{fontSize:11,color:T.textSec,marginTop:5,display:'flex',gap:5,alignItems:'center',fontFamily:SANS}}>
-          {trend && <span style={{color:trend.startsWith('+')?T.success:T.danger,fontWeight:700}}>{trend}</span>}
-          {sub}
+        <div style={{padding:'14px 18px 16px'}}>
+          <div style={{fontSize:24,fontWeight:800,color:N,lineHeight:1.1,fontFamily:SANS,fontVariantNumeric:'tabular-nums'}}>{rptLoading?'…':value}</div>
+          <div style={{fontSize:11,color:T.textSec,marginTop:7,display:'flex',gap:5,alignItems:'center',fontFamily:SANS}}>
+            {trend && <span style={{color:trend.startsWith('+')?T.success:T.danger,fontWeight:700}}>{trend}</span>}
+            {sub}
+          </div>
         </div>
       </div>
     );};
@@ -14280,12 +15347,12 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                     <XAxis dataKey="periodo" tick={{fontSize:10,fill:'#94a3b8'}} tickLine={false} axisLine={false}/>
                     <YAxis yAxisId="left" tick={{fontSize:10,fill:'#94a3b8'}} tickLine={false} axisLine={false} allowDecimals={false}/>
                     <YAxis yAxisId="right" orientation="right" tick={{fontSize:10,fill:'#94a3b8'}} tickLine={false} axisLine={false} allowDecimals={false}/>
-                    <Tooltip contentStyle={{fontSize:12,borderRadius:8,border:'1px solid #e2e8f0'}} formatter={(v:any,n:string)=>[v, n==='total'?'Nuevos':'Acumulado']}/>
+                    <Tooltip contentStyle={{fontSize:12,borderRadius:8,border:'1px solid #e2e8f0'}} formatter={(v:any,n:any)=>[v, n==='total'?'Nuevos':'Acumulado']}/>
                     <Legend wrapperStyle={{fontSize:11}} formatter={(v:string)=>v==='total'?'Nuevos del período':'Acumulado'}/>
                     <Bar yAxisId="left" dataKey="total" fill={`${G}55`} radius={[3,3,0,0]} name="total">
                       <LabelList dataKey="total" position="top" style={{fontSize:10,fill:'#64748b',fontFamily:SANS}} formatter={(v:any)=>v>0?v:''}/>
                     </Bar>
-                    <Line yAxisId="right" type="monotone" dataKey="acumulado" stroke={N} strokeWidth={2} dot={false} activeDot={{r:4}} name="acumulado"/>
+                    <Line yAxisId="right" type="monotone" dataKey="acumulado" stroke={B} strokeWidth={2} dot={false} activeDot={{r:4}} name="acumulado"/>
                   </ComposedChart>
                 </ResponsiveContainer>
               );
@@ -14331,9 +15398,12 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
               <YAxis tick={{fontSize:10,fill:'#94a3b8'}} tickLine={false} axisLine={false} allowDecimals={false}/>
               <Tooltip contentStyle={{fontSize:12,borderRadius:8,border:'1px solid #e2e8f0'}}/>
               <Legend wrapperStyle={{fontSize:11}}/>
+              {/* Separador blanco entre segmentos y valor dentro de cada uno (cuando cabe)
+                  — con la paleta multi-matiz cada color ya se distingue mejor, pero el
+                  borde y la etiqueta ayudan igual cuando dos segmentos quedan muy delgados. */}
               {brokersUnicos.map((b:any,i:number)=>(
-                <Bar key={b} dataKey={b} fill={PALETTE[i%PALETTE.length]} radius={[3,3,0,0]} stackId="a">
-                  {i===brokersUnicos.length-1 && <LabelList dataKey={b} position="top" style={{fontSize:10,fill:'#64748b',fontWeight:600,fontFamily:SANS}}/>}
+                <Bar key={b} dataKey={b} fill={PALETTE[i%PALETTE.length]} stroke="#fff" strokeWidth={2} radius={[3,3,0,0]} stackId="a">
+                  <LabelList dataKey={b} position="center" style={{fontSize:9,fill:'#fff',fontWeight:700,fontFamily:SANS}} formatter={(v:any)=> Number(v)>=2 ? v : ''}/>
                 </Bar>
               ))}
             </BarChart>
@@ -14402,8 +15472,8 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
               <Tooltip contentStyle={{fontSize:12,borderRadius:8,border:'1px solid #e2e8f0'}}/>
               <Legend wrapperStyle={{fontSize:11}}/>
               {proyectosUnicos.map((p:any,i:number)=>(
-                <Bar key={p} dataKey={p} stackId="a" fill={PALETTE[i%PALETTE.length]} name={p} radius={i===proyectosUnicos.length-1?[3,3,0,0]:[0,0,0,0]}>
-                  {i===proyectosUnicos.length-1 && <LabelList dataKey={p} position="top" style={{fontSize:10,fill:'#64748b',fontWeight:600,fontFamily:SANS}}/>}
+                <Bar key={p} dataKey={p} stackId="a" fill={PALETTE[i%PALETTE.length]} stroke="#fff" strokeWidth={2} name={p} radius={i===proyectosUnicos.length-1?[3,3,0,0]:[0,0,0,0]}>
+                  <LabelList dataKey={p} position="center" style={{fontSize:9,fill:'#fff',fontWeight:700,fontFamily:SANS}} formatter={(v:any)=> Number(v)>=2 ? v : ''}/>
                 </Bar>
               ))}
             </BarChart>
@@ -14416,7 +15486,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false}/>
               <XAxis dataKey="proyecto" tick={{fontSize:9,fill:'#94a3b8'}} tickLine={false} axisLine={false} interval={0} angle={-25} textAnchor="end" height={45}/>
               <YAxis tick={{fontSize:10,fill:'#94a3b8'}} tickLine={false} axisLine={false} allowDecimals={false}/>
-              <Tooltip contentStyle={{fontSize:12,borderRadius:8,border:'1px solid #e2e8f0'}} formatter={(v:any,n:string)=>n==='presupuesto'?[fmtUSD(v),'Pipeline']:v}/>
+              <Tooltip contentStyle={{fontSize:12,borderRadius:8,border:'1px solid #e2e8f0'}} formatter={(v:any,n:any)=>n==='presupuesto'?[fmtUSD(v),'Pipeline']:v}/>
               <Bar dataKey="total" radius={[4,4,0,0]} name="Prospectos">
                 {analyticsProyecto.map((_:any,i:number)=>(
                   <Cell key={i} fill={PALETTE[i%PALETTE.length]}/>
@@ -14474,7 +15544,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
           analyticsCanal.length===0 ? noData() :
           <ResponsiveContainer width="100%" height={220}>
             <PieChart>
-              <Pie data={analyticsCanal.map(r=>({name:r.canal,value:Number(r.total)}))} cx="50%" cy="50%" outerRadius={85} innerRadius={42} dataKey="value" nameKey="name" label={({name,percent})=>`${name} ${Math.round(percent*100)}%`} labelLine={false} style={{fontSize:10}}>
+              <Pie data={analyticsCanal.map(r=>({name:r.canal,value:Number(r.total)}))} cx="50%" cy="50%" outerRadius={85} innerRadius={42} dataKey="value" nameKey="name" label={({name,percent})=>`${name} ${Math.round((percent ?? 0)*100)}%`} labelLine={false} style={{fontSize:10}}>
                 {analyticsCanal.map((_:any,i:number)=><Cell key={i} fill={PALETTE[i%PALETTE.length]}/>)}
               </Pie>
               <Tooltip contentStyle={{fontSize:12,borderRadius:8,border:'1px solid #e2e8f0'}}/>
@@ -14604,7 +15674,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
         <div style={{background:'#fff',borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',padding:'16px 24px 0'}}>
             <div>
-              <div style={{fontSize:18,fontWeight:600,color:N,fontFamily:SERIF,lineHeight:1.2,marginBottom:14}}>Análisis Comercial</div>
+              <div style={{fontSize:18,fontWeight:800,color:N,fontFamily:SANS,lineHeight:1.2,marginBottom:14}}>Análisis Comercial</div>
             </div>
             <div style={{display:'flex',gap:6}}>
               {btnExport('Excel','📊',exportExcel,true)}
@@ -14766,13 +15836,15 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
     );
   };
 
-  // ── MÓDULO CASOS — full-page, Sotheby's aesthetic ────────────────────────
+  // ── MÓDULO CASOS ───────────────────────────────────────────────────────
   const renderCasos = () => {
-    const SF = T.fontSerif;
+    const SF = T.fontSans;
     const SS = T.fontSans;
     const NAVY = T.teal;
     const GOLD = T.coral;
-    const CREAM = '#FAF9F6';
+    // Antes '#FAF9F6' (crema cálido, resto de la paleta "Sotheby's" ya retirada) —
+    // se realinea al gris frío estándar de la plataforma.
+    const CREAM = '#F4F5F7';
 
     const TIPO_COLOR: Record<string,string> = { consulta:'#1D3557', soporte:'#6B3FA0', reclamo:'#B5202A', tramite:'#0E6D8E' };
     const TIPO_LABEL: Record<string,string> = { consulta:'Consulta', soporte:'Soporte', reclamo:'Reclamo', tramite:'Trámite' };
@@ -14813,7 +15885,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
     };
     const labelStyle: React.CSSProperties = {
       fontSize:9, fontWeight:700, letterSpacing:1.4, textTransform:'uppercase',
-      color:'#8B8170', marginBottom:5, display:'block', fontFamily:SS,
+      color:'#6B7280', marginBottom:5, display:'block', fontFamily:SS,
     };
 
     return (
@@ -14823,15 +15895,12 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
         <div style={{flex:1,minWidth:0,overflowY:'auto',padding:'36px 40px'}}>
 
           {/* Encabezado de sección */}
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:28,borderBottom:`1px solid #DDD8CE`,paddingBottom:20}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:28,borderBottom:`1px solid #E5E7EB`,paddingBottom:20}}>
             <div>
-              <div style={{fontSize:10,letterSpacing:2.5,color:GOLD,fontWeight:700,fontFamily:SS,textTransform:'uppercase',marginBottom:6}}>
-                GLP Wealth Management
-              </div>
-              <h1 style={{margin:0,fontSize:30,fontFamily:SF,fontWeight:400,color:NAVY,letterSpacing:0.5,lineHeight:1}}>
+              <h1 style={{margin:0,fontSize:28,fontFamily:SS,fontWeight:800,color:NAVY,letterSpacing:'-0.01em',lineHeight:1}}>
                 Casos & Postventa
               </h1>
-              <p style={{margin:'6px 0 0',fontSize:12,color:'#8B8170',fontFamily:SS}}>
+              <p style={{margin:'6px 0 0',fontSize:12,color:'#6B7280',fontFamily:SS}}>
                 Gestión de consultas, soporte y trámites post-cierre
               </p>
             </div>
@@ -14855,14 +15924,14 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
               <div key={k.label} style={{background:'#fff',border:'1px solid #E8E3DB',padding:'18px 20px',position:'relative',overflow:'hidden'}}>
                 <div style={{position:'absolute',top:0,left:0,width:3,height:'100%',background:k.color}}/>
                 <div style={{fontSize:28,fontWeight:300,color:k.color,fontFamily:SF,lineHeight:1,marginBottom:4}}>{k.val}</div>
-                <div style={{fontSize:9,letterSpacing:1.5,textTransform:'uppercase',color:'#8B8170',fontFamily:SS}}>{k.label}</div>
+                <div style={{fontSize:9,letterSpacing:1.5,textTransform:'uppercase',color:'#6B7280',fontFamily:SS}}>{k.label}</div>
               </div>
             ))}
           </div>
 
           {/* Formulario nuevo/editar */}
           {casoForm && (
-            <div style={{background:'#fff',border:'1px solid #DDD8CE',padding:'28px 32px',marginBottom:28}}>
+            <div style={{background:'#fff',border:'1px solid #E5E7EB',padding:'28px 32px',marginBottom:28}}>
               <div style={{fontSize:12,letterSpacing:2,textTransform:'uppercase',color:GOLD,fontWeight:700,fontFamily:SS,marginBottom:20}}>
                 {newCaso.id ? 'Editar caso' : 'Registrar nuevo caso'}
               </div>
@@ -14961,7 +16030,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                 {f.label}
               </button>
             ))}
-            <div style={{width:1,height:20,background:'#DDD8CE',margin:'0 4px'}}/>
+            <div style={{width:1,height:20,background:'#E5E7EB',margin:'0 4px'}}/>
             <select value={casoFilterPrioridad} onChange={e=>setCasoFilterPrioridad(e.target.value)}
               style={{padding:'5px 10px',border:'1px solid #C8C3BB',borderRadius:2,fontSize:11,fontFamily:SS,color:'#5A5550',background:'#fff'}}>
               <option value=''>Prioridad</option>
@@ -14980,7 +16049,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
             </select>
             {(casoFilterEstado||casoFilterPrioridad||casoFilterTipo) && (
               <button onClick={()=>{setCasoFilterEstado('');setCasoFilterPrioridad('');setCasoFilterTipo('');}}
-                style={{padding:'5px 10px',border:'none',background:'none',color:'#8B8170',fontSize:11,cursor:'pointer',fontFamily:SS}}>
+                style={{padding:'5px 10px',border:'none',background:'none',color:'#6B7280',fontSize:11,cursor:'pointer',fontFamily:SS}}>
                 ✕ Limpiar
               </button>
             )}
@@ -14988,14 +16057,14 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
 
           {/* Lista de casos */}
           {casosLoading ? (
-            <div style={{textAlign:'center',padding:60,color:'#8B8170',fontFamily:SF,fontSize:16,fontWeight:300}}>
+            <div style={{textAlign:'center',padding:60,color:'#6B7280',fontFamily:SF,fontSize:16,fontWeight:300}}>
               Cargando casos…
             </div>
           ) : casos.length === 0 ? (
             <div style={{textAlign:'center',padding:'64px 0',borderTop:'1px solid #E8E3DB'}}>
               <div style={{fontSize:40,marginBottom:16,opacity:0.25}}>📋</div>
               <div style={{fontSize:22,fontFamily:SF,fontWeight:400,color:NAVY,marginBottom:8}}>Sin casos registrados</div>
-              <div style={{fontSize:12,color:'#8B8170',marginBottom:24,fontFamily:SS}}>
+              <div style={{fontSize:12,color:'#6B7280',marginBottom:24,fontFamily:SS}}>
                 Los casos de soporte y postventa aparecerán aquí.
               </div>
               <button onClick={()=>setCasoForm(true)}
@@ -15008,9 +16077,9 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
             <div style={{borderTop:'1px solid #E8E3DB'}}>
               {/* Cabecera tabla */}
               <div style={{display:'grid',gridTemplateColumns:'3fr 1fr 1fr 1.5fr 1fr 100px',
-                padding:'10px 16px',background:'#F0EDE8',borderBottom:'1px solid #DDD8CE'}}>
+                padding:'10px 16px',background:'#F4F5F7',borderBottom:'1px solid #E5E7EB'}}>
                 {['Caso','Tipo','Prioridad','Cliente','Apertura','Estado'].map(h=>(
-                  <div key={h} style={{fontSize:8,letterSpacing:1.8,textTransform:'uppercase',color:'#8B8170',fontWeight:700,fontFamily:SS}}>{h}</div>
+                  <div key={h} style={{fontSize:8,letterSpacing:1.8,textTransform:'uppercase',color:'#6B7280',fontWeight:700,fontFamily:SS}}>{h}</div>
                 ))}
               </div>
               {casos.map((caso,i)=>{
@@ -15027,7 +16096,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                       <div style={{fontSize:13,fontWeight:600,color:NAVY,fontFamily:SS,
                         whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{caso.titulo}</div>
                       {caso.asignado_a && (
-                        <div style={{fontSize:10,color:'#8B8170',marginTop:2,fontFamily:SS}}>→ {caso.asignado_a}</div>
+                        <div style={{fontSize:10,color:'#6B7280',marginTop:2,fontFamily:SS}}>→ {caso.asignado_a}</div>
                       )}
                     </div>
                     <div style={{display:'flex',alignItems:'center'}}>
@@ -15079,13 +16148,13 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
 
         {/* ── PANEL DETALLE ── */}
         {casoDetail && (
-          <div style={{width:340,flexShrink:0,borderLeft:'1px solid #DDD8CE',background:'#fff',overflowY:'auto',padding:'32px 28px'}}>
+          <div style={{width:340,flexShrink:0,borderLeft:'1px solid #E5E7EB',background:'#fff',overflowY:'auto',padding:'32px 28px'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20}}>
               <div style={{fontSize:9,letterSpacing:2,textTransform:'uppercase',color:GOLD,fontWeight:700,fontFamily:SS}}>
                 Detalle del caso
               </div>
               <button onClick={()=>setCasoDetail(null)}
-                style={{background:'none',border:'none',cursor:'pointer',color:'#8B8170',fontSize:16,lineHeight:1,padding:0}}>✕</button>
+                style={{background:'none',border:'none',cursor:'pointer',color:'#6B7280',fontSize:16,lineHeight:1,padding:0}}>✕</button>
             </div>
 
             <h2 style={{margin:'0 0 16px',fontSize:20,fontFamily:SF,fontWeight:400,color:NAVY,lineHeight:1.3}}>
@@ -15107,7 +16176,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
 
             {casoDetail.descripcion && (
               <div style={{fontSize:13,color:'#3D3730',lineHeight:1.7,marginBottom:20,fontFamily:SS,
-                borderLeft:'2px solid #DDD8CE',paddingLeft:12}}>
+                borderLeft:'2px solid #E5E7EB',paddingLeft:12}}>
                 {casoDetail.descripcion}
               </div>
             )}
@@ -15121,7 +16190,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
               ].filter(Boolean).map((row:any)=>(
                 <div key={row.label} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',
                   padding:'8px 0',borderBottom:'1px solid #F5F2EE'}}>
-                  <span style={{fontSize:10,letterSpacing:1,textTransform:'uppercase',color:'#8B8170',fontFamily:SS}}>{row.label}</span>
+                  <span style={{fontSize:10,letterSpacing:1,textTransform:'uppercase',color:'#6B7280',fontFamily:SS}}>{row.label}</span>
                   <span style={{fontSize:12,color:row.link?NAVY:'#3D3730',fontWeight:600,fontFamily:SS,
                     cursor:row.link?'pointer':'default',textDecoration:row.link?'underline':'none'}}
                     onClick={()=>row.link&&casoDetail.prospecto_id&&(setProspectDetail(casoDetail.prospecto_id),setActiveModule('prospectos'))}>
@@ -15180,7 +16249,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
               return (
                 <div style={{marginBottom:20}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
-                    <div style={{fontSize:9,letterSpacing:1.5,textTransform:'uppercase',color:'#8B8170',fontFamily:SS,fontWeight:700}}>
+                    <div style={{fontSize:9,letterSpacing:1.5,textTransform:'uppercase',color:'#6B7280',fontFamily:SS,fontWeight:700}}>
                       Actividades ({actividades.length})
                     </div>
                     <button onClick={()=>setActOpen(o=>!o)}
@@ -15244,7 +16313,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                           <span style={{fontSize:16,flexShrink:0}}>{a.icono}</span>
                           <div style={{flex:1,minWidth:0}}>
                             <div style={{fontSize:11,color:'#3D3730',fontFamily:SS,lineHeight:1.4}}>{a.descripcion}</div>
-                            <div style={{fontSize:9,color:'#8B8170',fontFamily:SS,marginTop:2,letterSpacing:0.5}}>
+                            <div style={{fontSize:9,color:'#6B7280',fontFamily:SS,marginTop:2,letterSpacing:0.5}}>
                               {a.tipo?.toUpperCase()} · {a.fecha} {a.hora}
                             </div>
                           </div>
@@ -15252,7 +16321,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                       ))}
                     </div>
                   ) : (
-                    <div style={{fontSize:11,color:'#8B8170',fontFamily:SS,fontStyle:'italic',textAlign:'center',padding:'8px 0'}}>
+                    <div style={{fontSize:11,color:'#6B7280',fontFamily:SS,fontStyle:'italic',textAlign:'center',padding:'8px 0'}}>
                       Sin actividades registradas. Usa las sugerencias o registra una actividad libre.
                     </div>
                   )}
@@ -15262,7 +16331,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
 
             {/* Cambiar estado */}
             <div style={{marginBottom:20}}>
-              <div style={{fontSize:9,letterSpacing:1.5,textTransform:'uppercase',color:'#8B8170',fontFamily:SS,marginBottom:10,fontWeight:700}}>
+              <div style={{fontSize:9,letterSpacing:1.5,textTransform:'uppercase',color:'#6B7280',fontFamily:SS,marginBottom:10,fontWeight:700}}>
                 Estado del caso
               </div>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
@@ -15303,7 +16372,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
   // ══════════════════════════════════════════════════════════════
   const renderCampanas = () => {
     const GOLD = '#B89047';
-    const CREAM = '#FAF9F6';
+    const CREAM = '#F4F5F7';
     const NAVY = T.text;
     const GREEN = '#2A7B4F';
 
@@ -16203,12 +17272,12 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
         <div style={{ maxWidth:1200, margin:'0 auto' }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginBottom:20 }}>
             <div>
-              <h2 style={{ fontSize:26,fontWeight:300,color:NAVY,fontFamily:T.fontSerif,margin:0,letterSpacing:'0.02em' }}>Campañas de Marketing</h2>
-              <div style={{ fontSize:10,color:T.textSec,letterSpacing:'0.1em',textTransform:'uppercase',marginTop:4 }}>Gestión · Correos Automáticos · Retorno de Inversión · Referencias del Mercado</div>
+              <h2 style={{ fontSize:24,fontWeight:800,color:NAVY,fontFamily:T.fontSans,margin:0,letterSpacing:'-0.01em' }}>Campañas de Marketing</h2>
+              <div style={{ fontSize:10,color:T.textSec,letterSpacing:'0.1em',textTransform:'uppercase',marginTop:6 }}>Gestión · Correos Automáticos · Retorno de Inversión · Referencias del Mercado</div>
             </div>
             <button onClick={()=>{setCampanaDetalle(null);setCampanaTab('nueva');setCampanaWizardStep(1);}}
-              style={{ padding:'9px 18px',background:GOLD,border:'none',borderRadius:2,color:'#fff',fontSize:9,fontWeight:700,letterSpacing:'0.1em',cursor:'pointer' }}>
-              + NUEVA CAMPAÑA
+              style={{ padding:'8px 18px',background:NAVY,border:'none',borderRadius:8,color:'#fff',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:T.fontSans }}>
+              + Nueva Campaña
             </button>
           </div>
 
@@ -16216,7 +17285,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
           <div style={{ display:'flex', borderBottom:`1px solid ${T.border}`, marginBottom:24 }}>
             {([['dashboard','Dashboard'],['lista','Campañas'],['nueva','Nueva Campaña'],['roi','Análisis ROI']] as [string,string][]).map(([id,lbl])=>(
               <button key={id} onClick={()=>{setCampanaTab(id as any);if(id!=='lista')setCampanaDetalle(null);if(id==='nueva')setCampanaWizardStep(1);}}
-                style={{ padding:'9px 20px',background:'none',border:'none',borderBottom:campanaTab===id?`2px solid ${GOLD}`:'2px solid transparent',color:campanaTab===id?NAVY:T.textSec,fontSize:11,fontWeight:campanaTab===id?600:400,letterSpacing:'0.06em',cursor:'pointer',marginBottom:-1 }}>
+                style={{ padding:'9px 20px',background:'none',border:'none',borderBottom:campanaTab===id?`2px solid ${NAVY}`:'2px solid transparent',color:campanaTab===id?NAVY:T.textSec,fontSize:11,fontWeight:campanaTab===id?600:400,letterSpacing:'0.06em',cursor:'pointer',marginBottom:-1,fontFamily:T.fontSans }}>
                 {lbl}
               </button>
             ))}
@@ -16236,11 +17305,14 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
   // ══════════════════════════════════════════════════════════════
   const renderMobileView = () => {
     const NAVY = '#001A37';
-    const GOLD = '#B89047';
-    const CREAM = '#FAF9F6';
+    // Antes dorado (#B89047) con fondo/borde cálidos y nombres en serif — la misma
+    // paleta "Sotheby's" que ya se retiró del resto de la plataforma. Se realinea a
+    // azul cobalto + gris frío + Inter en todo, igual que el header y el nav horizontal.
+    const GOLD = '#3E7CB8';
+    const CREAM = '#F4F5F7';
     const WHITE = '#FFFFFF';
-    const BORDER = '#E5E0D8';
-    const SF = '"Cormorant Garamond", serif';
+    const BORDER = '#E5E7EB';
+    const SF = 'Inter, sans-serif';
     const SS = 'Inter, sans-serif';
 
     const ETAPA_COLOR: Record<string, string> = {
@@ -16273,20 +17345,20 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
               </div>
               <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 10, color: '#8B8170', textTransform: 'uppercase' as const, letterSpacing: 1 }}>Etapa</span>
+                  <span style={{ fontSize: 10, color: '#6B7280', textTransform: 'uppercase' as const, letterSpacing: 1 }}>Etapa</span>
                   <span style={{ fontSize: 12, fontWeight: 700, color: ETAPA_COLOR[p.estado] || NAVY }}>{p.estado}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 10, color: '#8B8170', textTransform: 'uppercase' as const, letterSpacing: 1 }}>Presupuesto</span>
+                  <span style={{ fontSize: 10, color: '#6B7280', textTransform: 'uppercase' as const, letterSpacing: 1 }}>Presupuesto</span>
                   <span style={{ fontSize: 12, fontWeight: 700, color: GOLD }}>USD ${Number(p.presupuesto_usd || 0).toLocaleString('en-US')}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 10, color: '#8B8170', textTransform: 'uppercase' as const, letterSpacing: 1 }}>Proyecto</span>
+                  <span style={{ fontSize: 10, color: '#6B7280', textTransform: 'uppercase' as const, letterSpacing: 1 }}>Proyecto</span>
                   <span style={{ fontSize: 12, color: NAVY }}>{(p.proyectos_interes || []).join(', ') || '—'}</span>
                 </div>
                 {p.notas && (
                   <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 10 }}>
-                    <div style={{ fontSize: 10, color: '#8B8170', textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 4 }}>Notas</div>
+                    <div style={{ fontSize: 10, color: '#6B7280', textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 4 }}>Notas</div>
                     <div style={{ fontSize: 12, color: NAVY, lineHeight: 1.6 }}>{p.notas}</div>
                   </div>
                 )}
@@ -16332,7 +17404,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, marginBottom: 10 }}>
                 {['llamada','email','reunión','whatsapp'].map(t => (
                   <button key={t} onClick={() => setMobileActTipo(t)}
-                    style={{ padding: '6px 12px', background: mobileActTipo === t ? GOLD : WHITE, color: mobileActTipo === t ? WHITE : '#8B8170', border: `1px solid ${mobileActTipo === t ? GOLD : BORDER}`, borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' as const }}>
+                    style={{ padding: '6px 12px', background: mobileActTipo === t ? GOLD : WHITE, color: mobileActTipo === t ? WHITE : '#6B7280', border: `1px solid ${mobileActTipo === t ? GOLD : BORDER}`, borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' as const }}>
                     {t}
                   </button>
                 ))}
@@ -16362,7 +17434,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
           <div style={{ fontSize: 10, letterSpacing: 2, textTransform: 'uppercase' as const, color: GOLD, fontWeight: 700, marginBottom: 4 }}>Mis Prospectos</div>
           <div style={{ fontSize: 18, fontFamily: SF, fontWeight: 300, color: NAVY, marginBottom: 16 }}>{myProspects.length} en pipeline</div>
           {myProspects.length === 0 && (
-            <div style={{ textAlign: 'center' as const, color: '#8B8170', padding: '40px 0', fontSize: 13 }}>Sin prospectos asignados</div>
+            <div style={{ textAlign: 'center' as const, color: '#6B7280', padding: '40px 0', fontSize: 13 }}>Sin prospectos asignados</div>
           )}
           {myProspects.map(p => (
             <div key={p.id} onClick={() => setMobileProspect(p)}
@@ -16370,12 +17442,12 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
                 <div>
                   <div style={{ fontSize: 15, fontFamily: SF, fontWeight: 400, color: NAVY }}>{p.nombre} {p.apellido}</div>
-                  <div style={{ fontSize: 11, color: '#8B8170', marginTop: 2 }}>{p.telefono || 'Sin teléfono'}</div>
+                  <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }}>{p.telefono || 'Sin teléfono'}</div>
                 </div>
                 <span style={{ fontSize: 10, fontWeight: 700, color: ETAPA_COLOR[p.estado] || NAVY, background: `${ETAPA_COLOR[p.estado] || NAVY}15`, padding: '3px 8px', borderRadius: 12, whiteSpace: 'nowrap' as const }}>{p.estado}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontSize: 11, color: '#8B8170' }}>{(p.proyectos_interes || []).join(', ') || '—'}</div>
+                <div style={{ fontSize: 11, color: '#6B7280' }}>{(p.proyectos_interes || []).join(', ') || '—'}</div>
                 <div style={{ fontSize: 12, fontWeight: 700, color: GOLD }}>USD ${Number(p.presupuesto_usd || 0).toLocaleString('en-US')}</div>
               </div>
             </div>
@@ -16397,7 +17469,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
         const mainImg = imgs[0] || null;
         const spec = (label: string, val: string) => val ? (
           <div key={label} style={{ paddingBottom: 10, marginBottom: 10, borderBottom: `1px solid ${BORDER}` }}>
-            <div style={{ fontSize: 9, letterSpacing: 1, textTransform: 'uppercase' as const, color: '#8B8170', marginBottom: 3 }}>{label}</div>
+            <div style={{ fontSize: 9, letterSpacing: 1, textTransform: 'uppercase' as const, color: '#6B7280', marginBottom: 3 }}>{label}</div>
             <div style={{ fontSize: 13, color: NAVY, fontFamily: SF, fontWeight: 300 }}>{val}</div>
           </div>
         ) : null;
@@ -16455,7 +17527,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                 {spec('Entrega', proj.entrega)}
                 {spec('Precio m²', proj.priceM2Min ? `USD $${proj.priceM2Min.toLocaleString('en-US')}${proj.priceM2Max ? `–$${proj.priceM2Max.toLocaleString('en-US')}` : ''}` : '')}
                 {spec('Renta sugerida/m²', proj.rentSuggest ? `USD $${proj.rentSuggest}/m²/mes` : '')}
-                {proj.notaValorizacion && <div style={{ fontSize: 12, color: '#8B8170', lineHeight: 1.7, paddingTop: 4 }}>{proj.notaValorizacion}</div>}
+                {proj.notaValorizacion && <div style={{ fontSize: 12, color: '#6B7280', lineHeight: 1.7, paddingTop: 4 }}>{proj.notaValorizacion}</div>}
               </div>
               {/* Amenidades */}
               {proj.amenities && proj.amenities.length > 0 && (
@@ -16504,11 +17576,11 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                 <div style={{ height: 2, background: `linear-gradient(to right, ${GOLD}, transparent)` }} />
                 <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
-                    <div style={{ fontSize: 8, color: '#8B8170', textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 2 }}>Precio desde</div>
+                    <div style={{ fontSize: 8, color: '#6B7280', textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 2 }}>Precio desde</div>
                     <div style={{ fontSize: 14, fontFamily: SF, color: NAVY }}>USD ${(proj.minPrice||0).toLocaleString('en-US')}</div>
                   </div>
                   <div style={{ textAlign: 'right' as const }}>
-                    <div style={{ fontSize: 8, color: '#8B8170', textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 2 }}>{proj.bedrooms ? 'Hab.' : 'Área'}</div>
+                    <div style={{ fontSize: 8, color: '#6B7280', textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 2 }}>{proj.bedrooms ? 'Hab.' : 'Área'}</div>
                     <div style={{ fontSize: 13, fontFamily: SF, color: NAVY }}>{proj.bedrooms || (proj.areaMin ? `${proj.areaMin}–${proj.areaMax} m²` : '—')}</div>
                   </div>
                 </div>
@@ -16526,7 +17598,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
         <div style={{ fontSize: 18, fontFamily: SF, fontWeight: 300, color: NAVY, marginBottom: 20 }}>¿Qué pasó hoy?</div>
 
         <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, padding: 16, marginBottom: 14 }}>
-          <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: '#8B8170', marginBottom: 8 }}>Prospecto</div>
+          <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: '#6B7280', marginBottom: 8 }}>Prospecto</div>
           <select value={mobileActProspId} onChange={e => setMobileActProspId(e.target.value)}
             style={{ width: '100%', padding: '11px 12px', border: `1px solid ${BORDER}`, borderRadius: 4, fontSize: 13, fontFamily: SS, background: CREAM, outline: 'none' }}>
             <option value=''>— Selecciona un prospecto —</option>
@@ -16535,7 +17607,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
         </div>
 
         <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, padding: 16, marginBottom: 14 }}>
-          <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: '#8B8170', marginBottom: 8 }}>Tipo de actividad</div>
+          <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: '#6B7280', marginBottom: 8 }}>Tipo de actividad</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             {[{id:'llamada',label:'📞 Llamada'},{id:'whatsapp',label:'💬 WhatsApp'},{id:'reunión',label:'🤝 Reunión'},{id:'email',label:'✉️ Email'}].map(t => (
               <button key={t.id} onClick={() => setMobileActTipo(t.id)}
@@ -16547,7 +17619,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
         </div>
 
         <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, padding: 16, marginBottom: 20 }}>
-          <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: '#8B8170', marginBottom: 8 }}>Descripción y resultado</div>
+          <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: '#6B7280', marginBottom: 8 }}>Descripción y resultado</div>
           <textarea value={mobileActDesc} onChange={e => setMobileActDesc(e.target.value)}
             placeholder="¿Qué ocurrió? ¿Cuál es el siguiente paso?"
             rows={4}
@@ -16588,7 +17660,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
           { label: 'Presupuesto USD', key: 'presupuesto_usd', type: 'number', placeholder: '300000' },
         ].map(f => (
           <div key={f.key} style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: '#8B8170', marginBottom: 6 }}>{f.label}</div>
+            <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: '#6B7280', marginBottom: 6 }}>{f.label}</div>
             <input type={f.type} placeholder={f.placeholder}
               value={(mobileNewProsp as any)[f.key]}
               onChange={e => setMobileNewProsp(prev => ({...prev, [f.key]: e.target.value}))}
@@ -16597,7 +17669,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
         ))}
 
         <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: '#8B8170', marginBottom: 6 }}>Fuente de contacto</div>
+          <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' as const, color: '#6B7280', marginBottom: 6 }}>Fuente de contacto</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             {['WhatsApp','Referido','Evento','Redes Sociales','Web','Llamada'].map(f => (
               <button key={f} onClick={() => setMobileNewProsp(prev => ({...prev, forma_contacto: f}))}
@@ -16627,27 +17699,27 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
 
     const TABS = [
       { id: 'portafolio',  label: 'Portafolio', icon: (active: boolean) => (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#B89047' : 'rgba(255,255,255,0.6)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#3E7CB8' : 'rgba(255,255,255,0.6)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
         </svg>
       )},
       { id: 'calculadora', label: 'Calcular', icon: (active: boolean) => (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#B89047' : 'rgba(255,255,255,0.6)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#3E7CB8' : 'rgba(255,255,255,0.6)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="11" x2="11" y2="11"/><line x1="13" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="11" y2="15"/><line x1="13" y1="15" x2="16" y2="15"/>
         </svg>
       )},
       { id: 'prospectos',  label: 'Clientes', icon: (active: boolean) => (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#B89047' : 'rgba(255,255,255,0.6)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#3E7CB8' : 'rgba(255,255,255,0.6)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>
         </svg>
       )},
       { id: 'actividad',   label: 'Actividad', icon: (active: boolean) => (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#B89047' : 'rgba(255,255,255,0.6)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#3E7CB8' : 'rgba(255,255,255,0.6)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
         </svg>
       )},
       { id: 'nuevo',       label: 'Nuevo', icon: (active: boolean) => (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#B89047' : 'rgba(255,255,255,0.6)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#3E7CB8' : 'rgba(255,255,255,0.6)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
         </svg>
       )},
@@ -16657,38 +17729,24 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
 
     return (
       <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: CREAM, display: 'flex', flexDirection: 'column' as const, fontFamily: SS, maxWidth: forceMobileView ? 390 : '100%', margin: forceMobileView ? '0 auto' : 0, boxShadow: forceMobileView ? '0 0 60px rgba(0,0,0,0.25)' : 'none' }}>
-        {/* Header */}
+        {/* Header — sin "GLP Wealth Management" ni el nombre completo del usuario (ya
+            redundante en un dispositivo de una sola persona): solo sus iniciales, mismo
+            criterio que el header de escritorio. */}
         <div style={{ background: NAVY, padding: '12px 16px 10px', flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <div style={{ fontSize: 8, letterSpacing: 2, textTransform: 'uppercase' as const, color: GOLD, fontWeight: 700 }}>GLP Wealth Management</div>
-            <div style={{ fontSize: 14, fontFamily: SF, fontWeight: 300, color: WHITE, marginTop: 1 }}>
-              {getAdminUsers().find((u:any) => u.username === currentUser)?.name || currentUser}
-            </div>
+          <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: WHITE, fontFamily: SS }}>
+            {userInitials(getAdminUsers().find((u:any) => u.username === currentUser)?.name || currentUser)}
           </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            {forceMobileView && (
-              <button onClick={() => setForceMobileView(false)}
-                style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: WHITE, borderRadius: 4, padding: '5px 10px', fontSize: 11, cursor: 'pointer', fontFamily: SS }}>
-                ✕ Cerrar
-              </button>
-            )}
-            {forceMobileView && currentUser !== 'pvargas' && (
-              <button onClick={() => { sessionStorage.setItem('glp_crm_logged_user', 'pvargas'); setCurrentUser('pvargas'); }}
-                style={{ background: 'rgba(184,144,71,0.15)', border: '1px solid rgba(184,144,71,0.5)', color: GOLD, borderRadius: 4, padding: '5px 10px', fontSize: 10, cursor: 'pointer', fontFamily: SS, whiteSpace: 'nowrap' as const }}>
-                Demo Broker ›
-              </button>
-            )}
-            {forceMobileView && currentUser === 'pvargas' && (
-              <button onClick={() => { sessionStorage.setItem('glp_crm_logged_user', SUPERADMIN_USERNAME); setCurrentUser(SUPERADMIN_USERNAME); }}
-                style={{ background: 'rgba(184,144,71,0.15)', border: '1px solid rgba(184,144,71,0.5)', color: GOLD, borderRadius: 4, padding: '5px 10px', fontSize: 10, cursor: 'pointer', fontFamily: SS, whiteSpace: 'nowrap' as const }}>
-                ← Admin
-              </button>
-            )}
-            <button onClick={() => { sessionStorage.removeItem('glp_crm_logged_user'); setCurrentUser(null); }}
-              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', fontSize: 11, cursor: 'pointer', fontFamily: SS }}>
-              Salir
-            </button>
-          </div>
+          {/* Un solo botón "Salir" — antes había uno para cerrar la demo de escritorio y
+              otro para cerrar sesión, y no era obvio cuál hacía qué. Ahora "Salir" hace lo
+              que corresponde según dónde se está viendo: en la demo de escritorio, sale de
+              la demo y vuelve al CRM (no cierra la sesión real); en un celular real, cierra
+              la sesión — no hay a dónde "volver". */}
+          <button onClick={() => {
+            if (forceMobileView) { setForceMobileView(false); return; }
+            sessionStorage.removeItem('glp_crm_logged_user'); setCurrentUser(null);
+          }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', fontSize: 11, cursor: 'pointer', fontFamily: SS }}>
+            Salir
+          </button>
         </div>
         <div style={{ height: 2, background: `linear-gradient(to right, ${GOLD}, transparent)`, flexShrink: 0 }} />
 
@@ -16705,18 +17763,18 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                   Portafolio
                 </button>
                 {calcProject && <>
-                  <span style={{ fontSize: 11, color: '#C5BDB0' }}>›</span>
+                  <span style={{ fontSize: 11, color: '#9CA3AF' }}>›</span>
                   <span style={{ fontSize: 12, color: NAVY, fontFamily: SF }}>{calcProject}</span>
                 </>}
               </div>
               {/* Sin proyecto: pide seleccionar desde portafolio */}
               {!calcProject ? (
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 16 }}>
-                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#C5BDB0" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
                   </svg>
                   <div style={{ fontSize: 16, fontFamily: SF, fontWeight: 300, color: NAVY, textAlign: 'center' as const }}>Selecciona un proyecto</div>
-                  <div style={{ fontSize: 12, color: '#8B8170', textAlign: 'center' as const, lineHeight: 1.6 }}>Ve al Portafolio, toca un proyecto y se abrirá aquí listo para calcular.</div>
+                  <div style={{ fontSize: 12, color: '#6B7280', textAlign: 'center' as const, lineHeight: 1.6 }}>Ve al Portafolio, toca un proyecto y se abrirá aquí listo para calcular.</div>
                   <button onClick={() => setMobileTab('portafolio')}
                     style={{ marginTop: 8, background: NAVY, color: WHITE, border: 'none', borderRadius: 6, padding: '12px 28px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: SS }}>
                     Ver Portafolio
@@ -16737,12 +17795,12 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                 const slider = (label: string, val: number, setVal: (v: number) => void, min: number, max: number, step: number, display: string) => (
                   <div style={{ marginBottom: 18 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-                      <span style={{ fontSize: 11, color: '#8B8170', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' as const }}>{label}</span>
+                      <span style={{ fontSize: 11, color: '#6B7280', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' as const }}>{label}</span>
                       <span style={{ fontSize: 16, fontFamily: SF, color: NAVY }}>{display}</span>
                     </div>
                     <input type="range" min={min} max={max} step={step} value={val} onChange={e => setVal(Number(e.target.value))}
                       style={{ width: '100%', accentColor: GOLD, cursor: 'pointer' }} />
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: '#C5BDB0', marginTop: 2 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: '#9CA3AF', marginTop: 2 }}>
                       <span>{min.toLocaleString('en-US')}</span><span>{max.toLocaleString('en-US')}</span>
                     </div>
                   </div>
@@ -16759,7 +17817,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
 
                 const tabBtn = (id: 'cuota'|'hipoteca', label: string) => (
                   <button key={id} onClick={() => setMobileCalcTab(id)}
-                    style={{ flex: 1, padding: '12px 0', background: WHITE, color: mobileCalcTab === id ? NAVY : '#B0A898', border: 'none', borderBottom: `2px solid ${mobileCalcTab === id ? GOLD : 'transparent'}`, fontSize: 12, fontWeight: mobileCalcTab === id ? 700 : 500, cursor: 'pointer', fontFamily: SS }}>
+                    style={{ flex: 1, padding: '12px 0', background: WHITE, color: mobileCalcTab === id ? NAVY : '#9CA3AF', border: 'none', borderBottom: `2px solid ${mobileCalcTab === id ? GOLD : 'transparent'}`, fontSize: 12, fontWeight: mobileCalcTab === id ? 700 : 500, cursor: 'pointer', fontFamily: SS }}>
                     {label}
                   </button>
                 );
@@ -16793,14 +17851,14 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <button onClick={() => setMobileCalcMesesCustom(true)}
-                            style={{ padding: '8px 14px', background: mobileCalcMesesCustom ? GOLD : WHITE, color: mobileCalcMesesCustom ? WHITE : '#8B8170', border: `1px solid ${mobileCalcMesesCustom ? GOLD : BORDER}`, borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: SS, whiteSpace: 'nowrap' as const }}>
+                            style={{ padding: '8px 14px', background: mobileCalcMesesCustom ? GOLD : WHITE, color: mobileCalcMesesCustom ? WHITE : '#6B7280', border: `1px solid ${mobileCalcMesesCustom ? GOLD : BORDER}`, borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: SS, whiteSpace: 'nowrap' as const }}>
                             Personalizado
                           </button>
                           {mobileCalcMesesCustom && (
                             <input type="number" min={6} max={120} value={mobileCalcMeses} onChange={e => setMobileCalcMeses(Number(e.target.value))}
                               style={{ flex: 1, padding: '8px 10px', border: `1px solid ${BORDER}`, borderRadius: 6, fontSize: 14, fontFamily: SS, outline: 'none', textAlign: 'center' as const }} />
                           )}
-                          {mobileCalcMesesCustom && <span style={{ fontSize: 11, color: '#8B8170' }}>meses</span>}
+                          {mobileCalcMesesCustom && <span style={{ fontSize: 11, color: '#6B7280' }}>meses</span>}
                         </div>
                       </div>
                       {/* Resultado cuota inicial */}
@@ -16816,11 +17874,11 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                             </div>
                             <div style={{ background: CREAM, border: `1px solid ${BORDER}`, borderTop: 'none', padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                               <div>
-                                <div style={{ fontSize: 8, letterSpacing: 1.5, color: '#8B8170', fontWeight: 700, textTransform: 'uppercase' as const, marginBottom: 4 }}>Yield Bruto s/ Inversión</div>
+                                <div style={{ fontSize: 8, letterSpacing: 1.5, color: '#6B7280', fontWeight: 700, textTransform: 'uppercase' as const, marginBottom: 4 }}>Yield Bruto s/ Inversión</div>
                                 <div style={{ fontSize: 30, fontFamily: SF, fontWeight: 300, color: NAVY }}>{yB}<span style={{ fontSize: 16 }}>%</span></div>
                               </div>
                               <div style={{ textAlign: 'right' as const }}>
-                                <div style={{ fontSize: 9, color: '#B0A898', marginBottom: 3 }}>Renta anual est.</div>
+                                <div style={{ fontSize: 9, color: '#9CA3AF', marginBottom: 3 }}>Renta anual est.</div>
                                 <div style={{ fontSize: 15, fontFamily: SF, color: NAVY }}>{fmt$(calcPrecio * parseFloat(yB) / 100)}</div>
                               </div>
                             </div>
@@ -16834,7 +17892,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                         {slider('Precio del activo', calcPrecio, setCalcPrecio, minP, maxP, 5000, fmt$(calcPrecio))}
                         {slider('Cuota inicial %', calcCuotaInicial, setCalcCuotaInicial, 10, 100, 5, `${calcCuotaInicial}% · ${fmt$(cuotaInicialUSD)}`)}
                         <div style={{ padding: '8px 0 10px', borderTop: `1px solid ${BORDER}`, marginTop: 4 }}>
-                          <div style={{ fontSize: 10, color: '#8B8170', marginBottom: 2 }}>Monto a financiar</div>
+                          <div style={{ fontSize: 10, color: '#6B7280', marginBottom: 2 }}>Monto a financiar</div>
                           <div style={{ fontSize: 20, fontFamily: SF, color: NAVY }}>{fmt$(montoFin)}</div>
                         </div>
                       </div>
@@ -16856,11 +17914,11 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                             </div>
                             <div style={{ background: CREAM, border: `1px solid ${BORDER}`, borderTop: 'none', padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                               <div>
-                                <div style={{ fontSize: 8, letterSpacing: 1.5, color: '#8B8170', fontWeight: 700, textTransform: 'uppercase' as const, marginBottom: 4 }}>Yield Bruto s/ Inversión</div>
+                                <div style={{ fontSize: 8, letterSpacing: 1.5, color: '#6B7280', fontWeight: 700, textTransform: 'uppercase' as const, marginBottom: 4 }}>Yield Bruto s/ Inversión</div>
                                 <div style={{ fontSize: 30, fontFamily: SF, fontWeight: 300, color: NAVY }}>{yB}<span style={{ fontSize: 16 }}>%</span></div>
                               </div>
                               <div style={{ textAlign: 'right' as const }}>
-                                <div style={{ fontSize: 9, color: '#B0A898', marginBottom: 3 }}>Renta anual est.</div>
+                                <div style={{ fontSize: 9, color: '#9CA3AF', marginBottom: 3 }}>Renta anual est.</div>
                                 <div style={{ fontSize: 15, fontFamily: SF, color: NAVY }}>{fmt$(calcPrecio * parseFloat(yB) / 100)}</div>
                               </div>
                             </div>
@@ -16886,9 +17944,9 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
             return (
               <button key={t.id} onClick={() => { setMobileTab(t.id as any); setMobileProspect(null); }}
                 style={{ flex: 1, padding: '10px 0 8px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 3, position: 'relative' as const }}>
-                {active && <div style={{ position: 'absolute', top: 0, left: '20%', right: '20%', height: 2, background: GOLD, borderRadius: 1 }} />}
+                {active && <div style={{ position: 'absolute', top: 0, left: '20%', right: '20%', height: 2, background: '#3E7CB8', borderRadius: 1 }} />}
                 {t.icon(active)}
-                <span style={{ fontSize: 10, fontWeight: active ? 700 : 400, color: active ? GOLD : 'rgba(255,255,255,0.6)', letterSpacing: 0.3, fontFamily: SS }}>{t.label}</span>
+                <span style={{ fontSize: 10, fontWeight: active ? 700 : 400, color: active ? '#3E7CB8' : 'rgba(255,255,255,0.6)', letterSpacing: 0.3, fontFamily: SS }}>{t.label}</span>
               </button>
             );
           })}
@@ -16966,11 +18024,14 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
     const catData = Object.entries(catMap).map(([name, value]) => ({ name, value }));
 
     const kpiCard = (label: string, value: string, sub: string, color: string = GOLD) => (
-      <div style={{ background: '#fff', border: `1px solid #E5E0D8`, borderRadius: 6, padding: '20px 24px', flex: 1, minWidth: 160 }}>
-        <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: '#8B8170', fontFamily: SS, marginBottom: 8 }}>{label}</div>
-        <div style={{ fontSize: 28, fontWeight: 300, color: NAVY, fontFamily: SF, lineHeight: 1, marginBottom: 6 }}>{value}</div>
-        <div style={{ fontSize: 11, color: '#8B8170', fontFamily: SS }}>{sub}</div>
-        <div style={{ height: 2, background: `linear-gradient(to right, ${color}, transparent)`, marginTop: 12, borderRadius: 1 }} />
+      <div style={{ background: '#fff', border: `1px solid #E5E0D8`, borderRadius: 6, overflow: 'hidden', flex: 1, minWidth: 160 }}>
+        <div style={{ background: 'linear-gradient(135deg, #1E3A5F, #3E7CB8)', padding: '8px 16px' }}>
+          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase' as const, color: '#C9DCEF', fontFamily: SS }}>{label}</div>
+        </div>
+        <div style={{ padding: '14px 20px 18px' }}>
+          <div style={{ fontSize: 26, fontWeight: 800, color: NAVY, fontFamily: SS, fontVariantNumeric: 'tabular-nums', lineHeight: 1, marginBottom: 8 }}>{value}</div>
+          <div style={{ fontSize: 11, color: '#8B8170', fontFamily: SS }}>{sub}</div>
+        </div>
       </div>
     );
 
@@ -17285,9 +18346,12 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
         {sub && <div style={{ fontSize: 12, color: '#94a3b8', fontFamily: SS2 }}>{sub}</div>}
       </div>
     );
+    // Cifras en Inter 800/tabular-nums en vez de serif — misma tipografía de dato que el
+    // resto de la plataforma (Dashboard, Reportes, Casos), para que no se sienta como una
+    // fuente distinta módulo a módulo.
     const bigNum = (val: string, sub?: string, color = NAVY2) => (
       <div>
-        <div style={{ fontSize: 36, fontWeight: 300, fontFamily: SF2, color, letterSpacing: '-0.02em', lineHeight: 1 }}>{val}</div>
+        <div style={{ fontSize: 34, fontWeight: 800, fontFamily: SS2, color, letterSpacing: '-0.02em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{val}</div>
         {sub && <div style={{ fontSize: 11, color: '#94a3b8', fontFamily: SS2, marginTop: 6 }}>{sub}</div>}
       </div>
     );
@@ -17308,8 +18372,10 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
         {/* Header ejecutivo */}
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 32, paddingBottom: 20, borderBottom: `1px solid #E8E3DB` }}>
           <div>
-            <div style={{ fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase' as const, color: GOLD2, fontWeight: 700, marginBottom: 8 }}>GLP Bogotá · Análisis Gerencial</div>
-            <h1 style={{ margin: 0, fontSize: 28, fontWeight: 300, fontFamily: SF2, color: NAVY2, letterSpacing: '0.02em' }}>
+            {/* Antes esto repetía "Análisis Gerencial" (ya está en la barra superior global)
+                como un tercer rótulo — se quita esa línea y se deja un único título, con el
+                mismo marcador circular que usa el resto del CRM. */}
+            <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, fontFamily: SS2, color: NAVY2, letterSpacing: '-0.01em' }}>
               Inteligencia Comercial
             </h1>
             <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>
@@ -17319,15 +18385,15 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
           <div style={{ display: 'flex', gap: 24, textAlign: 'right' as const }}>
             <div>
               <div style={{ fontSize: 9, color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '0.1em', marginBottom: 4 }}>Pipeline activo</div>
-              <div style={{ fontSize: 22, fontWeight: 300, fontFamily: SF2, color: NAVY2 }}>{fmtUSD2(pipelineActivo)}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, fontFamily: SS2, fontVariantNumeric: 'tabular-nums', color: NAVY2 }}>{fmtUSD2(pipelineActivo)}</div>
             </div>
             <div>
               <div style={{ fontSize: 9, color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '0.1em', marginBottom: 4 }}>Tasa de cierre</div>
-              <div style={{ fontSize: 22, fontWeight: 300, fontFamily: SF2, color: tasaGlobal >= 20 ? '#10b981' : tasaGlobal >= 10 ? GOLD2 : '#ef4444' }}>{tasaGlobal}%</div>
+              <div style={{ fontSize: 22, fontWeight: 800, fontFamily: SS2, fontVariantNumeric: 'tabular-nums', color: tasaGlobal >= 20 ? '#10b981' : tasaGlobal >= 10 ? GOLD2 : '#ef4444' }}>{tasaGlobal}%</div>
             </div>
             <div>
               <div style={{ fontSize: 9, color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '0.1em', marginBottom: 4 }}>Prospectos</div>
-              <div style={{ fontSize: 22, fontWeight: 300, fontFamily: SF2, color: NAVY2 }}>{totalProspects}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, fontFamily: SS2, fontVariantNumeric: 'tabular-nums', color: NAVY2 }}>{totalProspects}</div>
             </div>
           </div>
         </div>
@@ -17349,7 +18415,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                   <div key={m.label} onClick={() => setGerencialForecastDrilldown(i)}
                     style={{ background: i === 0 ? NAVY2 : '#f8fafc', borderRadius: 10, padding: '14px 16px', cursor: 'pointer' }}>
                     <div style={{ fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: i === 0 ? GOLD2 : '#94a3b8', marginBottom: 6 }}>{m.label}</div>
-                    <div style={{ fontSize: 20, fontWeight: 300, fontFamily: SF2, color: i === 0 ? '#fff' : NAVY2 }}>{fmtUSD2(m.ponderado)}</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, fontFamily: SS2, fontVariantNumeric: 'tabular-nums', color: i === 0 ? '#fff' : NAVY2 }}>{fmtUSD2(m.ponderado)}</div>
                     <div style={{ fontSize: 10, color: i === 0 ? 'rgba(255,255,255,0.5)' : '#94a3b8', marginTop: 4 }}>
                       {m.count} oportunidad{m.count !== 1 ? 'es' : ''} · opt. {fmtUSD2(m.optimista)} · ver detalle →
                     </div>
@@ -17415,12 +18481,12 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                 'Tiempo óptimo en Negociación: ≤45 días · En Presentación: ≤30 días')}
               <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
                 <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderLeft: `3px solid ${criticos.length > 0 ? '#ef4444' : '#10b981'}`, borderRadius: 6, padding: '12px 18px', flex: 1, textAlign: 'center' as const }}>
-                  <div style={{ fontSize: 28, fontWeight: 700, fontFamily: SF2, color: criticos.length > 0 ? '#ef4444' : '#10b981' }}>{criticos.length}</div>
+                  <div style={{ fontSize: 28, fontWeight: 700, fontFamily: SS2, fontVariantNumeric: 'tabular-nums', color: criticos.length > 0 ? '#ef4444' : '#10b981' }}>{criticos.length}</div>
                   <div style={{ fontSize: 10, color: criticos.length > 0 ? '#ef4444' : '#10b981', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>Críticos</div>
                   <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>&gt;120% del tiempo esperado</div>
                 </div>
                 <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderLeft: `3px solid ${enRiesgo.length > 0 ? '#f59e0b' : '#10b981'}`, borderRadius: 6, padding: '12px 18px', flex: 1, textAlign: 'center' as const }}>
-                  <div style={{ fontSize: 28, fontWeight: 700, fontFamily: SF2, color: enRiesgo.length > 0 ? '#f59e0b' : '#10b981' }}>{enRiesgo.length}</div>
+                  <div style={{ fontSize: 28, fontWeight: 700, fontFamily: SS2, fontVariantNumeric: 'tabular-nums', color: enRiesgo.length > 0 ? '#f59e0b' : '#10b981' }}>{enRiesgo.length}</div>
                   <div style={{ fontSize: 10, color: enRiesgo.length > 0 ? '#f59e0b' : '#10b981', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>En Riesgo</div>
                   <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>80–120% del tiempo esperado</div>
                 </div>
@@ -17591,7 +18657,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                     <ResponsiveContainer width="100%" height={80}>
                       <BarChart data={cohortData} margin={{ left: 0, right: 0, top: 4, bottom: 0 }}>
                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#94a3b8' }} tickLine={false} axisLine={false} />
-                        <Tooltip contentStyle={{ fontSize: 11, borderRadius: 6 }} formatter={(v: any, n: string) => [`${v}%`, n === 'tasaCalif' ? 'Calificación' : 'Cierre']} />
+                        <Tooltip contentStyle={{ fontSize: 11, borderRadius: 6 }} formatter={(v: any, n: any) => [`${v}%`, n === 'tasaCalif' ? 'Calificación' : 'Cierre']} />
                         <Bar dataKey="tasaCalif" fill={G_GER} radius={[3, 3, 0, 0]} name="tasaCalif">
                           <LabelList dataKey="tasaCalif" position="top" formatter={(v: any) => `${v}%`} style={{ fontSize: 9, fill: '#64748b', fontWeight: 600 }} />
                         </Bar>
@@ -18583,7 +19649,7 @@ Cargo: ________________________         C.C.: _______________________`,
           // automáticamente en vez de dejar hitos inconsistentes (ej. escritura después de entrega).
           if (docKey === 'acta_entrega' && updated.fecha_escritura && updated.fecha_escritura >= patch.dueDate!) {
             const nuevaEscritura = new Date(new Date(patch.dueDate!).getTime() - brechaDias * 86400000).toISOString().split('T')[0];
-            updated = { ...updated, fecha_escritura: nuevaEscritura, historial: [...updated.historial, { fecha: hoyStr, accion: 'Fecha de escritura recalculada', detalle: `Ajustada a ${nuevaEscritura} para preceder la nueva fecha de entrega (${patch.dueDate}).` }] };
+            updated = { ...updated, fecha_escritura: nuevaEscritura, historial: [...(updated.historial || []), { fecha: hoyStr, accion: 'Fecha de escritura recalculada', detalle: `Ajustada a ${nuevaEscritura} para preceder la nueva fecha de entrega (${patch.dueDate}).` }] };
             setLegalDocs(prev => {
               const existing = prev[prospectId]?.['escritura_publica'] || { status: 'pendiente' as LegalDocStatus };
               const merged = { ...existing, dueDate: nuevaEscritura, history: [...(existing.history || []), { date: hoyStr, action: `Fecha recalculada automáticamente a ${nuevaEscritura} para preceder la nueva entrega (${patch.dueDate}).` }] };
@@ -18595,7 +19661,7 @@ Cargo: ________________________         C.C.: _______________________`,
           }
           if (docKey === 'escritura_publica' && updated.fecha_entrega && patch.dueDate! >= updated.fecha_entrega) {
             const nuevaEntrega = new Date(new Date(patch.dueDate!).getTime() + brechaDias * 86400000).toISOString().split('T')[0];
-            updated = { ...updated, fecha_entrega: nuevaEntrega, historial: [...updated.historial, { fecha: hoyStr, accion: 'Fecha de entrega recalculada', detalle: `Ajustada a ${nuevaEntrega} porque la escritura se movió después de la entrega vigente.` }] };
+            updated = { ...updated, fecha_entrega: nuevaEntrega, historial: [...(updated.historial || []), { fecha: hoyStr, accion: 'Fecha de entrega recalculada', detalle: `Ajustada a ${nuevaEntrega} porque la escritura se movió después de la entrega vigente.` }] };
             setLegalDocs(prev => {
               const existing = prev[prospectId]?.['acta_entrega'] || { status: 'pendiente' as LegalDocStatus };
               const merged = { ...existing, dueDate: nuevaEntrega, history: [...(existing.history || []), { date: hoyStr, action: `Fecha recalculada automáticamente a ${nuevaEntrega} porque la escritura se movió después.` }] };
@@ -18841,6 +19907,7 @@ Cargo: ________________________         C.C.: _______________________`,
       frecuencia: 'mensual',
       fecha_inicio: hoy,
       tipo: 'igual',
+      separacion: 2000,
     });
     setPlanModal(true);
   };
@@ -19454,12 +20521,15 @@ Cargo: ________________________         C.C.: _______________________`,
     // qué mide cada uno ni en qué se diferencia de los otros (ej. Vencidos vs. Cuello de
     // Botella vs. En Riesgo miden cosas distintas pero podían coincidir en número por
     // casualidad de los datos). El texto del tooltip explica la definición exacta.
+    // Aquí el color del parámetro SÍ es semántico (rojo=vencido, ámbar=por vencer, etc.) —
+    // por eso, a diferencia del Dashboard, no se reemplaza por el degradado cobalto fijo:
+    // se conserva como filete superior, que es donde ya vivía ese significado.
     const kpiCard = (label: string, value: React.ReactNode, sub: string, color: string, tooltip: string, onClick?: () => void) => (
-      <div onClick={onClick} title={tooltip} style={{ flex: 1, background: '#fff', border: `1px solid #EEF1F5`, padding: '16px 18px', cursor: onClick ? 'pointer' : 'default', transition: 'all 0.15s' }}
+      <div onClick={onClick} title={tooltip} style={{ flex: 1, background: '#fff', border: `1px solid #EEF1F5`, borderTop: `3px solid ${color}`, borderRadius: 4, padding: '14px 18px 16px', cursor: onClick ? 'pointer' : 'default', transition: 'all 0.15s' }}
         onMouseEnter={e => { if (onClick) e.currentTarget.style.borderColor = color; }}
         onMouseLeave={e => { if (onClick) e.currentTarget.style.borderColor = '#EEF1F5'; }}>
-        <div style={{ fontFamily: SERIF, fontSize: 28, color, lineHeight: 1 }}>{value}</div>
-        <div style={{ fontSize: 10, fontWeight: 700, color: N2, marginTop: 8, letterSpacing: '0.3px', display: 'flex', alignItems: 'center', gap: 4 }}>
+        <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 26, color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+        <div style={{ fontSize: 10, fontWeight: 700, color: N2, marginTop: 9, letterSpacing: '0.3px', display: 'flex', alignItems: 'center', gap: 4 }}>
           {label}
           <span style={{ width: 12, height: 12, borderRadius: '50%', border: '1px solid #CBD5E0', color: '#9CA3AF', fontSize: 8, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flexShrink: 0, cursor: 'help' }}>i</span>
         </div>
@@ -19469,8 +20539,10 @@ Cargo: ________________________         C.C.: _______________________`,
 
     const legalDashboardJsx = (
       <div style={{ padding: '28px 32px', overflowY: 'auto' as const, height: '100%' }}>
-        <div style={{ fontSize: 8, letterSpacing: '2.5px', textTransform: 'uppercase' as const, color: G2, fontWeight: 700, marginBottom: 6 }}>Legal & Cierre</div>
-        <div style={{ fontFamily: SERIF, fontSize: 24, color: N2, marginBottom: 22 }}>Panel de Mando</div>
+        {/* Antes el eyebrow repetía "Legal & Cierre" — el mismo texto que ya muestra la
+            barra superior del CRM. Se quita esa línea duplicada y se deja el marcador
+            circular con el título, mismo patrón que el resto de los módulos. */}
+        <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 22, color: N2, marginBottom: 22 }}>Panel de Mando</div>
 
         {/* KPIs con drilldown — cada uno mide algo distinto y no debería solaparse en
             significado con los demás; el tooltip (ⓘ) explica la definición exacta y en qué
@@ -19936,8 +21008,18 @@ Cargo: ________________________         C.C.: _______________________`,
 
   // ── RENDER CARTERA ──────────────────────────────────────────────────────────
   const renderCartera = () => {
-    const S = { bg: '#F7F4EF', parch: '#EDE8DF', navy: '#001A37', gold: '#B89047', cream: '#FFFDF7' };
-    const T = { serif: 'Georgia, serif', sans: 'system-ui, sans-serif' };
+    // A pedido del usuario: Cartera tenía su propia identidad heredada (crema cálido +
+    // terracota + serif), de cuando el resto del CRM también usaba esa paleta Sotheby's.
+    // El resto de la plataforma migró a gris frío + azul cobalto + Inter — estos tokens
+    // locales se realinean a esos mismos valores para que Cartera deje de verse "distinta".
+    const S = { bg: '#F4F5F7', parch: '#E8ECF0', navy: '#002349', gold: '#B89047', cream: '#FFFFFF' };
+    // Esta constante local reemplazaba por completo la `T` global (que trae las fuentes
+    // reales de marca) con "Georgia, serif" y "system-ui" — cualquier `T.serif`/`T.sans`
+    // dentro de Cartera quedaba con una tipografía genérica de navegador en vez de la del
+    // resto del CRM. Se mantienen las mismas claves (serif/sans) para no tocar los ~40 usos
+    // existentes, pero ambas apuntan a Inter — igual que el resto de la plataforma, ya
+    // unificada a una sola tipografía sans en vez del par serif/sans anterior.
+    const T = { serif: '"Inter", sans-serif', sans: '"Inter", sans-serif' };
 
     const ARQC: Record<string,string> = { estatus:'#6D28D9', legado:'#1D4ED8', racional:'#047857', aspiracional:'#B45309' };
     // Misma paleta de severidad que Legal & Cierre (severityColor) — antes Cartera usaba
@@ -19950,7 +21032,10 @@ Cargo: ________________________         C.C.: _______________________`,
       subrogacion: 'Subrogación', escritura: 'Escritura', entrega: 'Entrega',
     };
 
-    const RED = '#C05C3E';
+    // Antes terracota (#C05C3E) — era el acento principal de Cartera cuando el resto del
+    // CRM aún usaba la paleta cálida. Se realinea al navy/cobalto que ya es el acento de
+    // acción estándar en el resto de la plataforma (mismo tono que btnPrimary).
+    const RED = '#002349';
 
     const calcRiesgo = (c: CarteraCliente): 'verde' | 'amarillo' | 'rojo' => {
       // OJO con esta comparación: `new Date(q.fecha_vencimiento)` parsea "YYYY-MM-DD" como
@@ -20087,7 +21172,12 @@ Cargo: ________________________         C.C.: _______________________`,
       }
       setCarteraMsgLoading(true);
       setCarteraMsgResult('');
-      const vencidas = c.cuotas.filter(q => q.estado === 'vencida');
+      // Ninguna cuota real se marca 'vencida' automáticamente en ningún flujo del sistema —
+      // ese estado solo aparece en datos de prueba. En datos reales una cuota vencida sigue
+      // como 'pendiente' con fecha pasada, así que filtrar solo por estado==='vencida' le
+      // decía al cliente "no debe nada" aunque el semáforo (calcRiesgo, misma lógica de abajo)
+      // ya la mostrara en rojo — el mensaje de cobranza generado quedaba subestimado o vacío.
+      const vencidas = c.cuotas.filter(q => q.estado === 'vencida' || (q.estado === 'pendiente' && q.fecha_vencimiento < hoyStrTab));
       const proximas = c.cuotas.filter(q => {
         if (q.estado !== 'pendiente') return false;
         const diff = (new Date(q.fecha_vencimiento).getTime() - new Date(new Date().toISOString().slice(0,10)).getTime()) / 86400000;
@@ -20128,7 +21218,7 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
       } catch {
         // Plantillas por arquetipo cuando el backend no está disponible
         const arq = perfilSofiaCheck.arquetipo || 'racional';
-        const vencidas = c.cuotas.filter(q => q.estado === 'vencida');
+        const vencidas = c.cuotas.filter(q => q.estado === 'vencida' || (q.estado === 'pendiente' && q.fecha_vencimiento < hoyStrTab));
         const proximas = c.cuotas.filter(q => {
           if (q.estado !== 'pendiente') return false;
           const diff = (new Date(q.fecha_vencimiento).getTime() - new Date(new Date().toISOString().slice(0,10)).getTime()) / 86400000;
@@ -20161,6 +21251,7 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
           destinatario, project: 'Cartera',
           subject: `Recordatorio de pago — ${c.proyecto} · ${c.unidad}`,
           body: texto, prioridad: 'normal',
+          origen: 'cobranza_cartera',
         }),
       }).then(r => r.json()).then(draft => {
         if (draft?.id) setApiDrafts(prev => [draft, ...prev]);
@@ -20203,8 +21294,10 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
         <div style={{ background: S.cream, padding: '28px 40px 24px', borderBottom: `3px solid ${RED}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, color: S.navy, fontFamily: T.serif, letterSpacing: 0.5 }}>Módulo de Cartera</h1>
-              <div style={{ fontSize: 11, color: '#6B7280', marginTop: 4 }}>Gestión de planes de pago · Seguimiento · Alertas inteligentes</div>
+              {/* Mismo patrón "B" del resto del CRM: marcador circular con la inicial +
+                  título, subtítulo alineado a su borde. */}
+              <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: S.navy, fontFamily: T.sans, letterSpacing: '-0.01em' }}>Módulo de Cartera</h1>
+              <div style={{ fontSize: 11, color: '#6B7280', marginTop: 6 }}>Gestión de planes de pago · Seguimiento · Alertas inteligentes</div>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <div style={{ display: 'flex', gap: 28, borderBottom: `1px solid ${S.parch}`, alignItems: 'flex-end' }}>
@@ -20265,18 +21358,18 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                     const active = carteraFilter === t.id;
                     return (
                       <button key={t.id} onClick={() => { setCarteraFilter(t.id); setCarteraProyectoFiltro(null); }}
-                        style={{ padding: '4px 2px 12px', fontSize: 11, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', fontFamily: T.serif, border: 'none', borderBottom: active ? `2px solid ${tabColor(t.id)}` : '2px solid transparent', marginBottom: -1, cursor: 'pointer', background: 'transparent', color: active ? tabColor(t.id) : '#9CA3AF', transition: 'all 0.15s' }}>
+                        style={{ padding: '4px 2px 14px', fontSize: 11, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', fontFamily: T.serif, border: 'none', borderBottom: active ? `2px solid ${tabColor(t.id)}` : '2px solid transparent', marginBottom: -1, cursor: 'pointer', background: 'transparent', color: active ? tabColor(t.id) : '#9CA3AF', transition: 'all 0.15s' }}>
                         {t.label} <span style={{ fontWeight: 400, opacity: 0.8 }}>({t.count})</span>
                       </button>
                     );
                   })}
                 </div>
-                <div style={{ fontSize: 12, color: S.navy, marginTop: 12, fontFamily: T.serif }}>{resumenActivo}</div>
+                <div style={{ fontSize: 13, color: S.navy, marginTop: 20, fontFamily: T.serif }}>{resumenActivo}</div>
                 {carteraFilter === 'todos' && (
-                  <div style={{ display: 'flex', gap: 4, marginTop: 14 }}>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 20, marginBottom: 4 }}>
                     {([['lista','Lista de Clientes'],['operacion','Operación del Día']] as const).map(([id,l]) => (
                       <button key={id} onClick={() => setCarteraSubTab(id)}
-                        style={{ padding: '6px 14px', fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', border: `1px solid ${carteraSubTab === id ? S.navy : S.parch}`, cursor: 'pointer', background: carteraSubTab === id ? S.navy : '#fff', color: carteraSubTab === id ? '#fff' : '#6B7280' }}>
+                        style={{ padding: '7px 16px', fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', fontFamily: T.sans, border: `1px solid ${carteraSubTab === id ? S.navy : S.parch}`, cursor: 'pointer', background: carteraSubTab === id ? S.navy : '#fff', color: carteraSubTab === id ? '#fff' : '#6B7280' }}>
                         {l}
                       </button>
                     ))}
@@ -20498,7 +21591,7 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                     </style></head><body>
                       <div class="header"><div class="logo">GLP</div><div class="subtitle">Wealth Management · Reporte de Cartera</div><div style="font-size:11px;color:#6B7280;margin-top:8px;font-family:system-ui,sans-serif">Fecha: ${fecha} · Filtro: ${filtroLabel}</div></div>
                       <div class="kpis">
-                        <div class="kpi" style="border-left-color:#B89047"><div class="kpi-label">Cartera filtrada</div><div class="kpi-val">USD ${(rptTotal/1000).toFixed(0)}K</div></div>
+                        <div class="kpi" style="border-left-color:#B89047"><div class="kpi-label">Cartera del período</div><div class="kpi-val">USD ${((rptRecaudado + rptPendiente)/1000).toFixed(0)}K</div></div>
                         <div class="kpi" style="border-left-color:#10B981"><div class="kpi-label">Recaudado (período)</div><div class="kpi-val">USD ${(rptRecaudado/1000).toFixed(0)}K</div></div>
                         <div class="kpi" style="border-left-color:#F59E0B"><div class="kpi-label">Por recaudar</div><div class="kpi-val">USD ${(rptPendiente/1000).toFixed(0)}K</div></div>
                         <div class="kpi" style="border-left-color:#EF4444"><div class="kpi-label">En mora</div><div class="kpi-val">${rptMora.length} clientes</div></div>
@@ -20541,7 +21634,7 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                       <h1>GLP Wealth Management — Reporte de Cartera</h1>
                       <p>${fecha}${filtroLabel ? ' · ' + filtroLabel : ''} · ${filtradas.length} cliente${filtradas.length !== 1 ? 's' : ''}</p>
                       <div class="kpis">
-                        <div class="kpi"><div class="kpi-l">Total</div><div class="kpi-v">$${(rptTotal/1000).toFixed(0)}K</div></div>
+                        <div class="kpi"><div class="kpi-l">Cartera del período</div><div class="kpi-v">$${((rptRecaudado + rptPendiente)/1000).toFixed(0)}K</div></div>
                         <div class="kpi"><div class="kpi-l">Recaudado (período)</div><div class="kpi-v">$${(rptRecaudado/1000).toFixed(0)}K</div></div>
                         <div class="kpi"><div class="kpi-l">Pendiente</div><div class="kpi-v">$${(rptPendiente/1000).toFixed(0)}K</div></div>
                         <div class="kpi"><div class="kpi-l">En mora</div><div class="kpi-v">${rptMora.length}</div></div>
@@ -20562,30 +21655,40 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                   no son solo un título estático. */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: rptSinPlan > 0 ? 8 : 24 }}>
                 {[
-                  { l: 'CARTERA FILTRADA', v: `USD ${(rptTotal/1000).toFixed(0)}K`, c: S.gold, sub: null, riesgo: '' as const },
-                  { l: 'RECAUDADO (PERÍODO)', v: `USD ${(rptRecaudado/1000).toFixed(0)}K`, c: '#10B981', sub: null, riesgo: 'verde' as const },
-                  { l: 'POR RECAUDAR (ACTUAL)', v: `USD ${(rptPendiente/1000).toFixed(0)}K`, c: '#F59E0B', sub: 'saldo pendiente hoy, no cambia con el período', riesgo: 'amarillo' as const },
-                  { l: 'EN MORA (ACTUAL)', v: `${rptMora.length} clientes`, c: '#EF4444', sub: 'estado hoy, no cambia con el período', riesgo: 'rojo' as const },
+                  // Antes esta tarjeta mostraba rptTotal (el precio total contratado de los
+                  // clientes filtrados) bajo el nombre "Cartera Filtrada" — un monto fijo que
+                  // NO cambiaba con el período (7d/30d/...) pese a estar al lado de tarjetas
+                  // que sí decían "(Período)"/"(Actual)", y que además no coincidía con
+                  // Recaudado + Pendiente cuando había clientes sin plan de pagos. A pedido del
+                  // usuario, ahora es literalmente esa suma por definición — coincide siempre.
+                  { l: 'CARTERA DEL PERÍODO', v: `USD ${((rptRecaudado + rptPendiente)/1000).toFixed(0)}K`, c: S.gold, sub: null, riesgo: '' as const, filterable: false },
+                  { l: 'RECAUDADO (PERÍODO)', v: `USD ${(rptRecaudado/1000).toFixed(0)}K`, c: '#10B981', sub: null, riesgo: '' as const, filterable: false },
+                  { l: 'POR RECAUDAR (ACTUAL)', v: `USD ${(rptPendiente/1000).toFixed(0)}K`, c: '#F59E0B', sub: 'saldo pendiente hoy, no cambia con el período', riesgo: '' as const, filterable: false },
+                  { l: 'EN MORA (ACTUAL)', v: `${rptMora.length} clientes`, c: '#EF4444', sub: 'estado hoy, no cambia con el período', riesgo: 'rojo' as const, filterable: true },
                 ].map((k,i) => {
                   const active = carteraRptFiltro.riesgo === k.riesgo && k.riesgo !== '';
-                  // Menos color: las 4 tarjetas ya no llevan fondo ni borde grueso tintados
-                  // por categoría — solo el número conserva un matiz sutil para orientar la
-                  // lectura, y el estado activo se marca con un borde fino en navy, no con un
-                  // bloque de color relleno.
+                  // "Recaudado" y "Por Recaudar" antes filtraban por semáforo (verde/amarillo)
+                  // como si esas fueran SUS categorías — pero no lo son, "Al día"/"Atención" son
+                  // clasificaciones de riesgo, no de estos montos. Al hacer clic, `filtradas` se
+                  // reducía a esa categoría y, como las 4 tarjetas se calculan sobre ese MISMO
+                  // `filtradas`, las 4 se iban a cero de golpe apenas esa categoría tuviera pocos
+                  // o ningún cliente (ej. 0 en "Atención" hoy) — la pantalla en blanco que se
+                  // reportó. Solo "En Mora" tiene una correspondencia real 1:1 con un color del
+                  // semáforo (rojo), así que es la única tarjeta que sigue siendo filtro.
                   return (
-                    <div key={i} onClick={() => setCarteraRptFiltro(f => ({ ...f, riesgo: f.riesgo === k.riesgo ? '' : k.riesgo }))}
-                      style={{ background: '#fff', padding: '16px 20px', border: `1px solid ${active ? S.navy : S.parch}`, cursor: 'pointer', transition: 'all 0.15s' }}>
+                    <div key={i} onClick={() => { if (k.filterable) setCarteraRptFiltro(f => ({ ...f, riesgo: f.riesgo === k.riesgo ? '' : k.riesgo })); }}
+                      style={{ background: '#fff', padding: '16px 20px', border: `1px solid ${active ? S.navy : S.parch}`, cursor: k.filterable ? 'pointer' : 'default', transition: 'all 0.15s' }}>
                       <div style={{ fontSize: 9, letterSpacing: 2, color: '#9CA3AF', marginBottom: 6 }}>{k.l}</div>
                       <div style={{ fontSize: 20, fontWeight: 700, color: S.navy, fontFamily: T.serif }}>{k.v}</div>
                       {k.sub && <div style={{ fontSize: 9, color: '#9CA3AF', marginTop: 4, fontStyle: 'italic' }}>{k.sub}</div>}
-                      <div style={{ fontSize: 9, color: '#9CA3AF', marginTop: 4, fontWeight: 700 }}>{active ? '✓ filtro activo — clic para quitar' : 'clic para filtrar'}</div>
+                      {k.filterable && <div style={{ fontSize: 9, color: '#9CA3AF', marginTop: 4, fontWeight: 700 }}>{active ? '✓ filtro activo — clic para quitar' : 'clic para filtrar'}</div>}
                     </div>
                   );
                 })}
               </div>
               {rptSinPlan > 0 && (
                 <div style={{ background: '#fff', border: `1px solid ${S.parch}`, padding: '10px 16px', marginBottom: 24, fontSize: 11, color: '#6B7280' }}>
-                  ⚠ Recaudado + Pendiente no suman la Cartera Filtrada: faltan <strong style={{ color: S.navy }}>USD {rptSinPlan.toLocaleString()}</strong> porque {filtradas.filter(c => c.cuotas.length === 0).length} cliente(s) todavía no tienen su plan de pagos generado (0 cuotas) — su precio total cuenta en "Cartera Filtrada" pero no aparece ni en Recaudado ni en Pendiente hasta que se les parametrice el plan de pagos.
+                  ⚠ El valor real contratado con los clientes filtrados es <strong style={{ color: S.navy }}>USD {(rptTotal/1000).toFixed(0)}K</strong>, pero <strong style={{ color: S.navy }}>USD {rptSinPlan.toLocaleString()}</strong> de eso no aparece en "Cartera del Período" (arriba) porque {filtradas.filter(c => c.cuotas.length === 0).length} cliente(s) todavía no tienen su plan de pagos generado (0 cuotas) — sin cuotas no hay nada que contar ni en Recaudado ni en Pendiente hasta que se les parametrice el plan.
                 </div>
               )}
 
@@ -20738,9 +21841,17 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                   }
                 </div>
 
-                {/* Últimos pagos registrados */}
+                {/* Últimos pagos registrados — esta lista ya se filtra por rangoFechas
+                    (mismo período que "Recaudado (Período)" arriba), pero antes no lo decía
+                    en ningún lado: cambiabas el período, la lista cambiaba de contenido, y no
+                    había forma de saber a qué rango correspondía lo que estabas viendo. */}
                 <div style={{ background: '#fff', border: `1px solid ${S.parch}`, padding: 20 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, color: S.navy, marginBottom: 16, textTransform: 'uppercase' }}>💳 Pagos Registrados</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, color: S.navy, textTransform: 'uppercase' }}>💳 Pagos Registrados</div>
+                    <div style={{ fontSize: 10, color: '#9CA3AF' }}>
+                      {rangoFechas ? `${rangoFechas.desde || '…'} → ${rangoFechas.hasta || '…'}` : 'Todo el tiempo'}
+                    </div>
+                  </div>
                   {rptPagosRec.length === 0
                     ? <div style={{ color: '#9CA3AF', fontSize: 12 }}>No hay pagos con comprobante registrados.</div>
                     : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -20771,9 +21882,15 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
         {carteraView === 'clientes' && !carteraSelected && carteraFilter === 'todos' && carteraSubTab === 'operacion' && (() => {
           const hoyStr = new Date().toISOString().split('T')[0];
           const hoy = new Date(hoyStr);
+          // Antes solo entraba a "mora" una cuota con estado==='vencida' literal (que en datos
+          // reales casi nunca ocurre — ver calcRiesgo) o exactamente con fecha_vencimiento ===
+          // hoyStr para "hoy". Una cuota 'pendiente' vencida DESDE AYER o antes (el caso real
+          // más común) no cumplía ninguna de las dos condiciones y desaparecía por completo de
+          // Operación del Día — ni salía en mora, ni en "vencen hoy", ni en próximos 7 días
+          // (diff negativo) — aunque el resto del módulo ya la mostrara en rojo.
           const urgentes = carteras.flatMap(c => c.cuotas
-            .filter(q => q.estado === 'vencida' || (q.estado === 'pendiente' && q.fecha_vencimiento === hoyStr))
-            .map(q => ({ c, q, tipo: q.estado === 'vencida' ? 'mora' : 'hoy' as const }))
+            .filter(q => q.estado === 'vencida' || (q.estado === 'pendiente' && q.fecha_vencimiento <= hoyStr))
+            .map(q => ({ c, q, tipo: (q.estado === 'vencida' || q.fecha_vencimiento < hoyStr) ? 'mora' : 'hoy' as const }))
           );
           const proximos7 = carteras.flatMap(c => c.cuotas.filter(q => {
             if (q.estado !== 'pendiente') return false;
@@ -20890,7 +22007,13 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
             seleccionar un cliente, esa misma área pasa a mostrar el detalle a todo el
             ancho — nunca las dos cosas compitiendo por espacio. */}
         {carteraView === 'clientes' && (carteraSelected || carteraFilter === 'verde' || carteraFilter === 'amarillo' || carteraFilter === 'rojo' || (carteraFilter === 'todos' && carteraSubTab === 'lista')) && (
-        !carteraSelected ? (
+        // Antes esta condición comparaba `!carteraSelected` (el id crudo) mientras el cuerpo
+        // de abajo usa `selected` (el objeto ya resuelto contra `carteras`) — si el id
+        // quedaba obsoleto (registro borrado/recargado), entraba al branch de detalle con
+        // `selected === null` y crasheaba en `selected.prospectName`. Ahora la condición usa
+        // el mismo `selected` que el cuerpo, igual que ya hace el patrón defensivo de Legal &
+        // Cierre (línea ~20375) — un id obsoleto cae de vuelta a la lista en vez de crashear.
+        !selected ? (
           <div style={{ padding: '24px 40px', minHeight: '65vh' }}>
             {carteraProyectoFiltro && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
@@ -21205,7 +22328,7 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                       <div style={{ marginBottom: 16 }}>
                         <div style={{ display: 'flex', height: 12, overflow: 'hidden', borderRadius: 2, gap: 2 }}>
                           {sortCuotas(selected.cuotas).map(q => (
-                            <div key={q.id} style={{ flex: q.monto / (selected.precio_total || 1), background: q.estado === 'pagada' ? '#10B981' : q.estado === 'vencida' ? '#EF4444' : q.estado === 'en_proceso' ? S.gold : '#D1D5DB', minWidth: 4 }} title={`${CONCEPTO_LABEL[q.concepto]} — USD ${q.monto.toLocaleString()}`} />
+                            <div key={q.id} style={{ flex: q.monto / (selected.precio_total || 1), background: q.estado === 'pagada' ? '#10B981' : (q.estado === 'vencida' || (q.estado === 'pendiente' && q.fecha_vencimiento < hoyStrTab)) ? '#EF4444' : q.estado === 'en_proceso' ? S.gold : '#D1D5DB', minWidth: 4 }} title={`${CONCEPTO_LABEL[q.concepto]} — USD ${q.monto.toLocaleString()}`} />
                           ))}
                         </div>
                         <div style={{ display: 'flex', gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
@@ -21495,8 +22618,8 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                                 {q.fecha_pago && <div style={{ fontSize: 10, color: '#10B981', marginTop: 2 }}>Pagado: {q.fecha_pago}</div>}
                               </td>
                               <td style={{ padding: '10px 14px' }}>
-                                <span style={{ fontSize: 11, fontWeight: 700, color: q.estado === 'pagada' ? '#10B981' : q.estado === 'vencida' ? '#EF4444' : q.estado === 'en_proceso' ? '#D97706' : S.navy }}>
-                                  {q.estado === 'pendiente' ? 'Pendiente' : q.estado === 'en_proceso' ? 'En proceso' : q.estado === 'pagada' ? 'Pagada' : 'Vencida'}
+                                <span style={{ fontSize: 11, fontWeight: 700, color: q.estado === 'pagada' ? '#10B981' : (q.estado === 'vencida' || (q.estado === 'pendiente' && q.fecha_vencimiento < hoyStrTab)) ? '#EF4444' : q.estado === 'en_proceso' ? '#D97706' : S.navy }}>
+                                  {q.estado === 'pendiente' ? (q.fecha_vencimiento < hoyStrTab ? 'Vencida' : 'Pendiente') : q.estado === 'en_proceso' ? 'En proceso' : q.estado === 'pagada' ? 'Pagada' : 'Vencida'}
                                 </span>
                                 {q.comprobante_ref && <div style={{ fontSize: 10, color: '#6B7280', marginTop: 2 }}>Ref: {q.comprobante_ref}</div>}
                               </td>
@@ -21591,7 +22714,12 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                         meses[mes].esperado += q.monto;
                         if (q.estado === 'pagada') {
                           meses[mes].recaudado += q.monto;
-                        } else if (q.estado === 'vencida') {
+                        // Ninguna cuota real llega a estado 'vencida' automáticamente — en la
+                        // práctica sigue 'pendiente' con fecha ya pasada. Antes esas cuotas no
+                        // caían ni en "mora" ni en "próximo" (el diff negativo fallaba el rango
+                        // 0-15 de abajo), quedaban invisibles en la barra pese a sumar en
+                        // "esperado" — la barra no cuadraba con el total mostrado al lado.
+                        } else if (q.estado === 'vencida' || (q.estado === 'pendiente' && new Date(q.fecha_vencimiento).getTime() < today)) {
                           meses[mes].mora += q.monto;
                         } else {
                           const diff = (new Date(q.fecha_vencimiento).getTime() - today) / 86400000;
@@ -21647,7 +22775,13 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                       {(() => {
                         const riesgo = calcRiesgo(selected);
                         const confiabilidad = calcConfiabilidad(selected);
-                        const vencidas = selected.cuotas.filter(q => q.estado === 'vencida');
+                        // Misma lógica que calcRiesgo (arriba) — antes esto solo miraba
+                        // estado==='vencida' (que en datos reales casi nunca ocurre) y podía
+                        // mostrar el círculo en rojo (calcRiesgo, correcto) junto a "0 cuotas
+                        // vencidas" (este contador, incorrecto), contradiciéndose en la misma
+                        // pantalla.
+                        const hoyStrSemaforo = new Date().toISOString().slice(0, 10);
+                        const vencidas = selected.cuotas.filter(q => q.estado === 'vencida' || (q.estado === 'pendiente' && q.fecha_vencimiento < hoyStrSemaforo));
                         const proximas = selected.cuotas.filter(q => {
                           if (q.estado !== 'pendiente') return false;
                           const diff = (new Date(q.fecha_vencimiento).getTime() - new Date(new Date().toISOString().slice(0,10)).getTime()) / 86400000;
@@ -21857,7 +22991,7 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
             // Entrega como estaba antes, lo que dejaba el crédito llegando después de que ya
             // se había firmado, un orden imposible en la realidad.
             const ultimaCuotaInicial = cuotasIniciales.length > 0
-              ? cuotasIniciales.map(q => q.fecha_vencimiento).sort().slice(-1)[0] : null;
+              ? cuotasIniciales.map(q => q.fecha_vencimiento).sort().slice(-1)[0] : undefined;
             const baseEscritura = sel.fecha_escritura || sel.fecha_entrega || ultimaCuotaInicial;
             // Si el plan que se acaba de generar corre más allá de la fecha de escritura
             // vigente, la escritura no puede quedarse donde estaba — se recalcula para que
@@ -21877,7 +23011,7 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
             const nuevas = [separacion, ...cuotasIniciales, ...creditoFinal, ...otras]
               .sort((a, b) => a.fecha_vencimiento.localeCompare(b.fecha_vencimiento));
             const hoyStr = new Date().toISOString().split('T')[0];
-            const historialAjuste = [];
+            const historialAjuste: CarteraEvent[] = [];
             if (fechaEscrituraFinal !== sel.fecha_escritura) {
               historialAjuste.push({ fecha: hoyStr, accion: 'Fecha de escritura recalculada', detalle: `Ajustada a ${fechaEscrituraFinal} para quedar después de la cuota inicial completa y el crédito hipotecario.` });
             }
@@ -22428,120 +23562,6 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
 
     if (activeModule === 'configuracion') return null;
 
-    // ── CARTERA: resumen de alertas y compromisos ────────────
-    if (activeModule === 'cartera') {
-      const hoy = new Date(new Date().toISOString().slice(0,10));
-      const enMoraList = carteras.filter(c => {
-        return c.cuotas.some(q => q.estado === 'vencida');
-      });
-      const proxVencer = carteras.filter(c => {
-        return c.cuotas.some(q => {
-          if (q.estado !== 'pendiente') return false;
-          const diff = (new Date(q.fecha_vencimiento).getTime() - hoy.getTime()) / 86400000;
-          return diff <= 10 && diff >= 0;
-        });
-      });
-      const compromisos = carteras.flatMap(c => c.cuotas.filter(q => q.compromiso).map(q => ({ c, q })))
-        .sort((a, b) => (a.q.compromiso!.fecha > b.q.compromiso!.fecha ? 1 : -1))
-        .slice(0, 5);
-      const totalCartera = carteras.reduce((s, c) => s + c.precio_total, 0);
-      const totalRecaudo = carteras.reduce((s, c) => s + c.cuotas.filter(q => q.estado === 'pagada').reduce((s2, q) => s2 + q.monto, 0), 0);
-      const pctAvance = totalCartera > 0 ? Math.round(totalRecaudo / totalCartera * 100) : 0;
-
-      return (
-        <>
-          {panelHeader('Cartera', 'Alertas & Compromisos')}
-          <div style={{ flex: 1, overflowY: 'auto' as const, padding: '12px 14px', display: 'flex', flexDirection: 'column' as const, gap: 12 }}>
-            {/* Progreso global */}
-            <div style={{ background: '#fff', border: '1px solid #E5E0D8', borderRadius: 4, padding: '10px 12px' }}>
-              <div style={{ fontSize: 8, color: GOLD, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const, marginBottom: 8 }}>Avance Global</div>
-              <div style={{ height: 6, background: '#F0EDE8', borderRadius: 3, overflow: 'hidden', marginBottom: 6 }}>
-                <div style={{ width: `${pctAvance}%`, height: '100%', background: pctAvance >= 70 ? '#10B981' : GOLD }} />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10 }}>
-                <span style={{ color: T.textSec }}>USD {(totalRecaudo/1000).toFixed(0)}K recaudado</span>
-                <span style={{ fontWeight: 700, color: T.text }}>{pctAvance}%</span>
-              </div>
-            </div>
-
-            {/* En mora */}
-            {enMoraList.length > 0 && (
-              <div>
-                {panelSectionLabel(`⚠ ${enMoraList.length} cliente${enMoraList.length > 1 ? 's' : ''} en mora`)}
-                <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 5 }}>
-                  {enMoraList.slice(0, 4).map(c => {
-                    const vencidas = c.cuotas.filter(q => q.estado === 'vencida');
-                    return (
-                      <div key={c.id} onClick={() => { setCarteraSelected(c.id); setCarteraView('clientes'); setCarteraTab('cuotas'); setCarteraReturnTo('panel'); }}
-                        style={{ padding: '7px 9px', background: '#fff', border: '1px solid #E5E0D8', borderLeft: '3px solid #DC2626', borderRadius: 3, cursor: 'pointer' }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: '#DC2626' }}>{c.prospectName}</div>
-                        <div style={{ fontSize: 9, color: '#6B7280', marginTop: 1 }}>{vencidas.length} cuota{vencidas.length > 1 ? 's' : ''} · USD {vencidas.reduce((s, q) => s + q.monto, 0).toLocaleString()}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Próximos a vencer */}
-            {proxVencer.length > 0 && (
-              <div>
-                {panelSectionLabel(`🕐 ${proxVencer.length} por vencer (≤10 días)`)}
-                <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 5 }}>
-                  {proxVencer.slice(0, 4).map(c => {
-                    const prox = c.cuotas.find(q => {
-                      if (q.estado !== 'pendiente') return false;
-                      const diff = (new Date(q.fecha_vencimiento).getTime() - hoy.getTime()) / 86400000;
-                      return diff <= 10 && diff >= 0;
-                    });
-                    return (
-                      <div key={c.id} onClick={() => { setCarteraSelected(c.id); setCarteraView('clientes'); setCarteraTab('cuotas'); setCarteraReturnTo('panel'); }}
-                        style={{ padding: '7px 9px', background: '#FFFBEB', border: '1px solid #FCD34D', borderLeft: '3px solid #F59E0B', borderRadius: 3, cursor: 'pointer' }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: '#92400E' }}>{c.prospectName}</div>
-                        <div style={{ fontSize: 9, color: '#6B7280', marginTop: 1 }}>Vence {prox?.fecha_vencimiento} · USD {prox?.monto.toLocaleString()}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Compromisos */}
-            {compromisos.length > 0 ? (
-              <div>
-                {panelSectionLabel('📅 Próximos compromisos')}
-                <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 5 }}>
-                  {compromisos.map(({ c, q }) => (
-                    <div key={q.id} onClick={() => { setCarteraSelected(c.id); setCarteraView('clientes'); setCarteraTab('cuotas'); setCarteraReturnTo('panel'); }}
-                      style={{ padding: '7px 9px', background: '#fff', border: '1px solid #E5E0D8', borderLeft: '3px solid ' + GOLD, borderRadius: 3, cursor: 'pointer' }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: T.text }}>{c.prospectName}</div>
-                      <div style={{ fontSize: 9, color: '#6B7280', marginTop: 1 }}>{q.compromiso!.fecha} · USD {q.compromiso!.monto.toLocaleString()}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              enMoraList.length === 0 && proxVencer.length === 0 && (
-                <div style={{ textAlign: 'center' as const, padding: '20px 0', color: '#10B981' }}>
-                  <div style={{ fontSize: 24, marginBottom: 8 }}>✓</div>
-                  <div style={{ fontSize: 11, fontWeight: 600 }}>Cartera al día</div>
-                  <div style={{ fontSize: 10, color: T.textSec, marginTop: 4 }}>Sin mora ni alertas activas</div>
-                </div>
-              )
-            )}
-
-            {/* Acceso rápido */}
-            <div style={{ marginTop: 'auto' as const, paddingTop: 8, borderTop: '1px solid #E5E0D8' }}>
-              <button onClick={() => setCarteraView('reportes')}
-                style={{ width: '100%', padding: '8px', background: '#001A37', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em' }}>
-                Ver Reportes →
-              </button>
-            </div>
-          </div>
-        </>
-      );
-    }
-
     // ── FAQs: analytics de consultas ─────────────────────────
     if (activeModule === 'faqs') {
       const total = faqStats.length;
@@ -22832,9 +23852,9 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                       <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                       <XAxis dataKey="proyecto" tick={{fontSize:9,fill:'#94a3b8'}} tickLine={false} axisLine={false} interval={0} angle={-30} textAnchor="end" height={50} />
                       <YAxis tick={{fontSize:10,fill:'#94a3b8'}} tickLine={false} axisLine={false} allowDecimals={false} />
-                      <Tooltip contentStyle={{fontSize:12,borderRadius:8,border:'1px solid #e2e8f0'}} formatter={(v:any,n:string)=>n==='presupuesto'?[fmtUSD(v),'Pipeline']:v} />
+                      <Tooltip contentStyle={{fontSize:12,borderRadius:8,border:'1px solid #e2e8f0'}} formatter={(v:any,n:any)=>n==='presupuesto'?[fmtUSD(v),'Pipeline']:v} />
                       <Bar dataKey="total" fill={N} radius={[4,4,0,0]} name="Prospectos">
-                        <LabelList dataKey="total" position="top" style={{fontSize:10,fill:'#64748b',fontWeight:600,fontFamily:SANS}}/>
+                        <LabelList dataKey="total" position="top" style={{fontSize:10,fill:'#64748b',fontWeight:600,fontFamily:T.fontSans}}/>
                       </Bar>
                       <Bar dataKey="presupuesto" fill={G} radius={[4,4,0,0]} name="presupuesto" hide />
                     </BarChart>
@@ -22847,7 +23867,7 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                 ? <div style={{color:'#94a3b8',textAlign:'center',padding:'30px 0',fontSize:13}}>Sin datos</div>
                 : <ResponsiveContainer width="100%" height={220}>
                     <PieChart>
-                      <Pie data={analyticsCanal.map(r=>({name:r.canal,value:Number(r.total)}))} cx="50%" cy="50%" outerRadius={80} innerRadius={40} dataKey="value" nameKey="name" label={({name,percent})=>`${name} ${Math.round(percent*100)}%`} labelLine={false} style={{fontSize:10}}>
+                      <Pie data={analyticsCanal.map(r=>({name:r.canal,value:Number(r.total)}))} cx="50%" cy="50%" outerRadius={80} innerRadius={40} dataKey="value" nameKey="name" label={({name,percent})=>`${name} ${Math.round((percent ?? 0)*100)}%`} labelLine={false} style={{fontSize:10}}>
                         {analyticsCanal.map((_:any,i:number)=><Cell key={i} fill={CANAL_COLORS[i%CANAL_COLORS.length]} />)}
                       </Pie>
                       <Tooltip contentStyle={{fontSize:12,borderRadius:8,border:'1px solid #e2e8f0'}} />
@@ -23092,7 +24112,7 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
             {panelSectionLabel('Estado de agentes')}
             {[
               { name: 'Camilo',   desc: 'Investigación & prospección',     status: 'Activo', color: '#B89047' },
-              { name: 'Sofía',    desc: 'Perfilamiento conductual',         status: 'Lista',  color: '#EC4899' },
+              { name: 'Sofía',    desc: 'Perfilamiento conductual',         status: 'Lista',  color: '#0D9488' },
               { name: 'Sara',     desc: 'Mensajería & back-office',         status: 'Activa', color: '#0EA5E9' },
               { name: 'Valeria',  desc: 'Contenido & copywriting',          status: 'Lista',  color: '#8B5CF6' },
               { name: 'Isabella', desc: 'Producción de video & guiones',    status: 'Lista',  color: '#F59E0B' },
@@ -23368,150 +24388,113 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
   const showMobile = isMobileScreen || forceMobileView;
   if (showMobile) return renderMobileView();
 
+  // Navegación horizontal (opción A): una pestaña por sección de NAV_SECTIONS, cada una
+  // despliega solo los módulos que ese usuario puede ver — el filtrado por rol
+  // (allowedModules/isSuperAdmin) es el mismo que usaba el sidebar vertical, así que un
+  // perfil con acceso limitado simplemente ve menos pestañas y desplegables más cortos;
+  // solo el superadmin ve las 4 secciones completas.
+  const visibleNavSections = NAV_SECTIONS.map(section => ({
+    ...section,
+    items: (section.items as unknown as any[]).filter(m => {
+      if (m.superadminOnly && !isSuperAdmin) return false;
+      return allowedModules === null || allowedModules.includes(m.id);
+    }),
+  })).filter(section => section.items.length > 0);
+
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', width: '100%', background: T.bg, fontFamily: 'Inter, sans-serif', color: T.text }}>
-      {/* LEFT SIDEBAR */}
-      <div style={{
-        width: sidebarCollapsed ? 56 : 210, height: '100vh',
-        background: '#fff',
-        borderRight: `1px solid #E8ECF0`,
-        display: 'flex', flexDirection: 'column' as const,
-        position: 'fixed' as const, top: 0, left: 0, zIndex: 10,
-        overflowY: 'auto', overflowX: 'hidden',
-        boxShadow: '2px 0 12px rgba(15,37,66,0.06)',
-        transition: 'width 0.18s',
-      }}>
-        {/* Acento superior — navy con toque dorado GLP */}
-        <div style={{ height: 2, background: `linear-gradient(90deg, ${T.teal} 0%, #1C3A5E 55%, ${T.coral} 100%)` }} />
+    <div style={{ display: 'flex', flexDirection: 'column' as const, height: '100vh', overflow: 'hidden', width: '100%', background: T.bg, fontFamily: 'Inter, sans-serif', color: T.text }}>
+      {/* TOP NAV BAR — pestañas por sección con desplegable */}
+      <div style={{ height: 50, flexShrink: 0, background: T.teal, display: 'flex', alignItems: 'center', padding: '0 18px', position: 'relative' as const, zIndex: 20, boxShadow: '0 2px 10px rgba(15,37,66,0.12)' }}
+        onMouseLeave={() => setOpenNavGroup(null)}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 16, marginRight: 8, borderRight: '1px solid rgba(255,255,255,0.15)', flexShrink: 0 }}>
+          <img src="/img/logo-capital-brokers.png" alt="Capital Brokers" style={{ height: 30, objectFit: 'contain' as const }} />
+          <div style={{ width: 26, height: 26, flexShrink: 0, background: T.red, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 10, color: '#fff' }}>GLP</div>
+        </div>
 
-        {/* Logo + toggle */}
-        <div style={{ padding: sidebarCollapsed ? '14px 8px 12px' : '20px 18px 16px', borderBottom: `1px solid #EEF1F5`, position: 'relative' as const }}>
-          <button
-            onClick={() => setSidebarCollapsed(v => !v)}
-            title={sidebarCollapsed ? 'Expandir menú' : 'Contraer menú'}
-            style={{ position: 'absolute' as const, top: sidebarCollapsed ? 12 : 18, right: sidebarCollapsed ? 8 : 12, width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #E8ECF0', borderRadius: 4, background: '#F8FAFC', color: '#7B92A8', cursor: 'pointer', fontSize: 10, lineHeight: 1 }}
-          >
-            {sidebarCollapsed ? '»' : '«'}
+        {visibleNavSections.map(section => {
+          const isOpen = openNavGroup === section.label;
+          const hasActive = section.items.some((m: any) => m.id === activeModule);
+          return (
+            <div key={section.label} style={{ position: 'relative' as const, height: '100%' }}>
+              <button
+                onClick={() => setOpenNavGroup(v => v === section.label ? null : section.label)}
+                onMouseEnter={() => setOpenNavGroup(section.label)}
+                style={{
+                  background: isOpen || hasActive ? 'rgba(255,255,255,0.1)' : 'transparent',
+                  border: 'none', color: hasActive ? '#fff' : 'rgba(255,255,255,0.75)',
+                  fontFamily: 'Inter, sans-serif', fontSize: 12.5, fontWeight: hasActive ? 700 : 600,
+                  padding: '0 14px', height: 50, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 5,
+                }}
+              >
+                {section.label}
+                <span style={{ fontSize: 8, opacity: 0.7, transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.12s' }}>▾</span>
+              </button>
+              {isOpen && (
+                <div style={{ position: 'absolute' as const, top: 50, left: 0, background: '#fff', border: '1px solid #E8ECF0', borderTop: `2px solid ${T.teal}`, borderRadius: '0 0 8px 8px', boxShadow: '0 12px 24px rgba(0,0,0,0.14)', minWidth: 200, padding: 6, zIndex: 21 }}>
+                  {section.items.map((m: any) => (
+                    <button key={m.id} onClick={() => { setActiveModule(m.id); setOpenNavGroup(null); }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left' as const, padding: '9px 10px', borderRadius: 5, border: 'none', cursor: 'pointer', fontFamily: 'Inter, sans-serif', fontSize: 12.5, fontWeight: activeModule === m.id ? 700 : 500, color: activeModule === m.id ? T.teal : '#33404D', background: activeModule === m.id ? '#EAF1F8' : 'transparent' }}
+                      onMouseEnter={e => { if (activeModule !== m.id) e.currentTarget.style.background = '#F4F6F8'; }}
+                      onMouseLeave={e => { if (activeModule !== m.id) e.currentTarget.style.background = 'transparent'; }}
+                    >
+                      {renderSidebarIcon(m.id, activeModule === m.id ? T.teal : (MODULE_ACCENT[m.id] || '#7B92A8'))}
+                      <span>{m.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button onClick={() => setForceMobileView(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', color: '#DCE6F0', borderRadius: 20, padding: '3px 12px', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
+            📱 Vista Mobile
           </button>
-          {sidebarCollapsed ? (
-            <img src="/img/logo-capital-brokers.png" alt="Capital Brokers" style={{ width: 44, height: 44, objectFit: 'contain' as const, display: 'block', margin: '2px auto 0' }} />
-          ) : (
-            <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingRight: 24 }}>
-                <img src="/img/logo-capital-brokers.png" alt="Capital Brokers" style={{ width: 68, height: 68, objectFit: 'contain' as const, flexShrink: 0 }} />
-                <div style={{ width: 42, height: 42, flexShrink: 0, background: T.red, border: `1.5px solid ${T.red}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 15, color: '#fff', letterSpacing: '0.01em' }}>GLP</div>
-              </div>
-              <div style={{ fontSize: 8, color: '#7B92A8', letterSpacing: 3, textTransform: 'uppercase' as const, marginTop: 8 }}>Sistema Operativo Inmobiliario</div>
-              {/* Badge de rol */}
-              <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase' as const,
-                  color: currentUserRole === 'superadmin' ? '#fff' : currentUserRole === 'presidencia' ? '#185FA5' : currentUserRole === 'gerencia' ? '#0F6E56' : '#993C1D',
-                  background: currentUserRole === 'superadmin' ? T.teal : currentUserRole === 'presidencia' ? '#E6F1FB' : currentUserRole === 'gerencia' ? '#E1F5EE' : '#FAECE7',
-                  padding: '3px 8px',
-                  border: `1px solid ${currentUserRole === 'superadmin' ? T.teal : currentUserRole === 'presidencia' ? '#B5D4F4' : currentUserRole === 'gerencia' ? '#9FE1CB' : '#F5C4B3'}` }}>
-                  {ROLE_LABELS[currentUserRole]}
-                </span>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Nav por secciones */}
-        <div style={{ flex: 1, overflowY: 'auto' as const, padding: '8px 0' }}>
-          {NAV_SECTIONS.map((section, si) => {
-            const visibleItems = (section.items as any[]).filter(m => {
-              if (m.superadminOnly && !isSuperAdmin) return false;
-              return allowedModules === null || allowedModules.includes(m.id);
-            });
-            if (visibleItems.length === 0) return null;
-            const isFirstVisible = NAV_SECTIONS.slice(0, si).every(s => (s.items as any[]).filter(m => (!m.superadminOnly || isSuperAdmin) && (allowedModules === null || allowedModules.includes(m.id))).length === 0);
-            return (
-              <div key={si} style={{ marginBottom: 4 }}>
-                {!isFirstVisible && (
-                  <div style={{ height: 1, background: '#E8ECF0', margin: sidebarCollapsed ? '6px 10px' : '6px 18px' }} />
-                )}
-                {!sidebarCollapsed && (
-                  <div style={{ fontSize: 8, color: '#A0B4C6', letterSpacing: '2.5px', textTransform: 'uppercase' as const, padding: '10px 18px 4px', fontWeight: 600 }}>
-                    {section.label}
-                  </div>
-                )}
-                {visibleItems.map((m: any) => (
-                  <button key={m.id} onClick={() => setActiveModule(m.id)} title={sidebarCollapsed ? m.label : undefined}
-                    style={sidebarCollapsed ? { ...sidebarBtn(m.id), padding: '10px 0', justifyContent: 'center' as const } : sidebarBtn(m.id)}>
-                    {renderSidebarIcon(m.id, activeModule === m.id ? '#fff' : (MODULE_ACCENT[m.id] || T.teal))}
-                    {!sidebarCollapsed && <span>{m.label}</span>}
-                  </button>
-                ))}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Logout */}
-        <button
-          onClick={() => { if (confirm('¿Desea cerrar la sesión?')) { sessionStorage.removeItem('glp_crm_logged_user'); setCurrentUser(null); } }}
-          title={sidebarCollapsed ? 'Cerrar Sesión' : undefined}
-          style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: sidebarCollapsed ? '12px 0' : '12px 18px', justifyContent: sidebarCollapsed ? 'center' as const : 'flex-start' as const, border: 'none', background: 'transparent', color: '#5A6B7D', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer', borderTop: `1px solid #EEF1F5`, marginTop: 'auto', letterSpacing: '0.03em' }}
-          onMouseEnter={e => { e.currentTarget.style.background = '#F4F6F8'; e.currentTarget.style.color = T.teal; }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#5A6B7D'; }}
-        >
-          <Icon name="lock" size={12} color="#5A6B7D" /> {!sidebarCollapsed && 'Cerrar Sesión'}
-        </button>
-        {!sidebarCollapsed && (
-          <div style={{ padding: '10px 18px', borderTop: `1px solid #EEF1F5`, fontSize: 9, color: '#B0C0CC', letterSpacing: 1.5 }}>
-            GLP OS v1.0 · 2026
+          {/* Se quitó el enlace "← Landing" — la landing vive en otra pestaña del
+              navegador, este acceso ya no aportaba nada dentro del CRM. */}
+          {/* Identidad del usuario activo: solo iniciales, sin nombre completo ni rol —
+              a pedido del usuario, la misma simplificación que en la vista móvil. */}
+          <div title={getAdminUsers().find((u: any) => u.username === currentUser)?.name || currentUser || ''}
+            style={{ width: 26, height: 26, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10.5, fontWeight: 700, color: '#fff', fontFamily: 'Inter, sans-serif', letterSpacing: '0.02em' }}>
+            {userInitials(getAdminUsers().find((u: any) => u.username === currentUser)?.name || currentUser)}
           </div>
-        )}
-      </div>
-
-      {/* MAIN AREA — position:fixed con left/right explícitos en vez de flex+margin: el
-          sidebar y el panel contextual son position:fixed, así que quedan fuera del flujo
-          flex y un marginRight en un hermano flex:1 no se descuenta de forma confiable
-          (causaba que el panel derecho se superpusiera y truncara la tabla de Prospectos). */}
-      <div style={{ position: 'fixed' as const, top: 0, bottom: 0, left: sidebarCollapsed ? 56 : 210, right: (activeModule === 'configuracion' || activeModule === 'reportes' || activeModule === 'campanas' || activeModule === 'gerencial' || activeModule === 'integraciones' || activeModule === 'legal' || activeModule === 'casos' || activeModule === 'agentes' || activeModule === 'brokers' || activeModule === 'prospectos' || activeModule === 'portafolio') ? 0 : (carteraRightOpen ? 280 : 32), display: 'flex', flexDirection: 'column' as const, transition: 'right 0.2s, left 0.18s', overflow: 'hidden' }}>
-        {/* TOP HEADER */}
-        <div style={{ background: '#fff', padding: '10px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky' as const, top: 0, zIndex: 5, borderBottom: `1px solid #EEF1F5` }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            {/* Con el menú colapsado a íconos, la marca y el rol se trasladan aquí
-                para que no se pierdan — en la barra angosta no caben. */}
-            {sidebarCollapsed && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingRight: 16, borderRight: '1px solid #EEF1F5' }}>
-                <img src="/img/logo-capital-brokers.png" alt="Capital Brokers" style={{ height: 38, objectFit: 'contain' as const }} />
-                <div style={{ width: 32, height: 32, flexShrink: 0, background: T.red, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 11, color: '#fff' }}>GLP</div>
-                <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase' as const,
-                  color: currentUserRole === 'superadmin' ? '#fff' : currentUserRole === 'presidencia' ? '#185FA5' : currentUserRole === 'gerencia' ? '#0F6E56' : '#993C1D',
-                  background: currentUserRole === 'superadmin' ? T.teal : currentUserRole === 'presidencia' ? '#E6F1FB' : currentUserRole === 'gerencia' ? '#E1F5EE' : '#FAECE7',
-                  padding: '3px 8px',
-                  border: `1px solid ${currentUserRole === 'superadmin' ? T.teal : currentUserRole === 'presidencia' ? '#B5D4F4' : currentUserRole === 'gerencia' ? '#9FE1CB' : '#F5C4B3'}` }}>
-                  {ROLE_LABELS[currentUserRole]}
-                </span>
-              </div>
-            )}
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#0F2542', letterSpacing: 0.3 }}>
-              {MODULES.find(m => m.id === activeModule)?.label || 'GLP OS'}
-            </div>
-            <div style={{ fontSize: 9, color: '#A0B4C6', letterSpacing: 2, textTransform: 'uppercase' as const }}>Sistema Operativo Inmobiliario</div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#F0FAF5', border: '1px solid #9FE1CB', padding: '3px 10px', borderRadius: 20 }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981', display: 'inline-block' }} />
-              <span style={{ fontSize: 11, fontWeight: 600, color: '#0F6E56' }}>IA Activa</span>
-            </div>
-            <button onClick={() => setForceMobileView(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#F5F7FA', border: '1px solid #E8ECF0', color: '#4A6A8A', borderRadius: 20, padding: '3px 12px', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
-              📱 Vista Mobile
-            </button>
-            <a href="/" style={{ fontSize: 12, color: '#B89047', textDecoration: 'none', fontWeight: 600 }}>← Landing</a>
-          </div>
-        </div>
-        {/* CONTENT */}
-        <div id="crm-content" style={{ padding: (activeModule === 'reportes' || activeModule === 'casos' || activeModule === 'campanas' || activeModule === 'gerencial' || activeModule === 'integraciones' || activeModule === 'legal' || activeModule === 'agentes') ? 0 : '24px 28px', overflowY: 'auto' as const, flex: 1, display: 'flex', flexDirection: 'column' as const }}>
-          {renderModule()}
+          <button
+            onClick={() => { if (confirm('¿Desea cerrar la sesión?')) { sessionStorage.removeItem('glp_crm_logged_user'); setCurrentUser(null); } }}
+            title="Cerrar Sesión"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, border: 'none', background: 'transparent', color: 'rgba(255,255,255,0.7)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', letterSpacing: '0.02em' }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#fff'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.7)'; }}
+          >
+            <Icon name="lock" size={12} color="currentColor" /> Salir
+          </button>
         </div>
       </div>
 
-      {/* RIGHT PANEL — Contextual */}
-      {activeModule !== 'configuracion' && activeModule !== 'reportes' && activeModule !== 'casos' && activeModule !== 'campanas' && activeModule !== 'gerencial' && activeModule !== 'integraciones' && activeModule !== 'legal' && activeModule !== 'agentes' && activeModule !== 'portafolio' && (
+      {/* MAIN AREA — sin sidebar izquierdo, position:fixed solo para el panel derecho
+          contextual (que sigue superponiéndose, no participando del flujo flex). */}
+      <div style={{ position: 'relative' as const, flex: 1, display: 'flex', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute' as const, top: 0, bottom: 0, left: 0, right: (activeModule === 'configuracion' || activeModule === 'reportes' || activeModule === 'campanas' || activeModule === 'gerencial' || activeModule === 'integraciones' || activeModule === 'legal' || activeModule === 'casos' || activeModule === 'agentes' || activeModule === 'brokers' || activeModule === 'prospectos' || activeModule === 'portafolio' || activeModule === 'cartera') ? 0 : (carteraRightOpen ? 280 : 32), display: 'flex', flexDirection: 'column' as const, transition: 'right 0.2s', overflow: 'hidden' }}>
+          {/* CONTENT */}
+          <div id="crm-content" style={{ padding: (activeModule === 'reportes' || activeModule === 'casos' || activeModule === 'campanas' || activeModule === 'gerencial' || activeModule === 'integraciones' || activeModule === 'legal' || activeModule === 'agentes') ? 0 : '24px 28px', overflowY: 'auto' as const, flex: 1, display: 'flex', flexDirection: 'column' as const }}>
+            {renderModule()}
+          </div>
+        </div>
+      </div>
+
+      {/* RIGHT PANEL — Contextual. 'prospectos' y 'brokers' excluidos: renderRightPanel() ya
+          devuelve null para ambos módulos (no tienen contenido contextual propio) y su botón
+          de cerrar también está oculto más abajo — sin esta exclusión, si carteraRightOpen
+          quedaba en `true` de haber visitado Cartera/Dashboard antes, este contenedor de
+          280px se montaba vacío en esos módulos sin ninguna forma de cerrarlo, truncando la
+          pantalla permanentemente. 'cartera' excluido a pedido del usuario: su contenido
+          ("clientes en mora", compromisos, avance global) duplicaba casi 1:1 lo que ya
+          muestra la vista principal de Cartera (lista de clientes y Reportes), especialmente
+          notorio con el filtro "En mora" activo en Reportes — mismos clientes, dos veces en
+          pantalla. */}
+      {activeModule !== 'configuracion' && activeModule !== 'reportes' && activeModule !== 'casos' && activeModule !== 'campanas' && activeModule !== 'gerencial' && activeModule !== 'integraciones' && activeModule !== 'legal' && activeModule !== 'agentes' && activeModule !== 'portafolio' && activeModule !== 'prospectos' && activeModule !== 'brokers' && activeModule !== 'cartera' && (
         <div style={{ width: carteraRightOpen ? 280 : 32, position: 'fixed' as const, top: 0, right: 0, bottom: 0, zIndex: 9, background: '#FAF9F6', borderLeft: `1px solid #E5E0D8`, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden', transition: 'width 0.2s' }}>
           {/* Toggle button — oculto en Dashboard, donde el panel se abre/cierra
               automáticamente según la tarjeta seleccionada, no manualmente. */}

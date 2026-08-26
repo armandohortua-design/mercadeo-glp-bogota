@@ -30,6 +30,42 @@ async function getThresholds() {
   return DEFAULT_THRESHOLDS;
 }
 
+// Garantiza como máximo UNA alerta 'activa' por prospecto, sin importar cuál de los 3
+// jobs de este archivo la dispare (monitorProspects, saraAutoTrigger72h,
+// detectColdProspects) — antes cada job insertaba independientemente, así que un mismo
+// prospecto podía terminar con 2-3 alertas activas simultáneas (una por job) además del
+// problema de duplicados diarios dentro de monitorProspects.
+// Devuelve true si se creó/reemplazó una alerta, false si solo se refrescó una existente
+// del mismo nivel (sin gastar otra llamada a OpenAI para regenerar el mismo borrador).
+async function upsertActiveAlert(prospectoId, nivel, motivo, diasSinActividad, tareas, generateDraft) {
+  const { rows: existingActive } = await pool.query(
+    `SELECT id, nivel FROM prospect_alerts WHERE prospecto_id = $1 AND status = 'activa' ORDER BY created_at DESC LIMIT 1`,
+    [prospectoId]
+  );
+  if (existingActive.length > 0) {
+    const current = existingActive[0];
+    if (current.nivel === nivel) {
+      await pool.query(
+        `UPDATE prospect_alerts SET motivo = $1, dias_sin_actividad = $2, updated_at = NOW() WHERE id = $3`,
+        [motivo, diasSinActividad, current.id]
+      );
+      return false;
+    }
+    await pool.query(
+      `UPDATE prospect_alerts SET status = 'reemplazada', updated_at = NOW() WHERE id = $1`,
+      [current.id]
+    );
+  }
+  const draft = await generateDraft();
+  const alertId = `alert-${prospectoId}-${Date.now()}`;
+  await pool.query(
+    `INSERT INTO prospect_alerts (id, tenant_id, prospecto_id, nivel, motivo, dias_sin_actividad, tareas, borrador_asunto, borrador_cuerpo, status, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'activa',NOW(),NOW())`,
+    [alertId, TENANT_ID, prospectoId, nivel, motivo, diasSinActividad, JSON.stringify(tareas || []), draft.asunto, draft.cuerpo]
+  );
+  return true;
+}
+
 // Tareas sugeridas por nivel y etapa
 function getSuggestedTasks(etapa, nivel, nombre, proyectos) {
   const proyecto = proyectos?.[0] || 'nuestros proyectos';
@@ -166,30 +202,23 @@ async function monitorProspects() {
 
       if (!nivel) continue;
 
-      // Verificar si ya existe alerta activa reciente para este prospecto y nivel
-      const { rows: existing } = await pool.query(
-        `SELECT id FROM prospect_alerts WHERE prospecto_id = $1 AND nivel = $2 AND status = 'activa' AND created_at > NOW() - INTERVAL '24 hours'`,
-        [p.id, nivel]
-      );
-      if (existing.length > 0) continue;
-
       const proyectos = Array.isArray(p.proyectos_interes)
         ? p.proyectos_interes
         : JSON.parse(p.proyectos_interes || '[]');
-
       const tareas = getSuggestedTasks(etapa, nivel, p.nombre, proyectos);
-      const draft = await generateRecoveryDraft(p.nombre, p.correo, etapa, nivel, proyectos, diasSinActividad);
 
-      const alertId = `alert-${p.id}-${Date.now()}`;
-      await pool.query(
-        `INSERT INTO prospect_alerts (id, tenant_id, prospecto_id, nivel, motivo, dias_sin_actividad, tareas, borrador_asunto, borrador_cuerpo, status, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'activa',NOW(),NOW())`,
-        [alertId, TENANT_ID, p.id, nivel, motivo, diasSinActividad,
-         JSON.stringify(tareas), draft.asunto, draft.cuerpo]
-      );
+      // Máximo una alerta ACTIVA por prospecto (ver upsertActiveAlert) — antes se
+      // comparaba solo contra una ventana de 24h por prospecto+nivel, así que un
+      // prospecto inactivo por semanas acumulaba una fila nueva cada día sin que la
+      // anterior se cerrara nunca, y al escalar de nivel (tibio→frío→crítico) la alerta
+      // vieja tampoco se cerraba — de ahí las decenas de alertas casi idénticas.
+      const created = await upsertActiveAlert(p.id, nivel, motivo, diasSinActividad, tareas,
+        () => generateRecoveryDraft(p.nombre, p.correo, etapa, nivel, proyectos, diasSinActividad));
 
-      alertasCreadas++;
-      console.log(`[Monitor] ⚠️ Alerta ${nivel.toUpperCase()} creada para ${p.nombre} (${diasSinActividad} días sin actividad)`);
+      if (created) {
+        alertasCreadas++;
+        console.log(`[Monitor] ⚠️ Alerta ${nivel.toUpperCase()} creada para ${p.nombre} (${diasSinActividad} días sin actividad)`);
+      }
     }
 
     console.log(`[Monitor] ✅ Análisis completo — ${alertasCreadas} alertas nuevas de ${prospectos.length} prospectos.`);
@@ -257,24 +286,17 @@ async function detectColdProspects() {
       // Generar borrador de reactivación
       const draft = await generateRecoveryDraft(p.nombre, p.correo, p.estado, 'frio', proyectos, diasInactividad);
 
-      // Marcar sara_cold_alert_sent para no repetir
+      // Marcar sara_cold_alert_sent para no repetir esta detección puntual (score bajo
+      // umbral) — esto no evita por sí solo que otro job (monitorProspects) también
+      // tenga una alerta activa para el mismo prospecto; eso lo resuelve
+      // upsertActiveAlert dejando como máximo una activa por prospecto.
       await pool.query(
         'UPDATE prospectos SET sara_cold_alert_sent = NOW() WHERE id = $1',
         [p.id]
       );
 
-      // Crear alerta en prospect_alerts
-      const alertId = `cold-score-${p.id}-${Date.now()}`;
-      await pool.query(
-        `INSERT INTO prospect_alerts
-           (id, tenant_id, prospecto_id, nivel, motivo, dias_sin_actividad,
-            tareas, borrador_asunto, borrador_cuerpo, status, created_at, updated_at)
-         VALUES ($1,$2,$3,'frio',$4,$5,$6,$7,$8,'activa',NOW(),NOW())
-         ON CONFLICT (id) DO NOTHING`,
-        [alertId, TENANT_ID, p.id,
-         `Sara·Cold — Score ${score}/99 (umbral ${COLD_THRESHOLD}) · ${diasRegistro}d en el sistema`,
-         diasInactividad, JSON.stringify([]), draft.asunto, draft.cuerpo]
-      );
+      const motivo = `Sara·Cold — Score ${score}/99 (umbral ${COLD_THRESHOLD}) · ${diasRegistro}d en el sistema`;
+      await upsertActiveAlert(p.id, 'frio', motivo, diasInactividad, [], () => draft);
 
       resumen.push({ nombre: p.nombre, correo: p.correo, etapa: p.estado, score, diasInactividad, draft });
       console.log(`[Sara·Cold] ⚠️ ${p.nombre} — score ${score}/99 (${p.estado})`);
@@ -392,18 +414,9 @@ async function saraAutoTrigger72h() {
         [p.id]
       );
 
-      // Guardar alerta con tipo 'sara_auto'
-      const alertId = `sara72h-${p.id}-${Date.now()}`;
-      await pool.query(
-        `INSERT INTO prospect_alerts
-           (id, tenant_id, prospecto_id, nivel, motivo, dias_sin_actividad,
-            tareas, borrador_asunto, borrador_cuerpo, status, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'activa',NOW(),NOW())
-         ON CONFLICT (id) DO NOTHING`,
-        [alertId, TENANT_ID, p.id, nivel,
-         `Sara·72h — ${diasSinActividad} días sin actividad en ${etapa}`,
-         diasSinActividad, JSON.stringify([]), draft.asunto, draft.cuerpo]
-      );
+      // Máximo una alerta activa por prospecto (ver upsertActiveAlert).
+      const motivo = `Sara·72h — ${diasSinActividad} días sin actividad en ${etapa}`;
+      await upsertActiveAlert(p.id, nivel, motivo, diasSinActividad, [], () => draft);
 
       resumen.push({ nombre: p.nombre, correo: p.correo, etapa, diasSinActividad, nivel, draft });
       console.log(`[Sara·72h] ✅ Borrador generado para ${p.nombre} (${diasSinActividad}d, ${nivel})`);

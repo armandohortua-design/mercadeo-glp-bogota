@@ -106,6 +106,40 @@ async function getSofiaProfile(prospectoId) {
   }
 }
 
+// FAQs oficiales — mismo patrón que index.js: se inyectan como contexto en el prompt de
+// respuesta y, si el correo del cliente realmente toca el tema de alguna, se le suma un
+// uso real (en vez del contador ficticio que había antes en la UI).
+async function getFaqsForPrompt() {
+  try {
+    const { rows } = await pool.query('SELECT id, categoria, pregunta, respuesta FROM faqs WHERE tenant_id = $1', [TENANT_ID]);
+    return rows;
+  } catch { return []; }
+}
+function buildFaqContextText(faqs) {
+  if (!faqs || faqs.length === 0) return '';
+  return '\nPREGUNTAS FRECUENTES OFICIALES (usa esta información como base si el cliente pregunta algo relacionado; no la ignores ni inventes una respuesta distinta a la oficial):\n' +
+    faqs.map(f => `- P: ${f.pregunta}\n  R: ${f.respuesta}`).join('\n');
+}
+const STOPWORDS_ES = new Set(['de','la','el','en','y','a','que','es','un','una','para','con','los','las','se','del','al','por','como','su','sus','le','lo']);
+function textKeywords(text) {
+  return new Set((text || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 3 && !STOPWORDS_ES.has(w)));
+}
+async function trackFaqUsage(faqs, clientText) {
+  if (!faqs || faqs.length === 0) return;
+  const clientWords = textKeywords(clientText);
+  if (clientWords.size === 0) return;
+  const usedIds = faqs.filter(f => {
+    const faqWords = textKeywords(f.pregunta);
+    let overlap = 0;
+    faqWords.forEach(w => { if (clientWords.has(w)) overlap++; });
+    return overlap >= 2;
+  }).map(f => f.id);
+  if (usedIds.length > 0) {
+    await pool.query('UPDATE faqs SET veces_usada = veces_usada + 1 WHERE id = ANY($1)', [usedIds]).catch(() => {});
+  }
+}
+
 // Genera borrador con OpenAI
 async function generateSaraDraft(tenant, nombre, email, subject, body, prospectoId) {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -119,6 +153,10 @@ async function generateSaraDraft(tenant, nombre, email, subject, body, prospecto
   try {
     const { rows: projectRows } = await pool.query('SELECT data FROM projects WHERE tenant_id = $1', [TENANT_ID]);
     const catalogSummary = projectRows.map(r => `- ${r.data?.name}: desde $${r.data?.price} USD`).join('\n') || 'Portafolio disponible';
+
+    const faqs = await getFaqsForPrompt();
+    const faqContextText = buildFaqContextText(faqs);
+    trackFaqUsage(faqs, `${subject} ${body}`); // fire-and-forget, no bloquea la generación
 
     const sofia = await getSofiaProfile(prospectoId);
     const perfilTxt = sofia
@@ -148,6 +186,7 @@ ${body.slice(0, 800)}
 Catálogo GLP:
 ${catalogSummary}
 ${perfilTxt}
+${faqContextText}
 
 Reglas:
 - Responde en español, redacción impecable y natural — sin errores gramaticales ni frases robóticas
@@ -400,10 +439,10 @@ async function pollInbox() {
           const draftId = `draft-email-${Date.now()}-${Math.floor(Math.random() * 9000)}`;
 
           await pool.query(
-            `INSERT INTO drafts (id, tenant_id, destinatario, project, subject, body, status, prioridad, created_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())`,
+            `INSERT INTO drafts (id, tenant_id, destinatario, project, subject, body, status, prioridad, origen, created_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())`,
             [String(draftId), String(TENANT_ID), `${nombre} (${rawEmail})`,
-             'Correo Entrante', String(draft.subject), String(draft.body), 'pending', 'alta']
+             'Correo Entrante', String(draft.subject), String(draft.body), 'pending', 'alta', 'correo_entrante']
           );
           console.log(`[IMAP] 📝 Borrador SARA creado: "${draft.subject}"`);
 

@@ -51,6 +51,15 @@ async function resolveTenant(req) {
   };
 }
 
+// Antes ninguna llamada a los agentes identificaba QUIÉN la disparó — con varios usuarios
+// del mismo tenant usando el CRM a la vez, era imposible auditar "quién generó este borrador"
+// o detectar que dos personas dispararon la misma acción en paralelo. El frontend manda el
+// username en el header x-user en cada llamada de agente (ver triggerOpenAI/handleCamilo/etc.
+// en CRMDashboard.tsx); 'desconocido' cubre llamadas viejas de clientes no actualizados.
+function resolveUser(req) {
+  return req.headers['x-user'] || 'desconocido';
+}
+
 // pg devuelve columnas DATE como objetos Date — String(date) da "Thu Aug 20 2026..." (con una
 // 'T' mayúscula dentro de "Thu"!), así que .split('T') corta mal. toISOString() es seguro.
 function fmtDateOnly(v) {
@@ -68,6 +77,193 @@ function getTransporter(tenant) {
   }
   return nodemailer.createTransport({ service: 'gmail', auth: { user, pass } });
 }
+
+// ==========================================
+// BITÁCORA DE AGENTES (agent_runs) — Fase 0 de ARQUITECTURA_AGENTICA_MULTIUSUARIO.md
+// Antes no existía forma de saber quién disparó qué acción de agente, ni de detectar que
+// dos usuarios del mismo tenant dispararon la misma acción en paralelo. Esta tabla es la
+// base tanto de la atribución (Fase 0) como del candado anti-duplicados (Fase 1).
+// ==========================================
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS agent_runs (
+        id BIGSERIAL PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        triggered_by TEXT,
+        agent_name TEXT NOT NULL,
+        action TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'en_curso',
+        tokens_estimados INT,
+        latencia_ms INT,
+        error_detalle TEXT,
+        started_at TIMESTAMPTZ DEFAULT NOW(),
+        finished_at TIMESTAMPTZ
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_agent_runs_tenant_status ON agent_runs (tenant_id, agent_name, action, status)`);
+    // Fase 2 de ARQUITECTURA_AGENTICA_MULTIUSUARIO.md: medir gasto real por tenant/agente
+    // ANTES de fijar cualquier tope — se guardan tokens de entrada/salida por separado
+    // (el precio de OpenAI es distinto para cada uno) y el costo estimado ya calculado.
+    await pool.query(`
+      ALTER TABLE agent_runs
+        ADD COLUMN IF NOT EXISTS prompt_tokens INT,
+        ADD COLUMN IF NOT EXISTS completion_tokens INT,
+        ADD COLUMN IF NOT EXISTS costo_estimado_usd NUMERIC(10,6)
+    `);
+    // Candado anti-duplicados (Fase 1): un índice único parcial que solo aplica a filas
+    // 'en_curso' — mientras haya una fila así para (tenant, agente, acción), Postgres
+    // rechaza cualquier INSERT que intente crear otra igual con un error de violación de
+    // unicidad (código 23505). startAgentRun usa ESE rechazo, atómico a nivel de base de
+    // datos, para detectar la colisión — evita la condición de carrera de "verificar y
+    // luego insertar" (dos requests casi simultáneos podrían pasar la verificación antes
+    // de que cualquiera alcance a insertar).
+    // agent_name <> 'DESCONOCIDO' excluye llamadas ad-hoc a /api/ai que no se identifican
+    // como un agente del enjambre (ej. el análisis de imagen del Catálogo) — esas se siguen
+    // registrando en la bitácora, pero nunca deben bloquearse entre sí ni bloquear a un
+    // agente real por compartir la ruta genérica.
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_runs_active_lock
+      ON agent_runs (tenant_id, agent_name, action) WHERE status = 'en_curso' AND agent_name <> 'DESCONOCIDO'
+    `);
+  } catch (e) { console.warn('agent_runs table check:', e.message); }
+})();
+
+// startAgentRun: registra el inicio de una ejecución y devuelve { id, started_at, locked:false }.
+// Si ya hay una ejecución en curso para el mismo (tenant, agente, acción), devuelve
+// { locked: true, lockedBy, lockedSince } en vez de crear una segunda — así el llamador
+// puede avisarle al usuario "ya en curso" en lugar de disparar el trabajo por duplicado.
+// Antes de intentar el INSERT, libera candados huérfanos (procesos que murieron a mitad de
+// una ejecución y nunca llamaron a finishAgentRun) con más de 10 minutos en curso.
+const AGENT_LOCK_STALE_MINUTES = 10;
+const EMAIL_DRAFT_JSON_SCHEMA = {
+  type: 'json_schema',
+  json_schema: {
+    name: 'borrador_correo',
+    strict: true,
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        subject: { type: 'string' },
+        body: { type: 'string' },
+      },
+      required: ['subject', 'body'],
+    },
+  },
+};
+
+async function startAgentRun(tenantId, triggeredBy, agentName, action) {
+  try {
+    await pool.query(
+      `UPDATE agent_runs SET status='error', error_detalle='timeout — liberado automáticamente (candado huérfano)', finished_at=NOW()
+       WHERE status='en_curso' AND started_at < NOW() - INTERVAL '${AGENT_LOCK_STALE_MINUTES} minutes'`
+    );
+    const { rows } = await pool.query(
+      `INSERT INTO agent_runs (tenant_id, triggered_by, agent_name, action) VALUES ($1,$2,$3,$4) RETURNING id, started_at`,
+      [tenantId, triggeredBy, agentName, action]
+    );
+    return { ...rows[0], locked: false };
+  } catch (e) {
+    if (e.code === '23505') {
+      const { rows } = await pool.query(
+        `SELECT triggered_by, started_at FROM agent_runs WHERE tenant_id=$1 AND agent_name=$2 AND action=$3 AND status='en_curso'`,
+        [tenantId, agentName, action]
+      );
+      return { locked: true, lockedBy: rows[0]?.triggered_by || 'otro usuario', lockedSince: rows[0]?.started_at };
+    }
+    console.warn('startAgentRun falló:', e.message); return null;
+  }
+}
+// Precios de OpenAI por millón de tokens — Fase 2 (medir gasto real antes de fijar un
+// tope, según lo acordado). Todas las llamadas de agentes hoy usan gpt-4o-mini; si en el
+// futuro algún agente cambia de modelo, agregar su entrada aquí antes de que empiece a
+// registrar costo $0 por error.
+const PRECIOS_USD_POR_1M_TOKENS = {
+  'gpt-4o-mini': { input: 0.150, output: 0.600 },
+};
+function estimarCostoUsd(model, promptTokens, completionTokens) {
+  const precio = PRECIOS_USD_POR_1M_TOKENS[model] || PRECIOS_USD_POR_1M_TOKENS['gpt-4o-mini'];
+  return ((promptTokens || 0) * precio.input + (completionTokens || 0) * precio.output) / 1_000_000;
+}
+
+async function finishAgentRun(runId, { status = 'completado', tokensEstimados = null, promptTokens = null, completionTokens = null, model = 'gpt-4o-mini', errorDetalle = null } = {}) {
+  if (!runId) return;
+  try {
+    const costo = (promptTokens != null || completionTokens != null) ? estimarCostoUsd(model, promptTokens, completionTokens) : null;
+    // La latencia se calcula EN Postgres (finished_at - started_at, ambos NOW() del mismo
+    // servidor) en vez de restar contra un timestamp traído al proceso de Node — restar así
+    // se ve afectado por el desfase de reloj entre el servidor de la app y el de Supabase, y
+    // puede dar negativo (se detectó justo ese caso en la prueba de esta implementación).
+    await pool.query(
+      `UPDATE agent_runs SET status=$1, tokens_estimados=$2, prompt_tokens=$3, completion_tokens=$4,
+         costo_estimado_usd=$5, error_detalle=$6,
+         latencia_ms = EXTRACT(EPOCH FROM (NOW() - started_at)) * 1000, finished_at=NOW()
+       WHERE id=$7`,
+      [status, tokensEstimados, promptTokens, completionTokens, costo, errorDetalle, runId]
+    );
+  } catch (e) { console.warn('finishAgentRun falló:', e.message); }
+}
+
+// GET /api/agent-runs/active — para que el frontend muestre "ya en curso, iniciado por X
+// hace Ys" de forma PROACTIVA (al abrir el módulo, por polling), no solo como reacción al
+// error 409 de haber hecho clic. Principio 3 de ARQUITECTURA_AGENTICA_MULTIUSUARIO.md: el
+// estado de una ejecución en curso debe ser visible para todos los usuarios del tenant.
+app.get('/api/agent-runs/active', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { rows } = await pool.query(
+      `SELECT agent_name, action, triggered_by, started_at FROM agent_runs WHERE tenant_id=$1 AND status='en_curso'`,
+      [tenant.id]
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/agent-runs — bitácora completa (Fase 0), solo para roles con visibilidad de
+// equipo (superadmin/gerencia/presidencia — el frontend ya filtra por rol, esta ruta no
+// distingue quién pregunta porque el CRM no manda el rol en la request; el control de
+// acceso vive en qué módulo del CRM llama a esto).
+app.get('/api/agent-runs', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { rows } = await pool.query(
+      `SELECT * FROM agent_runs WHERE tenant_id=$1 ORDER BY started_at DESC LIMIT 200`,
+      [tenant.id]
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/agent-runs/resumen-costo?days=30 — gasto real de IA por agente en el tenant,
+// para "medir primero" (Fase 2) antes de fijar cualquier tope de gasto. Se agrupa por
+// agente para poder ver, por ejemplo, que Camilo (research con web_search) es el más caro
+// del enjambre, y decidir un límite informado en vez de un número arbitrario.
+app.get('/api/agent-runs/resumen-costo', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days, 10) || 30));
+    const { rows } = await pool.query(
+      `SELECT agent_name,
+              COUNT(*) AS ejecuciones,
+              COUNT(*) FILTER (WHERE status = 'error') AS errores,
+              COALESCE(SUM(costo_estimado_usd), 0) AS costo_total_usd,
+              COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS tokens_totales,
+              COALESCE(AVG(latencia_ms), 0) AS latencia_prom_ms
+       FROM agent_runs
+       WHERE tenant_id = $1 AND started_at > NOW() - ($2 || ' days')::INTERVAL
+       GROUP BY agent_name
+       ORDER BY costo_total_usd DESC`,
+      [tenant.id, days]
+    );
+    const { rows: totalRows } = await pool.query(
+      `SELECT COALESCE(SUM(costo_estimado_usd), 0) AS costo_total_usd, COUNT(*) AS ejecuciones
+       FROM agent_runs WHERE tenant_id = $1 AND started_at > NOW() - ($2 || ' days')::INTERVAL`,
+      [tenant.id, days]
+    );
+    res.json({ days, porAgente: rows, total: totalRows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // ==========================================
 // HEALTH CHECK
@@ -251,15 +447,244 @@ app.put('/api/sofia-profiles/:prospectoId', async (req, res) => {
 });
 
 // ==========================================
+// FAQS — antes vivían solo en localStorage del navegador, así que ningún agente en el
+// backend (Sara redactando borradores, el poller de correo) podía verlas ni usarlas para
+// generar contenido consistente con las respuestas oficiales. Ahora persisten en Postgres
+// y se inyectan como contexto real en los prompts que redactan correos a clientes.
+// ==========================================
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS faqs (
+        id BIGSERIAL PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        categoria TEXT,
+        pregunta TEXT NOT NULL,
+        respuesta TEXT NOT NULL,
+        veces_usada INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+  } catch (e) { console.warn('faqs table check:', e.message); }
+})();
+
+app.get('/api/faqs', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { rows } = await pool.query('SELECT * FROM faqs WHERE tenant_id = $1 ORDER BY veces_usada DESC, created_at DESC', [tenant.id]);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/faqs', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { categoria, pregunta, respuesta } = req.body;
+    const { rows } = await pool.query(
+      'INSERT INTO faqs (tenant_id, categoria, pregunta, respuesta) VALUES ($1,$2,$3,$4) RETURNING *',
+      [tenant.id, categoria || null, pregunta, respuesta]
+    );
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Clics de FAQ — antes se insertaban directo desde el navegador al cliente de Supabase
+// (RLS + errores silenciosos: si algo fallaba, nadie se enteraba) y se contaban cruzando
+// por TEXTO de la pregunta contra la tabla `faqs` — fràgil, porque el texto de la landing
+// y el del CRM podían desincronizarse (como pasó: la landing cayó a su respaldo fijo con
+// preguntas viejas y ningún clic volvía a coincidir). Ahora se registra por faq_id real
+// (siempre exacto, sin importar el texto) a través del backend, que sí falla de forma
+// visible si algo sale mal.
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS faq_clicks (
+        id BIGSERIAL PRIMARY KEY,
+        question TEXT,
+        category TEXT,
+        source TEXT,
+        clicked_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`ALTER TABLE faq_clicks ADD COLUMN IF NOT EXISTS faq_id BIGINT`);
+  } catch (e) { console.warn('faq_clicks table/faq_id check:', e.message); }
+})();
+
+app.post('/api/faq-clicks', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { faq_id, source } = req.body;
+    if (!faq_id) return res.status(400).json({ error: 'faq_id requerido.' });
+    const { rows: faqRows } = await pool.query('SELECT categoria, pregunta FROM faqs WHERE id = $1 AND tenant_id = $2', [faq_id, tenant.id]);
+    if (faqRows.length === 0) return res.status(404).json({ error: 'FAQ no encontrada.' });
+    await pool.query(
+      `INSERT INTO faq_clicks (faq_id, question, category, source) VALUES ($1,$2,$3,$4)`,
+      [faq_id, faqRows[0].pregunta, faqRows[0].categoria, source || 'crm']
+    );
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/faq-clicks', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    // Clics individuales (no agregados) — mismo shape que antes (question/category/source/
+    // clicked_at) para no romper el analítico existente del módulo FAQs, más faq_id para
+    // el cruce exacto en "Más Consultadas". Solo clics de FAQs que existen HOY en este
+    // tenant — descarta ruido de preguntas viejas ya eliminadas/reemplazadas.
+    const { rows } = await pool.query(`
+      SELECT c.faq_id, c.question, c.category, c.source, c.clicked_at
+      FROM faq_clicks c
+      JOIN faqs f ON f.id = c.faq_id AND f.tenant_id = $1
+      WHERE c.faq_id IS NOT NULL
+      ORDER BY c.clicked_at DESC
+      LIMIT 500
+    `, [tenant.id]);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/faqs/:id', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { categoria, pregunta, respuesta } = req.body;
+    const { rows } = await pool.query(
+      `UPDATE faqs SET
+         categoria = COALESCE($1, categoria),
+         pregunta = COALESCE($2, pregunta),
+         respuesta = COALESCE($3, respuesta)
+       WHERE id = $4 AND tenant_id = $5 RETURNING *`,
+      [categoria, pregunta, respuesta, req.params.id, tenant.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'FAQ no encontrada.' });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/faqs/:id', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    await pool.query('DELETE FROM faqs WHERE id = $1 AND tenant_id = $2', [req.params.id, tenant.id]);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Contexto de FAQs para inyectar en prompts de generación de correos — y matcher de
+// relevancia liviano (superposición de palabras clave, sin embeddings) para saber cuáles
+// FAQs realmente aportaron a la respuesta y así incrementar su contador de uso real.
+async function getFaqsForPrompt(tenantId) {
+  try {
+    const { rows } = await pool.query('SELECT id, categoria, pregunta, respuesta FROM faqs WHERE tenant_id = $1', [tenantId]);
+    return rows;
+  } catch { return []; }
+}
+function buildFaqContextText(faqs) {
+  if (!faqs || faqs.length === 0) return '';
+  return '\nPREGUNTAS FRECUENTES OFICIALES (usa esta información como base si el cliente pregunta algo relacionado; no la ignores ni inventes una respuesta distinta a la oficial):\n' +
+    faqs.map(f => `- P: ${f.pregunta}\n  R: ${f.respuesta}`).join('\n');
+}
+const STOPWORDS_ES = new Set(['de','la','el','en','y','a','que','es','un','una','para','con','los','las','se','del','al','por','como','su','sus','le','lo']);
+function textKeywords(text) {
+  return new Set((text || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 3 && !STOPWORDS_ES.has(w)));
+}
+async function trackFaqUsage(faqs, clientText) {
+  if (!faqs || faqs.length === 0) return;
+  const clientWords = textKeywords(clientText);
+  if (clientWords.size === 0) return;
+  const usedIds = faqs.filter(f => {
+    const faqWords = textKeywords(f.pregunta);
+    let overlap = 0;
+    faqWords.forEach(w => { if (clientWords.has(w)) overlap++; });
+    return overlap >= 2;
+  }).map(f => f.id);
+  if (usedIds.length > 0) {
+    await pool.query('UPDATE faqs SET veces_usada = veces_usada + 1 WHERE id = ANY($1)', [usedIds]).catch(() => {});
+  }
+}
+
+// ==========================================
 // GESTIÓN DE CAÍDAS — análisis real de causas + contenido contextual por IA
 // ==========================================
+// Con muchas causas activas a la vez, el enjambre generaba contenido para las 2 más
+// frecuentes automáticamente y el usuario terminaba con un solo bloque de resultados
+// mezclando causas sin poder enfocarse en una en particular ni saber cuáles ya se
+// habían atendido. Esta tabla guarda, por causa (razon_perdida), si ya fue "gestionada".
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS crisis_causa_status (
+        tenant_id TEXT NOT NULL,
+        causa TEXT NOT NULL,
+        gestionado BOOLEAN NOT NULL DEFAULT false,
+        gestionado_por TEXT,
+        gestionado_at TIMESTAMPTZ,
+        PRIMARY KEY (tenant_id, causa)
+      )
+    `);
+  } catch (e) { console.warn('crisis_causa_status table check:', e.message); }
+})();
+
+// Distribución real de causas de caída (sin llamar a IA) + su estado de gestión — para
+// que el usuario elija sobre cuál(es) causa(s) trabajar antes de correr el enjambre.
+app.get('/api/crisis/causas', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { rows } = await pool.query(
+      `SELECT razon_perdida FROM prospectos WHERE tenant_id = $1 AND estado = 'Perdido'`,
+      [tenant.id]
+    );
+    const distribucion = {};
+    rows.forEach(r => {
+      const cat = r.razon_perdida || 'Sin categorizar';
+      distribucion[cat] = (distribucion[cat] || 0) + 1;
+    });
+    const { rows: statusRows } = await pool.query(
+      `SELECT causa, gestionado, gestionado_por, gestionado_at FROM crisis_causa_status WHERE tenant_id = $1`,
+      [tenant.id]
+    );
+    const statusByCausa = {};
+    statusRows.forEach(s => { statusByCausa[s.causa] = s; });
+    const causas = Object.entries(distribucion)
+      .sort((a, b) => b[1] - a[1])
+      .map(([causa, total]) => ({
+        causa, total,
+        gestionado: !!statusByCausa[causa]?.gestionado,
+        gestionado_por: statusByCausa[causa]?.gestionado_por || null,
+        gestionado_at: statusByCausa[causa]?.gestionado_at || null,
+      }));
+    res.json({ causas, totalCasos: rows.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/crisis/causas/:causa', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const user = resolveUser(req);
+    const { gestionado } = req.body;
+    await pool.query(
+      `INSERT INTO crisis_causa_status (tenant_id, causa, gestionado, gestionado_por, gestionado_at)
+       VALUES ($1,$2,$3,$4,NOW())
+       ON CONFLICT (tenant_id, causa) DO UPDATE SET
+         gestionado = $3, gestionado_por = $4, gestionado_at = NOW()`,
+      [tenant.id, req.params.causa, !!gestionado, user]
+    );
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Antes esto era texto fijo (mismos 2 casos ficticios, DIAN 50%/Tasas 25% siempre) sin
 // relación con las razones de baja reales capturadas en prospectos.razon_perdida. Ahora
 // se calcula la distribución real de causas y se le pide a la IA generar el reporte de
 // Sara, el contenido de Valeria y el guión de Isabella basados en esos datos concretos.
 app.post('/api/crisis/analizar-caidas', async (req, res) => {
+  const tenant = await resolveTenant(req);
+  const user = resolveUser(req);
+  const run = await startAgentRun(tenant.id, user, 'CRISIS', 'analizar_caidas');
+  if (run?.locked) {
+    return res.status(409).json({ error: 'ya_en_curso', lockedBy: run.lockedBy, lockedSince: run.lockedSince });
+  }
   try {
-    const tenant = await resolveTenant(req);
     const apiKey = tenant?.openai?.apiKey || process.env.OPENAI_API_KEY;
 
     // 'Lead Frío' es un lead nuevo/desactivado poco calificado (puede incluir un lead que
@@ -272,6 +697,7 @@ app.post('/api/crisis/analizar-caidas', async (req, res) => {
     );
 
     if (rows.length === 0) {
+      await finishAgentRun(run?.id, { status: 'completado' });
       return res.json({ sinDatos: true, mensaje: 'No hay ventas caídas registradas todavía.' });
     }
 
@@ -282,18 +708,29 @@ app.post('/api/crisis/analizar-caidas', async (req, res) => {
     });
     // Hasta 2 causas reales distintas — antes solo se generaba contenido para la #1, lo que
     // producía respuestas de "precio" para casos cuyo motivo real era otro (ej. doble
-    // tributación) porque simplemente no había pieza dedicada a esa causa.
+    // tributación) porque simplemente no había pieza dedicada a esa causa. El usuario puede
+    // elegir explícitamente cuál(es) causa(s) trabajar (req.body.causas) en vez de que el
+    // sistema siempre tome automáticamente las 2 más frecuentes — así puede enfocarse en
+    // una causa puntual sin que se mezcle con la más numerosa.
     const causasOrdenadas = Object.entries(distribucion).sort((a, b) => b[1] - a[1]);
-    const topCausas = causasOrdenadas.slice(0, 2).map(([cat]) => cat);
+    const causasDisponibles = new Set(causasOrdenadas.map(([cat]) => cat));
+    const causasSolicitadas = Array.isArray(req.body?.causas)
+      ? req.body.causas.filter(c => causasDisponibles.has(c)).slice(0, 2)
+      : [];
+    const topCausas = causasSolicitadas.length > 0 ? causasSolicitadas : causasOrdenadas.slice(0, 2).map(([cat]) => cat);
+    // Solo los casos de las causas seleccionadas alimentan el prompt — si el usuario pidió
+    // trabajar únicamente "Precio", el contexto no debe traer casos de otras causas.
+    const rowsFiltradas = rows.filter(r => topCausas.includes(r.razon_perdida || 'Sin categorizar'));
     const distribucionTexto = causasOrdenadas
-      .map(([cat, n]) => `- ${cat}: ${n} caso(s) (${Math.round(n / rows.length * 100)}%)`)
+      .map(([cat, n]) => `- ${cat}: ${n} caso(s) (${Math.round(n / rows.length * 100)}%)${topCausas.includes(cat) ? ' [SELECCIONADA PARA ESTE ANÁLISIS]' : ''}`)
       .join('\n');
 
-    const casosTexto = rows.slice(0, 15).map(r =>
+    const casosTexto = rowsFiltradas.slice(0, 15).map(r =>
       `- ${r.nombre} ${r.apellido || ''} | Proyecto: ${(r.proyectos_interes || [])[0] || 'N/D'} | Presupuesto: $${Number(r.presupuesto_usd || 0).toLocaleString()} | Motivo: ${r.razon_perdida || 'sin categorizar'}${r.razon_perdida_detalle ? ' — ' + r.razon_perdida_detalle : ''}`
     ).join('\n');
 
     if (!apiKey) {
+      await finishAgentRun(run?.id, { status: 'completado' });
       return res.json({
         sinDatos: false,
         distribucion,
@@ -355,31 +792,39 @@ ${ANTI_HALUCINACION}`,
       }],
       temperature: 0.6,
       max_tokens: 2200,
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'analisis_ventas_caidas',
+          strict: true,
+          schema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              investigacionCamilo: { type: 'string' },
+              briefSofia: { type: 'string' },
+              reporteSara: { type: 'string' },
+              emailCausa1: { type: 'string' },
+              postCausa1: { type: 'string' },
+              scriptCausa1: { type: 'string' },
+              campanaCausa1: { type: 'string' },
+              // Las 4 claves de la 2a causa son nullable en vez de omitidas — json_schema
+              // en modo strict exige que TODAS las properties estén en "required" (no
+              // permite claves realmente opcionales), así que cuando solo hay 1 causa
+              // principal el modelo devuelve null en estos 4 campos.
+              emailCausa2: { type: ['string', 'null'] },
+              postCausa2: { type: ['string', 'null'] },
+              scriptCausa2: { type: ['string', 'null'] },
+              campanaCausa2: { type: ['string', 'null'] },
+              alertas: { type: 'array', items: { type: 'string' } },
+            },
+            required: ['investigacionCamilo', 'briefSofia', 'reporteSara', 'emailCausa1', 'postCausa1', 'scriptCausa1', 'campanaCausa1', 'emailCausa2', 'postCausa2', 'scriptCausa2', 'campanaCausa2', 'alertas'],
+          },
+        },
+      },
     });
-    const raw = response.choices[0].message.content.replace(/```json|```/g, '').trim();
-    let parsed;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      // El modelo a veces agrega texto después del JSON (ej. una repetición o nota) — un
-      // simple indexOf('{')/lastIndexOf('}') falla porque el '}' final pertenece a ese
-      // texto extra, no al objeto real. Se hace un conteo de llaves consciente de strings
-      // para encontrar el cierre real del primer objeto JSON balanceado.
-      const start = raw.indexOf('{');
-      if (start === -1) throw new Error('La IA no devolvió un JSON válido — intenta de nuevo.');
-      let depth = 0, inStr = false, esc = false, end = -1;
-      for (let i = start; i < raw.length; i++) {
-        const ch = raw[i];
-        if (esc) { esc = false; continue; }
-        if (ch === '\\') { esc = true; continue; }
-        if (ch === '"') { inStr = !inStr; continue; }
-        if (inStr) continue;
-        if (ch === '{') depth++;
-        else if (ch === '}') { depth--; if (depth === 0) { end = i; break; } }
-      }
-      if (end === -1) throw new Error('La IA no devolvió un JSON válido — intenta de nuevo.');
-      parsed = JSON.parse(raw.slice(start, end + 1));
-    }
+    await finishAgentRun(run?.id, { status: 'completado', tokensEstimados: response.usage?.total_tokens ?? null, promptTokens: response.usage?.prompt_tokens ?? null, completionTokens: response.usage?.completion_tokens ?? null });
+    const parsed = JSON.parse(response.choices[0].message.content.trim());
     // El modelo a veces ignora la instrucción de texto plano y devuelve un objeto anidado
     // en vez de un string (ej. briefSofia o campanaIsabella como {"acción1":...}) — eso
     // rompe el render en React ("Objects are not valid as a React child"), así que se
@@ -407,7 +852,10 @@ ${ANTI_HALUCINACION}`,
       campanaIsabella: toText(parsed[`campanaCausa${i + 1}`]),
     })).filter(c => c.emailValeria || c.postValeria || c.scriptIsabella || c.campanaIsabella);
     res.json({ sinDatos: false, distribucion, totalCasos: rows.length, investigacionCamilo, briefSofia, reporteSara, contenidoPorCausa, alertas });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) {
+    await finishAgentRun(run?.id, { status: 'error', errorDetalle: e.message });
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ==========================================
@@ -629,13 +1077,49 @@ app.get('/api/drafts', async (req, res) => {
 app.post('/api/drafts', async (req, res) => {
   try {
     const tenant = await resolveTenant(req);
-    const { destinatario, project, subject, body, prioridad } = req.body;
-    const id = `draft-${project ? project.toLowerCase() : 'manual'}-${Date.now()}-${Math.floor(Math.random() * 9000)}`;
+    const { destinatario, project, subject, body, prioridad, origen, idempotencyKey } = req.body;
+    // idempotencyKey (opcional): cuando el llamador puede repetirse por un doble clic o un
+    // reintento de red (ej. el auto-envío de Sara al aprobar un insight de Camilo), usarlo
+    // como parte del id fija evita crear dos borradores idénticos — el segundo intento
+    // choca contra la fila ya creada (ON CONFLICT) y se devuelve esa misma fila en vez de
+    // duplicarla.
+    const id = idempotencyKey
+      ? `draft-${idempotencyKey}`
+      : `draft-${project ? project.toLowerCase() : 'manual'}-${Date.now()}-${Math.floor(Math.random() * 9000)}`;
     const { rows } = await pool.query(
-      `INSERT INTO drafts (id, tenant_id, destinatario, project, subject, body, status, prioridad, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,NOW()) RETURNING *`,
-      [id, tenant.id, destinatario || '', project || null, subject || '', body || '', prioridad || 'normal']
+      `INSERT INTO drafts (id, tenant_id, destinatario, project, subject, body, status, prioridad, origen, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,NOW())
+       ON CONFLICT (id) DO NOTHING RETURNING *`,
+      [id, tenant.id, destinatario || '', project || null, subject || '', body || '', prioridad || 'normal', origen || 'manual']
     );
+    if (rows.length > 0) return res.json(rows[0]);
+    const { rows: existing } = await pool.query('SELECT * FROM drafts WHERE id = $1', [id]);
+    res.json(existing[0] || null);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Edita un borrador pendiente — antes no existía ninguna ruta para persistir cambios de
+// asunto/cuerpo/destinatario, así que la edición en el frontend solo tocaba el estado
+// local de React: al aprobar y enviar, /api/send-draft vuelve a leer la fila ORIGINAL de
+// la base de datos, ignorando cualquier edición hecha en pantalla (incluido el
+// destinatario, que en los correos auto-generados por Sara/Camilo/Crisis llega con un
+// placeholder "Por definir" que antes no había forma de reemplazar).
+app.put('/api/drafts/:id', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { destinatario, subject, body, prioridad } = req.body;
+    const { rows } = await pool.query(
+      `UPDATE drafts SET
+         destinatario = COALESCE($1, destinatario),
+         subject = COALESCE($2, subject),
+         body = COALESCE($3, body),
+         prioridad = COALESCE($4, prioridad)
+       WHERE id = $5 AND tenant_id = $6 RETURNING *`,
+      [destinatario, subject, body, prioridad, req.params.id, tenant.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Borrador no encontrado.' });
     res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -700,6 +1184,7 @@ app.post('/api/contact', async (req, res) => {
 
     const firstName = name.trim().split(/\s+/)[0] || 'Cliente';
     const tenant = await resolveTenant(req);
+    const user = resolveUser(req);
     const transporter = getTransporter(tenant);
 
     let emailClientSent = false, emailAdminSent = false, smtpError = null;
@@ -717,50 +1202,79 @@ app.post('/api/contact', async (req, res) => {
     let draftSubject = `Información - ${project} | GLP`;
     let draftBody = `Estimado/a ${firstName},\n\nGracias por contactarnos sobre ${project}.\n\nQuedo a tu disposición.\n\nSara Valenzuela\n${tenant.name}`;
 
+    // Cada envío del formulario/chatbot es un lead independiente, no una repetición de la
+    // misma acción sobre el mismo recurso — por eso la "action" incluye sessionId/timestamp:
+    // así cada lead obtiene su propia fila en agent_runs sin chocar con el candado de
+    // concurrencia (que existe para evitar doble-disparo sobre EL MISMO recurso, no para
+    // limitar leads simultáneos legítimos de distintos clientes).
+    let aiRun = null;
+    let aiPromptTokens = 0, aiCompletionTokens = 0;
     if (apiKey && conversationHistory) {
+      aiRun = await startAgentRun(tenant.id, user, 'SARA', `procesar_contacto:${sessionId || Date.now()}`);
       try {
         const OpenAI = require('openai');
         const openai = new OpenAI({ apiKey });
 
-        // Extraer proyecto, nombre, temas e intereses de la conversación
+        // Extraer proyecto, nombre, temas e intereses de la conversación.
+        // Antes esto pedía JSON dentro de un prompt de texto libre y se parseaba con
+        // JSON.parse + regex para quitar ```json — frágil (ya vimos casos de JSON truncado
+        // en producción). response_format: json_schema en modo strict obliga a la API a
+        // devolver EXACTAMENTE esta forma, sin necesidad de parsear texto a mano.
         const analysisResponse = await openai.chat.completions.create({
           model: 'gpt-4o-mini',
           messages: [{
             role: 'user',
-            content: `Analiza esta conversación de un chatbot inmobiliario y extrae la información clave del cliente. Responde SOLO con JSON válido, sin markdown.
+            content: `Analiza esta conversación de un chatbot inmobiliario y extrae la información clave del cliente.
 
 CONVERSACIÓN:
 ${conversationHistory}
 
-JSON esperado:
-{
-  "nombre_detectado": "nombre real del cliente si lo mencionó explícitamente en la conversación, o null si no lo dijo",
-  "proyecto_principal": "nombre exacto del proyecto más mencionado, o 'Portafolio GLP' si no se especificó uno",
-  "proyectos_mencionados": ["lista de proyectos mencionados"],
-  "temas_interes": ["precio", "zona", "entrega", "financiamiento", "rentabilidad", "habitaciones", "uso propio", "inversión — solo los que apliquen"],
-  "resumen_consulta": "resumen en 2-3 oraciones de qué busca el cliente y cuáles son sus inquietudes principales",
-  "perfil_inversor": "renta|patrimonial|disfrute|mixto|desconocido",
-  "presupuesto_usd": 0,
-  "señales_calificacion": {
-    "menciona_inversion": false,
-    "menciona_panama": false,
-    "menciona_presupuesto": false,
-    "menciona_entrega_o_disponibilidad": false,
-    "menciona_financiamiento": false,
-    "menciona_fecha_decision": false,
-    "menciona_habitaciones": false,
-    "menciona_rentabilidad": false,
-    "menciona_uso_propio": false,
-    "tono_general": "curioso|interesado|listo_para_decidir|solo_cotizando|desconocido"
-  },
-  "score_calificacion": 0
-}
-
 Para calcular score_calificacion suma: menciona_inversion(+20) + menciona_presupuesto(+20) + menciona_panama(+10) + menciona_entrega_o_disponibilidad(+15) + menciona_fecha_decision(+20) + menciona_financiamiento(+10) + menciona_habitaciones(+10) + menciona_rentabilidad(+10) + menciona_uso_propio(+5). Ajusta según tono: listo_para_decidir(+10), solo_cotizando(-10). Máximo 100.`
           }],
-          temperature: 0.2, max_tokens: 400
+          temperature: 0.2, max_tokens: 500,
+          response_format: {
+            type: 'json_schema',
+            json_schema: {
+              name: 'analisis_conversacion_chatbot',
+              strict: true,
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                  nombre_detectado: { type: ['string', 'null'], description: 'Nombre real del cliente si lo mencionó explícitamente, o null si no lo dijo.' },
+                  proyecto_principal: { type: 'string', description: "Nombre exacto del proyecto más mencionado, o 'Portafolio GLP' si no se especificó uno." },
+                  proyectos_mencionados: { type: 'array', items: { type: 'string' } },
+                  temas_interes: { type: 'array', items: { type: 'string', enum: ['precio', 'zona', 'entrega', 'financiamiento', 'rentabilidad', 'habitaciones', 'uso propio', 'inversión'] } },
+                  resumen_consulta: { type: 'string', description: 'Resumen en 2-3 oraciones de qué busca el cliente y sus inquietudes principales.' },
+                  perfil_inversor: { type: 'string', enum: ['renta', 'patrimonial', 'disfrute', 'mixto', 'desconocido'] },
+                  presupuesto_usd: { type: 'number' },
+                  señales_calificacion: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                      menciona_inversion: { type: 'boolean' },
+                      menciona_panama: { type: 'boolean' },
+                      menciona_presupuesto: { type: 'boolean' },
+                      menciona_entrega_o_disponibilidad: { type: 'boolean' },
+                      menciona_financiamiento: { type: 'boolean' },
+                      menciona_fecha_decision: { type: 'boolean' },
+                      menciona_habitaciones: { type: 'boolean' },
+                      menciona_rentabilidad: { type: 'boolean' },
+                      menciona_uso_propio: { type: 'boolean' },
+                      tono_general: { type: 'string', enum: ['curioso', 'interesado', 'listo_para_decidir', 'solo_cotizando', 'desconocido'] },
+                    },
+                    required: ['menciona_inversion', 'menciona_panama', 'menciona_presupuesto', 'menciona_entrega_o_disponibilidad', 'menciona_financiamiento', 'menciona_fecha_decision', 'menciona_habitaciones', 'menciona_rentabilidad', 'menciona_uso_propio', 'tono_general'],
+                  },
+                  score_calificacion: { type: 'number' },
+                },
+                required: ['nombre_detectado', 'proyecto_principal', 'proyectos_mencionados', 'temas_interes', 'resumen_consulta', 'perfil_inversor', 'presupuesto_usd', 'señales_calificacion', 'score_calificacion'],
+              },
+            },
+          },
         });
 
+        aiPromptTokens += analysisResponse.usage?.prompt_tokens || 0;
+        aiCompletionTokens += analysisResponse.usage?.completion_tokens || 0;
         analysis = JSON.parse(analysisResponse.choices[0].message.content.trim());
         if (analysis.proyecto_principal) detectedProject = analysis.proyecto_principal;
         if (analysis.nombre_detectado) detectedFirstName = analysis.nombre_detectado.trim().split(/\s+/)[0];
@@ -792,30 +1306,39 @@ Para calcular score_calificacion suma: menciona_inversion(+20) + menciona_presup
         // Generar borrador personalizado con contexto real
         const draftResponse = await openai.chat.completions.create({
           model: 'gpt-4o-mini',
-          messages: [{ role: 'user', content: `Eres Sara Valenzuela, Directora de Customer Success & Back-Office Comercial de ${tenant.name}. Redacta un correo de seguimiento cálido y profesional para ${firstName}, quien se comunicó con nosotros y mostró interés en: ${analysis.resumen_consulta || project}. Sus temas de interés son: ${(analysis.temas_interes || []).join(', ')}. Proyecto de interés: ${detectedProject}. IMPORTANTE: nunca menciones "chatbot", "asistente virtual" ni "IA" — di simplemente que "nos contactó" o "tuvo la oportunidad de conversar con nuestro equipo". Firma siempre como Sara Valenzuela, Directora de Customer Success & Back-Office Comercial. JSON: {"subject":"...","body":"..."}` }],
-          temperature: 0.7, max_tokens: 500
+          messages: [{ role: 'user', content: `Eres Sara Valenzuela, Directora de Customer Success & Back-Office Comercial de ${tenant.name}. Redacta un correo de seguimiento cálido y profesional para ${detectedFirstName}, quien se comunicó con nosotros y mostró interés en: ${analysis.resumen_consulta || project}. Sus temas de interés son: ${(analysis.temas_interes || []).join(', ')}. Proyecto de interés: ${detectedProject}. IMPORTANTE: nunca menciones "chatbot", "asistente virtual" ni "IA" — di simplemente que "nos contactó" o "tuvo la oportunidad de conversar con nuestro equipo". Firma siempre como Sara Valenzuela, Directora de Customer Success & Back-Office Comercial.` }],
+          temperature: 0.7, max_tokens: 500,
+          response_format: EMAIL_DRAFT_JSON_SCHEMA,
         });
-        const parsed = JSON.parse(draftResponse.choices[0].message.content.replace(/```json|```/g, '').trim());
+        aiPromptTokens += draftResponse.usage?.prompt_tokens || 0;
+        aiCompletionTokens += draftResponse.usage?.completion_tokens || 0;
+        const parsed = JSON.parse(draftResponse.choices[0].message.content.trim());
         if (parsed.subject) draftSubject = parsed.subject;
         if (parsed.body) draftBody = parsed.body;
+        await finishAgentRun(aiRun?.id, { status: 'completado', tokensEstimados: aiPromptTokens + aiCompletionTokens, promptTokens: aiPromptTokens, completionTokens: aiCompletionTokens });
       } catch (aiErr) {
         console.warn('⚠️ Análisis IA falló, usando datos básicos:', aiErr.message);
         enrichedNotes = conversationHistory ? `${message || ''}\n\n--- Conversación ---\n${conversationHistory}` : (message || '');
+        await finishAgentRun(aiRun?.id, { status: 'error', errorDetalle: aiErr.message });
       }
     } else if (apiKey) {
+      aiRun = await startAgentRun(tenant.id, user, 'SARA', `procesar_contacto:${sessionId || Date.now()}`);
       try {
         const OpenAI = require('openai');
         const openai = new OpenAI({ apiKey });
         const response = await openai.chat.completions.create({
           model: 'gpt-4o-mini',
-          messages: [{ role: 'user', content: `Eres Sara Valenzuela de ${tenant.name}. Redacta un correo comercial sofisticado para ${firstName} que preguntó por ${project}. Mensaje: "${message || 'información general'}". JSON: {"subject":"...","body":"..."}` }],
-          temperature: 0.7, max_tokens: 500
+          messages: [{ role: 'user', content: `Eres Sara Valenzuela de ${tenant.name}. Redacta un correo comercial sofisticado para ${firstName} que preguntó por ${project}. Mensaje: "${message || 'información general'}".` }],
+          temperature: 0.7, max_tokens: 500,
+          response_format: EMAIL_DRAFT_JSON_SCHEMA,
         });
-        const parsed = JSON.parse(response.choices[0].message.content.replace(/```json|```/g, '').trim());
+        const parsed = JSON.parse(response.choices[0].message.content.trim());
         if (parsed.subject) draftSubject = parsed.subject;
         if (parsed.body) draftBody = parsed.body;
+        await finishAgentRun(aiRun?.id, { status: 'completado', tokensEstimados: response.usage?.total_tokens ?? null, promptTokens: response.usage?.prompt_tokens ?? null, completionTokens: response.usage?.completion_tokens ?? null });
       } catch (aiErr) {
         console.warn('⚠️ OpenAI falló, usando plantilla:', aiErr.message);
+        await finishAgentRun(aiRun?.id, { status: 'error', errorDetalle: aiErr.message });
       }
     }
 
@@ -844,6 +1367,17 @@ Para calcular score_calificacion suma: menciona_inversion(+20) + menciona_presup
       existingProspect = rows[0] || null;
     }
     const isNewLead = !existingProspect;
+
+    // Un prospecto NUEVO sin correo NI teléfono es, por definición, imposible de contactar
+    // — antes esto igual se registraba (el guard de arriba solo exige name+sessionId, sin
+    // exigir un dato de contacto real) y quedaba una fila "fantasma" en Prospectos que nunca
+    // se podía trabajar. El widget del chatbot ya solo llama a esta ruta cuando detecta un
+    // correo/teléfono real en el mensaje, así que este caso hoy es defensivo (otro canal que
+    // llame a /api/contact sin ese filtro), pero se corta aquí para que la tabla de
+    // prospectos nunca vuelva a llenarse con leads no contactables.
+    if (isNewLead && !email && !phone) {
+      return res.json({ success: true, isNewLead: false, registered: false, reason: 'sin_datos_de_contacto' });
+    }
 
     if (transporter && isNewLead) {
       try {
@@ -962,8 +1496,8 @@ Para calcular score_calificacion suma: menciona_inversion(+20) + menciona_presup
     if (isNewLead) {
       draftId = `draft-${Date.now()}`;
       await pool.query(
-        'INSERT INTO drafts (id, tenant_id, destinatario, project, subject, body, status, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())',
-        [draftId, tenant.id, `${detectedFirstName !== firstName ? detectedFirstName : name} (${email || phone})`, emailProject, draftSubject, draftBody, 'pending']
+        'INSERT INTO drafts (id, tenant_id, destinatario, project, subject, body, status, origen, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())',
+        [draftId, tenant.id, `${detectedFirstName !== firstName ? detectedFirstName : name} (${email || phone})`, emailProject, draftSubject, draftBody, 'pending', 'solicitud_cliente']
       );
 
       logId = `log-${Date.now()}`;
@@ -990,6 +1524,7 @@ Para calcular score_calificacion suma: menciona_inversion(+20) + menciona_presup
 app.post('/api/send-draft', async (req, res) => {
   try {
     const tenant = await resolveTenant(req);
+    const user = resolveUser(req);
     const { id, attachments = [] } = req.body;
     if (!id) return res.status(400).json({ error: 'ID del borrador requerido.' });
 
@@ -1017,7 +1552,7 @@ app.post('/api/send-draft', async (req, res) => {
       attachments: mailAttachments
     });
 
-    await pool.query('UPDATE drafts SET status = $1 WHERE id = $2', ['sent', id]);
+    await pool.query('UPDATE drafts SET status = $1, sent_by = $2, sent_at = NOW() WHERE id = $3', ['sent', user, id]);
 
     // Registrar en historial del prospecto si existe
     const { rows: prospectoRows } = await pool.query(
@@ -1035,7 +1570,7 @@ app.post('/api/send-draft', async (req, res) => {
         asunto: draft.subject,
         resumen: draft.body.slice(0, 200),
         cuerpo: draft.body,
-        aprobado_por: 'Admin',
+        aprobado_por: user,
         editable: true
       });
       await pool.query(
@@ -1048,7 +1583,7 @@ app.post('/api/send-draft', async (req, res) => {
       `INSERT INTO bitacora (id, tenant_id, timestamp, cliente, correo, proyecto, canal, correo_cliente, borrador_creado, mensaje)
        VALUES ($1,$2,NOW(),$3,$4,$5,$6,$7,$8,$9)`,
       [`log-approval-${Date.now()}`, tenant.id, draft.destinatario, toEmail,
-       draft.project, 'CRM Admin', 'Enviado (Aprobado por Admin)', id,
+       draft.project, 'CRM Admin', `Enviado (Aprobado por ${user})`, id,
        `Borrador aprobado: ${draft.subject}`]
     );
 
@@ -1085,9 +1620,82 @@ const GLP_CATALOG = [
 // ==========================================
 // CHATBOT SARA
 // ==========================================
+// Mismos 4 arquetipos y mismas recomendaciones de tono que usa Sofía para perfilar
+// prospectos del CRM (ver handleSofia en el frontend) — se reutilizan aquí para que Sara
+// hable distinto según el arquetipo detectado EN VIVO durante el chat, en vez de un mismo
+// guión genérico para todos. Antes esta clasificación solo corría sobre datos ya guardados
+// del prospecto (ocupación, notas); el chatbot nunca la alimentaba.
+// Los modelos de lenguaje calculan mal el día de la semana a partir de una fecha (ej.
+// confundieron "el viernes" con el 25 de agosto cuando el viernes real era el 28) — dejarle
+// esa aritmética a la IA es frágil. Esta tabla se calcula en JS (confiable) con los
+// próximos 14 días y su nombre real, para que el modelo solo la CONSULTE en vez de calcular.
+function buildProximosDiasTexto() {
+  const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  const rows = [];
+  const hoy = new Date();
+  for (let i = 0; i < 14; i++) {
+    const d = new Date(hoy);
+    d.setDate(hoy.getDate() + i);
+    const fecha = d.toISOString().split('T')[0];
+    rows.push(`${DIAS[d.getDay()]} ${fecha}${i === 0 ? ' (HOY)' : i === 1 ? ' (MAÑANA)' : ''}`);
+  }
+  return rows.join('\n');
+}
+
+const SARA_TONO_POR_ARQUETIPO = {
+  estatus: 'Prioriza exclusividad y pertenencia — no ancles la conversación en precio primero. Menciona lo selecto del proyecto, quién más vive ahí, disponibilidad limitada.',
+  legado: 'Habla de preservación patrimonial y transmisión a la familia — valorización histórica, estabilidad, protección del capital a largo plazo.',
+  racional: 'Sé directa y con datos — precio/m², retorno estimado, comparativos concretos. Evita adjetivos vacíos, este perfil desconfía del discurso emocional.',
+  aspiracional: 'Conecta con el estilo de vida y el sueño detrás de la inversión — cómo se vive ahí, la experiencia, no solo el número.',
+};
+// Mismo mapeo pero orientado a Valeria (copy/contenido) — se guarda junto al arquetipo en
+// sofia_profiles para que el perfil detectado en el chat sea igual de útil en el CRM que
+// uno generado manualmente desde "Perfilar Prospectos".
+const VALERIA_TONO_POR_ARQUETIPO = {
+  estatus: 'Prueba social de élite, escasez real, identidad aspiracional de pertenencia — nunca lenguaje promocional genérico.',
+  legado: 'Narrativa intergeneracional: "el activo que tu familia heredará". ROI a largo plazo y seguridad jurídica.',
+  racional: 'Datos duros: tablas de valorización, comparativos, retorno cuantificado. Tono directo, sin adjetivos emocionales.',
+  aspiracional: 'Storytelling visual de estilo de vida — cómo se vive ahí, no solo cuánto cuesta.',
+};
+
+// Clasifica el arquetipo psicográfico a partir del texto real de la conversación —
+// llamada liviana y barata (gpt-4o-mini, pocos tokens), pensada para correr en cada turno
+// una vez hay suficiente contexto (>=3 mensajes del visitante).
+async function clasificarArquetipoChat(apiKey, conversationText) {
+  try {
+    const OpenAI = require('openai');
+    const openai = new OpenAI({ apiKey });
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{
+        role: 'user',
+        content: `Clasifica el arquetipo psicográfico dominante de este visitante de una inmobiliaria, basado SOLO en lo que escribió (ignora las respuestas del bot):\n\n${conversationText}\n\nArquetipos: "estatus" (busca exclusividad/pertenencia), "legado" (preservación patrimonial familiar), "racional" (decide por datos/ROI), "aspiracional" (motivado por estilo de vida).`,
+      }],
+      temperature: 0.3, max_tokens: 150,
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'arquetipo_chat',
+          strict: true,
+          schema: {
+            type: 'object', additionalProperties: false,
+            properties: {
+              arquetipo: { type: 'string', enum: ['estatus', 'legado', 'racional', 'aspiracional'] },
+              confianza: { type: 'integer' },
+              senales: { type: 'array', items: { type: 'string' } },
+            },
+            required: ['arquetipo', 'confianza', 'senales'],
+          },
+        },
+      },
+    });
+    return JSON.parse(response.choices[0].message.content.trim());
+  } catch { return null; }
+}
+
 app.post('/api/chat', async (req, res) => {
   try {
-    const { messages } = req.body;
+    const { messages, sessionId } = req.body;
     if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'Mensajes requeridos.' });
 
     const tenant = await resolveTenant(req);
@@ -1101,9 +1709,84 @@ app.post('/api/chat', async (req, res) => {
       `- ${p.name} | ${p.zone} | ${p.tipo || p.type || 'Residencia'} | Precio: $${(p.minPrice || 0).toLocaleString()}–$${(p.maxPrice || 0).toLocaleString()} USD | Áreas: ${p.areaMin || '?'}–${p.areaMax || '?'} m² | ${p.bedrooms || ''} | Entrega: ${p.entrega || 'consultar'} | Amenidades: ${(p.amenities || []).join(', ')}`
     ).join('\n');
 
-    const systemPrompt = `Eres Sara, asesora de inversiones inmobiliarias de ${tenant.name}. Llevas años en este mundo y te apasiona conectar a las personas con la inversión correcta para su momento de vida.
+    // Antes el prompt solo listaba preguntas de calificación de PRODUCTO (presupuesto,
+    // habitaciones, financiamiento...) sin decirle a Sara que su objetivo de negocio real
+    // es conseguir un dato de contacto — el chatbot podía sostener una conversación entera
+    // sobre el catálogo sin jamás pedir correo o WhatsApp, y sin ese dato el mensaje NUNCA
+    // se convierte en un prospecto real en el CRM (ver hasContactInfo en el frontend). El
+    // "gancho" ahora es una instrucción explícita, con un punto concreto de la conversación
+    // en el que debe pedirse, no una posibilidad que dependía de que la IA lo intuyera.
+    const numUserMsgs = messages.filter(m => m.sender === 'user').length;
+    const yaTieneContacto = messages.some(m =>
+      /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/.test(m.text) || /[\+]?[\d][\d\s\-\(\)]{9,}/.test(m.text)
+    );
+    // Antes se forzaba la pregunta de contacto en CADA turno desde el mensaje 2 en
+    // adelante, con un solo ejemplo de frase — el modelo terminaba repitiendo casi la
+    // misma pregunta una y otra vez, sonando a formulario en vez de conversación. Ahora
+    // solo se insiste en un par de puntos concretos de la conversación (con espacio real
+    // entre cada intento) y se le exige variar la redacción respecto a lo que ya preguntó.
+    const askCheckpoints = [2, 5, 9];
+    const yaPidioContactoAntes = messages.some(m => m.sender !== 'user' && /correo|whatsapp|whats app/i.test(m.text));
+    const forzarPreguntaContacto = !yaTieneContacto && askCheckpoints.includes(numUserMsgs);
 
-Tu estilo: conversacional, cálido, directo. Usas frases cortas. A veces compartes una opinión personal o haces una observación sobre lo que el cliente menciona. No suenas a call center ni a guión.
+    // FAQs oficiales — antes esta ruta (el chatbot EN VIVO, el canal de mayor volumen) era
+    // la única de las 4 superficies de Sara que NO las veía, así que nunca contribuía al
+    // conteo de "Más Consultadas" ni garantizaba respuestas consistentes con la oficial.
+    const faqsCtxChat = await getFaqsForPrompt(tenant.id);
+    const faqContextText = buildFaqContextText(faqsCtxChat);
+    // Solo el ÚLTIMO mensaje del visitante — si se contara el historial acumulado en cada
+    // turno, una misma pregunta se recontaría una vez por cada turno posterior de la
+    // conversación (10 turnos sobre el mismo tema = 10 "consultas" infladas para 1 sola).
+    const ultimoMensajeVisitante = [...messages].reverse().find(m => m.sender === 'user');
+    if (ultimoMensajeVisitante) {
+      trackFaqUsage(faqsCtxChat, ultimoMensajeVisitante.text); // fire-and-forget, no bloquea la respuesta
+    }
+
+    // Perfilamiento psicográfico EN VIVO — antes Sofía nunca veía la conversación del
+    // chatbot, así que Sara respondía con el mismo tono/gancho para cualquier visitante.
+    // A partir de 3 mensajes del visitante hay suficiente texto real para clasificar.
+    let arquetipoDetectado = null;
+    if (numUserMsgs >= 3) {
+      const conversationText = messages.filter(m => m.sender === 'user').map(m => m.text).join('\n');
+      arquetipoDetectado = await clasificarArquetipoChat(apiKey, conversationText);
+    }
+    const perfilTxt = arquetipoDetectado
+      ? `\nPERFIL PSICOGRÁFICO DETECTADO EN VIVO (Sofía, ${arquetipoDetectado.confianza}% confianza): ${arquetipoDetectado.arquetipo.toUpperCase()} — ${arquetipoDetectado.senales.join('; ')}\nAjusta tu tono y tus argumentos a este perfil específico, no uses un tono genérico: ${SARA_TONO_POR_ARQUETIPO[arquetipoDetectado.arquetipo] || ''}`
+      : '';
+
+    // Persistir el perfil en sofia_profiles (fire-and-forget) cuando ya existe un prospecto
+    // real vinculado a esta sesión de chat (creado por /api/contact vía chat_session_id) —
+    // así el perfil detectado en el chat aparece en el panel de Sofía del CRM, igual que
+    // uno generado manualmente, en vez de quedarse solo dentro de esta conversación.
+    if (arquetipoDetectado && sessionId) {
+      pool.query('SELECT id FROM prospectos WHERE chat_session_id = $1 AND tenant_id = $2 LIMIT 1', [sessionId, tenant.id])
+        .then(({ rows }) => {
+          if (rows[0]) {
+            const prospectoId = rows[0].id;
+            pool.query(`
+              INSERT INTO sofia_profiles (prospecto_id, tenant_id, arquetipo, confianza, senales, recomendacion_sara, recomendacion_valeria, updated_at)
+              VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
+              ON CONFLICT (prospecto_id) DO UPDATE SET
+                arquetipo=$3, confianza=$4, senales=$5, recomendacion_sara=$6, recomendacion_valeria=$7, updated_at=NOW()
+            `, [prospectoId, tenant.id, arquetipoDetectado.arquetipo, arquetipoDetectado.confianza,
+                JSON.stringify(arquetipoDetectado.senales), SARA_TONO_POR_ARQUETIPO[arquetipoDetectado.arquetipo] || '',
+                VALERIA_TONO_POR_ARQUETIPO[arquetipoDetectado.arquetipo] || '']).catch(() => {});
+          }
+        }).catch(() => {});
+    }
+
+    const systemPrompt = `Eres Sara, asesora de inversiones inmobiliarias de ${tenant.name}. Llevas años en este mundo y te apasiona conectar a las personas con la inversión correcta para su momento de vida.
+${perfilTxt}
+${forzarPreguntaContacto ? `
+════════════════════════════════════════════════════
+INSTRUCCIÓN PARA ESTA RESPUESTA — LÉELA PRIMERO:
+El visitante aún no ha dejado correo ni WhatsApp. En tu respuesta de AHORA, después de reaccionar a lo que acaba de decir, pídeselo — enmarcado como el paso natural que sigue (ej. "para enviarte la ficha con precios reales", "para que te llegue la disponibilidad actualizada", "para agendarte con un asesor esta semana"). Una sola vez, en una frase corta, sin sonar a formulario.
+${yaPidioContactoAntes ? 'Ya se lo pediste antes en esta misma conversación con otras palabras — usa una redacción DISTINTA esta vez, no repitas la frase anterior.' : ''}
+════════════════════════════════════════════════════
+` : ''}
+Tu estilo: conversacional, cálido, directo. Usas frases cortas. A veces compartes una opinión personal o haces una observación sobre lo que el cliente menciona. No suenas a call center ni a guión — y sobre todo, nunca repites la misma pregunta o la misma frase que ya usaste antes en esta conversación.
+
+OBJETIVO DE NEGOCIO: sin el correo o WhatsApp del visitante, la conversación no se convierte en un lead real — pero conseguirlo es una CONSECUENCIA de generar interés genuino, no algo que se persigue en cada mensaje. Si ya lo pediste una vez y no respondió, no insistas de nuevo enseguida: sigue aportando valor real (una idea concreta, un dato, una pregunta sobre lo que busca) y déjalo para más adelante en la charla — machacarlo espanta más de lo que convierte.
 
 A lo largo de la conversación, de forma natural (nunca en forma de cuestionario), trata de entender:
 - Qué lo motiva: ¿es para vivir, para rentar, para tener algo a largo plazo?
@@ -1114,6 +1797,18 @@ A lo largo de la conversación, de forma natural (nunca en forma de cuestionario
 - Si ya conoce Panamá o es su primera vez mirando este mercado
 
 No preguntes todo junto. Ve hilando la conversación. Si te cuenta algo, reacciona a eso antes de preguntar lo siguiente.
+${yaTieneContacto ? '\nEl visitante YA compartió un dato de contacto en este chat — agradécelo si aún no lo hiciste y sigue asesorando con normalidad, sin volver a pedirlo.' : (!forzarPreguntaContacto ? '\nNo es el momento de pedir el correo/WhatsApp en esta respuesta — concéntrate en la conversación y en generar interés real. Ya habrá otro momento más adelante para pedirlo.' : '')}
+
+CALENDARIO REAL — nunca calcules tú qué día cae en qué fecha, ya te lo doy resuelto. Usa SOLO esta tabla para convertir cualquier día que mencione el visitante ("el viernes", "mañana", "el jueves que viene") a fecha exacta:
+${buildProximosDiasTexto()}
+
+USO DE HERRAMIENTAS — esto no es opcional ni una posibilidad, es una instrucción directa:
+- En cuanto el visitante mencione un día Y una hora concretas para hablar, primero busca ese día EXACTO en la tabla de arriba (nunca lo calcules de memoria) y confirma la modalidad antes de agendar: pregúntale si prefiere LLAMADA o VIDEOLLAMADA (si no lo dijo ya). Según lo que responda:
+  · Si es LLAMADA y no tienes su teléfono/WhatsApp en la conversación, pídeselo primero — sin número no hay a quién llamar.
+  · Si es VIDEOLLAMADA y no tienes su correo en la conversación, pídeselo primero — sin correo no hay dónde mandar el link.
+  Solo cuando tengas fecha exacta (de la tabla) + hora + modalidad + el contacto que esa modalidad requiere, llama a la función agendar_cita en ese turno — no antes, y no le preguntes "¿confirmas?" en ese punto: ya tienes todo, agenda y confirma en tu respuesta.
+- En cuanto el visitante pida explícitamente hablar con una persona, un asesor o un humano, DEBES llamar a la función derivar_a_asesor en ESE MISMO turno, no le respondas primero preguntando por qué.
+- Nunca simules en texto que agendaste algo o que derivaste a alguien sin haber llamado la función correspondiente.
 
 FORMATO DE RESPUESTA — siempre:
 - Separa por bloques temáticos con línea en blanco entre cada uno
@@ -1123,21 +1818,151 @@ FORMATO DE RESPUESTA — siempre:
 - Termina con una pregunta o comentario que invite a seguir
 
 CATÁLOGO GLP:
-${catalogSummary}`;
+${catalogSummary}
+${faqContextText}`;
 
     const OpenAI = require('openai');
     const openai = new OpenAI({ apiKey });
 
-    const response = await openai.chat.completions.create({
+    // Antes agendar cita o pedir un asesor humano dependía de que el visitante llenara el
+    // formulario aparte (con selector de fecha/hora) — el chatbot no podía disparar ninguna
+    // de las dos acciones aunque el cliente lo pidiera EN la conversación. Con function
+    // calling, el modelo decide cuándo invocar cada acción real (no solo simularla en
+    // texto) y el backend la ejecuta contra el mismo /api/citas y el mismo correo de alerta
+    // que ya usa el formulario normal.
+    const tools = [
+      {
+        type: 'function',
+        function: {
+          name: 'agendar_cita',
+          description: 'Agenda una llamada o videollamada con un asesor cuando el visitante confirma día, hora y modalidad concretas para hablar con GLP. Requiere haber confirmado antes la modalidad y tener el dato de contacto que esa modalidad necesita (teléfono para llamada, correo para videollamada).',
+          parameters: {
+            type: 'object',
+            properties: {
+              fecha: { type: 'string', description: 'Fecha exacta en formato YYYY-MM-DD, tomada de la tabla de CALENDARIO REAL — nunca calculada de memoria' },
+              hora: { type: 'string', description: 'Hora en formato HH:MM (24h)' },
+              modalidad: { type: 'string', enum: ['llamada', 'videollamada'], description: 'Cómo quiere la cita el visitante' },
+              nombre: { type: 'string', description: 'Nombre del visitante si lo mencionó, o "Visitante Web" si no' },
+              motivo: { type: 'string', description: 'Resumen breve de qué quiere hablar (proyecto de interés, tipo de consulta)' },
+            },
+            required: ['fecha', 'hora', 'modalidad'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'derivar_a_asesor',
+          description: 'Deriva la conversación a un asesor humano cuando el visitante lo pide explícitamente, o cuando muestra frustración o hace una pregunta que tú no puedes resolver con confianza. Antes de llamar esta función, si aún no tienes su teléfono/WhatsApp en la conversación, pídeselo primero ("para que te llamen ya mismo") en vez de derivar sin ese dato — un asesor llamándolo convierte mejor que dejar que él tenga que escribir por su cuenta. Si ya lo tienes, o si insiste en derivar sin querer dar el número, llama la función de una vez.',
+          parameters: {
+            type: 'object',
+            properties: {
+              motivo: { type: 'string', description: 'Por qué se deriva: qué pidió o qué no se pudo resolver' },
+            },
+            required: ['motivo'],
+          },
+        },
+      },
+    ];
+
+    const baseMessages = [
+      { role: 'system', content: systemPrompt },
+      ...messages.map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.text })),
+    ];
+
+    const first = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...messages.map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.text }))
-      ],
-      temperature: 0.7, max_tokens: 350
+      messages: baseMessages,
+      tools, tool_choice: 'auto',
+      temperature: 0.7, max_tokens: 350,
     });
 
-    res.json({ reply: response.choices[0].message.content.trim() });
+    const firstMsg = first.choices[0].message;
+    const toolCalls = firstMsg.tool_calls || [];
+
+    if (toolCalls.length === 0) {
+      return res.json({ reply: firstMsg.content.trim() });
+    }
+
+    // Correo/teléfono del visitante ya capturados en la conversación (mismo patrón que usa
+    // el frontend para decidir si registrar un lead) — las citas admiten prospecto_email
+    // nulo, pero si ya lo dejó, la cita queda vinculada a su prospecto real en el CRM.
+    const conversationText = messages.map(m => m.text).join(' ');
+    const emailMatch = conversationText.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
+    const phoneMatch = conversationText.match(/[\+]?[\d][\d\s\-\(\)]{9,}/);
+    const visitorEmail = emailMatch ? emailMatch[0].trim() : null;
+    const visitorPhone = phoneMatch ? phoneMatch[0].replace(/\s+/g, '').trim() : null;
+    const whatsappNumber = tenant?.contact?.whatsapp || '573124824353';
+
+    const toolResults = [];
+    for (const call of toolCalls) {
+      let args = {};
+      try { args = JSON.parse(call.function.arguments || '{}'); } catch {}
+      let resultText = 'No se pudo completar la acción.';
+
+      if (call.function.name === 'agendar_cita') {
+        // Validación en el SERVIDOR, no solo en el prompt — antes una cita podía quedar
+        // "en el aire" sin ningún dato para contactar al visitante si el modelo ignoraba la
+        // instrucción de pedir teléfono/correo antes de agendar. Esto lo bloquea aunque el
+        // modelo se salte el paso.
+        const modalidad = args.modalidad === 'videollamada' ? 'videollamada' : args.modalidad === 'llamada' ? 'llamada' : null;
+        const faltaContacto = !modalidad
+          ? 'no especificó si prefiere llamada o videollamada'
+          : modalidad === 'llamada' && !visitorPhone
+            ? 'eligió llamada pero no ha dejado su teléfono/WhatsApp'
+            : modalidad === 'videollamada' && !visitorEmail
+              ? 'eligió videollamada pero no ha dejado su correo'
+              : null;
+        if (faltaContacto) {
+          resultText = `No se agendó todavía: ${faltaContacto}. Pídele ese dato específico en tu respuesta de ahora — sin eso la cita queda sin forma de contactarlo. No confirmes la cita como agendada.`;
+        } else {
+          try {
+            const canal = modalidad === 'llamada' ? 'Llamada' : 'Videollamada';
+            const notasConContacto = `${args.motivo || ''}${modalidad === 'llamada' ? ` — Llamar al ${visitorPhone}` : ` — Enviar link de videollamada a ${visitorEmail}`}`.trim();
+            const { rows } = await pool.query(`
+              INSERT INTO citas (tenant_id, prospecto_email, prospecto_nombre, proyecto, fecha, hora, canal, notas)
+              VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *
+            `, [tenant.id, visitorEmail, args.nombre || 'Visitante Web', 'Chatbot SARA', args.fecha, args.hora, canal, notasConContacto]);
+            resultText = `Cita (${canal}) agendada correctamente para ${args.fecha} a las ${args.hora}. ID: ${rows[0].id}. ${modalidad === 'llamada' ? `Se llamará al ${visitorPhone}.` : `Se enviará el link a ${visitorEmail}.`}`;
+          } catch (e) {
+            resultText = `Error agendando la cita: ${e.message}. Informa al visitante que un asesor confirmará el horario manualmente.`;
+          }
+        }
+      } else if (call.function.name === 'derivar_a_asesor') {
+        const transporter = getTransporter(tenant);
+        if (transporter) {
+          transporter.sendMail({
+            from: `"SARA Chatbot — Derivación Urgente" <${tenant.smtp?.user || process.env.SMTP_USER}>`,
+            to: process.env.ADMIN_EMAIL || process.env.SMTP_USER,
+            subject: `🚨 ${visitorPhone ? 'LLAMAR YA' : 'Visitante pide asesor humano'} — ${args.motivo || 'sin detalle'}`,
+            html: `<div style="font-family:sans-serif;line-height:1.6;">
+              <h2>Derivación urgente desde el Chatbot SARA</h2>
+              <p><strong>Motivo:</strong> ${args.motivo || 'No especificado'}</p>
+              <p><strong>Teléfono/WhatsApp del visitante:</strong> ${visitorPhone || 'No capturado — solo tiene la opción de escribir él mismo al WhatsApp del equipo'}</p>
+              <p><strong>Correo del visitante:</strong> ${visitorEmail || 'No capturado aún'}</p>
+              <p><strong>Conversación:</strong></p>
+              <pre style="background:#f8fafc;padding:12px;border-radius:6px;white-space:pre-wrap;">${messages.map(m => `${m.sender === 'user' ? 'Cliente' : 'SARA'}: ${m.text}`).join('\n')}</pre>
+            </div>`,
+          }).catch(() => {});
+        }
+        // Con teléfono: la carga de contactar la asume el asesor (callback), no el
+        // visitante — mejor conversión que pedirle que dé el salto a WhatsApp por su
+        // cuenta. Sin teléfono: el link de WhatsApp queda como respaldo inmediato.
+        resultText = visitorPhone
+          ? `Derivación notificada al equipo con el número ${visitorPhone} para que un asesor llame directamente. Informa al visitante que un asesor lo va a contactar en los próximos minutos a ese número — y que si prefiere escribir antes, aquí está el WhatsApp del equipo: https://wa.me/${whatsappNumber}`
+          : `Derivación notificada al equipo, pero aún no tienes el teléfono/WhatsApp del visitante. Dale este WhatsApp para continuar de inmediato: https://wa.me/${whatsappNumber} — y pídele su número para que un asesor lo llame directamente en vez de depender de que él escriba primero.`;
+      }
+
+      toolResults.push({ role: 'tool', tool_call_id: call.id, content: resultText });
+    }
+
+    const second = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [...baseMessages, firstMsg, ...toolResults],
+      temperature: 0.7, max_tokens: 350,
+    });
+
+    res.json({ reply: second.choices[0].message.content.trim() });
   } catch (error) {
     console.error('❌ Error en /api/chat:', error);
     res.status(500).json({ error: error.message });
@@ -1148,8 +1973,17 @@ ${catalogSummary}`;
 // AI PROXY – AGENTES CRM (Camilo, Valeria, Isabella)
 // ==========================================
 app.post('/api/ai', async (req, res) => {
+  // agentName/action son opcionales y los manda el frontend (triggerOpenAI) para que la
+  // bitácora de agent_runs sepa QUIÉN de los agentes (Valeria/Isabella/Sofía/...) generó
+  // esta llamada — antes esta ruta genérica no dejaba ningún rastro atribuible.
+  const { messages, max_tokens, agentName, action } = req.body;
+  const tenant = await resolveTenant(req);
+  const user = resolveUser(req);
+  const run = await startAgentRun(tenant.id, user, agentName || 'DESCONOCIDO', action || 'consulta_ai');
+  if (run?.locked) {
+    return res.status(409).json({ error: 'ya_en_curso', lockedBy: run.lockedBy, lockedSince: run.lockedSince });
+  }
   try {
-    const { messages, max_tokens } = req.body;
     if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'messages requeridos.' });
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) return res.status(503).json({ error: 'OpenAI no configurado en el servidor.' });
@@ -1161,9 +1995,11 @@ app.post('/api/ai', async (req, res) => {
       temperature: 0.7,
       max_tokens: max_tokens || 3000
     });
+    await finishAgentRun(run?.id, { status: 'completado', tokensEstimados: response.usage?.total_tokens ?? null, promptTokens: response.usage?.prompt_tokens ?? null, completionTokens: response.usage?.completion_tokens ?? null });
     res.json({ choices: [{ message: { content: response.choices[0].message.content } }] });
   } catch (err) {
     console.error('❌ Error en /api/ai:', err.message);
+    await finishAgentRun(run?.id, { status: 'error', errorDetalle: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -1182,15 +2018,27 @@ app.post('/api/ai', async (req, res) => {
 // fallback silencioso (texto "no disponible") y gpt-4o-mini inventaba citas de aspecto
 // creíble sobre ese placeholder, sin que se notara. 'gpt-4o-mini' + tool 'web_search'
 // (sin "_preview") sí funciona y fue verificado con una consulta real (inflación INEC).
-async function webSearchGLP(apiKey, searches, onProgress) {
-  try {
-    let completed = 0;
-    const results = await Promise.all(searches.map(async (query) => {
+async function webSearchGLP(apiKey, searches, onProgress, model = 'gpt-4o-mini') {
+  let completed = 0;
+  // Los modelos de razonamiento (gpt-5, o3, o4-mini) gastan una parte del presupuesto de
+  // salida en tokens de razonamiento invisibles — sin "reasoning.effort" explícito y sin un
+  // tope generoso, la Responses API a veces devuelve texto vacío (se lo comió el razonamiento).
+  const isReasoningModel = /^(gpt-5|o3|o4)/.test(model);
+  // Antes un solo query fallando (429 de rate limit, timeout puntual) tumbaba el Promise.all
+  // COMPLETO — las otras 3 búsquedas que sí habían respondido bien se descartaban también, y
+  // el radar entero caía al aviso genérico de "usando datos de entrenamiento, no verificados",
+  // lo que producía exactamente el síntoma reportado: contenido repetitivo y sin detalle real
+  // (incluido Panamá) cada vez que UNA sola búsqueda tenía un hipo de red. Ahora cada búsqueda
+  // se aísla: si falla, esa búsqueda puntual queda marcada como sin datos, pero las demás que sí
+  // funcionaron se conservan y siguen alimentando la síntesis con información real.
+  const results = await Promise.all(searches.map(async (query) => {
+    try {
       const r = await fetch('https://api.openai.com/v1/responses', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model,
+          ...(isReasoningModel ? { reasoning: { effort: 'low' } } : {}),
           tools: [{ type: 'web_search' }],
           input: query
         })
@@ -1211,14 +2059,73 @@ async function webSearchGLP(apiKey, searches, onProgress) {
       // "cuántas ya resolvieron", no un contador secuencial 1/2/3 — pero es real, no decorativo.
       if (onProgress) onProgress(completed, searches.length, query);
       return { query, text, sources };
-    }));
-    return results.map(r =>
-      `### Búsqueda: "${r.query}"\n${r.text}${r.sources.length ? '\nFuentes: ' + r.sources.join(' · ') : ''}`
-    ).join('\n\n---\n\n');
-  } catch (searchErr) {
-    console.warn('⚠️ Web search no disponible, usando base de conocimiento:', searchErr.message);
-    return '(Búsqueda web no disponible en este momento — usando datos de entrenamiento del modelo, no verificados en tiempo real)';
+    } catch (queryErr) {
+      console.warn(`⚠️ Búsqueda web falló para "${query}":`, queryErr.message);
+      completed++;
+      if (onProgress) onProgress(completed, searches.length, query);
+      return { query, text: '(Esta búsqueda específica falló — no hay datos verificados en tiempo real para esta consulta, no inventes cifras para ella)', sources: [] };
+    }
+  }));
+  return results.map(r =>
+    `### Búsqueda: "${r.query}"\n${r.text}${r.sources.length ? '\nFuentes: ' + r.sources.join(' · ') : ''}`
+  ).join('\n\n---\n\n');
+}
+
+// Deep Research real (o3-deep-research / o4-mini-deep-research) NO está habilitado en esta
+// cuenta de OpenAI (probado: 404 "Model not found" en ambos). Esto es lo más cercano que SÍ
+// funciona con los modelos disponibles: una investigación en 2 rondas con gpt-5 (el modelo de
+// razonamiento más fuerte de la cuenta, no gpt-4o-mini) — ronda 1 busca lo obvio, gpt-5 mismo
+// identifica qué falta (proyectos sin precio, países sin fuente), y la ronda 2 busca
+// específicamente eso. No es tan profundo como Deep Research nativo (esa es una investigación
+// autónoma de decenas de pasos), pero es sensiblemente más confiable y específico que un solo
+// disparo de gpt-4o-mini, y corre en ~30-60s en vez de minutos.
+async function deepWebSearchGLP(apiKey, initialQueries, destinosDesc, onProgress) {
+  if (onProgress) onProgress({ step: 0, total: 2, label: 'Ronda 1: búsqueda inicial…', phase: 'searching' });
+  const round1 = await webSearchGLP(apiKey, initialQueries, (done, total, query) => {
+    if (onProgress) onProgress({ step: done, total: total * 2, label: `Ronda 1 — "${query.slice(0, 60)}…"`, phase: 'searching' });
+  }, 'gpt-5');
+
+  let round2 = '';
+  try {
+    if (onProgress) onProgress({ step: initialQueries.length, total: initialQueries.length * 2, label: 'Identificando huecos de información…', phase: 'gap_analysis' });
+    const OpenAI = require('openai');
+    const openai = new OpenAI({ apiKey });
+    const gapResponse = await openai.chat.completions.create({
+      model: 'gpt-5',
+      reasoning_effort: 'low',
+      max_completion_tokens: 1200,
+      messages: [{
+        role: 'user',
+        content: `Eres un analista de inteligencia de mercado inmobiliario. Revisa esta investigación web ya realizada sobre: ${destinosDesc}.
+
+${round1}
+
+¿Qué información específica falta o quedó vaga (proyectos sin precio, zonas sin datos, cifras sin fuente)? Genera hasta 3 búsquedas web de SEGUIMIENTO, muy específicas (nombres de proyecto, zona exacta, "precio m2 2026", etc.), que llenen esos huecos concretos — no repitas las búsquedas ya hechas. Si la investigación ya está completa y no hace falta profundizar más, devuelve una lista vacía.`
+      }],
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'followup_queries',
+          strict: true,
+          schema: { type: 'object', additionalProperties: false, properties: { queries: { type: 'array', items: { type: 'string' } } }, required: ['queries'] },
+        },
+      },
+    });
+    const followupQueries = (JSON.parse(gapResponse.choices[0].message.content.trim()).queries || []).slice(0, 3);
+    if (followupQueries.length > 0) {
+      if (onProgress) onProgress({ step: initialQueries.length, total: initialQueries.length + followupQueries.length, label: 'Ronda 2: profundizando huecos específicos…', phase: 'searching' });
+      round2 = await webSearchGLP(apiKey, followupQueries, (done, total, query) => {
+        if (onProgress) onProgress({ step: initialQueries.length + done, total: initialQueries.length + total, label: `Ronda 2 — "${query.slice(0, 60)}…"`, phase: 'searching' });
+      }, 'gpt-5');
+    }
+  } catch (gapErr) {
+    console.warn('⚠️ Ronda 2 de deep search falló, se conserva solo la ronda 1:', gapErr.message);
   }
+
+  if (onProgress) onProgress({ step: 1, total: 1, label: 'Investigación completada, sintetizando…', phase: 'synthesis' });
+  return round2
+    ? `${round1}\n\n=== BÚSQUEDAS DE PROFUNDIZACIÓN (ronda 2, huecos identificados por IA) ===\n\n${round2}`
+    : round1;
 }
 
 // ── Progreso real de Camilo (polling) ──────────────────────────────────────
@@ -1257,65 +2164,185 @@ REGLAS OBLIGATORIAS (no negociables):
 3. Si la investigación web no trae un dato específico que necesitas, dilo explícitamente
    ("no se encontró esta cifra en la búsqueda") en vez de inventarlo.`;
 
-// Radar de Competencia — antes generaba resultados "inventados" con triggerOpenAI/api/ai
-// (sin web search), por eso siempre salían los mismos destinos con los mismos datos.
-app.post('/api/camilo/radar-competencia', async (req, res) => {
-  try {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) return res.status(503).json({ error: 'OpenAI no configurado.' });
-
-    const webContext = await webSearchGLP(apiKey, [
+// Alcance del radar — antes solo existía la mezcla fija (Costa Rica + Portugal + Miami +
+// Panamá), pensada como comparación INTERNACIONAL. Eso dejaba a Panamá comprimido en 1 de 4
+// filas con apenas 2 oraciones, y no servía si lo que se necesita es ver competencia interna
+// panameña con detalle (otros desarrolladores en Ciudad/Coronado/Chiriquí), o comparar solo
+// contra el mercado doméstico colombiano (a donde vuelve el capital si no invierte afuera), o
+// centrarse en Centroamérica. Cada alcance reparte sus queries de búsqueda ÚNICAMENTE entre
+// los destinos que va a mostrar, así el destino principal siempre recibe profundidad real en
+// vez de compartir presupuesto de búsqueda con países que ni siquiera se van a mostrar.
+const RADAR_SCOPES = {
+  panama: {
+    label: 'Solo Panamá',
+    destinos: 'competencia DOMÉSTICA dentro de Panamá — otros desarrolladores y proyectos que compiten directamente con GLP (Ciudad de Panamá/Costa del Este/Punta Pacífica, Coronado y playas cercanas, Chiriquí/David/Boquete)',
+    searches: [
+      'Panama City Costa del Este Punta Pacifica new luxury apartment developments 2025 2026 prices developers',
+      'Coronado Panama beach real estate new developments 2025 2026 prices',
+      'Chiriqui David Boquete Panama real estate investment developments 2025 2026 prices',
+    ],
+  },
+  panama_colombia: {
+    label: 'Panamá vs Colombia',
+    destinos: 'Panamá (proyectos GLP compite con otros desarrolladores locales) y Colombia (mercado inmobiliario doméstico en Medellín, Bogotá y Cartagena, la alternativa de quedarse invirtiendo en su propio país)',
+    searches: [
+      'Panama City Coronama Chiriquí new real estate projects 2025 2026 prices developers',
+      'Medellin Colombia real estate investment prices 2025 2026 apartamentos',
+      'Bogota Cartagena Colombia real estate investment prices 2025 2026',
+    ],
+  },
+  panama_colombia_usa: {
+    label: 'Panamá, Colombia y USA',
+    destinos: 'Panamá (competencia local), Colombia (mercado doméstico en Medellín/Bogotá/Cartagena) y Estados Unidos (Miami/Orlando, destino clásico de inversión de colombianos)',
+    searches: [
+      'Panama City Coronado Chiriquí new real estate projects 2025 2026 prices developers',
+      'Medellin Bogota Colombia real estate investment prices 2025 2026',
+      'Miami Orlando Florida condo investment prices 2025 2026 foreign buyers Colombian investors',
+    ],
+  },
+  centroamerica: {
+    label: 'Centroamérica',
+    destinos: 'Panamá, Costa Rica (Guanacaste/Jacó) y otro país de Centroamérica con oferta de inversión inmobiliaria relevante en 2025-2026 (Guatemala o Nicaragua, el que tenga datos reales en la búsqueda)',
+    searches: [
+      'Panama City Coronado Chiriquí new real estate projects 2025 2026 prices developers',
+      'Costa Rica beachfront real estate investment prices 2025 2026 Guanacaste Jaco',
+      'Guatemala Nicaragua Central America real estate investment prices 2025 2026',
+    ],
+  },
+  // Comportamiento original (internacional amplio) — se mantiene como opción por si se quiere
+  // seguir comparando contra los 3 destinos internacionales clásicos + Panamá, todos a la vez.
+  internacional: {
+    label: 'Internacional (Costa Rica, Portugal, Miami, Panamá)',
+    destinos: 'Costa Rica, Portugal, Miami/Orlando y Panamá (Ciudad, Coronado, Chiriquí)',
+    searches: [
       'Costa Rica beachfront real estate investment prices 2025 2026 Guanacaste Jaco',
       'Portugal Golden Visa real estate investment 2025 2026 Lisboa Algarve prices',
       'Miami Orlando Florida condo investment prices 2025 2026 foreign buyers',
       'Panama City Coronado Chiriquí new real estate projects 2025 2026 prices',
-    ]);
+    ],
+  },
+};
 
+// Radar de Competencia — antes generaba resultados "inventados" con triggerOpenAI/api/ai
+// (sin web search), por eso siempre salían los mismos destinos con los mismos datos.
+app.post('/api/camilo/radar-competencia', async (req, res) => {
+  const tenant = await resolveTenant(req);
+  const user = resolveUser(req);
+  const run = await startAgentRun(tenant.id, user, 'CAMILO', 'radar_competencia');
+  if (run?.locked) {
+    return res.status(409).json({ error: 'ya_en_curso', lockedBy: run.lockedBy, lockedSince: run.lockedSince });
+  }
+  try {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) return res.status(503).json({ error: 'OpenAI no configurado.' });
+
+    const scopeKey = RADAR_SCOPES[req.body?.scope] ? req.body.scope : 'internacional';
+    const scope = RADAR_SCOPES[scopeKey];
+    const jobId = req.body?.jobId;
+
+    const webContext = await deepWebSearchGLP(apiKey, scope.searches, scope.destinos, (progress) => {
+      setCamiloProgress(jobId, progress);
+    });
+
+    setCamiloProgress(jobId, { step: 1, total: 1, label: 'Redactando radar con gpt-5…', phase: 'synthesis' });
     const OpenAI = require('openai');
     const openai = new OpenAI({ apiKey });
     const synthesis = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-5',
+      reasoning_effort: 'low',
+      // Margen amplio a propósito: los alcances de 4 destinos (internacional,
+      // panama_colombia_usa) generan más contenido, y quedarse corto produce "" vacío sin
+      // error visible (confirmado con reporte-mercado en 3000 — ver nota en esa ruta).
+      max_completion_tokens: 7000,
       messages: [{
         role: 'user',
-        content: `Con base en esta investigación web real y actual, genera el Radar de Competencia de GLP Wealth Management (compite por inversionistas colombianos contra estos destinos):
+        content: `Con base en esta investigación web real y actual (2 rondas: búsqueda inicial + profundización dirigida a huecos de información), genera el Radar de Competencia de GLP Wealth Management (compite por inversionistas colombianos contra estos destinos):
 
 ${webContext}
 
-Devuelve SOLO un JSON array (sin markdown) con esta estructura EXACTA, uno por destino (Costa Rica, Portugal, Miami/Orlando, Otros proyectos en Panamá):
-[{"titulo":"nombre del destino","descripcion":"situación actual en 2 oraciones basada en los datos reales de arriba, cita cifras concretas","precio_ref":"rango de precios FORMATEADO con separador de miles y símbolo de moneda, ej. '$150,000 – $650,000' o '€5,995/m²' (o 'Sin dato verificable en la búsqueda' si no hay cifra) — NUNCA dígitos sin formato ni texto sobre fuentes en este campo","argumentos":["argumento GLP que lo supera 1","argumento 2","argumento 3"],"fuentes":["dominio/URL literal citado tras 'Fuentes:' en la investigación de arriba para ESTE destino específico — nunca inventes ni reutilices una fuente de otro destino; si no hay ninguna, usa exactamente ['Sin fuente verificable para este dato']"]}]
+Genera un registro por destino/región de: ${scope.destinos}. Cada registro debe traer: titulo (nombre del destino/región), descripcion (situación actual en 2-3 oraciones basada en los datos reales de arriba, cita cifras concretas y — si el alcance incluye Panamá — nombra proyectos o zonas específicas encontradas en la búsqueda, no solo el país en general), precio_ref (rango de precios FORMATEADO con separador de miles y símbolo de moneda, ej. "$150,000 – $650,000" o "€5,995/m²", o "Sin dato verificable en la búsqueda" si no hay cifra — NUNCA dígitos sin formato ni texto sobre fuentes en este campo), argumentos (3 argumentos por los que GLP lo supera), fuentes (dominios/URL literales citados tras "Fuentes:" en la investigación de arriba para ESTE destino específico — nunca inventes ni reutilices una fuente de otro destino; si no hay ninguna, usa exactamente ["Sin fuente verificable para este dato"]).
 ${ANTI_HALUCINACION}
 4. precio_ref y fuentes son campos independientes: precio_ref SIEMPRE debe ser un número o rango numérico formateado (o el texto exacto "Sin dato verificable en la búsqueda"), nunca el aviso de "sin fuente". El aviso de fuente faltante va SOLO dentro del array "fuentes".`,
       }],
-      temperature: 0.3,
-      max_tokens: 1500,
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'radar_competencia',
+          strict: true,
+          schema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              destinos: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: {
+                    titulo: { type: 'string' },
+                    descripcion: { type: 'string' },
+                    precio_ref: { type: 'string' },
+                    argumentos: { type: 'array', items: { type: 'string' } },
+                    fuentes: { type: 'array', items: { type: 'string' } },
+                  },
+                  required: ['titulo', 'descripcion', 'precio_ref', 'argumentos', 'fuentes'],
+                },
+              },
+            },
+            required: ['destinos'],
+          },
+        },
+      },
     });
-    res.json({ choices: [{ message: { content: synthesis.choices[0].message.content } }] });
+    setCamiloProgress(jobId, { step: 1, total: 1, label: 'Completado', phase: 'done' });
+    await finishAgentRun(run?.id, { status: 'completado', tokensEstimados: synthesis.usage?.total_tokens ?? null, promptTokens: synthesis.usage?.prompt_tokens ?? null, completionTokens: synthesis.usage?.completion_tokens ?? null });
+    // El frontend (CRMDashboard) sigue esperando choices[0].message.content como un JSON
+    // array plano — se reserializa aquí para no tocar el contrato existente, aunque
+    // internamente OpenAI ahora devuelve un objeto {destinos:[...]} (json_schema strict
+    // exige raíz de tipo object, no array).
+    const destinos = JSON.parse(synthesis.choices[0].message.content.trim()).destinos || [];
+    res.json({ choices: [{ message: { content: JSON.stringify(destinos) } }] });
   } catch (err) {
     console.error('❌ Error en /api/camilo/radar-competencia:', err.message);
+    await finishAgentRun(run?.id, { status: 'error', errorDetalle: err.message });
     res.status(500).json({ error: err.message });
   }
 });
 
 // Reporte semanal de mercado — mismo problema: antes usaba solo memoria del modelo.
 app.post('/api/camilo/reporte-mercado', async (req, res) => {
+  const tenant = await resolveTenant(req);
+  const user = resolveUser(req);
+  const run = await startAgentRun(tenant.id, user, 'CAMILO', 'reporte_mercado');
+  if (run?.locked) {
+    return res.status(409).json({ error: 'ya_en_curso', lockedBy: run.lockedBy, lockedSince: run.lockedSince });
+  }
   try {
-    const { kpiCtx, objSummary } = req.body;
+    const { kpiCtx, objSummary, jobId } = req.body;
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) return res.status(503).json({ error: 'OpenAI no configurado.' });
 
-    const webContext = await webSearchGLP(apiKey, [
+    const reporteDestinos = 'panorama macroeconómico de Panamá, mercado inmobiliario local y competencia internacional (Costa Rica, Portugal, Miami)';
+    const webContext = await deepWebSearchGLP(apiKey, [
       'Panama economy real estate market outlook 2025 2026 interest rates USD',
       'Colombian peso exchange rate USD 2025 2026 outbound investment trends',
       'Panama City luxury real estate demand foreign buyers 2025 2026',
-    ]);
+    ], reporteDestinos, (progress) => setCamiloProgress(jobId, progress));
 
+    setCamiloProgress(jobId, { step: 1, total: 1, label: 'Redactando reporte con gpt-5…', phase: 'synthesis' });
     const OpenAI = require('openai');
     const openai = new OpenAI({ apiKey });
     const synthesis = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-5',
+      reasoning_effort: 'low',
+      // gpt-5 gasta tokens de razonamiento invisibles del mismo presupuesto de salida —
+      // con 3000 el modelo se quedaba sin espacio para el texto real y devolvía "" vacío
+      // (confirmado en prueba real, sin error, solo contenido vacío). 8000 deja margen para
+      // ~600 palabras de reporte + razonamiento en un prompt largo con investigación de 2 rondas.
+      max_completion_tokens: 8000,
       messages: [{
         role: 'user',
-        content: `Eres Camilo, analista de mercado de GLP Wealth Management Panamá. Con base en esta investigación web real:
+        content: `Eres Camilo, analista de mercado de GLP Wealth Management Panamá. Con base en esta investigación web real (2 rondas: búsqueda inicial + profundización dirigida a huecos de información):
 
 ${webContext}
 
@@ -1323,17 +2350,27 @@ ${kpiCtx ? `CONTEXTO INTERNO GLP:\n${kpiCtx}\n` : ''}${objSummary ? `Objeciones 
 Genera el REPORTE SEMANAL DE MERCADO cubriendo: 1) Panorama macro, 2) Mercado inmobiliario Panamá, 3) Competencia (Costa Rica/Portugal/Miami), 4) Señales de riesgo, 5) Oportunidades, 6) Recomendación táctica concreta para HOY. Cita cifras reales de la investigación de arriba cuando existan. Texto profesional en español, máx 600 palabras.
 ${ANTI_HALUCINACION}`,
       }],
-      temperature: 0.5,
-      max_tokens: 1500,
     });
+    setCamiloProgress(jobId, { step: 1, total: 1, label: 'Completado', phase: 'done' });
+    await finishAgentRun(run?.id, { status: 'completado', tokensEstimados: synthesis.usage?.total_tokens ?? null, promptTokens: synthesis.usage?.prompt_tokens ?? null, completionTokens: synthesis.usage?.completion_tokens ?? null });
     res.json({ texto: synthesis.choices[0].message.content.trim() });
   } catch (err) {
     console.error('❌ Error en /api/camilo/reporte-mercado:', err.message);
+    await finishAgentRun(run?.id, { status: 'error', errorDetalle: err.message });
     res.status(500).json({ error: err.message });
   }
 });
 
 app.post('/api/camilo/research', async (req, res) => {
+  const tenant = await resolveTenant(req);
+  const user = resolveUser(req);
+  // Camilo con web_search es la llamada más cara del sistema (3 búsquedas + síntesis) — la
+  // primera en llevar bitácora completa, para tener datos reales antes de fijar el tope de
+  // gasto por tenant de la Fase 2.
+  const run = await startAgentRun(tenant.id, user, 'CAMILO', 'research');
+  if (run?.locked) {
+    return res.status(409).json({ error: 'ya_en_curso', lockedBy: run.lockedBy, lockedSince: run.lockedSince });
+  }
   try {
     const { kpiCtx, brandCtx, projectsList, jobId } = req.body;
     const apiKey = process.env.OPENAI_API_KEY;
@@ -1344,11 +2381,9 @@ app.post('/api/camilo/research', async (req, res) => {
       'Colombian investors Panama real estate 2025 investment dollar exchange rate',
       'Panama City Bella Vista Santa Maria Ocean Reef luxury apartments new projects 2025'
     ];
-    setCamiloProgress(jobId, { step: 0, total: searches.length, label: 'Iniciando búsquedas web en tiempo real…', phase: 'searching' });
-    const webContext = await webSearchGLP(apiKey, searches, (done, total, query) => {
-      setCamiloProgress(jobId, { step: done, total, label: `Búsqueda completada: "${query.slice(0, 60)}…"`, phase: 'searching' });
-    });
-    setCamiloProgress(jobId, { step: searches.length, total: searches.length, label: 'Sintetizando investigación con OpenAI…', phase: 'synthesis' });
+    const researchDestinos = 'mercado inmobiliario de lujo en Panamá, comportamiento de inversionistas colombianos y proyectos específicos en Bella Vista/Santa María/Ocean Reef';
+    const webContext = await deepWebSearchGLP(apiKey, searches, researchDestinos, (progress) => setCamiloProgress(jobId, progress));
+    setCamiloProgress(jobId, { step: 1, total: 1, label: 'Sintetizando investigación con gpt-5…', phase: 'synthesis' });
 
     // ── síntesis → documento de inteligencia estructurado ──
     const OpenAI = require('openai');
@@ -1381,20 +2416,22 @@ Genera 4-5 insights variados y accionables (mercado macro, oportunidad de proyec
 ${ANTI_HALUCINACION}`;
 
     const synthesis = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-5',
+      reasoning_effort: 'low',
+      max_completion_tokens: 10000,
       messages: [
         { role: 'system', content: 'Eres Camilo, Científico de Datos y Estratega de Inteligencia de Mercado de GLP Wealth Management. Recibes datos reales de búsqueda web y los transformas en inteligencia accionable para el equipo comercial.' },
         { role: 'user', content: synthesisPrompt }
       ],
-      temperature: 0.3,
-      max_tokens: 4000
     });
 
-    setCamiloProgress(jobId, { step: searches.length, total: searches.length, label: 'Completado', phase: 'done' });
+    setCamiloProgress(jobId, { step: 1, total: 1, label: 'Completado', phase: 'done' });
+    await finishAgentRun(run?.id, { status: 'completado', tokensEstimados: synthesis.usage?.total_tokens ?? null, promptTokens: synthesis.usage?.prompt_tokens ?? null, completionTokens: synthesis.usage?.completion_tokens ?? null });
     res.json({ choices: [{ message: { content: synthesis.choices[0].message.content } }] });
   } catch (err) {
     setCamiloProgress(req.body?.jobId, { step: 0, total: 3, label: err.message, phase: 'error' });
     console.error('❌ Error en /api/camilo/research:', err.message);
+    await finishAgentRun(run?.id, { status: 'error', errorDetalle: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -1505,10 +2542,18 @@ app.post('/api/apollo/mine', async (req, res) => {
 // SARA – ANÁLISIS DE PROSPECTOS (GPT-4)
 // ==========================================
 app.post('/api/sara/process-prospects', async (req, res) => {
+  const tenant = await resolveTenant(req);
+  const user = resolveUser(req);
+  // Un solo run para todo el lote (no uno por prospecto) — el candado protege "Sara ya está
+  // analizando consultas para este tenant", no cada prospecto individual, así que una fila
+  // por invocación es suficiente y evita saturar la bitácora con hasta 5 filas por clic.
+  const run = await startAgentRun(tenant.id, user, 'SARA', 'analizar_consultas');
+  if (run?.locked) {
+    return res.status(409).json({ error: 'ya_en_curso', lockedBy: run.lockedBy, lockedSince: run.lockedSince });
+  }
   try {
-    const tenant = await resolveTenant(req);
     const apiKey = tenant?.openai?.apiKey || process.env.OPENAI_API_KEY;
-    if (!apiKey) return res.status(500).json({ error: 'OpenAI API Key requerida.' });
+    if (!apiKey) { await finishAgentRun(run?.id, { status: 'error', errorDetalle: 'OpenAI API Key requerida.' }); return res.status(500).json({ error: 'OpenAI API Key requerida.' }); }
 
     const { rows: dbProspects } = await pool.query(
       'SELECT * FROM prospectos WHERE tenant_id = $1 ORDER BY fecha_registro DESC LIMIT 50',
@@ -1531,13 +2576,35 @@ app.post('/api/sara/process-prospects', async (req, res) => {
       return m ? m[1] : '';
     }));
 
+    // "Seguimiento de Sara" es para reactivar prospectos ESTANCADOS — no para los recién
+    // registrados. Antes se tomaban los 5 prospectos más nuevos (orden de la consulta SQL,
+    // fecha_registro DESC), justo lo opuesto: un lead de hace 2 minutos recibía un correo
+    // de "seguimiento" antes que alguien sin actividad hace 3 semanas. Ahora se ordena por
+    // días reales sin actividad (más estancado primero) y se exige un mínimo de 3 días sin
+    // movimiento — así un lead fresco nunca compite por el cupo con uno que sí necesita
+    // reactivación. 'Perdido'/'Post-venta' quedan fuera: ya no son un ciclo activo a
+    // reactivar por este medio.
+    const MIN_DIAS_ESTANCADO = 3;
     const needsAttention = allProspects
       .filter(p => (p.correo || p.email) && !existingEmails.has(p.correo || p.email))
+      .filter(p => !['Perdido', 'Post-venta'].includes(p.estado))
+      .map(p => {
+        const lastActivity = new Date(p.fecha_ultima_actividad || p.fecha_registro || Date.now());
+        const diasSinActividad = Math.floor((Date.now() - lastActivity.getTime()) / 86400000);
+        return { ...p, diasSinActividad };
+      })
+      .filter(p => p.diasSinActividad >= MIN_DIAS_ESTANCADO)
+      .sort((a, b) => b.diasSinActividad - a.diasSinActividad)
       .slice(0, 5);
 
     const OpenAI = require('openai');
     const openai = new OpenAI({ apiKey });
     const results = [];
+    let batchPromptTokens = 0, batchCompletionTokens = 0;
+    // Contexto de FAQs oficiales — para que el correo de reactivación no contradiga (o
+    // reinvente) respuestas que ya están estandarizadas (ej. régimen fiscal, financiamiento).
+    const faqsCtx = await getFaqsForPrompt(tenant.id);
+    const faqContextText = buildFaqContextText(faqsCtx);
 
     for (const prospect of needsAttention) {
       try {
@@ -1545,16 +2612,35 @@ app.post('/api/sara/process-prospects', async (req, res) => {
         const email = prospect.correo || prospect.email || '';
         const gptResponse = await openai.chat.completions.create({
           model: 'gpt-4o-mini',
-          messages: [{ role: 'user', content: `Eres Sara Valenzuela de ${tenant.name}. Genera un correo comercial para ${nombre} (${prospect.estado || 'Lead'}), interesado en ${JSON.stringify(prospect.proyectos_interes || [])}. Presupuesto: $${prospect.presupuesto_usd || 'N/A'}. Catálogo:\n${catalogSummary}\nJSON: {"draftSubject":"...","draftBody":"...","prioridad":"alta|media|baja"}` }],
-          temperature: 0.7, max_tokens: 600
+          messages: [{ role: 'user', content: `Eres Sara Valenzuela de ${tenant.name}. Este prospecto lleva ${prospect.diasSinActividad} días sin ninguna actividad ni respuesta — este correo es de REACTIVACIÓN, no una respuesta a una solicitud nueva. Genera un correo comercial de reactivación para ${nombre} (${prospect.estado || 'Lead'}), interesado en ${JSON.stringify(prospect.proyectos_interes || [])}. Presupuesto: $${prospect.presupuesto_usd || 'N/A'}. El tono debe reconocer implícitamente el tiempo transcurrido (sin sonar acusatorio) y dar una razón concreta para retomar la conversación ahora. Catálogo:\n${catalogSummary}${faqContextText}` }],
+          temperature: 0.7, max_tokens: 600,
+          response_format: {
+            type: 'json_schema',
+            json_schema: {
+              name: 'borrador_prospecto',
+              strict: true,
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                  draftSubject: { type: 'string' },
+                  draftBody: { type: 'string' },
+                  prioridad: { type: 'string', enum: ['alta', 'media', 'baja'] },
+                },
+                required: ['draftSubject', 'draftBody', 'prioridad'],
+              },
+            },
+          },
         });
-        const parsed = JSON.parse(gptResponse.choices[0].message.content.replace(/```json|```/g, '').trim());
+        batchPromptTokens += gptResponse.usage?.prompt_tokens || 0;
+        batchCompletionTokens += gptResponse.usage?.completion_tokens || 0;
+        const parsed = JSON.parse(gptResponse.choices[0].message.content.trim());
         const draftId = `draft-${Date.now()}-${Math.floor(Math.random() * 9000)}`;
         await pool.query(
-          'INSERT INTO drafts (id, tenant_id, destinatario, project, subject, body, status, prioridad, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())',
+          'INSERT INTO drafts (id, tenant_id, destinatario, project, subject, body, status, prioridad, origen, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())',
           [draftId, tenant.id, `${nombre} (${email})`,
            JSON.stringify(prospect.proyectos_interes || []),
-           parsed.draftSubject, parsed.draftBody, 'pending', parsed.prioridad || 'media']
+           parsed.draftSubject, parsed.draftBody, 'pending', parsed.prioridad || 'media', 'seguimiento_sara']
         );
         results.push({ nombre, email, draftId, prioridad: parsed.prioridad });
       } catch (e) {
@@ -1562,8 +2648,206 @@ app.post('/api/sara/process-prospects', async (req, res) => {
       }
     }
 
+    await finishAgentRun(run?.id, { status: 'completado', tokensEstimados: batchPromptTokens + batchCompletionTokens, promptTokens: batchPromptTokens, completionTokens: batchCompletionTokens });
     res.json({ success: true, processedCount: results.length, results });
   } catch (err) {
+    await finishAgentRun(run?.id, { status: 'error', errorDetalle: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Chat interactivo con Sara — responde preguntas del usuario activo sobre su propia
+// cartera de prospectos/mensajes en vez de solo generar borradores. Contexto acotado a
+// los últimos 40 prospectos y 20 mensajes recientes por costo/latencia; para preguntas que
+// requieran más historia el usuario puede acotar por nombre/proyecto en la pregunta misma.
+app.post('/api/sara/chat', async (req, res) => {
+  const tenant = await resolveTenant(req);
+  const user = resolveUser(req);
+  const { question, history = [] } = req.body;
+  if (!question || !question.trim()) return res.status(400).json({ error: 'question requerida' });
+
+  const run = await startAgentRun(tenant.id, user, 'SARA', 'chat');
+  try {
+    const apiKey = tenant?.openai?.apiKey || process.env.OPENAI_API_KEY;
+    if (!apiKey) { await finishAgentRun(run?.id, { status: 'error', errorDetalle: 'OpenAI API Key requerida.' }); return res.status(500).json({ error: 'OpenAI API Key requerida.' }); }
+
+    const { rows: prospects } = await pool.query(
+      `SELECT id, nombre, apellido, estado, correo, telefono, broker_asignado, proyectos_interes,
+              presupuesto_usd, fecha_registro, fecha_ultima_actividad
+       FROM prospectos WHERE tenant_id = $1 ORDER BY fecha_ultima_actividad DESC NULLS LAST LIMIT 40`,
+      [tenant.id]
+    );
+    const { rows: drafts } = await pool.query(
+      `SELECT id, destinatario, subject, status, prioridad, origen, created_at
+       FROM drafts WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 20`,
+      [tenant.id]
+    );
+    const { rows: alerts } = await pool.query(
+      `SELECT a.nivel, a.status, p.nombre, p.apellido
+       FROM prospect_alerts a JOIN prospectos p ON a.prospecto_id = p.id
+       WHERE a.tenant_id = $1 AND a.status = 'activa' ORDER BY a.created_at DESC LIMIT 20`,
+      [tenant.id]
+    );
+
+    const hoy = new Date();
+    const prospectsCtx = prospects.map(p => {
+      const last = p.fecha_ultima_actividad || p.fecha_registro;
+      const dias = last ? Math.floor((hoy - new Date(last)) / 86400000) : null;
+      return `- [id:${p.id}] ${p.nombre} ${p.apellido} · ${p.estado} · broker: ${p.broker_asignado || 'sin asignar'} · proyectos: ${(p.proyectos_interes || []).join(', ') || '—'} · presupuesto: $${p.presupuesto_usd || 0} · ${dias != null ? `${dias} días sin actividad` : 'sin actividad registrada'}`;
+    }).join('\n');
+    const draftsCtx = drafts.map(d => `- [id:${d.id}] ${d.status} · ${d.prioridad || ''} · para ${d.destinatario} · "${d.subject}" · origen: ${d.origen || 'manual'}`).join('\n');
+    const alertsCtx = alerts.map(a => `- ${a.nivel}: ${a.nombre} ${a.apellido}`).join('\n');
+
+    const OpenAI = require('openai');
+    const openai = new OpenAI({ apiKey });
+    const gptResponse = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: `Eres Sara, Directora de Experiencia de Cliente de ${tenant.name}. Respondes preguntas del equipo comercial sobre sus propios prospectos, mensajes y alertas — con datos reales, nunca inventados. Si el dato no está en el contexto, dilo explícitamente en vez de suponer. Responde en español, tono directo y profesional, sin relleno.
+
+PROSPECTOS RECIENTES:
+${prospectsCtx || '(sin prospectos)'}
+
+MENSAJES/BORRADORES RECIENTES:
+${draftsCtx || '(sin mensajes)'}
+
+ALERTAS ACTIVAS:
+${alertsCtx || '(sin alertas)'}` },
+        ...history.slice(-6).map(h => ({ role: h.role === 'user' ? 'user' : 'assistant', content: h.content })),
+        { role: 'user', content: question },
+      ],
+      temperature: 0.4, max_tokens: 500,
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'respuesta_sara',
+          strict: true,
+          schema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              answer: { type: 'string' },
+              prospectosCitados: { type: 'array', items: { type: 'integer' } },
+            },
+            required: ['answer', 'prospectosCitados'],
+          },
+        },
+      },
+    });
+    const parsed = JSON.parse(gptResponse.choices[0].message.content.trim());
+    const citados = prospects.filter(p => parsed.prospectosCitados.includes(p.id))
+      .map(p => ({ id: p.id, nombre: `${p.nombre} ${p.apellido}` }));
+
+    await finishAgentRun(run?.id, {
+      status: 'completado',
+      tokensEstimados: (gptResponse.usage?.prompt_tokens || 0) + (gptResponse.usage?.completion_tokens || 0),
+      promptTokens: gptResponse.usage?.prompt_tokens || 0,
+      completionTokens: gptResponse.usage?.completion_tokens || 0,
+    });
+    res.json({ answer: parsed.answer, citas: citados });
+  } catch (err) {
+    await finishAgentRun(run?.id, { status: 'error', errorDetalle: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Chat interactivo genérico para Camilo, Sofía y Valeria — mismo patrón que
+// /api/sara/chat, pero el contexto que arma depende de qué agente responde (Camilo:
+// insights de mercado; Sofía: perfiles psicográficos; Valeria: contenido/campañas).
+// Sara mantiene su propio endpoint porque su contexto (mensajes/drafts/alertas) ya
+// existía antes de generalizar esto.
+const AGENT_PERSONAS = {
+  CAMILO: 'Camilo, VP de Investigación y Mercados. Investigas el mercado inmobiliario y generas insights de inteligencia — tendencias, oportunidades, alertas de crisis.',
+  SOFIA: 'Sofía, PhD en Psicología del Consumidor de Lujo. Analizas perfiles psicográficos de prospectos y detectas su arquetipo de comprador (Coleccionista de Estatus, Preservador de Legado, Decisor Racional, Comprador Aspiracional).',
+  VALERIA: 'Valeria, VP de Medios. Redactas copy y gestionas el calendario editorial de campañas — LinkedIn, newsletters, email, redes sociales.',
+  ISABELLA: 'Isabella, Embajadora de Marca. Generas guiones de producción de video — Reels, testimoniales, contenido educativo — y coordinas el calendario de producción audiovisual.',
+};
+app.post('/api/agents/chat', async (req, res) => {
+  const tenant = await resolveTenant(req);
+  const user = resolveUser(req);
+  const { agent, question, history = [] } = req.body;
+  if (!agent || !AGENT_PERSONAS[agent]) return res.status(400).json({ error: 'agent inválido (CAMILO | SOFIA | VALERIA | ISABELLA)' });
+  if (!question || !question.trim()) return res.status(400).json({ error: 'question requerida' });
+
+  const run = await startAgentRun(tenant.id, user, agent, 'chat');
+  try {
+    const apiKey = tenant?.openai?.apiKey || process.env.OPENAI_API_KEY;
+    if (!apiKey) { await finishAgentRun(run?.id, { status: 'error', errorDetalle: 'OpenAI API Key requerida.' }); return res.status(500).json({ error: 'OpenAI API Key requerida.' }); }
+
+    let contextText = '';
+    let prospectsForCitas = [];
+
+    if (agent === 'CAMILO') {
+      const { rows: insights } = await pool.query(
+        `SELECT id, titulo, resumen, tipo, impacto, status, fecha FROM camilo_insights
+         WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 30`,
+        [tenant.id]
+      );
+      contextText = `INSIGHTS DE MERCADO RECIENTES:\n${insights.map(i => `- [${i.tipo}/${i.impacto}] ${i.titulo} — ${i.resumen || ''} (${i.status}, ${i.fecha})`).join('\n') || '(sin insights)'}`;
+    } else if (agent === 'SOFIA') {
+      const { rows: profiles } = await pool.query(
+        `SELECT sp.prospecto_id, sp.arquetipo, sp.confianza, sp.senales, p.nombre, p.apellido, p.proyectos_interes
+         FROM sofia_profiles sp JOIN prospectos p ON sp.prospecto_id = p.id
+         WHERE sp.tenant_id = $1 ORDER BY sp.updated_at DESC LIMIT 40`,
+        [tenant.id]
+      );
+      prospectsForCitas = profiles.map(p => ({ id: p.prospecto_id, nombre: `${p.nombre} ${p.apellido}` }));
+      contextText = `PERFILES PSICOGRÁFICOS:\n${profiles.map(p => `- [id:${p.prospecto_id}] ${p.nombre} ${p.apellido} · arquetipo: ${p.arquetipo} · confianza: ${p.confianza}% · proyectos: ${(p.proyectos_interes || []).join(', ') || '—'} · señales: ${(p.senales || []).join('; ')}`).join('\n') || '(sin perfiles aún)'}`;
+    } else if (agent === 'VALERIA') {
+      const { rows: drafts } = await pool.query(
+        `SELECT id, canal, asunto, status, type, tags, date FROM valeria_drafts
+         WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 30`,
+        [tenant.id]
+      );
+      contextText = `CONTENIDO/CAMPAÑAS RECIENTES:\n${drafts.map(d => `- [${d.status}] ${d.canal || d.type} · "${d.asunto || ''}" · ${(d.tags || []).join(', ')} · ${d.date}`).join('\n') || '(sin contenido generado aún)'}`;
+    } else if (agent === 'ISABELLA') {
+      const { rows: scripts } = await pool.query(
+        `SELECT id, canal, asunto, status, type, tags, date FROM isabella_scripts
+         WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 30`,
+        [tenant.id]
+      );
+      contextText = `GUIONES DE VIDEO RECIENTES:\n${scripts.map(s => `- [${s.status}] ${s.canal || s.type} · "${s.asunto || ''}" · ${(s.tags || []).join(', ')} · ${s.date}`).join('\n') || '(sin guiones generados aún)'}`;
+    }
+
+    const OpenAI = require('openai');
+    const openai = new OpenAI({ apiKey });
+    const gptResponse = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: `Eres ${AGENT_PERSONAS[agent]} Trabajas para ${tenant.name}. Respondes preguntas del equipo comercial con datos reales del contexto — si el dato no está ahí, dilo explícitamente en vez de suponer. Responde en español, tono directo y profesional, sin relleno.\n\n${contextText}` },
+        ...history.slice(-6).map(h => ({ role: h.role === 'user' ? 'user' : 'assistant', content: h.content })),
+        { role: 'user', content: question },
+      ],
+      temperature: 0.4, max_tokens: 500,
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'respuesta_agente',
+          strict: true,
+          schema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              answer: { type: 'string' },
+              prospectosCitados: { type: 'array', items: { type: 'integer' } },
+            },
+            required: ['answer', 'prospectosCitados'],
+          },
+        },
+      },
+    });
+    const parsed = JSON.parse(gptResponse.choices[0].message.content.trim());
+    const citados = prospectsForCitas.filter(p => parsed.prospectosCitados.includes(p.id));
+
+    await finishAgentRun(run?.id, {
+      status: 'completado',
+      tokensEstimados: (gptResponse.usage?.prompt_tokens || 0) + (gptResponse.usage?.completion_tokens || 0),
+      promptTokens: gptResponse.usage?.prompt_tokens || 0,
+      completionTokens: gptResponse.usage?.completion_tokens || 0,
+    });
+    res.json({ answer: parsed.answer, citas: citados });
+  } catch (err) {
+    await finishAgentRun(run?.id, { status: 'error', errorDetalle: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -1619,6 +2903,7 @@ app.post('/api/sara/send-email', async (req, res) => {
     if (!to || !subject || !body) return res.status(400).json({ error: 'Faltan campos: to, subject, body.' });
 
     const tenant = await resolveTenant(req);
+    const user = resolveUser(req);
     const transporter = getTransporter(tenant);
     if (!transporter) return res.status(500).json({ error: 'SMTP no configurado. Verifica SMTP_USER y SMTP_PASS en .env' });
 
@@ -1645,7 +2930,7 @@ app.post('/api/sara/send-email', async (req, res) => {
     }
 
     console.log(`[Sara·Email] ✅ Correo enviado a ${to} — "${subject}"`);
-    res.json({ success: true });
+    res.json({ success: true, sentBy: user, sentAt: new Date().toISOString() });
   } catch (err) {
     console.error('[Sara·Email] Error:', err.message);
     res.status(500).json({ error: err.message });
@@ -2687,6 +3972,17 @@ app.put('/api/citas/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Antes no existía forma de cancelar/eliminar una cita — la Agenda de Brokers las
+// mostraba fijas, sin ningún control de edición o cancelación.
+app.delete('/api/citas/:id', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Tenant no encontrado' });
+    await pool.query('DELETE FROM citas WHERE id = $1 AND tenant_id = $2', [req.params.id, tenant.id]);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ==========================================
 // CARTERA — persistencia backend + portal de cliente
 // ==========================================
@@ -3362,6 +4658,26 @@ app.post('/webhook/docusign', async (req, res) => {
   try {
     await pool.query(`ALTER TABLE prospectos ADD COLUMN IF NOT EXISTS email_history JSONB DEFAULT '[]'`);
   } catch (e) { console.warn('prospectos email_history column check:', e.message); }
+})();
+
+// Etiqueta de origen para clasificar la bandeja de Sara por "carpetas" (solicitud del
+// cliente, recuperación de crisis, oportunidad detectada, reactivación, cobranza) — antes
+// no existía ninguna columna que distinguiera de dónde vino cada borrador, así que la
+// bandeja era una sola lista cronológica sin forma de filtrar por tipo.
+(async () => {
+  try {
+    await pool.query(`ALTER TABLE drafts ADD COLUMN IF NOT EXISTS origen TEXT`);
+  } catch (e) { console.warn('drafts origen column check:', e.message); }
+})();
+
+// Quién y cuándo se aprobó/envió cada borrador — antes /api/send-draft marcaba
+// 'aprobado_por: Admin' fijo sin importar qué usuario hizo clic, así que no había
+// trazabilidad real de quién envió cada correo.
+(async () => {
+  try {
+    await pool.query(`ALTER TABLE drafts ADD COLUMN IF NOT EXISTS sent_by TEXT`);
+    await pool.query(`ALTER TABLE drafts ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ`);
+  } catch (e) { console.warn('drafts sent_by/sent_at column check:', e.message); }
 })();
 
 // Captura de leads del chatbot Sara / formulario web: antes cada mensaje del chatbot creaba

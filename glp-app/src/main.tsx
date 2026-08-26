@@ -2,14 +2,26 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { C, PROJECTS, PROJECT_IMG, Project } from './projectsData'
 import { ProjectDetailView } from './projectDetail'
-import { supabase } from './lib/supabase'
 import { API_ROOT } from './apiRoot'
 import { getImageFor, fetchLiveProjectImages } from './liveProjectImages'
 import { applyUnidadesToProjects } from './unidadesOverride'
 
-const trackFaqClick = (question: string, category: string) => {
-  supabase.from('faq_clicks').insert({ question, category, source: 'landing' }).then(() => {});
+// Antes se insertaba directo al cliente de Supabase (RLS + errores silenciosos). Ahora
+// pasa por el backend, que registra el clic por faq_id real — no se puede desincronizar
+// por texto porque no compara texto en absoluto.
+const trackFaqClick = (faqId: number | undefined) => {
+  if (!faqId) return; // FAQ del respaldo fijo (sin id real) — no hay nada que registrar
+  fetch(`${API_ROOT}/api/faq-clicks`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ faq_id: faqId, source: 'landing' }),
+  }).catch(() => {});
 };
+
+// FAQ_DATA_FALLBACK: contenido fijo por si el backend no responde (la landing es pública y
+// no puede depender de que el CRM esté arriba). Cuando el fetch a /api/faqs funciona, ese
+// contenido reemplaza a este — así landing y CRM comparten EXACTAMENTE el mismo texto de
+// pregunta, y los clics reales de la landing sí se pueden cruzar con las FAQs del CRM para
+// contar "Más Consultadas" (antes tenían textos redactados por separado y nunca coincidían).
 
 /* """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
    GLP  Grupo Los Pueblos · Landing Page
@@ -17,10 +29,10 @@ const trackFaqClick = (question: string, category: string) => {
    """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""" */
 
 // ────────────────────────────────────────────────────────
-type FAQ = { q: string; a: string }
+type FAQ = { q: string; a: string; id?: number }
 type FAQCategory = { title: string; icon: string; items: FAQ[] }
 
-const FAQ_DATA: FAQCategory[] = [
+const FAQ_DATA_FALLBACK: FAQCategory[] = [
   {
     title: 'Estabilidad Macroeconómica',
     icon: '\u{1F3DB}\u{FE0F}',
@@ -264,13 +276,19 @@ const Navbar: React.FC = () => {
               </a>
             )
           })}
-          <a href="/portal.html" style={{
-            ...linkStyle,
-            border: `1px solid ${scrolled ? C.red : C.white}`,
-            padding: '6px 16px',
-            color: scrolled ? C.red : C.white,
-          }}>
+          {/* Mismo look que el resto de los links (sin recuadro) — antes eran botones
+              con borde, un estilo distinto al de Inicio/Nosotros/Proyectos/etc. */}
+          <a href="/portal.html" style={linkStyle}
+            onMouseEnter={e => { e.currentTarget.style.color = C.red; e.currentTarget.style.borderBottomColor = C.red; }}
+            onMouseLeave={e => { e.currentTarget.style.color = scrolled ? C.text : C.white; e.currentTarget.style.borderBottomColor = 'transparent'; }}>
             Portal Clientes
+          </a>
+          {/* Antes era un botón flotante circular fijo en la esquina inferior — se
+              integra como una opción más del menú principal. */}
+          <a href="/crm.html" target="_blank" rel="noopener noreferrer" style={linkStyle}
+            onMouseEnter={e => { e.currentTarget.style.color = C.red; e.currentTarget.style.borderBottomColor = C.red; }}
+            onMouseLeave={e => { e.currentTarget.style.color = scrolled ? C.text : C.white; e.currentTarget.style.borderBottomColor = 'transparent'; }}>
+            Intranet
           </a>
         </div>
 
@@ -296,8 +314,11 @@ const Navbar: React.FC = () => {
               {l.label}
             </a>
           ))}
-          <a href="/portal.html" style={{ ...linkStyle, color: C.red, fontSize: '0.8rem', border: `1px solid ${C.red}`, padding: '8px 16px', textAlign: 'center' }}>
+          <a href="/portal.html" style={{ ...linkStyle, color: C.text, fontSize: '0.8rem' }}>
             Portal Clientes
+          </a>
+          <a href="/crm.html" target="_blank" rel="noopener noreferrer" style={{ ...linkStyle, color: C.text, fontSize: '0.8rem' }}>
+            Intranet
           </a>
         </div>
       )}
@@ -868,16 +889,6 @@ const InvestmentSection: React.FC = () => {
     },
   ]
 
-  const countryFacts = [
-    ['Capital', 'Panamá'],
-    ['Superficie', '75,517 km²'],
-    ['Presidente actual', 'José Raúl Mulino'],
-    ['Población', '4.315 millones de personas'],
-    ['Moneda', 'Dólar americano (Balboa como moneda acuñada equivalente)'],
-    ['División política', '10 provincias y 5 comarcas'],
-    ['Gobierno', 'Democracia constitucional, República centralizada'],
-  ]
-
   const advantageGroups = [
     {
       title: 'Ventajas de Panamá como país',
@@ -956,36 +967,9 @@ const InvestmentSection: React.FC = () => {
           </div>
         </div>
 
-        {/* Un país en crecimiento */}
-        <div style={{ marginBottom: 64 }}>
-          <div style={{ textAlign: 'center', marginBottom: 36 }}>
-            <span style={{
-              display: 'inline-block', borderBottom: `1px solid ${C.coral}`,
-              color: C.coral, paddingBottom: 4,
-              fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.15em',
-              textTransform: 'uppercase', marginBottom: 12,
-              fontFamily: C.fontSans,
-            }}>Panamá en cifras</span>
-            <h3 style={{ fontSize: '1.6rem', fontWeight: 400, color: C.teal, fontFamily: C.fontSerif, margin: 0 }}>
-              Un país en crecimiento
-            </h3>
-          </div>
-          <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 1,
-            background: C.sand, border: `1px solid ${C.sand}`, maxWidth: 1000, margin: '0 auto',
-          }}>
-            {countryFacts.map(([label, val]) => (
-              <div key={label} style={{ background: C.white, padding: '28px 22px', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.68rem', color: C.coral, fontFamily: C.fontSans, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>
-                  {label}
-                </div>
-                <div style={{ fontSize: '1.15rem', color: C.teal, fontFamily: C.fontSerif, fontWeight: 400, lineHeight: 1.3 }}>
-                  {val}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        {/* Se quitó "Panamá en cifras" (capital, superficie, presidente, población,
+            moneda...) — leía como una ficha de Wikipedia, sin relación con la decisión
+            de inversión de un comprador de alto patrimonio. */}
 
         {/* Ventajas: país / migratorias / impositivas */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24 }}>
@@ -1451,10 +1435,34 @@ const FAQSection: React.FC = () => {
   const [activeCategory, setActiveCategory] = React.useState(0)
   const [faqSearch, setFaqSearch] = React.useState('')
   const [openItems, setOpenItems] = React.useState<Record<string, boolean>>({})
+  const [faqData, setFaqData] = React.useState<FAQCategory[]>(FAQ_DATA_FALLBACK)
 
-  const toggle = (key: string, question: string, category: string) =>
+  // Trae las FAQs reales del CRM (misma tabla que usan Sara/Valeria) para que landing y
+  // CRM compartan idéntico texto de pregunta — si falla, se queda con el fallback fijo en
+  // vez de romper la sección pública.
+  React.useEffect(() => {
+    fetch(`${API_ROOT}/api/faqs`).then(r => r.json()).then((rows: any[]) => {
+      if (!Array.isArray(rows) || rows.length === 0) return;
+      const iconByTitle: Record<string, string> = {};
+      FAQ_DATA_FALLBACK.forEach(cat => { iconByTitle[cat.title] = cat.icon; });
+      const order = FAQ_DATA_FALLBACK.map(cat => cat.title);
+      const grouped: Record<string, FAQ[]> = {};
+      rows.forEach(r => {
+        const cat = r.categoria || 'Otros';
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push({ q: r.pregunta, a: r.respuesta, id: Number(r.id) });
+      });
+      const titles = [...order.filter(t => grouped[t]), ...Object.keys(grouped).filter(t => !order.includes(t))];
+      const rebuilt: FAQCategory[] = titles.map(title => ({
+        title, icon: iconByTitle[title] || '❓', items: grouped[title],
+      }));
+      if (rebuilt.length > 0) setFaqData(rebuilt);
+    }).catch(() => {});
+  }, []);
+
+  const toggle = (key: string, faqId: number | undefined) =>
     setOpenItems(prev => {
-      if (!prev[key]) trackFaqClick(question, category); // solo al abrir
+      if (!prev[key]) trackFaqClick(faqId); // solo al abrir
       return { ...prev, [key]: !prev[key] };
     });
 
@@ -1462,7 +1470,7 @@ const FAQSection: React.FC = () => {
     if (!faqSearch.trim()) return null;
     const query = faqSearch.toLowerCase();
     const results: { faq: FAQ; categoryTitle: string; key: string }[] = [];
-    FAQ_DATA.forEach((cat, catIdx) => {
+    faqData.forEach((cat, catIdx) => {
       cat.items.forEach((item, itemIdx) => {
         if (item.q.toLowerCase().includes(query) || item.a.toLowerCase().includes(query)) {
           results.push({
@@ -1474,7 +1482,7 @@ const FAQSection: React.FC = () => {
       });
     });
     return results;
-  }, [faqSearch]);
+  }, [faqSearch, faqData]);
 
   return (
     <section id="faq" style={{ padding: '100px 24px', background: C.white }}>
@@ -1517,7 +1525,7 @@ const FAQSection: React.FC = () => {
           <div style={{
             display: 'flex', gap: 8, marginBottom: 32, flexWrap: 'wrap', justifyContent: 'center',
           }}>
-            {FAQ_DATA.map((cat, i) => (
+            {faqData.map((cat, i) => (
               <button key={cat.title} onClick={() => setActiveCategory(i)} style={{
                 background: activeCategory === i ? C.teal : 'transparent',
                 color: activeCategory === i ? C.white : C.text,
@@ -1550,7 +1558,7 @@ const FAQSection: React.FC = () => {
                   <FAQItem
                     faq={item.faq}
                     isOpen={!!openItems[item.key]}
-                    toggle={() => toggle(item.key, item.faq.q, item.categoryTitle)}
+                    toggle={() => toggle(item.key, item.faq.id)}
                   />
                 </div>
               ))
@@ -1560,12 +1568,12 @@ const FAQSection: React.FC = () => {
               </div>
             )
           ) : (
-            FAQ_DATA[activeCategory].items.map((faq, i) => (
+            (faqData[activeCategory] || faqData[0]).items.map((faq, i) => (
               <FAQItem
                 key={`${activeCategory}-${i}`}
                 faq={faq}
                 isOpen={!!openItems[`${activeCategory}-${i}`]}
-                toggle={() => toggle(`${activeCategory}-${i}`, faq.q, FAQ_DATA[activeCategory].title)}
+                toggle={() => toggle(`${activeCategory}-${i}`, faq.id)}
               />
             ))
           )}
@@ -2278,7 +2286,10 @@ const ChatbotWidget: React.FC = () => {
       const res = await fetch(`${API_ROOT}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: currentMessages })
+        // sessionId permite al backend correlacionar esta conversación con el prospecto
+        // real (creado por /api/contact vía chat_session_id) para guardar ahí el perfil
+        // psicográfico que Sofía detecta en vivo — sin esto, el perfil nunca llegaría al CRM.
+        body: JSON.stringify({ messages: currentMessages, sessionId: sessionIdRef.current })
       });
       
       const data = await res.json();
@@ -2335,7 +2346,7 @@ const ChatbotWidget: React.FC = () => {
                   background: C.white, display: 'flex', alignItems: 'center', justifyContent: 'center',
                   overflow: 'hidden'
                 }}>
-                  <img src="/img/agent_sara_customer.png" alt="SARA" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e)=> e.currentTarget.style.display = 'none'} />
+                  <img src="/img/agents/sara.png" alt="SARA" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e)=> e.currentTarget.style.display = 'none'} />
                 </div>
                 <div>
                   <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>Sara Valenzuela</div>
@@ -2429,19 +2440,21 @@ const ChatbotWidget: React.FC = () => {
             background: `linear-gradient(135deg, ${C.teal} 0%, ${C.sky} 100%)`,
             color: C.white, border: 'none',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer',
+            cursor: 'pointer', overflow: 'hidden',
             boxShadow: '0 4px 15px rgba(14, 165, 172, 0.4)',
             transition: 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
           }}
           onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
           onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+          title="Chatea con Sara"
         >
           {isOpen ? (
             <span style={{ fontSize: '1.5rem' }}>✕</span>
           ) : (
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-            </svg>
+            // Foto de Sara en vez del ícono genérico de burbuja de chat — le pone cara
+            // humana al widget, igual que en el resto del CRM.
+            <img src="/img/agents/sara.png" alt="Sara" style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.parentElement!.innerHTML = '<span style="font-size:1.4rem;font-weight:800">S</span>'; }} />
           )}
         </button>
       </div>
@@ -2500,49 +2513,8 @@ const LandingPage: React.FC = () => {
       />
       <Footer />
 
-      {/* Botón Flotante de Acceso CRM */}
-      <a
-        href="/crm.html"
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{
-          position: 'fixed',
-          bottom: '24px',
-          left: '24px',
-          zIndex: 999,
-          background: C.teal,
-          color: C.white,
-          width: '50px',
-          height: '50px',
-          borderRadius: '50%',
-          border: `1px solid ${C.teal}`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          cursor: 'pointer',
-          textDecoration: 'none',
-          boxShadow: '0 4px 15px rgba(14, 165, 172, 0.25)',
-          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        }}
-        onMouseEnter={e => {
-          e.currentTarget.style.background = C.white;
-          e.currentTarget.style.color = C.teal;
-          e.currentTarget.style.transform = 'scale(1.1) rotate(5deg)';
-          e.currentTarget.style.boxShadow = '0 6px 20px rgba(14, 165, 172, 0.4)';
-        }}
-        onMouseLeave={e => {
-          e.currentTarget.style.background = C.teal;
-          e.currentTarget.style.color = C.white;
-          e.currentTarget.style.transform = 'scale(1) rotate(0deg)';
-          e.currentTarget.style.boxShadow = '0 4px 15px rgba(14, 165, 172, 0.25)';
-        }}
-        title="Acceso CRM Administrativo"
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-        </svg>
-      </a>
+      {/* El acceso al CRM se movió al menú principal ("Intranet") — antes era este
+          botón flotante fijo en la esquina inferior izquierda. */}
 
       {/* Chatbot Widget */}
       <ChatbotWidget />
