@@ -432,6 +432,90 @@ app.delete('/api/prospectos/:id', async (req, res) => {
   } catch (e) { console.warn('sofia_profiles table check:', e.message); }
 })();
 
+// ==========================================
+// TESTIMONIOS — para la sección de prueba social de la landing (nombre, rol/ciudad,
+// texto, calificación, foto). 'status' empieza en 'draft': un testimonio cargado en el
+// CRM no aparece en la landing hasta que alguien lo pasa a 'published' — evita que un
+// borrador a medio llenar salga público por accidente.
+// ==========================================
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS testimonials (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL DEFAULT 'tenant-glp-001',
+        nombre TEXT NOT NULL,
+        rol TEXT,
+        ciudad TEXT,
+        foto_url TEXT,
+        texto TEXT NOT NULL,
+        rating INTEGER DEFAULT 5,
+        status TEXT DEFAULT 'draft',
+        orden INTEGER DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+  } catch (e) { console.warn('testimonials table check:', e.message); }
+})();
+
+app.get('/api/testimonials', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    // La landing pública pide solo los publicados (?status=published); el CRM pide
+    // todos para poder gestionar los borradores.
+    const { status } = req.query;
+    const { rows } = status
+      ? await pool.query('SELECT * FROM testimonials WHERE tenant_id = $1 AND status = $2 ORDER BY orden ASC, created_at DESC', [tenant.id, status])
+      : await pool.query('SELECT * FROM testimonials WHERE tenant_id = $1 ORDER BY orden ASC, created_at DESC', [tenant.id]);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/testimonials', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { nombre, rol, ciudad, foto_url, texto, rating, status, orden } = req.body;
+    if (!nombre || !texto) return res.status(400).json({ error: 'nombre y texto son requeridos' });
+    const id = `testi-${Date.now()}-${Math.floor(Math.random() * 9000)}`;
+    await pool.query(
+      `INSERT INTO testimonials (id, tenant_id, nombre, rol, ciudad, foto_url, texto, rating, status, orden)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [id, tenant.id, nombre, rol || null, ciudad || null, foto_url || null, texto, rating || 5, status || 'draft', orden || 0]
+    );
+    res.json({ success: true, id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/testimonials/:id', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { nombre, rol, ciudad, foto_url, texto, rating, status, orden } = req.body;
+    await pool.query(
+      `UPDATE testimonials SET nombre=$1, rol=$2, ciudad=$3, foto_url=$4, texto=$5, rating=$6, status=$7, orden=$8, updated_at=NOW()
+       WHERE id=$9 AND tenant_id=$10`,
+      [nombre, rol || null, ciudad || null, foto_url || null, texto, rating || 5, status || 'draft', orden || 0, req.params.id, tenant.id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/testimonials/:id', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    await pool.query('DELETE FROM testimonials WHERE id = $1 AND tenant_id = $2', [req.params.id, tenant.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.put('/api/sofia-profiles/:prospectoId', async (req, res) => {
   try {
     const tenant = await resolveTenant(req);

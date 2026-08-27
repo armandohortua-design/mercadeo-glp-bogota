@@ -1501,10 +1501,20 @@ export default function CRMDashboard() {
     return (u?.rol as UserRole) || 'gerencia';
   }, [currentUser]);
   const isSuperAdmin = currentUserRole === 'superadmin';
+  // Además del set fijo por rol (ROLE_MODULES), un usuario puede tener una selección
+  // afinada de módulos propia (guardada en su registro como `modulos`) — pensada para
+  // el caso de alguien que necesita uno o dos módulos extra fuera de lo que su rol trae
+  // por defecto, sin tener que subirlo a un rol distinto. Si no tiene override, usa el
+  // set del rol como siempre.
   const allowedModules = useMemo(() => {
     if (isSuperAdmin) return null; // null = sin restricción
+    if (currentUser) {
+      const users = getAdminUsers();
+      const u = users.find((x: any) => x.username === currentUser);
+      if (u?.modulos && Array.isArray(u.modulos) && u.modulos.length > 0) return u.modulos;
+    }
     return ROLE_MODULES[currentUserRole];
-  }, [currentUserRole, isSuperAdmin]);
+  }, [currentUserRole, isSuperAdmin, currentUser]);
 
   // El estado por defecto de activeModule es 'kpis' (Dashboard) — un perfil que no tiene
   // 'kpis' entre sus módulos permitidos (p.ej. broker) entraba a una pantalla sin ningún
@@ -2206,7 +2216,33 @@ export default function CRMDashboard() {
 
   // Casos / Postventa (Fase F)
   // Campañas state
-  const [campanaTab, setCampanaTab] = useState<'dashboard'|'lista'|'nueva'|'roi'>('dashboard');
+  const [campanaTab, setCampanaTab] = useState<'dashboard'|'lista'|'nueva'|'roi'|'testimonios'>('dashboard');
+  const [testimonials, setTestimonials] = useState<Array<{ id: string; nombre: string; rol: string; ciudad: string; foto_url: string; texto: string; rating: number; status: 'draft'|'published'; orden: number }>>([]);
+  const [testimonialForm, setTestimonialForm] = useState<{ id: string | null; nombre: string; rol: string; ciudad: string; foto_url: string; texto: string; rating: number } | null>(null);
+  const loadTestimonials = () => {
+    fetch(`${API_ROOT}/api/testimonials`).then(r => r.json()).then(setTestimonials).catch(() => {});
+  };
+  const saveTestimonial = async () => {
+    if (!testimonialForm || !testimonialForm.nombre.trim() || !testimonialForm.texto.trim()) return;
+    const { id, ...body } = testimonialForm;
+    const url = id ? `${API_ROOT}/api/testimonials/${id}` : `${API_ROOT}/api/testimonials`;
+    await fetch(url, { method: id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    setTestimonialForm(null);
+    loadTestimonials();
+  };
+  const deleteTestimonial = async (id: string) => {
+    if (!confirm('¿Eliminar este testimonio?')) return;
+    await fetch(`${API_ROOT}/api/testimonials/${id}`, { method: 'DELETE' });
+    loadTestimonials();
+  };
+  const toggleTestimonialStatus = async (t: (typeof testimonials)[number]) => {
+    await fetch(`${API_ROOT}/api/testimonials/${t.id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...t, status: t.status === 'published' ? 'draft' : 'published' }),
+    });
+    loadTestimonials();
+  };
+  useEffect(() => { loadTestimonials(); }, []);
   const [campanaWizardStep, setCampanaWizardStep] = useState(1);
   const [campanaDetalle, setCampanaDetalle] = useState<any | null>(null);
   // Fechas de demo relativas a "hoy" — así el próximo envío nunca aparece vencido
@@ -4817,6 +4853,38 @@ Responde SOLO con JSON sin bloques de código:
   // navy/gold/border son los colores locales de CADA panel (no siempre son los mismos
   // hex — Camilo/Sofía/Valeria tienen su propia paleta local histórica), así que se pasan
   // como parámetro en vez de asumir un solo esquema de color.
+  // Las respuestas de los agentes vienen con **negrilla** y listas numeradas en texto
+  // plano (markdown básico de GPT) — antes se mostraban los asteriscos literales sin
+  // procesar. Convierte **texto** a negrilla real y alinea los números de lista en una
+  // columna fija en vez de dejarlos pegados al texto.
+  const renderChatContent = (text: string) => {
+    const renderInline = (s: string) => {
+      const parts = s.split(/(\*\*[^*]+\*\*)/g);
+      return parts.map((p, i) => {
+        const match = p.match(/^\*\*([^*]+)\*\*$/);
+        return match ? <strong key={i}>{match[1]}</strong> : <React.Fragment key={i}>{p}</React.Fragment>;
+      });
+    };
+    const lines = text.split('\n');
+    return (
+      <>
+        {lines.map((line, i) => {
+          const numbered = line.match(/^\s*(\d+)[.)]\s+(.*)$/);
+          if (numbered) {
+            return (
+              <div key={i} style={{ display: 'flex', gap: 8, marginTop: i > 0 ? 4 : 0 }}>
+                <span style={{ fontWeight: 700, flexShrink: 0, minWidth: 16, textAlign: 'right' as const }}>{numbered[1]}.</span>
+                <span>{renderInline(numbered[2])}</span>
+              </div>
+            );
+          }
+          if (!line.trim()) return <div key={i} style={{ height: 6 }} />;
+          return <div key={i}>{renderInline(line)}</div>;
+        })}
+      </>
+    );
+  };
+
   const renderAgentChatPanel = (agentKey: string, navy: string, gold: string, border: string, placeholder: string) => {
     const chat = getAgentChat(agentKey);
     return (
@@ -4835,7 +4903,7 @@ Responde SOLO con JSON sin bloques de código:
                 borderBottomRightRadius: m.role === 'user' ? 3 : 10,
                 borderBottomLeftRadius: m.role === 'agent' ? 3 : 10,
               }}>
-                {m.content}
+                {renderChatContent(m.content)}
               </div>
               {m.citas && m.citas.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6, marginTop: 6 }}>
@@ -9615,46 +9683,54 @@ Responde SOLO con JSON sin bloques de código:
     const handleApproveDraft = (draftId: string, prospectId: number, project: string, attachments?: Array<{filename:string;content:string;contentType:string}>) => {
       const prospect = prospects.find(p => p.id === prospectId);
       const draft = prospect?.emailHistory?.find(eh => eh.id === draftId);
+      if (!prospect || !draft) return;
 
-      if (prospect && draft) {
-        fetch(`${API_ROOT}/api/sara/send-email`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-user': currentUser || 'desconocido' },
-          body: JSON.stringify({
-            to: prospect.correo,
-            subject: draft.subject,
-            body: draft.body,
-            prospectId: prospect.id,
-            attachments: attachments || []
-          })
-        }).then(r => r.json()).then(data => {
-          if (!data.success) console.error('[Sara] Error enviando correo:', data.error);
-          else setDraftAttachments(prev => { const n={...prev}; delete n[draftId]; return n; });
-        }).catch(e => console.error('[Sara] Error SMTP:', e));
-      }
+      // Antes esto marcaba el correo como "Enviado" en la UI sin importar si el envío
+      // real (SMTP) tuvo éxito — el resultado del fetch solo se registraba en la consola
+      // del navegador. Si SMTP fallaba, el usuario veía "Correo Enviado" en pantalla
+      // mientras el cliente nunca recibía nada, sin ninguna señal del error. Ahora el
+      // estado 'sent' solo se aplica cuando el backend confirma éxito.
+      fetch(`${API_ROOT}/api/sara/send-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-user': currentUser || 'desconocido' },
+        body: JSON.stringify({
+          to: prospect.correo,
+          subject: draft.subject,
+          body: draft.body,
+          prospectId: prospect.id,
+          attachments: attachments || []
+        })
+      }).then(async r => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data.success) throw new Error(data.error || `Error del servidor (${r.status})`);
+        setDraftAttachments(prev => { const n={...prev}; delete n[draftId]; return n; });
 
-      // Registra quién aprobó/envió — antes no quedaba ningún rastro de qué usuario hizo
-      // clic en "Aprobar y Enviar", solo un status 'sent' sin autor.
-      setProspects(prev => prev.map(p => {
-        if (p.id === prospectId) {
-          const newEmailHistory = (p.emailHistory || []).map(eh => eh.id === draftId ? { ...eh, status: 'sent' as const, sentBy: currentUser || 'desconocido' } : eh);
-          const updated = {
-            ...p,
-            emailHistory: newEmailHistory,
-            historial: [
-              ...p.historial,
-              {
-                fecha: new Date().toISOString().split('T')[0],
-                accion: 'Correo SARA Enviado',
-                detalle: `Respuesta/Cotización preparada por SARA para ${project} fue aprobada y enviada por ${currentUser || 'el administrador'}.`
-              }
-            ]
-          };
-          updateProspectBackend(updated);
-          return updated;
-        }
-        return p;
-      }));
+        // Registra quién aprobó/envió — antes no quedaba ningún rastro de qué usuario hizo
+        // clic en "Aprobar y Enviar", solo un status 'sent' sin autor.
+        setProspects(prev => prev.map(p => {
+          if (p.id === prospectId) {
+            const newEmailHistory = (p.emailHistory || []).map(eh => eh.id === draftId ? { ...eh, status: 'sent' as const, sentBy: currentUser || 'desconocido' } : eh);
+            const updated = {
+              ...p,
+              emailHistory: newEmailHistory,
+              historial: [
+                ...p.historial,
+                {
+                  fecha: new Date().toISOString().split('T')[0],
+                  accion: 'Correo SARA Enviado',
+                  detalle: `Respuesta/Cotización preparada por SARA para ${project} fue aprobada y enviada por ${currentUser || 'el administrador'}.`
+                }
+              ]
+            };
+            updateProspectBackend(updated);
+            return updated;
+          }
+          return p;
+        }));
+      }).catch(e => {
+        console.error('[Sara] Error enviando correo:', e);
+        alert(`No se pudo enviar el correo: ${e.message}\n\nEl borrador sigue pendiente — revisa la configuración de SMTP antes de reintentar.`);
+      });
     };
 
     const AGENT_STAT_TIPS: Record<string, { tip: string; benchmark?: string }> = {
@@ -10743,9 +10819,21 @@ Responde SOLO con JSON sin bloques de código:
                                     )}
                                     {(msg as any).isApi && (
                                       <button onClick={() => {
+                                        // Mismo bug que handleApproveDraft: antes marcaba 'sent' en
+                                        // cualquier caso (incluso con error del servidor) porque
+                                        // fetch() solo rechaza en fallos de red, no en respuestas
+                                        // 4xx/5xx. Ahora valida res.ok/success antes de marcarlo.
                                         fetch(`${API_ROOT}/api/send-draft`, { method:'POST', headers:{'Content-Type':'application/json', 'x-user': currentUser || 'desconocido'}, body: JSON.stringify({ id: msg.id, attachments: draftAttachments[msg.id] || [] }) })
-                                          .then(() => { setApiDrafts(prev => prev.map(d => d.id===msg.id ? {...d,status:'sent', sentBy: currentUser || 'desconocido'} : d)); setDraftAttachments(prev => { const n={...prev}; delete n[msg.id]; return n; }); })
-                                          .catch(e => console.error('Error enviando draft:', e));
+                                          .then(async r => {
+                                            const data = await r.json().catch(() => ({}));
+                                            if (!r.ok || data.success === false) throw new Error(data.error || `Error del servidor (${r.status})`);
+                                            setApiDrafts(prev => prev.map(d => d.id===msg.id ? {...d,status:'sent', sentBy: currentUser || 'desconocido'} : d));
+                                            setDraftAttachments(prev => { const n={...prev}; delete n[msg.id]; return n; });
+                                          })
+                                          .catch(e => {
+                                            console.error('Error enviando draft:', e);
+                                            alert(`No se pudo enviar el correo: ${e.message}\n\nEl borrador sigue pendiente — revisa la configuración de SMTP antes de reintentar.`);
+                                          });
                                       }} style={{ background:S_NAVY, color:S_GOLD_L, border:'none', padding:'7px 18px', fontSize:9, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', cursor:'pointer' }}>
                                         Aprobar y Enviar
                                       </button>
@@ -10825,7 +10913,7 @@ Responde SOLO con JSON sin bloques de código:
                           borderBottomRightRadius: m.role === 'user' ? 3 : 10,
                           borderBottomLeftRadius: m.role === 'agent' ? 3 : 10,
                         }}>
-                          {m.content}
+                          {renderChatContent(m.content)}
                         </div>
                         {m.citas && m.citas.length > 0 && (
                           <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6, marginTop: 6 }}>
@@ -17283,7 +17371,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
 
           {/* Tab nav */}
           <div style={{ display:'flex', borderBottom:`1px solid ${T.border}`, marginBottom:24 }}>
-            {([['dashboard','Dashboard'],['lista','Campañas'],['nueva','Nueva Campaña'],['roi','Análisis ROI']] as [string,string][]).map(([id,lbl])=>(
+            {([['dashboard','Dashboard'],['lista','Campañas'],['nueva','Nueva Campaña'],['roi','Análisis ROI'],['testimonios','Testimonios']] as [string,string][]).map(([id,lbl])=>(
               <button key={id} onClick={()=>{setCampanaTab(id as any);if(id!=='lista')setCampanaDetalle(null);if(id==='nueva')setCampanaWizardStep(1);}}
                 style={{ padding:'9px 20px',background:'none',border:'none',borderBottom:campanaTab===id?`2px solid ${NAVY}`:'2px solid transparent',color:campanaTab===id?NAVY:T.textSec,fontSize:11,fontWeight:campanaTab===id?600:400,letterSpacing:'0.06em',cursor:'pointer',marginBottom:-1,fontFamily:T.fontSans }}>
                 {lbl}
@@ -17295,6 +17383,119 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
           {campanaTab === 'lista' && renderLista()}
           {campanaTab === 'nueva' && renderNueva()}
           {campanaTab === 'roi' && renderROI()}
+          {campanaTab === 'testimonios' && (() => {
+            const STAR_OPTS = [5, 4, 3, 2, 1];
+            return (
+              <div style={{ maxWidth: 900 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: NAVY, fontFamily: T.fontSans }}>Testimonios de Clientes</div>
+                    <div style={{ fontSize: 11, color: T.textSec, marginTop: 4 }}>
+                      Solo los marcados "Publicado" aparecen en la sección de prueba social de la landing. El resto queda en borrador.
+                    </div>
+                  </div>
+                  <button onClick={() => setTestimonialForm({ id: null, nombre: '', rol: '', ciudad: '', foto_url: '', texto: '', rating: 5 })}
+                    style={{ background: NAVY, color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 12.5, fontWeight: 600, fontFamily: T.fontSans, cursor: 'pointer' }}>
+                    + Nuevo Testimonio
+                  </button>
+                </div>
+
+                {testimonialForm && (
+                  <div style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 8, padding: 20, marginBottom: 20 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                      <div>
+                        <label style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 0.5, display: 'block', marginBottom: 5 }}>Nombre</label>
+                        <input value={testimonialForm.nombre} onChange={e => setTestimonialForm(f => f && { ...f, nombre: e.target.value })}
+                          style={{ width: '100%', padding: '8px 10px', border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 13, fontFamily: T.fontSans, boxSizing: 'border-box' as const }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 0.5, display: 'block', marginBottom: 5 }}>Rol / Ciudad</label>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <input value={testimonialForm.rol} onChange={e => setTestimonialForm(f => f && { ...f, rol: e.target.value })} placeholder="Inversionista"
+                            style={{ flex: 1, padding: '8px 10px', border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 13, fontFamily: T.fontSans, boxSizing: 'border-box' as const }} />
+                          <input value={testimonialForm.ciudad} onChange={e => setTestimonialForm(f => f && { ...f, ciudad: e.target.value })} placeholder="Bogotá"
+                            style={{ flex: 1, padding: '8px 10px', border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 13, fontFamily: T.fontSans, boxSizing: 'border-box' as const }} />
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 0.5, display: 'block', marginBottom: 5 }}>Foto (URL)</label>
+                      <input value={testimonialForm.foto_url} onChange={e => setTestimonialForm(f => f && { ...f, foto_url: e.target.value })} placeholder="https://..."
+                        style={{ width: '100%', padding: '8px 10px', border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 13, fontFamily: T.fontSans, boxSizing: 'border-box' as const }} />
+                    </div>
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 0.5, display: 'block', marginBottom: 5 }}>Testimonio</label>
+                      <textarea value={testimonialForm.texto} onChange={e => setTestimonialForm(f => f && { ...f, texto: e.target.value })} rows={3}
+                        style={{ width: '100%', padding: '8px 10px', border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 13, fontFamily: T.fontSans, boxSizing: 'border-box' as const, resize: 'vertical' as const }} />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <label style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 0.5, marginRight: 8 }}>Calificación</label>
+                        <select value={testimonialForm.rating} onChange={e => setTestimonialForm(f => f && { ...f, rating: Number(e.target.value) })}
+                          style={{ padding: '6px 10px', border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 13, fontFamily: T.fontSans }}>
+                          {STAR_OPTS.map(n => <option key={n} value={n}>{'★'.repeat(n)}</option>)}
+                        </select>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={() => setTestimonialForm(null)}
+                          style={{ background: 'transparent', border: `1px solid ${T.border}`, borderRadius: 8, padding: '8px 16px', color: T.textSec, fontSize: 12.5, fontWeight: 600, fontFamily: T.fontSans, cursor: 'pointer' }}>
+                          Cancelar
+                        </button>
+                        <button onClick={saveTestimonial} disabled={!testimonialForm.nombre.trim() || !testimonialForm.texto.trim()}
+                          style={{ background: NAVY, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 20px', fontSize: 12.5, fontWeight: 600, fontFamily: T.fontSans, cursor: 'pointer', opacity: (!testimonialForm.nombre.trim() || !testimonialForm.texto.trim()) ? 0.5 : 1 }}>
+                          Guardar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {testimonials.length === 0 ? (
+                  <div style={{ padding: 40, textAlign: 'center', color: T.textSec, fontSize: 13, border: `1px dashed ${T.border}`, borderRadius: 8 }}>
+                    Sin testimonios cargados todavía.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
+                    {testimonials.map(t => (
+                      <div key={t.id} style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 8, padding: '14px 18px', display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+                        {t.foto_url ? (
+                          <img src={t.foto_url} alt={t.nombre} style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                        ) : (
+                          <div style={{ width: 44, height: 44, borderRadius: '50%', background: T.sand, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: NAVY }}>
+                            {t.nombre.slice(0, 1).toUpperCase()}
+                          </div>
+                        )}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: NAVY }}>{t.nombre}</span>
+                            <span style={{ fontSize: 11, color: T.textSec }}>{[t.rol, t.ciudad].filter(Boolean).join(' · ')}</span>
+                            <span style={{ fontSize: 11, color: GOLD }}>{'★'.repeat(t.rating || 5)}</span>
+                          </div>
+                          <div style={{ fontSize: 12.5, color: T.text, marginTop: 4, lineHeight: 1.5, fontStyle: 'italic' as const }}>"{t.texto}"</div>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 6, alignItems: 'flex-end', flexShrink: 0 }}>
+                          <button onClick={() => toggleTestimonialStatus(t)}
+                            style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, border: 'none', cursor: 'pointer', background: t.status === 'published' ? '#DCFCE7' : '#F3F4F6', color: t.status === 'published' ? '#166534' : '#6B7280' }}>
+                            {t.status === 'published' ? 'Publicado' : 'Borrador'}
+                          </button>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button onClick={() => setTestimonialForm({ id: t.id, nombre: t.nombre, rol: t.rol || '', ciudad: t.ciudad || '', foto_url: t.foto_url || '', texto: t.texto, rating: t.rating || 5 })}
+                              style={{ background: 'none', border: 'none', color: NAVY, fontSize: 11, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+                              Editar
+                            </button>
+                            <button onClick={() => deleteTestimonial(t.id)}
+                              style={{ background: 'none', border: 'none', color: '#DC2626', fontSize: 11, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+                              Eliminar
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       </div>
     );
@@ -24863,6 +25064,11 @@ const CRMLogin: React.FC<CRMLoginProps> = ({ setCurrentUser }) => {
   const [usernameInput, setUsernameInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState('');
+  // No hay backend de autenticación con verificación de correo — es un equipo cerrado,
+  // no usuarios de autoservicio público. En vez de un flujo de "reset por email" (pieza
+  // nueva grande para un problema con solución simple), esto solo explica que el
+  // administrador ya puede restablecer cualquier contraseña desde Configuración → Usuarios.
+  const [showForgot, setShowForgot] = useState(false);
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -24878,19 +25084,21 @@ const CRMLogin: React.FC<CRMLoginProps> = ({ setCurrentUser }) => {
     }
   };
 
+  const COBALT = '#3E7CB8';
+  const COBALT_D = '#1E3A5F';
   const loginLabelStyle: React.CSSProperties = {
     fontSize: 11, fontWeight: 600, color: T.textSec, marginBottom: 6, display: 'block',
     textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: T.fontSans,
   };
   const loginInputStyle: React.CSSProperties = {
-    width: '100%', padding: '11px 14px', borderRadius: 0,
+    width: '100%', padding: '11px 14px', borderRadius: 8,
     border: `1px solid ${T.border}`, fontSize: 14, fontFamily: T.fontSans,
-    color: T.text, background: T.card, outline: 'none', boxSizing: 'border-box',
+    color: T.text, background: T.bg, outline: 'none', boxSizing: 'border-box',
   };
 
   return (
     <div style={{
-      background: T.teal,
+      background: COBALT_D,
       minHeight: '100vh',
       display: 'flex',
       alignItems: 'center',
@@ -24900,36 +25108,53 @@ const CRMLogin: React.FC<CRMLoginProps> = ({ setCurrentUser }) => {
     }}>
       <div style={{
         background: T.card,
-        borderRadius: 0,
-        padding: '48px 44px',
+        borderRadius: 12,
+        padding: '44px 40px',
         width: '100%',
-        maxWidth: 400,
-        boxShadow: '0 24px 60px rgba(0,0,0,0.35)',
-        borderTop: `3px solid ${T.coral}`,
+        maxWidth: 380,
+        boxShadow: '0 24px 60px rgba(0,15,35,0.35)',
       }}>
-        <div style={{ textAlign: 'center', marginBottom: 36 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 24, marginBottom: 24 }}>
-            <img src="/img/logo-capital-brokers.png" alt="Capital Brokers" style={{ height: 58 }} />
-            <div style={{ width: 1, height: 48, background: T.border, flexShrink: 0 }} />
-            <div style={{ width: 58, height: 58, flexShrink: 0, background: T.red, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 20, color: '#fff', letterSpacing: '0.01em' }}>GLP</div>
+        <div style={{ textAlign: 'center', marginBottom: 28 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, marginBottom: 20 }}>
+            <img src="/img/logo-capital-brokers.png" alt="Capital Brokers" style={{ height: 40 }} />
+            <div style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 8, background: COBALT, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 14, color: '#fff', letterSpacing: '0.01em' }}>GLP</div>
           </div>
-          <p style={{ fontSize: '0.78rem', color: T.textSec, margin: 0, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: T.fontSans }}>
+          <p style={{ fontSize: '0.68rem', color: T.textSec, margin: 0, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: T.fontSans }}>
             Sistema Operativo Inmobiliario
           </p>
         </div>
 
+        {showForgot ? (
+          // "Recuperar acceso" no es un flujo de reset por correo (no existe backend de
+          // auth con verificación de email para este CRM cerrado) — el administrador ya
+          // puede restablecer cualquier contraseña desde Configuración → Usuarios.
+          <div>
+            <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#EAF1F8', color: COBALT, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, marginBottom: 16 }}>🔒</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: T.text, marginBottom: 8 }}>Recuperar acceso</div>
+            <p style={{ fontSize: 12.5, color: T.textSec, lineHeight: 1.6, margin: '0 0 20px' }}>
+              Por seguridad, el restablecimiento de contraseña lo gestiona el administrador del sistema — contáctalo directamente para que te asigne una nueva.
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: T.bg, borderRadius: 8, padding: '12px 14px', fontSize: 12.5, fontWeight: 600, color: T.text, marginBottom: 20 }}>
+              👤 Administrador del sistema
+            </div>
+            <button onClick={() => setShowForgot(false)}
+              style={{ width: '100%', padding: '11px', fontSize: 13, fontWeight: 600, background: 'transparent', color: COBALT, border: `1px solid ${T.border}`, borderRadius: 8, cursor: 'pointer', fontFamily: T.fontSans }}>
+              ← Volver al inicio de sesión
+            </button>
+          </div>
+        ) : (
         <form onSubmit={handleLoginSubmit}>
           {loginError && (
             <div style={{
               background: '#FDF2F2', color: T.danger, padding: '12px 14px',
-              borderRadius: 0, fontSize: '0.82rem', marginBottom: 20,
+              borderRadius: 8, fontSize: '0.82rem', marginBottom: 20,
               fontWeight: 600, border: `1px solid ${T.danger}40`, textAlign: 'center'
             }}>
               {loginError}
             </div>
           )}
 
-          <div style={{ marginBottom: 20 }}>
+          <div style={{ marginBottom: 18 }}>
             <label style={loginLabelStyle}>Usuario</label>
             <input
               type="text"
@@ -24941,7 +25166,7 @@ const CRMLogin: React.FC<CRMLoginProps> = ({ setCurrentUser }) => {
             />
           </div>
 
-          <div style={{ marginBottom: 28 }}>
+          <div style={{ marginBottom: 8 }}>
             <label style={loginLabelStyle}>Contraseña</label>
             <input
               type="password"
@@ -24953,20 +25178,27 @@ const CRMLogin: React.FC<CRMLoginProps> = ({ setCurrentUser }) => {
             />
           </div>
 
+          <div style={{ textAlign: 'right', marginBottom: 22 }}>
+            <button type="button" onClick={() => setShowForgot(true)}
+              style={{ background: 'none', border: 'none', color: COBALT, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', padding: 0, fontFamily: T.fontSans }}>
+              ¿Olvidaste tu contraseña?
+            </button>
+          </div>
+
           <button
             type="submit"
             style={{
-              width: '100%', padding: '13px 18px', fontSize: 12, fontWeight: 700,
-              background: T.teal, color: T.card, border: 'none', borderRadius: 0,
-              cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.08em',
-              fontFamily: T.fontSans, transition: 'background 0.2s ease',
+              width: '100%', padding: '12px 18px', fontSize: 13, fontWeight: 600,
+              background: COBALT_D, color: '#fff', border: 'none', borderRadius: 8,
+              cursor: 'pointer', fontFamily: T.fontSans, transition: 'background 0.2s ease',
             }}
-            onMouseEnter={e => e.currentTarget.style.background = T.coral}
-            onMouseLeave={e => e.currentTarget.style.background = T.teal}
+            onMouseEnter={e => e.currentTarget.style.background = COBALT}
+            onMouseLeave={e => e.currentTarget.style.background = COBALT_D}
           >
             Iniciar Sesión
           </button>
         </form>
+        )}
       </div>
     </div>
   );
@@ -24998,6 +25230,42 @@ const CRMAcceso: React.FC<CRMAccesoProps> = ({ currentUser }) => {
   const [confirmPass, setConfirmPass] = useState('');
   const [changePassError, setChangePassError] = useState('');
   const [changePassSuccess, setChangePassSuccess] = useState('');
+
+  // Restablecer contraseña directo desde la fila — antes solo existía dentro de "Editar",
+  // escondido entre nombre y usuario, poco descubrible.
+  const [resetPassUsername, setResetPassUsername] = useState<string | null>(null);
+  const [resetPassValue, setResetPassValue] = useState('');
+
+  // Permisos afinados por usuario: además de los módulos que trae su rol por defecto
+  // (ROLE_MODULES), un usuario puede tener una selección propia guardada en `modulos`.
+  // `permSelected` es el set de trabajo mientras se edita, antes de guardar.
+  const [permsEditingUsername, setPermsEditingUsername] = useState<string | null>(null);
+  const [permSelected, setPermSelected] = useState<string[]>([]);
+
+  const startEditPermissions = (u: any) => {
+    setPermsEditingUsername(u.username);
+    setPermSelected(u.modulos && u.modulos.length ? [...u.modulos] : [...(ROLE_MODULES[u.rol as UserRole] || [])]);
+  };
+  const togglePermModule = (id: string) => {
+    setPermSelected(prev => prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id]);
+  };
+  const resetPermsToRole = (rol: UserRole) => setPermSelected([...(ROLE_MODULES[rol] || [])]);
+  const savePermissions = (username: string) => {
+    const updated = userList.map((u: any) => u.username === username ? { ...u, modulos: permSelected } : u);
+    localStorage.setItem('glp_crm_users', JSON.stringify(updated));
+    setUserList(updated);
+    setPermsEditingUsername(null);
+  };
+  const clearPermOverride = (username: string) => {
+    const updated = userList.map((u: any) => {
+      if (u.username !== username) return u;
+      const { modulos, ...rest } = u;
+      return rest;
+    });
+    localStorage.setItem('glp_crm_users', JSON.stringify(updated));
+    setUserList(updated);
+    setPermsEditingUsername(null);
+  };
 
   const ROL_COLOR: Record<string, string> = {
     superadmin: '#B89047', presidencia: '#1D4ED8', gerencia: '#166534', broker: '#9A3412',
@@ -25091,6 +25359,15 @@ const CRMAcceso: React.FC<CRMAccesoProps> = ({ currentUser }) => {
     }
   };
 
+  const handleResetPassword = (username: string) => {
+    if (!resetPassValue.trim()) return;
+    const updated = userList.map((u: any) => u.username === username ? { ...u, password: resetPassValue.trim() } : u);
+    localStorage.setItem('glp_crm_users', JSON.stringify(updated));
+    setUserList(updated);
+    setResetPassUsername(null);
+    setResetPassValue('');
+  };
+
   const handleChangePassword = (e: React.FormEvent) => {
     e.preventDefault();
     if (!oldPass || !newPass || !confirmPass) { setChangePassError('Complete todos los campos.'); return; }
@@ -25113,78 +25390,148 @@ const CRMAcceso: React.FC<CRMAccesoProps> = ({ currentUser }) => {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 24 }}>
-        {/* Left: User list */}
+        {/* Left: User list — tabla (Opción A), con fila expandible para editar,
+            restablecer contraseña o afinar permisos por módulo. */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
           <div style={cardStyle()}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 14 }}>👥 Usuarios del Sistema</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {userList.map((u: any) => {
-                const isEditing = editingUsername === u.username;
-                return (
-                <div key={u.username} style={{ background: T.bg, borderRadius: 6, padding: '12px 14px', border: `1px solid ${isEditing ? T.teal : T.borderLight}` }}>
-                  {isEditing ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 4 }}>👥 Usuarios del Sistema</div>
+            <div style={{ fontSize: 11, color: T.textSec, marginBottom: 14 }}>{userList.length} cuenta{userList.length !== 1 ? 's' : ''} activa{userList.length !== 1 ? 's' : ''}</div>
+
+            <div style={{ display: 'flex', gap: 10, padding: '0 4px 8px', borderBottom: `1px solid ${T.border}`, fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' as const, color: T.textSec }}>
+              <div style={{ flex: 1 }}>Usuario</div>
+              <div style={{ width: 150 }}>Rol</div>
+              <div style={{ width: 140, textAlign: 'right' as const }}>Acciones</div>
+            </div>
+
+            {userList.map((u: any) => {
+              const isEditing = editingUsername === u.username;
+              const isResetting = resetPassUsername === u.username;
+              const isPerms = permsEditingUsername === u.username;
+              const initials = (u.name || u.username || '?').trim().split(/\s+/).slice(0, 2).map((p: string) => p[0]).join('').toUpperCase();
+              return (
+                <div key={u.username} style={{ borderBottom: `1px solid ${T.borderLight}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 4px' }}>
+                    <div style={{ width: 30, height: 30, borderRadius: '50%', background: T.teal, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                      {initials}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: T.text }}>{u.name} {u.username === currentUser && <span style={{ color: T.textSec, fontWeight: 500 }}>· Tú</span>}</div>
+                      <div style={{ fontSize: 11, color: T.textSec }}>@{u.username}</div>
+                    </div>
+                    <div style={{ width: 150 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' as const,
+                        color: ROL_COLOR[u.rol || 'gerencia'], background: ROL_BG[u.rol || 'gerencia'],
+                        padding: '3px 9px', borderRadius: 20, display: 'inline-block' }}>
+                        {ROLE_LABELS[u.rol as UserRole] || 'Gerencia Comercial'}
+                      </span>
+                    </div>
+                    <div style={{ width: 140, display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                      {u.username === SUPERADMIN_USERNAME ? (
+                        <span style={{ fontSize: 11, color: T.textSec }}>—</span>
+                      ) : (
+                        <>
+                          <button onClick={() => { setResetPassUsername(isResetting ? null : u.username); setResetPassValue(''); setPermsEditingUsername(null); }}
+                            title="Restablecer contraseña"
+                            style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${T.teal}`, background: 'transparent', color: T.teal, cursor: 'pointer', fontSize: 12 }}>
+                            🔑
+                          </button>
+                          <button onClick={() => { isPerms ? setPermsEditingUsername(null) : startEditPermissions(u); setResetPassUsername(null); }}
+                            title="Permisos de módulos"
+                            style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${T.border}`, background: 'transparent', color: T.text, cursor: 'pointer', fontSize: 12 }}>
+                            ⚙️
+                          </button>
+                          <button onClick={() => startEditUser(u)} title="Editar"
+                            style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${T.border}`, background: 'transparent', color: T.text, cursor: 'pointer', fontSize: 12 }}>
+                            ✎
+                          </button>
+                          {u.username !== currentUser && (
+                            <button onClick={() => handleDeleteUser(u.username)} title="Eliminar"
+                              style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #FCA5A5', background: 'transparent', color: '#B91C1C', cursor: 'pointer', fontSize: 12 }}>
+                              🗑
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Restablecer contraseña — inline, sin pasar por "Editar" */}
+                  {isResetting && (
+                    <div style={{ background: T.bg, borderRadius: 6, padding: '12px 14px', margin: '0 4px 12px', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                      <div style={{ flex: 1 }}>
+                        <label style={labelStyle}>Nueva contraseña para @{u.username}</label>
+                        <input type="password" value={resetPassValue} onChange={e => setResetPassValue(e.target.value)} placeholder="Mínimo 6 caracteres" style={inputStyle({ fontSize: 12 })} autoFocus />
+                      </div>
+                      <button onClick={() => handleResetPassword(u.username)} disabled={!resetPassValue.trim()} style={{ ...btnPrimary({ fontSize: 11, padding: '8px 14px' }), opacity: resetPassValue.trim() ? 1 : 0.5 }}>Guardar</button>
+                      <button onClick={() => setResetPassUsername(null)} style={{ ...btnSecondary({ fontSize: 11, padding: '8px 14px' }) }}>Cancelar</button>
+                    </div>
+                  )}
+
+                  {/* Editar nombre/usuario */}
+                  {isEditing && (
+                    <div style={{ background: T.bg, borderRadius: 6, padding: '12px 14px', margin: '0 4px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                       {editError && <div style={{ background: '#FDE8E8', color: '#E02424', padding: '6px 10px', borderRadius: 4, fontSize: 11, fontWeight: 600 }}>{editError}</div>}
-                      <div>
-                        <label style={labelStyle}>Nombre Completo</label>
-                        <input value={editName} onChange={e => setEditName(e.target.value)} style={inputStyle({ fontSize: 12 })} />
-                      </div>
-                      <div>
-                        <label style={labelStyle}>Usuario de Login</label>
-                        <input value={editUsername} onChange={e => setEditUsername(e.target.value)}
-                          disabled={u.username === SUPERADMIN_USERNAME || u.username === currentUser}
-                          style={inputStyle({ fontSize: 12, opacity: (u.username === SUPERADMIN_USERNAME || u.username === currentUser) ? 0.6 : 1 })} />
-                      </div>
-                      <div>
-                        <label style={labelStyle}>Nueva Contraseña (opcional)</label>
-                        <input type="password" value={editPassword} onChange={e => setEditPassword(e.target.value)} placeholder="Dejar vacío para no cambiar" style={inputStyle({ fontSize: 12 })} />
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <div style={{ flex: 1 }}>
+                          <label style={labelStyle}>Nombre Completo</label>
+                          <input value={editName} onChange={e => setEditName(e.target.value)} style={inputStyle({ fontSize: 12 })} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <label style={labelStyle}>Usuario de Login</label>
+                          <input value={editUsername} onChange={e => setEditUsername(e.target.value)}
+                            disabled={u.username === SUPERADMIN_USERNAME || u.username === currentUser}
+                            style={inputStyle({ fontSize: 12, opacity: (u.username === SUPERADMIN_USERNAME || u.username === currentUser) ? 0.6 : 1 })} />
+                        </div>
+                        {u.username !== SUPERADMIN_USERNAME && (
+                          <div style={{ width: 150 }}>
+                            <label style={labelStyle}>Rol</label>
+                            <select value={u.rol || 'gerencia'} onChange={e => handleChangeRol(u.username, e.target.value as UserRole)}
+                              style={{ ...inputStyle({ fontSize: 12 }), padding: '7px 8px' }}>
+                              <option value="presidencia">Presidencia</option>
+                              <option value="gerencia">Gerencia Comercial</option>
+                              <option value="broker">Broker / Asesor</option>
+                            </select>
+                          </div>
+                        )}
                       </div>
                       <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
                         <button onClick={() => saveEditUser(u.username)} style={{ ...btnPrimary({ fontSize: 11, padding: '5px 12px' }) }}>Guardar</button>
                         <button onClick={cancelEditUser} style={{ ...btnSecondary({ fontSize: 11, padding: '5px 12px' }) }}>Cancelar</button>
                       </div>
                     </div>
-                  ) : (
-                    <>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                        <div>
-                          <div style={{ fontWeight: 700, fontSize: 13, color: T.text }}>{u.name}</div>
-                          <div style={{ fontSize: 11, color: T.textSec }}>@{u.username}{u.username === currentUser ? ' · Tú' : ''}</div>
-                        </div>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <button onClick={() => startEditUser(u)}
-                            style={{ fontSize: 10, padding: '3px 10px', background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE', borderRadius: 3, cursor: 'pointer', fontWeight: 700 }}>
-                            Editar
+                  )}
+
+                  {/* Permisos afinados por módulo — parte de un rol siempre trae un set
+                      por defecto (ROLE_MODULES); aquí se puede agregar o quitar módulos
+                      puntuales sin tener que cambiarle el rol completo al usuario. */}
+                  {isPerms && (
+                    <div style={{ background: T.bg, borderRadius: 6, padding: '14px 16px', margin: '0 4px 12px' }}>
+                      <div style={{ fontSize: 11, color: T.textSec, marginBottom: 10, lineHeight: 1.5 }}>
+                        Por defecto, <strong>{ROLE_LABELS[u.rol as UserRole]}</strong> incluye los módulos marcados abajo. Selecciona o quita módulos puntuales para <strong>@{u.username}</strong> sin cambiarle el rol.
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '4px 16px', marginBottom: 12 }}>
+                        {NAV_SECTIONS.flatMap(s => s.items as unknown as any[]).filter(m => !m.superadminOnly).map(m => (
+                          <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: T.text, cursor: 'pointer', padding: '3px 0' }}>
+                            <input type="checkbox" checked={permSelected.includes(m.id)} onChange={() => togglePermModule(m.id)} style={{ cursor: 'pointer' }} />
+                            {m.label}
+                          </label>
+                        ))}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <button onClick={() => savePermissions(u.username)} style={{ ...btnPrimary({ fontSize: 11, padding: '6px 14px' }) }}>Guardar Permisos</button>
+                        <button onClick={() => resetPermsToRole(u.rol as UserRole)} style={{ ...btnSecondary({ fontSize: 11, padding: '6px 14px' }) }}>Restablecer al rol</button>
+                        {u.modulos && u.modulos.length > 0 && (
+                          <button onClick={() => clearPermOverride(u.username)} style={{ background: 'none', border: 'none', color: T.textSec, fontSize: 11, cursor: 'pointer', textDecoration: 'underline' }}>
+                            Quitar personalización
                           </button>
-                          {u.username !== SUPERADMIN_USERNAME && u.username !== currentUser && (
-                            <button onClick={() => handleDeleteUser(u.username)}
-                              style={{ fontSize: 10, padding: '3px 10px', background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FECACA', borderRadius: 3, cursor: 'pointer', fontWeight: 700 }}>
-                              Eliminar
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase' as const,
-                          color: ROL_COLOR[u.rol || 'gerencia'], background: ROL_BG[u.rol || 'gerencia'],
-                          padding: '2px 8px', borderRadius: 2 }}>
-                          {ROLE_LABELS[u.rol as UserRole] || 'Gerencia Comercial'}
-                        </span>
-                        {u.username !== SUPERADMIN_USERNAME && (
-                          <select value={u.rol || 'gerencia'} onChange={e => handleChangeRol(u.username, e.target.value as UserRole)}
-                            style={{ fontSize: 11, padding: '2px 6px', border: `1px solid ${T.border}`, borderRadius: 3, color: T.textSec, background: '#fff' }}>
-                            <option value="presidencia">Presidencia</option>
-                            <option value="gerencia">Gerencia Comercial</option>
-                            <option value="broker">Broker / Asesor</option>
-                          </select>
                         )}
+                        <button onClick={() => setPermsEditingUsername(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: T.textSec, fontSize: 11, cursor: 'pointer' }}>Cerrar</button>
                       </div>
-                    </>
+                    </div>
                   )}
                 </div>
-                );
-              })}
-            </div>
+              );
+            })}
           </div>
 
           {/* Change Password */}

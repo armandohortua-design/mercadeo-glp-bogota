@@ -185,7 +185,7 @@ const Navbar: React.FC = () => {
   }, [])
 
   React.useEffect(() => {
-    const ids = ['inicio', 'nosotros', 'projects', 'why-panama', 'faq', 'contact']
+    const ids = ['inicio', 'projects', 'why-panama', 'trayectoria', 'testimonios', 'faq', 'contact']
     const sections = ids.map(id => document.getElementById(id)).filter(Boolean) as HTMLElement[]
     const observer = new IntersectionObserver(
       (entries) => {
@@ -213,11 +213,17 @@ const Navbar: React.FC = () => {
     borderBottom: '1px solid transparent',
   }
 
+  // Mismo orden en que aparecen las secciones al hacer scroll — antes el menú
+  // listaba Nosotros antes que Proyectos aunque en la página Proyectos ya aparecía
+  // primero, así que un clic en el nav no coincidía con lo que el scroll mostraba.
   const links = [
     { label: 'Inicio', target: 'inicio' },
-    { label: 'Nosotros', target: 'nosotros' },
     { label: 'Proyectos', target: 'projects' },
     { label: '¿Por qué Panamá?', target: 'why-panama' },
+    // Apunta a "trayectoria" (la historia de GLP), no a "nosotros" (que en realidad
+    // es la sección de aliados — Capital Brokers, Colombia Law Group). El nav decía
+    // "Nosotros" pero aterrizaba directo en Capital Brokers, sin que GLP apareciera.
+    { label: 'Nosotros', target: 'trayectoria' },
     { label: 'FAQ', target: 'faq' },
     { label: 'Contacto', target: 'contact' },
   ]
@@ -334,9 +340,18 @@ const Navbar: React.FC = () => {
   )
 }
 // ────────────────────────────────────────────────────────
-const Hero: React.FC = () => {
+const Hero: React.FC<{ onSearch: (f: { category: string; price: string; beds: string }) => void }> = ({ onSearch }) => {
   const [visible, setVisible] = React.useState(false)
   React.useEffect(() => { setTimeout(() => setVisible(true), 100) }, [])
+
+  const [searchCategory, setSearchCategory] = React.useState('todos')
+  const [searchPrice, setSearchPrice] = React.useState('todos')
+  const [searchBeds, setSearchBeds] = React.useState('todos')
+
+  const runSearch = () => {
+    onSearch({ category: searchCategory, price: searchPrice, beds: searchBeds })
+    smoothScroll('projects')
+  }
 
   return (
     <section id="inicio" style={{
@@ -389,6 +404,45 @@ const Hero: React.FC = () => {
         }}>
           40+ años de trayectoria · 15 proyectos exclusivos · Desde USD $120,000
         </p>
+
+        {/* Buscador rápido — mismas 3 categorías que ya existían como filtros
+            avanzados dentro de Proyectos, fijadas de una vez desde el hero para no
+            obligar a bajar y volver a elegir. */}
+        <div style={{
+          background: 'rgba(255,255,255,0.97)', borderRadius: 4, padding: 10,
+          display: 'flex', flexWrap: 'wrap' as const, gap: 0, alignItems: 'stretch',
+          maxWidth: 880, width: '100%', margin: '36px auto 0',
+          boxShadow: '0 20px 50px rgba(0,15,35,0.35)',
+        }}>
+          {[
+            { label: 'Ubicación', value: searchCategory, set: setSearchCategory, options: [
+              ['todos', 'Todas las zonas'], ['Golf y Country Club', 'Golf y Country Club'],
+              ['Marina Panamá', 'Marina Panamá'], ['Ciudad', 'Ciudad'], ['Playa', 'Playa'],
+            ]},
+            { label: 'Presupuesto', value: searchPrice, set: setSearchPrice, options: [
+              ['todos', 'Cualquier precio'], ['200', 'Hasta $200,000'], ['350', 'Hasta $350,000'],
+              ['500', 'Hasta $500,000'], ['over500', 'Más de $500,000'],
+            ]},
+            { label: 'Habitaciones', value: searchBeds, set: setSearchBeds, options: [
+              ['todos', 'Cualquier número'], ['1', '1 Habitación'], ['2', '2 Habitaciones'], ['3', '3+ Habitaciones'],
+            ]},
+          ].map((f, i) => (
+            <div key={f.label} style={{ flex: '1 1 180px', display: 'flex', flexDirection: 'column' as const, padding: '9px 20px', borderRight: i < 2 ? `1px solid ${C.sand}` : 'none', textAlign: 'left' as const }}>
+              <label style={{ fontSize: '0.6rem', letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: C.coral, fontWeight: 700, marginBottom: 4, fontFamily: C.fontSans }}>{f.label}</label>
+              <select value={f.value} onChange={e => f.set(e.target.value)}
+                style={{ border: 'none', background: 'none', fontFamily: C.fontSans, fontSize: '0.8rem', color: C.teal, fontWeight: 600, outline: 'none', cursor: 'pointer', padding: 0 }}>
+                {f.options.map(([val, lbl]) => <option key={val} value={val}>{lbl}</option>)}
+              </select>
+            </div>
+          ))}
+          <button onClick={runSearch} style={{
+            background: C.red, color: C.white, border: 'none', padding: '0 32px',
+            fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const,
+            cursor: 'pointer', borderRadius: 3, margin: 4, flexShrink: 0, fontFamily: C.fontSans,
+          }}>
+            Buscar
+          </button>
+        </div>
       </div>
 
       {/* Counters */}
@@ -405,33 +459,8 @@ const Hero: React.FC = () => {
         <AnimatedCounter end={40} suffix="+" label="Años GLP" />
       </div>
 
-      {/* Explorar Proyectos Button placed below the counters */}
-      <div style={{
-        display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap',
-        marginTop: 50, position: 'relative', zIndex: 2,
-        opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(30px)',
-        transition: 'all 1.8s ease',
-      }}>
-        <button onClick={() => smoothScroll('projects')} style={{
-          background: C.white, color: C.teal, border: `1.5px solid ${C.white}`,
-          padding: '16px 40px', borderRadius: 0, fontWeight: 700, fontSize: '0.85rem',
-          textTransform: 'uppercase', letterSpacing: '0.12em', cursor: 'pointer',
-          transition: 'all 0.3s ease', boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
-          fontFamily: C.fontSans,
-        }}
-          onMouseEnter={e => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.color = C.white;
-            e.currentTarget.style.transform = 'translateY(-2px)';
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.background = C.white;
-            e.currentTarget.style.color = C.teal;
-            e.currentTarget.style.transform = 'translateY(0)';
-          }}>
-          Explorar Proyectos
-        </button>
-      </div>
+      {/* Se quitó "Explorar Proyectos" — redundante con el botón "Buscar" del
+          buscador, que ya baja a Proyectos (y además filtrado). */}
     </section>
   )
 }
@@ -471,6 +500,13 @@ const ProjectCard: React.FC<{
     : { background: gradient }
   const goToDetail = () => window.open(`/project.html?name=${encodeURIComponent(project.name)}`, '_blank');
 
+  // Formato editorial: foto más grande con el precio superpuesto (antes vivía en el
+  // cuerpo, separado de la foto) y la nota de zona visible de entrada — antes solo
+  // existía dentro de la ficha de detalle, a la que había que hacer clic para verla.
+  const zoneNote = getZoneNotes(project);
+  const [zoneTitle, ...zoneRest] = zoneNote.split(':');
+  const zoneDesc = zoneRest.join(':').trim();
+
   return (
     <div
       id={`project-card-${encodeURIComponent(project.name)}`}
@@ -478,7 +514,7 @@ const ProjectCard: React.FC<{
       onMouseLeave={() => setHovered(false)}
       onClick={goToDetail}
       style={{
-        background: C.white, borderRadius: 0, overflow: 'hidden',
+        background: C.white, borderRadius: 6, overflow: 'hidden',
         border: `1px solid ${C.sand}`,
         boxShadow: hovered ? '0 16px 36px rgba(0,35,73,0.12)' : '0 2px 10px rgba(0,35,73,0.04)',
         transform: hovered ? 'translateY(-6px)' : 'translateY(0)',
@@ -490,7 +526,7 @@ const ProjectCard: React.FC<{
       }}
     >
       {/* Photo */}
-      <div style={{ height: 260, overflow: 'hidden', position: 'relative' }}>
+      <div style={{ height: 320, overflow: 'hidden', position: 'relative' }}>
         <div
           style={{
             height: '100%',
@@ -500,6 +536,7 @@ const ProjectCard: React.FC<{
             transform: hovered ? 'scale(1.06)' : 'scale(1)',
           }}
         />
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,20,45,0.65), rgba(0,20,45,0) 55%)', pointerEvents: 'none' }} />
         <div style={{
           position: 'absolute', top: 14, left: 14,
           background: 'rgba(6,214,160,0.95)', color: C.white,
@@ -518,24 +555,43 @@ const ProjectCard: React.FC<{
         }}>
           {project.tag}
         </div>
+        <div style={{ position: 'absolute', bottom: 16, left: 18, color: C.white }}>
+          <div style={{ fontSize: '0.6rem', letterSpacing: '0.1em', textTransform: 'uppercase', opacity: 0.85, marginBottom: 3, fontFamily: C.fontSans }}>Desde</div>
+          <div style={{ fontFamily: C.fontSerif, fontSize: '1.6rem', fontWeight: 500, textShadow: '0 2px 10px rgba(0,15,35,0.5)' }}>{fmt(project.price)}</div>
+        </div>
       </div>
 
       {/* Card body */}
       <div style={{ padding: '20px 22px 22px', display: 'flex', flexDirection: 'column', flex: 1 }}>
         <p style={{ margin: '0 0 6px', fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: C.textSec, fontFamily: C.fontSans }}>{project.zone}</p>
-        <h3 style={{ margin: '0 0 8px', fontSize: '1.3rem', fontWeight: 400, fontFamily: C.fontSerif, color: C.red }}>
+        <h3 style={{ margin: '0 0 12px', fontSize: '1.3rem', fontWeight: 400, fontFamily: C.fontSerif, color: C.red }}>
           {project.name}
         </h3>
-        <p style={{ margin: '0 0 16px', fontSize: '0.85rem', lineHeight: 1.5, color: C.textSec, fontFamily: C.fontSans, flex: 1 }}>
-          {project.shortDesc}
-        </p>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 16 }}>
-          <div style={{ fontSize: '1.15rem', fontWeight: 400, color: C.teal, fontFamily: C.fontSerif }}>
-            Desde {fmt(project.price)}
+        {/* Nota de zona — visible sin clic */}
+        <div style={{ background: C.bg, borderLeft: `3px solid ${C.coral}`, padding: '10px 12px', marginBottom: 16 }}>
+          {zoneTitle && zoneDesc ? (
+            <>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: C.teal, marginBottom: 2, fontFamily: C.fontSans }}>{zoneTitle}</div>
+              <div style={{ fontSize: '0.78rem', color: C.textSec, lineHeight: 1.5, fontFamily: C.fontSans }}>{zoneDesc}</div>
+            </>
+          ) : (
+            <div style={{ fontSize: '0.78rem', color: C.textSec, lineHeight: 1.5, fontFamily: C.fontSans }}>{zoneNote}</div>
+          )}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0, borderTop: `1px solid ${C.sand}`, borderBottom: `1px solid ${C.sand}`, padding: '12px 0', marginTop: 'auto', marginBottom: 16 }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: C.teal, fontFamily: C.fontSans }}>{project.area}</div>
+            <div style={{ fontSize: '0.58rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: C.textSec, marginTop: 2, fontFamily: C.fontSans }}>Área</div>
           </div>
-          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: C.textSec, fontFamily: C.fontSans }}>
-            {project.area}
+          <div style={{ textAlign: 'center', borderLeft: `1px solid ${C.sand}`, borderRight: `1px solid ${C.sand}` }}>
+            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: C.teal, fontFamily: C.fontSans }}>{project.beds}</div>
+            <div style={{ fontSize: '0.58rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: C.textSec, marginTop: 2, fontFamily: C.fontSans }}>Habitaciones</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: C.teal, fontFamily: C.fontSans }}>{project.capRate}</div>
+            <div style={{ fontSize: '0.58rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: C.textSec, marginTop: 2, fontFamily: C.fontSans }}>Cap Rate</div>
           </div>
         </div>
 
@@ -563,17 +619,39 @@ const ProjectCard: React.FC<{
 // ────────────────────────────────────────────────────────
 const ProjectsSection: React.FC<{
   projects: Project[];
-}> = ({ projects }) => {
+  // El buscador rápido del hero fija estos tres filtros (ubicación/presupuesto/
+  // habitaciones) al hacer clic en "Buscar" — se leen como valor inicial y luego el
+  // usuario puede seguir ajustándolos aquí normalmente, como antes.
+  initialFilters?: { category?: string; price?: string; beds?: string } | null;
+}> = ({ projects, initialFilters }) => {
   const [filter, setFilter] = React.useState<string>('todos')
-  const [selectedCategory, setSelectedCategory] = React.useState<string>('todos')
-  const [selectedPrice, setSelectedPrice] = React.useState<string>('todos')
-  const [selectedBeds, setSelectedBeds] = React.useState<string>('todos')
+  const [selectedCategory, setSelectedCategory] = React.useState<string>(initialFilters?.category || 'todos')
+  const [selectedPrice, setSelectedPrice] = React.useState<string>(initialFilters?.price || 'todos')
+  const [selectedBeds, setSelectedBeds] = React.useState<string>(initialFilters?.beds || 'todos')
+  // Filtros avanzados (Ubicación/Presupuesto/Habitaciones) empiezan colapsados — ya
+  // existe el mismo buscador arriba, en el hero; mostrar ambos a la vez duplicaba el
+  // control. Este queda como "refinar búsqueda" para quien ya está viendo el
+  // portafolio y quiere afinar más (ej. por habitaciones, que el hero no cubre).
+  const [filtersOpen, setFiltersOpen] = React.useState(false)
 
+  // El buscador del hero puede activarse varias veces con el usuario ya en la página
+  // (sin recargar) — sin este efecto, el estado inicial solo se toma la primera vez
+  // que el componente monta y clics posteriores en "Buscar" no actualizarían nada.
+  React.useEffect(() => {
+    if (!initialFilters) return;
+    if (initialFilters.category) setSelectedCategory(initialFilters.category);
+    if (initialFilters.price) setSelectedPrice(initialFilters.price);
+    if (initialFilters.beds) setSelectedBeds(initialFilters.beds);
+  }, [initialFilters]);
+
+  // Cada perfil lleva una explicación de una línea — sin ella, "Patrimonial" o
+  // "Disfrute" no son evidentes por sí solos para alguien que solo quiere ver el
+  // portafolio, a diferencia de un filtro concreto como "3 habitaciones".
   const filters = [
-    { key: 'todos', label: 'Todos' },
-    { key: 'renta', label: 'Renta' },
-    { key: 'disfrute', label: 'Disfrute' },
-    { key: 'patrimonial', label: 'Patrimonial' },
+    { key: 'todos', label: 'Todos', desc: 'Todo el portafolio, sin filtrar por perfil de inversión.' },
+    { key: 'renta', label: 'Renta', desc: 'Enfocado en retorno por arriendo — cap rate y ocupación como criterio principal.' },
+    { key: 'disfrute', label: 'Disfrute', desc: 'Para uso personal y vacacional, con potencial de arriendo secundario.' },
+    { key: 'patrimonial', label: 'Patrimonial', desc: 'Preservación y valorización de capital en dólares a largo plazo.' },
   ]
 
   // ────────────────────────────────────────────────────────
@@ -619,7 +697,7 @@ const ProjectsSection: React.FC<{
   }, [sortedProjects, filter, selectedCategory, selectedPrice, selectedBeds]);
 
   return (
-    <section id="projects" style={{ padding: '100px 24px', background: C.bg }}>
+    <section id="projects" style={{ padding: '70px 24px 100px', background: C.bg }}>
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: 48 }}>
           <span style={{
@@ -672,7 +750,30 @@ const ProjectsSection: React.FC<{
           })}
         </div>
 
-        {/* Advanced Filter Controls */}
+        {/* Explicación del perfil activo — una línea, cambia según el tab elegido */}
+        <p style={{
+          textAlign: 'center', fontSize: '0.8rem', color: C.textSec, fontFamily: C.fontSans,
+          maxWidth: 560, margin: '0 auto 32px', lineHeight: 1.5,
+        }}>
+          {filters.find(f => f.key === filter)?.desc}
+        </p>
+
+        {/* Refinar búsqueda — colapsado por defecto: el buscador del hero ya cubre
+            Ubicación/Presupuesto/Tipo, esto es solo para quien quiere afinar más
+            (ej. Habitaciones) sin duplicar el mismo control dos veces en la página. */}
+        <div style={{ textAlign: 'center', marginBottom: filtersOpen ? 16 : 48 }}>
+          <button onClick={() => setFiltersOpen(v => !v)} style={{
+            background: 'none', border: `1px solid ${C.sand}`, color: C.teal,
+            padding: '9px 22px', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em',
+            textTransform: 'uppercase', cursor: 'pointer', fontFamily: C.fontSans,
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+          }}>
+            Refinar búsqueda
+            <span style={{ fontSize: '0.65rem', transform: filtersOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▾</span>
+          </button>
+        </div>
+
+        {filtersOpen && (
         <div style={{
           display: 'flex',
           justifyContent: 'center',
@@ -763,6 +864,7 @@ const ProjectsSection: React.FC<{
             </select>
           </div>
         </div>
+        )}
 
         {/* Reorganized Gallery by Category */}
         {filtered.length === 0 ? (
@@ -817,6 +919,10 @@ const ProjectsSection: React.FC<{
 }
 
 // ────────────────────────────────────────────────────────
+// Todo lo que es nivel PAÍS vive aquí — antes "ventajas migratorias/impositivas"
+// estaba partido en InvestmentSection, separado de estos 6 stats por un bloque entero
+// de contenido de GLP (empresa) en el medio, obligando al lector a saltar de país a
+// empresa y de vuelta a país en el mismo scroll.
 const WhyPanamaSection: React.FC = () => {
   const stats = [
     { num: '01', title: 'Dolarizado desde 1904', desc: 'Cero riesgo de devaluación. Sus rentas y patrimonio en la moneda más estable del mundo.' },
@@ -825,68 +931,6 @@ const WhyPanamaSection: React.FC = () => {
     { num: '04', title: '7.8% Rentabilidad Promedio', desc: 'Atractivos niveles de retorno bruto por alquiler en dólares estadounidenses en segmentos residenciales premium.' },
     { num: '05', title: '+29% Inversión 2026', desc: 'Crecimiento proyectado en inversión inmobiliaria y construcción para el período 2025-2026.' },
     { num: '06', title: 'Inversión Internacional Líder', desc: 'Destino preferido de inversión para capitales y familias de toda la región gracias a su estabilidad jurídica y económica.' },
-  ]
-
-  return (
-    <div style={{ padding: '100px 24px 0', background: C.white }}>
-      <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-        <div style={{ textAlign: 'center', marginBottom: 56 }}>
-          <span style={{
-            display: 'inline-block', borderBottom: `1px solid ${C.palm}`,
-            color: C.palm, paddingBottom: 4,
-            fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.15em',
-            textTransform: 'uppercase', marginBottom: 14,
-            fontFamily: C.fontSans,
-          }}>VENTAJAS COMPETITIVAS</span>
-          <h2 style={{ fontSize: 'clamp(1.8rem, 4vw, 2.6rem)', fontWeight: 400, color: C.red, margin: '0 0 12px', fontFamily: C.fontSerif }}>
-            ¿Por qué Panamá?
-          </h2>
-          <p style={{ fontSize: '0.95rem', color: C.textSec, maxWidth: 600, margin: '0 auto', fontFamily: C.fontSans, letterSpacing: '0.02em' }}>
-            6 razones fundamentales por las que los inversionistas más sofisticados eligen Panamá.
-          </p>
-        </div>
-
-        {/* Stats grid */}
-        <div style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          justifyContent: 'center',
-          gap: 24,
-        }}>
-          {stats.map(s => (
-            <div key={s.title} style={{
-              background: C.white, borderRadius: 0, padding: '32px 24px',
-              border: `1px solid ${C.sand}`,
-              transition: 'all 0.3s ease',
-              flex: '1 1 260px', maxWidth: 300, minWidth: 260,
-            }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = C.teal; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = C.sand; }}>
-              <div style={{ fontSize: '1.75rem', fontWeight: 400, fontFamily: C.fontSerif, color: C.coral, marginBottom: 16 }}>{s.num}</div>
-              <h4 style={{ margin: '0 0 8px', fontSize: '1.05rem', fontWeight: 600, color: C.text, fontFamily: C.fontSans }}>{s.title}</h4>
-              <p style={{ margin: 0, fontSize: '0.85rem', color: C.textSec, lineHeight: 1.6, fontFamily: C.fontSans }}>{s.desc}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-const InvestmentSection: React.FC = () => {
-  const reasons = [
-    {
-      title: 'Nuestra experiencia',
-      desc: 'Casi 4 décadas de trayectoria y reputación nos avalan como una opción confiable y sólida para inversores que buscan oportunidades de alto rendimiento en el sector inmobiliario panameño.'
-    },
-    {
-      title: 'Desarrollos disruptivos',
-      desc: 'Diseñamos proyectos que rompen paradigmas, combinando innovación arquitectónica, ubicaciones estratégicas y rentabilidad comprobada para nuestros inversionistas.'
-    },
-    {
-      title: 'Acompañamiento a tu medida',
-      desc: 'Nos adaptamos a las necesidades de cada inversionista, con opciones flexibles de pago, acompañamiento personalizado y transparencia en cada etapa del proceso.'
-    },
   ]
 
   const advantageGroups = [
@@ -922,59 +966,54 @@ const InvestmentSection: React.FC = () => {
   ]
 
   return (
-    <div style={{ padding: '80px 24px 100px', background: C.bg }}>
+    <div style={{ padding: '100px 24px', background: C.white }}>
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-        {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 56 }}>
           <span style={{
-            display: 'inline-block', borderBottom: `1px solid ${C.red}`,
-            color: C.red, paddingBottom: 4,
+            display: 'inline-block', borderBottom: `1px solid ${C.palm}`,
+            color: C.palm, paddingBottom: 4,
             fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.15em',
             textTransform: 'uppercase', marginBottom: 14,
             fontFamily: C.fontSans,
-          }}>INVERSIÓN</span>
+          }}>VENTAJAS COMPETITIVAS</span>
           <h2 style={{ fontSize: 'clamp(1.8rem, 4vw, 2.6rem)', fontWeight: 400, color: C.red, margin: '0 0 12px', fontFamily: C.fontSerif }}>
-            ¿Te gustaría invertir en Panamá?
+            ¿Por qué Panamá?
           </h2>
-          <p style={{ fontSize: '0.95rem', color: C.textSec, maxWidth: 640, margin: '0 auto', fontFamily: C.fontSans, letterSpacing: '0.02em' }}>
-            En GLP miramos hacia el futuro, desarrollando proyectos innovadores en Panamá junto a un equipo de profesionales.
+          <p style={{ fontSize: '0.95rem', color: C.textSec, maxWidth: 600, margin: '0 auto', fontFamily: C.fontSans, letterSpacing: '0.02em' }}>
+            6 razones fundamentales por las que los inversionistas más sofisticados eligen Panamá.
           </p>
-          <a href="#contact" onClick={e => { e.preventDefault(); smoothScroll('contact') }} style={{
-            display: 'inline-block', marginTop: 24, background: C.teal, color: C.white,
-            padding: '13px 32px', textDecoration: 'none', fontWeight: 600, fontSize: '0.75rem',
-            textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: C.fontSans,
-            transition: 'background 0.2s ease',
-          }}
-            onMouseEnter={e => e.currentTarget.style.background = C.red}
-            onMouseLeave={e => e.currentTarget.style.background = C.teal}
-          >
-            Contacto
-          </a>
         </div>
 
-        {/* Razones para invertir */}
-        <div style={{ marginBottom: 64 }}>
-          <h3 style={{ fontSize: '1.5rem', fontWeight: 400, color: C.teal, fontFamily: C.fontSerif, textAlign: 'center', marginBottom: 32 }}>
-            Razones para invertir con Grupo Los Pueblos
-          </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 24 }}>
-            {reasons.map(r => (
-              <div key={r.title} style={{ background: C.white, border: `1px solid ${C.sand}`, padding: '28px 24px' }}>
-                <h4 style={{ margin: '0 0 10px', fontSize: '1.02rem', fontWeight: 600, color: C.text, fontFamily: C.fontSans }}>{r.title}</h4>
-                <p style={{ margin: 0, fontSize: '0.85rem', color: C.textSec, lineHeight: 1.65, fontFamily: C.fontSans }}>{r.desc}</p>
-              </div>
-            ))}
-          </div>
+        {/* Stats grid */}
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          justifyContent: 'center',
+          gap: 24,
+          marginBottom: 64,
+        }}>
+          {stats.map(s => (
+            <div key={s.title} style={{
+              background: C.white, borderRadius: 0, padding: '32px 24px',
+              border: `1px solid ${C.sand}`,
+              transition: 'all 0.3s ease',
+              flex: '1 1 260px', maxWidth: 300, minWidth: 260,
+            }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = C.teal; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = C.sand; }}>
+              <div style={{ fontSize: '1.75rem', fontWeight: 400, fontFamily: C.fontSerif, color: C.coral, marginBottom: 16 }}>{s.num}</div>
+              <h4 style={{ margin: '0 0 8px', fontSize: '1.05rem', fontWeight: 600, color: C.text, fontFamily: C.fontSans }}>{s.title}</h4>
+              <p style={{ margin: 0, fontSize: '0.85rem', color: C.textSec, lineHeight: 1.6, fontFamily: C.fontSans }}>{s.desc}</p>
+            </div>
+          ))}
         </div>
 
-        {/* Se quitó "Panamá en cifras" (capital, superficie, presidente, población,
-            moneda...) — leía como una ficha de Wikipedia, sin relación con la decisión
-            de inversión de un comprador de alto patrimonio. */}
-
-        {/* Ventajas: país / migratorias / impositivas */}
+        {/* Ventajas: migratorias / impositivas — antes vivían en otro componente
+            (InvestmentSection), separadas de estos stats por un bloque completo de
+            contenido de GLP en el medio. Mismo tema (país), un solo lugar. */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24 }}>
           {advantageGroups.map(group => (
-            <div key={group.title} style={{ background: C.white, border: `1px solid ${C.sand}`, padding: '28px 24px' }}>
+            <div key={group.title} style={{ background: C.bg, border: `1px solid ${C.sand}`, padding: '28px 24px' }}>
               <h4 style={{ margin: '0 0 18px', fontSize: '0.95rem', fontWeight: 700, color: C.red, fontFamily: C.fontSans, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 {group.title}
               </h4>
@@ -1698,13 +1737,33 @@ const GlobalStyles: React.FC = () => (
 )
 
 // ────────────────────────────────────────────────────────
-const GLPTrayectoria: React.FC = () => {
+// Un solo bloque para "¿en quién estoy confiando mi dinero?" — antes esta pregunta se
+// respondía en tres momentos distintos del scroll (Razones para invertir con GLP,
+// Trayectoria, Nosotros/aliados), sin conexión entre ellos. Ahora es una sola sección
+// con tres sub-bloques en orden: quiénes somos (trayectoria) → por qué elegirnos →
+// con quién trabajamos (aliados).
+const WhyGLPSection: React.FC = () => {
+  const reasons = [
+    {
+      title: 'Nuestra experiencia',
+      desc: 'Casi 4 décadas de trayectoria y reputación nos avalan como una opción confiable y sólida para inversores que buscan oportunidades de alto rendimiento en el sector inmobiliario panameño.'
+    },
+    {
+      title: 'Desarrollos disruptivos',
+      desc: 'Diseñamos proyectos que rompen paradigmas, combinando innovación arquitectónica, ubicaciones estratégicas y rentabilidad comprobada para nuestros inversionistas.'
+    },
+    {
+      title: 'Acompañamiento a tu medida',
+      desc: 'Nos adaptamos a las necesidades de cada inversionista, con opciones flexibles de pago, acompañamiento personalizado y transparencia en cada etapa del proceso.'
+    },
+  ]
+
   return (
-    <section id="trayectoria" style={{ padding: '80px 24px', background: C.white, borderBottom: `1px solid ${C.sand}` }}>
+    <section id="trayectoria" style={{ padding: '90px 24px', background: C.white, borderBottom: `1px solid ${C.sand}` }}>
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 48, alignItems: 'center' }}>
-          
-          {/* Text side */}
+
+        {/* Quiénes somos */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 48, alignItems: 'center', marginBottom: 72 }}>
           <div>
             <span style={{
               display: 'inline-block', borderBottom: `1px solid ${C.teal}`,
@@ -1713,7 +1772,7 @@ const GLPTrayectoria: React.FC = () => {
               letterSpacing: '0.15em', textTransform: 'uppercase',
               fontFamily: C.fontSans
             }}>
-              Trayectoria y Confianza
+              ¿Por qué GLP?
             </span>
             <h2 style={{ fontSize: 'clamp(2rem, 4vw, 2.8rem)', fontWeight: 400, color: C.red, margin: '0 0 20px', lineHeight: 1.15, fontFamily: C.fontSerif }}>
               Líderes en el Desarrollo Inmobiliario de Panamá
@@ -1724,15 +1783,19 @@ const GLPTrayectoria: React.FC = () => {
             <p style={{ fontSize: '0.95rem', color: C.textSec, lineHeight: 1.7, marginBottom: 28, fontFamily: C.fontSans }}>
               Nuestra trayectoria incluye el diseño, desarrollo y entrega de mega-proyectos emblemáticos que redefinieron el comercio y el estilo de vida, tales como <strong>Albrook Mall</strong> (el centro comercial más grande de América Latina), las exclusivas <strong>Ocean Reef Islands</strong> (las primeras islas artificiales de la región), <strong>Santa María Golf & Country Club</strong>, <strong>Federal Mall</strong> en David, y residencias de lujo y playa de altísimo valor.
             </p>
-            <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-              <div style={{ borderLeft: `2px solid ${C.coral}`, paddingLeft: 16 }}>
-                <div style={{ fontSize: '1.05rem', fontWeight: 600, color: C.text, fontFamily: C.fontSans }}>Confianza Garantizada</div>
-                <div style={{ fontSize: '0.85rem', color: C.textSec, fontFamily: C.fontSans, marginTop: 4 }}>Seguridad jurídica, alta plusvalía y calidad constructiva certificada.</div>
-              </div>
-            </div>
+            <a href="#contact" onClick={e => { e.preventDefault(); smoothScroll('contact') }} style={{
+              display: 'inline-block', background: C.teal, color: C.white,
+              padding: '13px 32px', textDecoration: 'none', fontWeight: 600, fontSize: '0.75rem',
+              textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: C.fontSans,
+              transition: 'background 0.2s ease',
+            }}
+              onMouseEnter={e => e.currentTarget.style.background = C.red}
+              onMouseLeave={e => e.currentTarget.style.background = C.teal}
+            >
+              Contacto
+            </a>
           </div>
 
-          {/* Stats & Icons side */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
             {[
               { number: '40+', label: 'Años de Experiencia', desc: 'Liderando el mercado regional.' },
@@ -1753,7 +1816,123 @@ const GLPTrayectoria: React.FC = () => {
               </div>
             ))}
           </div>
+        </div>
 
+        {/* Por qué elegirnos */}
+        <div style={{ marginBottom: 72 }}>
+          <h3 style={{ fontSize: '1.5rem', fontWeight: 400, color: C.teal, fontFamily: C.fontSerif, textAlign: 'center', marginBottom: 32 }}>
+            Razones para invertir con Grupo Los Pueblos
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 24 }}>
+            {reasons.map(r => (
+              <div key={r.title} style={{ background: C.bg, border: `1px solid ${C.sand}`, padding: '28px 24px' }}>
+                <h4 style={{ margin: '0 0 10px', fontSize: '1.02rem', fontWeight: 600, color: C.text, fontFamily: C.fontSans }}>{r.title}</h4>
+                <p style={{ margin: 0, fontSize: '0.85rem', color: C.textSec, lineHeight: 1.65, fontFamily: C.fontSans }}>{r.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Con quién trabajamos */}
+        <div>
+          <h3 style={{ fontSize: '1.5rem', fontWeight: 400, color: C.teal, fontFamily: C.fontSerif, textAlign: 'center', marginBottom: 12 }}>
+            Un Ecosistema de Confianza para tu Inversión
+          </h3>
+          <p style={{ fontSize: '0.9rem', color: C.textSec, maxWidth: 700, margin: '0 auto 32px', textAlign: 'center', fontFamily: C.fontSans, lineHeight: 1.7 }}>
+            Aliados especializados que acompañan al inversionista colombiano en cada etapa: estructuración financiera y asesoría legal.
+          </p>
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: 32, maxWidth: 760, margin: '0 auto',
+          }}>
+            <div style={{ padding: '28px 26px', border: `1px solid ${C.sand}`, borderTop: `3px solid ${C.red}`, background: C.bg }}>
+              <h4 style={{ margin: '0 0 12px', fontWeight: 600, fontSize: '0.8rem', fontFamily: C.fontSans, textTransform: 'uppercase', letterSpacing: '0.1em', color: C.red }}>
+                Capital Brokers
+              </h4>
+              <p style={{ margin: 0, color: C.textSec, fontSize: '0.88rem', lineHeight: 1.6, fontFamily: C.fontSans }}>
+                Firma global de banca de inversión y placement agent con presencia en Colombia, España, Panamá, Estados Unidos y EAU. Especialistas en estructuración financiera, levantamiento de capital, soluciones de capital de trabajo internacional (factoring) y estructuración de fondos de capital privado.
+              </p>
+            </div>
+            <div style={{ padding: '28px 26px', border: `1px solid ${C.sand}`, borderTop: `3px solid ${C.red}`, background: C.bg }}>
+              <h4 style={{ margin: '0 0 12px', fontWeight: 600, fontSize: '0.8rem', fontFamily: C.fontSans, textTransform: 'uppercase', letterSpacing: '0.1em', color: C.red }}>
+                Colombia Law Group
+              </h4>
+              <p style={{ margin: 0, color: C.textSec, fontSize: '0.88rem', lineHeight: 1.6, fontFamily: C.fontSans }}>
+                Firma legal que ofrece servicios jurídicos y tributarios expertos para extranjeros y empresas en Colombia. Especialistas en estructuración de inversiones, derecho inmobiliario, procesos de visas y migración, derecho cambiario, societario y comercial.
+              </p>
+            </div>
+            {/* Grupo Valverde — oculto a pedido de Armando (2026-08-11), se retomará a futuro.
+            <div style={{ padding: '28px 26px', border: `1px solid ${C.sand}`, borderTop: `3px solid ${C.red}`, background: C.bg }}>
+              <h4 style={{ margin: '0 0 12px', fontWeight: 600, fontSize: '0.8rem', fontFamily: C.fontSans, textTransform: 'uppercase', letterSpacing: '0.1em', color: C.red }}>
+                Grupo Valverde
+              </h4>
+              <p style={{ margin: 0, color: C.textSec, fontSize: '0.88rem', lineHeight: 1.6, fontFamily: C.fontSans }}>
+                En Grupo Valverde creamos más que proyectos inmobiliarios; construimos hogares que equilibran lo económico, social y ambiental en Colombia. Nuestro compromiso es ofrecer viviendas de alta calidad, accesibles y con un enfoque de sostenibilidad.
+              </p>
+            </div>
+            */}
+          </div>
+        </div>
+
+      </div>
+    </section>
+  )
+}
+
+// ────────────────────────────────────────────────────────
+// Prueba social — trae los testimonios marcados "Publicado" desde el CRM (Campañas de
+// Marketing → Testimonios). Si no hay ninguno publicado todavía, la sección no se
+// renderiza — mejor no mostrar nada que mostrar un bloque vacío o de relleno.
+type Testimonial = { id: string; nombre: string; rol: string; ciudad: string; foto_url: string; texto: string; rating: number };
+
+const TestimonialsSection: React.FC = () => {
+  const [items, setItems] = React.useState<Testimonial[]>([]);
+  React.useEffect(() => {
+    fetch(`${API_ROOT}/api/testimonials?status=published`)
+      .then(r => r.json())
+      .then(rows => setItems(Array.isArray(rows) ? rows : []))
+      .catch(() => {});
+  }, []);
+
+  if (items.length === 0) return null;
+
+  return (
+    <section id="testimonios" style={{ padding: '90px 24px', background: C.bg, borderBottom: `1px solid ${C.sand}` }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+        <div style={{ textAlign: 'center', marginBottom: 44 }}>
+          <span style={{
+            display: 'inline-block', borderBottom: `1px solid ${C.coral}`,
+            color: C.coral, paddingBottom: 4,
+            fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.15em',
+            textTransform: 'uppercase', marginBottom: 12,
+            fontFamily: C.fontSans,
+          }}>Lo que dicen nuestros inversionistas</span>
+          <h2 style={{ fontSize: 'clamp(1.8rem, 4vw, 2.4rem)', fontWeight: 400, color: C.teal, margin: 0, fontFamily: C.fontSerif }}>
+            Confianza construida con hechos
+          </h2>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 22 }}>
+          {items.map(t => (
+            <div key={t.id} style={{ background: C.white, border: `1px solid ${C.sand}`, padding: '28px 26px', textAlign: 'left' }}>
+              <div style={{ color: C.coral, fontSize: '0.8rem', letterSpacing: 2, marginBottom: 14 }}>{'★'.repeat(t.rating || 5)}</div>
+              <p style={{ fontFamily: C.fontSerif, fontStyle: 'italic', fontSize: '1rem', color: C.text, lineHeight: 1.55, margin: '0 0 20px' }}>
+                "{t.texto}"
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                {t.foto_url ? (
+                  <img src={t.foto_url} alt={t.nombre} style={{ width: 42, height: 42, borderRadius: '50%', objectFit: 'cover' }} />
+                ) : (
+                  <div style={{ width: 42, height: 42, borderRadius: '50%', background: C.sand, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 700, color: C.teal, fontFamily: C.fontSans }}>
+                    {t.nombre.slice(0, 1).toUpperCase()}
+                  </div>
+                )}
+                <div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: C.teal, fontFamily: C.fontSans }}>{t.nombre}</div>
+                  <div style={{ fontSize: '0.72rem', color: C.textSec, fontFamily: C.fontSans }}>{[t.rol, t.ciudad].filter(Boolean).join(' · ')}</div>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </section>
@@ -1761,65 +1940,9 @@ const GLPTrayectoria: React.FC = () => {
 }
 
 // ────────────────────────────────────────────────────────
-const NosotrosSection: React.FC = () => (
-  <section id="nosotros" style={{ padding: '100px 24px', background: C.white, borderBottom: `1px solid ${C.sand}` }}>
-    <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-      <div style={{ textAlign: 'center', marginBottom: 56 }}>
-        <span style={{
-          display: 'inline-block', borderBottom: `1px solid ${C.red}`,
-          color: C.red, paddingBottom: 4,
-          fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.15em',
-          textTransform: 'uppercase', marginBottom: 14,
-          fontFamily: C.fontSans,
-        }}>NOSOTROS</span>
-        <h2 style={{ fontSize: 'clamp(1.8rem, 4vw, 2.6rem)', fontWeight: 400, color: C.red, margin: '0 0 16px', fontFamily: C.fontSerif }}>
-          Un Ecosistema de Confianza para tu Inversión
-        </h2>
-        <p style={{ fontSize: '0.95rem', color: C.textSec, maxWidth: 700, margin: '0 auto', fontFamily: C.fontSans, letterSpacing: '0.02em', lineHeight: 1.7 }}>
-          Detrás de cada proyecto de Grupo Los Pueblos hay más de 40 años de trayectoria inmobiliaria en Panamá,
-          respaldados por un equipo de aliados especializados que acompañan al inversionista colombiano en cada
-          etapa: estructuración financiera, asesoría legal y desarrollo residencial.
-        </p>
-      </div>
-
-      {/* Grid centrado a 2 columnas máx. — Grupo Valverde se ocultó a pedido de Armando
-          (se prevé necesitarlo más adelante, por eso queda comentado y no eliminado, ver
-          abajo). Con 2 aliados en vez de 3, se limita el ancho del grid para que las tarjetas
-          no queden desproporcionadamente anchas en pantallas grandes. */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-        gap: 32, maxWidth: 760, margin: '0 auto',
-      }}>
-        <div style={{ padding: '28px 26px', border: `1px solid ${C.sand}`, borderTop: `3px solid ${C.red}`, background: C.bg }}>
-          <h4 style={{ margin: '0 0 12px', fontWeight: 600, fontSize: '0.8rem', fontFamily: C.fontSans, textTransform: 'uppercase', letterSpacing: '0.1em', color: C.red }}>
-            Capital Brokers
-          </h4>
-          <p style={{ margin: 0, color: C.textSec, fontSize: '0.88rem', lineHeight: 1.6, fontFamily: C.fontSans }}>
-            Firma global de banca de inversión y placement agent con presencia en Colombia, España, Panamá, Estados Unidos y EAU. Especialistas en estructuración financiera, levantamiento de capital, soluciones de capital de trabajo internacional (factoring) y estructuración de fondos de capital privado.
-          </p>
-        </div>
-        <div style={{ padding: '28px 26px', border: `1px solid ${C.sand}`, borderTop: `3px solid ${C.red}`, background: C.bg }}>
-          <h4 style={{ margin: '0 0 12px', fontWeight: 600, fontSize: '0.8rem', fontFamily: C.fontSans, textTransform: 'uppercase', letterSpacing: '0.1em', color: C.red }}>
-            Colombia Law Group
-          </h4>
-          <p style={{ margin: 0, color: C.textSec, fontSize: '0.88rem', lineHeight: 1.6, fontFamily: C.fontSans }}>
-            Firma legal que ofrece servicios jurídicos y tributarios expertos para extranjeros y empresas en Colombia. Especialistas en estructuración de inversiones, derecho inmobiliario, procesos de visas y migración, derecho cambiario, societario y comercial.
-          </p>
-        </div>
-        {/* Grupo Valverde — oculto a pedido de Armando (2026-08-11), se retomará a futuro.
-        <div style={{ padding: '28px 26px', border: `1px solid ${C.sand}`, borderTop: `3px solid ${C.red}`, background: C.bg }}>
-          <h4 style={{ margin: '0 0 12px', fontWeight: 600, fontSize: '0.8rem', fontFamily: C.fontSans, textTransform: 'uppercase', letterSpacing: '0.1em', color: C.red }}>
-            Grupo Valverde
-          </h4>
-          <p style={{ margin: 0, color: C.textSec, fontSize: '0.88rem', lineHeight: 1.6, fontFamily: C.fontSans }}>
-            En Grupo Valverde creamos más que proyectos inmobiliarios; construimos hogares que equilibran lo económico, social y ambiental en Colombia. Nuestro compromiso es ofrecer viviendas de alta calidad, accesibles y con un enfoque de sostenibilidad.
-          </p>
-        </div>
-        */}
-      </div>
-    </div>
-  </section>
-)
+// NosotrosSection se fusionó dentro de WhyGLPSection (sub-bloque "Con quién
+// trabajamos") — antes era una sección aparte repitiendo la misma pregunta de
+// confianza que Trayectoria y Razones para invertir, más abajo en el scroll.
 
 const saveProspectToLocal = (name: string, email: string, phone: string, project: string, message: string, channel: string, projects: Project[] = PROJECTS) => {
   const saved = localStorage.getItem('glp_crm_prospects');
@@ -2489,22 +2612,36 @@ const LandingPage: React.FC = () => {
   const [, setUnidTick] = React.useState(0);
   React.useEffect(() => { applyUnidadesToProjects().then(changed => { if (changed) setUnidTick(t => t + 1); }); }, []);
 
+  // Filtros del buscador rápido del hero — se aplican a Proyectos al hacer clic en
+  // "Buscar". Objeto nuevo en cada búsqueda (no solo los valores) para que el efecto
+  // en ProjectsSection dispare incluso si el usuario busca dos veces seguidas con los
+  // mismos filtros.
+  const [heroFilters, setHeroFilters] = React.useState<{ category: string; price: string; beds: string } | null>(null);
+
   // ────────────────────────────────────────────────────────
 
   return (
     <>
       <GlobalStyles />
+      {/* Orden pensado desde la decisión de compra: el portafolio (lo que la
+          persona vino a ver) sube justo después del hero, en vez de aparecer
+          recién en cuarto lugar. Trayectoria/Nosotros (credibilidad de marca)
+          se mueven después de "¿Por qué Panamá?" — siguen presentes, solo ya
+          no son lo primero que se ve tras el hero. */}
       <Navbar />
-      <Hero />
-      <GLPTrayectoria />
-      <NosotrosSection />
+      <Hero onSearch={f => setHeroFilters({ ...f })} />
       <ProjectsSection
         projects={projectsList}
+        initialFilters={heroFilters}
       />
+      {/* Un solo bloque por tema: primero país (¿Por qué Panamá?), después empresa
+          (¿Por qué GLP? — fusiona lo que antes eran Trayectoria, Razones para invertir
+          y Nosotros/aliados en tres momentos separados del scroll). */}
       <section id="why-panama" style={{ background: C.white, borderBottom: `1px solid ${C.sand}` }}>
         <WhyPanamaSection />
-        <InvestmentSection />
       </section>
+      <WhyGLPSection />
+      <TestimonialsSection />
       <FAQSection />
       <ContactSection
         contactProject={contactProject}
