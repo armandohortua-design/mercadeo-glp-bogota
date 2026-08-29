@@ -14,6 +14,20 @@ const TENANT_ID = 'tenant-glp-001';
 // Cambia a 'INBOX' para leer todo el inbox (no recomendado con correo personal).
 const MAILBOX = process.env.IMAP_MAILBOX || 'GLP-Leads';
 
+// Dominios y prefijos de remitentes automatizados/transaccionales que NUNCA deben
+// convertirse en prospecto — antes cualquier notificación (ej. un correo de calendly.com)
+// que llegara a la carpeta monitoreada se interpretaba como un lead real.
+const AUTOMATED_SENDER_DOMAINS = [
+  'calendly.com', 'no-reply', 'noreply', 'notifications', 'mailer-daemon',
+  'notification', 'donotreply', 'do-not-reply', 'postmaster', 'zoom.us',
+  'docusign.net', 'stripe.com', 'paypal.com', 'google.com', 'accounts.google.com',
+  'linkedin.com', 'facebookmail.com', 'github.com', 'slack.com',
+];
+function isAutomatedSender(email) {
+  const lower = (email || '').toLowerCase();
+  return AUTOMATED_SENDER_DOMAINS.some(d => lower.includes(d));
+}
+
 // Palabras clave en asunto para filtrar si se usa INBOX directamente.
 // Solo se aplica cuando MAILBOX=INBOX. Deja vacío para procesar todo.
 // Si IMAP_SUBJECT_KEYWORDS no está definida en .env, usa palabras clave por defecto.
@@ -79,8 +93,55 @@ Responde SOLO con JSON:
   }
 }
 
+// Busca el perfil psicográfico Sofía del prospecto (arquetipo, señales, recomendación
+// para Sara) para que el borrador de respuesta hable en el tono correcto — antes esto no
+// existía y Sara redactaba genérico sin importar si el arquetipo era estatus/racional/etc.
+async function getSofiaProfile(prospectoId) {
+  if (!prospectoId) return null;
+  try {
+    const { rows } = await pool.query('SELECT * FROM sofia_profiles WHERE prospecto_id = $1', [prospectoId]);
+    return rows[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+// FAQs oficiales — mismo patrón que index.js: se inyectan como contexto en el prompt de
+// respuesta y, si el correo del cliente realmente toca el tema de alguna, se le suma un
+// uso real (en vez del contador ficticio que había antes en la UI).
+async function getFaqsForPrompt() {
+  try {
+    const { rows } = await pool.query('SELECT id, categoria, pregunta, respuesta FROM faqs WHERE tenant_id = $1', [TENANT_ID]);
+    return rows;
+  } catch { return []; }
+}
+function buildFaqContextText(faqs) {
+  if (!faqs || faqs.length === 0) return '';
+  return '\nPREGUNTAS FRECUENTES OFICIALES (usa esta información como base si el cliente pregunta algo relacionado; no la ignores ni inventes una respuesta distinta a la oficial):\n' +
+    faqs.map(f => `- P: ${f.pregunta}\n  R: ${f.respuesta}`).join('\n');
+}
+const STOPWORDS_ES = new Set(['de','la','el','en','y','a','que','es','un','una','para','con','los','las','se','del','al','por','como','su','sus','le','lo']);
+function textKeywords(text) {
+  return new Set((text || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 3 && !STOPWORDS_ES.has(w)));
+}
+async function trackFaqUsage(faqs, clientText) {
+  if (!faqs || faqs.length === 0) return;
+  const clientWords = textKeywords(clientText);
+  if (clientWords.size === 0) return;
+  const usedIds = faqs.filter(f => {
+    const faqWords = textKeywords(f.pregunta);
+    let overlap = 0;
+    faqWords.forEach(w => { if (clientWords.has(w)) overlap++; });
+    return overlap >= 2;
+  }).map(f => f.id);
+  if (usedIds.length > 0) {
+    await pool.query('UPDATE faqs SET veces_usada = veces_usada + 1 WHERE id = ANY($1)', [usedIds]).catch(() => {});
+  }
+}
+
 // Genera borrador con OpenAI
-async function generateSaraDraft(tenant, nombre, email, subject, body) {
+async function generateSaraDraft(tenant, nombre, email, subject, body, prospectoId) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     return {
@@ -92,6 +153,19 @@ async function generateSaraDraft(tenant, nombre, email, subject, body) {
   try {
     const { rows: projectRows } = await pool.query('SELECT data FROM projects WHERE tenant_id = $1', [TENANT_ID]);
     const catalogSummary = projectRows.map(r => `- ${r.data?.name}: desde $${r.data?.price} USD`).join('\n') || 'Portafolio disponible';
+
+    const faqs = await getFaqsForPrompt();
+    const faqContextText = buildFaqContextText(faqs);
+    trackFaqUsage(faqs, `${subject} ${body}`); // fire-and-forget, no bloquea la generación
+
+    const sofia = await getSofiaProfile(prospectoId);
+    const perfilTxt = sofia
+      ? `\nPERFIL PSICOGRÁFICO DEL CLIENTE (detectado por Sofía, IA de perfilamiento):
+- Arquetipo: ${sofia.arquetipo} (confianza ${sofia.confianza}%)
+- Señales detectadas: ${(sofia.senales || []).join('; ')}
+- Recomendación de tono para Sara: ${sofia.recomendacion_sara || 'sin recomendación específica'}
+Ajusta el tono y los argumentos de tu respuesta a este arquetipo específico — no uses un tono genérico.`
+      : '';
 
     const OpenAI = require('openai');
     const openai = new OpenAI({ apiKey });
@@ -111,10 +185,12 @@ ${body.slice(0, 800)}
 
 Catálogo GLP:
 ${catalogSummary}
+${perfilTxt}
+${faqContextText}
 
 Reglas:
-- Responde en español
-- Tono cálido, profesional, de asesor de confianza (no genérico)
+- Responde en español, redacción impecable y natural — sin errores gramaticales ni frases robóticas
+- Tono cálido, profesional, de asesor de confianza (no genérico) y ajustado al arquetipo del cliente si se detectó uno
 - Si el mensaje menciona un proyecto específico, referencia ese proyecto
 - Si el mensaje es una consulta general, invítalo a una videollamada de diagnóstico
 - Máximo 200 palabras
@@ -138,6 +214,93 @@ Responde SOLO con JSON: {"subject":"...","body":"..."}`
   }
 }
 
+// B.2: Notificación al admin cuando Sara genera un borrador desde correo entrante
+async function notifyAdminNewDraft({ nombre, rawEmail, subject, draft }) {
+  const adminEmail = process.env.ADMIN_EMAIL;
+  const smtpUser  = process.env.SMTP_USER;
+  const smtpPass  = process.env.SMTP_PASS;
+  if (!adminEmail || !smtpUser || !smtpPass) return;
+
+  try {
+    const nodemailer = require('nodemailer');
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: smtpUser, pass: smtpPass }
+    });
+
+    await transporter.sendMail({
+      from: `"Sara · GLP CRM" <${smtpUser}>`,
+      to: adminEmail,
+      subject: `📨 Sara generó borrador — ${nombre} escribió: "${subject}"`,
+      html: `
+        <div style="font-family:sans-serif;max-width:640px;margin:0 auto">
+          <div style="background:#001A37;color:#D4AF6A;padding:20px;text-align:center">
+            <h2 style="margin:0;letter-spacing:2px">SARA · CORREO ENTRANTE</h2>
+            <p style="margin:4px 0;font-size:12px;color:#fff;opacity:.8">${new Date().toLocaleString('es-CO')}</p>
+          </div>
+          <div style="padding:24px;background:#fff">
+            <p>Sara recibió un correo de <strong>${nombre}</strong> (<a href="mailto:${rawEmail}">${rawEmail}</a>) y generó automáticamente un borrador de respuesta listo para revisar.</p>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px">
+              <tr><td style="padding:8px;color:#6b7280;width:120px">Remitente</td><td style="padding:8px;font-weight:600">${nombre} &lt;${rawEmail}&gt;</td></tr>
+              <tr style="background:#f9fafb"><td style="padding:8px;color:#6b7280">Asunto original</td><td style="padding:8px">${subject}</td></tr>
+              <tr><td style="padding:8px;color:#6b7280">Asunto borrador</td><td style="padding:8px;font-weight:600;color:#001A37">${draft.subject}</td></tr>
+            </table>
+            <div style="border-left:3px solid #B89047;padding:12px 16px;background:#fafaf7;margin-bottom:20px">
+              <div style="font-size:11px;color:#B89047;font-weight:700;letter-spacing:1px;margin-bottom:8px">BORRADOR SARA</div>
+              <pre style="white-space:pre-wrap;font-family:sans-serif;font-size:13px;color:#374151;margin:0">${draft.body}</pre>
+            </div>
+            <p style="color:#9ca3af;font-size:11px">Ingresa al CRM → Módulo Sara → Gestión de Correos para aprobar y enviar este borrador.</p>
+          </div>
+        </div>`
+    });
+    console.log(`[IMAP] 📧 Admin notificado: borrador para ${nombre} <${rawEmail}>`);
+  } catch (err) {
+    console.error('[IMAP] Error notificando admin:', err.message);
+  }
+}
+
+// B.3: Notificación al admin cuando un correo automático (bienvenida de chatbot, borrador
+// aprobado, etc.) rebota — antes esto se descartaba junto con el resto de remitentes
+// automatizados y el rebote quedaba completamente invisible.
+async function notifyAdminBounce({ failedRecipient, subject }) {
+  const adminEmail = process.env.ADMIN_EMAIL;
+  const smtpUser  = process.env.SMTP_USER;
+  const smtpPass  = process.env.SMTP_PASS;
+  if (!adminEmail || !smtpUser || !smtpPass) return;
+
+  try {
+    const nodemailer = require('nodemailer');
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: smtpUser, pass: smtpPass }
+    });
+
+    await transporter.sendMail({
+      from: `"GLP CRM — Alertas de Entrega" <${smtpUser}>`,
+      to: adminEmail,
+      subject: `⚠️ Un correo automático rebotó${failedRecipient ? ` — ${failedRecipient}` : ''}`,
+      html: `
+        <div style="font-family:sans-serif;max-width:640px;margin:0 auto">
+          <div style="background:#7f1d1d;color:#fff;padding:20px;text-align:center">
+            <h2 style="margin:0;letter-spacing:2px">REBOTE DE CORREO DETECTADO</h2>
+            <p style="margin:4px 0;font-size:12px;opacity:.85">${new Date().toLocaleString('es-CO')}</p>
+          </div>
+          <div style="padding:24px;background:#fff">
+            <p>Un correo automático del CRM (bienvenida de chatbot, borrador aprobado, etc.) no pudo entregarse.</p>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px">
+              <tr><td style="padding:8px;color:#6b7280;width:160px">Destinatario que falló</td><td style="padding:8px;font-weight:600">${failedRecipient || 'No se pudo identificar automáticamente — revisa la carpeta de correo directamente'}</td></tr>
+              <tr style="background:#f9fafb"><td style="padding:8px;color:#6b7280">Asunto del rebote</td><td style="padding:8px">${subject}</td></tr>
+            </table>
+            <p style="color:#9ca3af;font-size:11px">El CRM había registrado este envío como "Enviado" porque el servidor SMTP lo aceptó sin error — el rebote llegó después, por eso no se detecta en el momento del envío. Verifica el correo del prospecto en Bitácora/Prospectos y considera contactarlo por otro canal (WhatsApp, teléfono).</p>
+          </div>
+        </div>`
+    });
+    console.log(`[IMAP] 📧 Admin notificado del rebote${failedRecipient ? ` (${failedRecipient})` : ''}.`);
+  } catch (err) {
+    console.error('[IMAP] Error notificando rebote al admin:', err.message);
+  }
+}
+
 async function pollInbox() {
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
@@ -153,6 +316,13 @@ async function pollInbox() {
     secure: true,
     auth: { user, pass },
     logger: false
+  });
+  // Sin este listener, un ECONNRESET de red en la conexión IMAP (normal en TLS de larga
+  // vida) se propaga como 'error' event no manejado y Node mata TODO el proceso — tumbando
+  // el CRM completo (dashboard, prospectos, todo en cero) por una simple caída de red del
+  // poller de correo, que debería ser no-crítico y reintentar en el siguiente ciclo.
+  client.on('error', (err) => {
+    console.warn('[IMAP] Error de conexión (no fatal, se reintenta en el próximo ciclo):', err.message);
   });
 
   try {
@@ -188,6 +358,34 @@ async function pollInbox() {
         // Ignorar correos enviados desde la misma cuenta
         if (rawEmail.toLowerCase() === user.toLowerCase()) {
           console.log(`[IMAP] ⏭ Auto-enviado, ignorado.`);
+          await client.messageFlagsAdd({ uid: msg.uid }, ['\\Seen']);
+          continue;
+        }
+
+        // Ignorar remitentes automatizados/transaccionales (calendly.com, no-reply@, etc.)
+        // — nunca deben crear un prospecto falso. PERO si es un bounce (mailer-daemon /
+        // postmaster) antes esto lo descartaba en silencio: el backend ya le había dicho al
+        // admin "correo enviado" (el SMTP lo aceptó sin error), y si luego rebotaba nadie se
+        // enteraba — el correo simplemente nunca llegaba y no había ninguna señal de eso en
+        // el CRM. Ahora se detecta el rebote, se extrae el destinatario real que falló, y se
+        // avisa al admin en vez de tirarlo.
+        if (isAutomatedSender(rawEmail)) {
+          const subjectForBounce = (msg.envelope?.subject || '').toLowerCase();
+          const looksLikeBounce = /mailer-daemon|postmaster/.test(rawEmail.toLowerCase())
+            && /delivery status|undeliver|failure|bounce|no se pudo entregar/.test(subjectForBounce);
+          if (looksLikeBounce) {
+            try {
+              const bodySource = msg.source ? msg.source.toString('utf8') : '';
+              const recipientMatch = bodySource.match(/(?:Final-Recipient|for)\s*:?\s*<?([a-zA-Z0-9._%+-]+@(?!gmail\.com)[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})>?/i);
+              const failedRecipient = recipientMatch ? recipientMatch[1] : null;
+              console.log(`[IMAP] 🚨 Rebote detectado${failedRecipient ? ` — destinatario que falló: ${failedRecipient}` : ' (destinatario no identificado en el cuerpo)'}`);
+              await notifyAdminBounce({ failedRecipient, subject: msg.envelope?.subject || 'Delivery Status Notification' });
+            } catch (bounceErr) {
+              console.warn('[IMAP] Error procesando rebote:', bounceErr.message);
+            }
+          } else {
+            console.log(`[IMAP] ⏭ Remitente automatizado, ignorado: ${rawEmail}`);
+          }
           await client.messageFlagsAdd({ uid: msg.uid }, ['\\Seen']);
           continue;
         }
@@ -299,16 +497,19 @@ async function pollInbox() {
 
         if (existingDraft.length === 0) {
           console.log(`[IMAP] Generando borrador SARA...`);
-          const draft = await generateSaraDraft(null, nombre, rawEmail, subject, bodyText);
+          const draft = await generateSaraDraft(null, nombre, rawEmail, subject, bodyText, prospectoId);
           const draftId = `draft-email-${Date.now()}-${Math.floor(Math.random() * 9000)}`;
 
           await pool.query(
-            `INSERT INTO drafts (id, tenant_id, destinatario, project, subject, body, status, prioridad, created_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())`,
+            `INSERT INTO drafts (id, tenant_id, destinatario, project, subject, body, status, prioridad, origen, created_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())`,
             [String(draftId), String(TENANT_ID), `${nombre} (${rawEmail})`,
-             'Correo Entrante', String(draft.subject), String(draft.body), 'pending', 'alta']
+             'Correo Entrante', String(draft.subject), String(draft.body), 'pending', 'alta', 'correo_entrante']
           );
           console.log(`[IMAP] 📝 Borrador SARA creado: "${draft.subject}"`);
+
+          // B.2: Notificar al admin cuando Sara genera un borrador desde correo entrante
+          await notifyAdminNewDraft({ nombre, rawEmail, subject, draft });
         } else {
           console.log(`[IMAP] Borrador ya existe, omitiendo.`);
         }
@@ -333,4 +534,4 @@ function startEmailPoller() {
   setInterval(pollInbox, POLL_INTERVAL_MS);
 }
 
-module.exports = { startEmailPoller, pollInbox };
+module.exports = { startEmailPoller, pollInbox, generateSaraDraft };

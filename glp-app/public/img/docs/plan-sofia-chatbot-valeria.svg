@@ -1,0 +1,163 @@
+<svg viewBox="0 0 720 520" xmlns="http://www.w3.org/2000/svg" role="img">
+  <title>Plan de Implementación — Sofía Chatbot y Valeria Campañas</title>
+  <desc>Plan en 3 fases: Fase 1 chatbot de perfilación, Fase 2 integración con Sofía, Fase 3 redirección post-chat. Más integración Valeria con arquetipos.</desc>
+
+  <rect width="720" height="520" fill="#F7F4EF"/>
+
+  <!-- Title -->
+  <text x="360" y="26" text-anchor="middle" font-family="Georgia,serif" font-size="14" font-weight="700" fill="#001A37" letter-spacing="1">PLAN DE IMPLEMENTACIÓN</text>
+  <text x="360" y="42" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#B89047" letter-spacing="1.5">SOFÍA ↔ CHATBOT · VALERIA + PERFILES</text>
+
+  <!-- FASE 1 -->
+  <rect x="20" y="56" width="215" height="170" fill="#fff" rx="3"/>
+  <rect x="20" y="56" width="215" height="26" fill="#047857" rx="3"/>
+  <rect x="20" y="68" width="215" height="14" fill="#047857"/>
+  <text x="32" y="72" font-family="Arial,sans-serif" font-size="9" font-weight="700" fill="#fff" letter-spacing="0.5">FASE 1 · CHATBOT DE PERFILACIÓN</text>
+  <text x="200" y="72" text-anchor="end" font-family="Arial,sans-serif" font-size="8" fill="#A7F3D0">~4h</text>
+
+  <text x="30" y="98" font-family="Arial,sans-serif" font-size="8.5" fill="#374151">▸ UI conversacional con burbuja Sofía</text>
+  <text x="30" y="112" font-family="Arial,sans-serif" font-size="8.5" fill="#374151">▸ 5–7 preguntas estratégicas por arquetipo</text>
+  <text x="30" y="126" font-family="Arial,sans-serif" font-size="8.5" fill="#374151">▸ Motor de scoring en tiempo real</text>
+  <text x="30" y="140" font-family="Arial,sans-serif" font-size="8.5" fill="#374151">▸ Preguntas adaptativas según líder</text>
+  <text x="30" y="154" font-family="Arial,sans-serif" font-size="8.5" fill="#374151">▸ Barra de progreso de arquetipo</text>
+
+  <rect x="30" y="165" width="195" height="22" fill="#F0FDF4" rx="2"/>
+  <text x="127" y="176" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#047857">Respuesta → Score → Pregunta adaptada</text>
+  <text x="127" y="188" text-anchor="middle" font-family="Arial,sans-serif" font-size="7.5" fill="#6B7280">→ Arquetipo emergente visible en vivo</text>
+  <text x="127" y="212" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#9CA3AF" font-style="italic">Nueva pestaña en módulo Agentes IA</text>
+
+  <!-- FASE 2 -->
+  <rect x="252" y="56" width="215" height="170" fill="#fff" rx="3"/>
+  <rect x="252" y="56" width="215" height="26" fill="#001A37" rx="3"/>
+  <rect x="252" y="68" width="215" height="14" fill="#001A37"/>
+  <text x="264" y="72" font-family="Arial,sans-serif" font-size="9" font-weight="700" fill="#B89047" letter-spacing="0.5">FASE 2 · INTEGRACIÓN CON SOFÍA</text>
+  <text x="432" y="72" text-anchor="end" font-family="Arial,sans-serif" font-size="8" fill="#D4A853">~2h</text>
+
+  <text x="262" y="98" font-family="Arial,sans-serif" font-size="8.5" fill="#374151">▸ Chat completo → llama handleSofia()</text>
+  <text x="262" y="112" font-family="Arial,sans-serif" font-size="8.5" fill="#374151">▸ Perfil aparece con badge "VÍA CHATBOT"</text>
+  <text x="262" y="126" font-family="Arial,sans-serif" font-size="8.5" fill="#374151">▸ Recs automáticas para Sara y Valeria</text>
+  <text x="262" y="140" font-family="Arial,sans-serif" font-size="8.5" fill="#374151">▸ % confianza calculado del scoring</text>
+  <text x="262" y="154" font-family="Arial,sans-serif" font-size="8.5" fill="#374151">▸ Señales extraídas de respuestas libres</text>
+
+  <rect x="262" y="165" width="195" height="22" fill="#FEF3C7" rx="2"/>
+  <text x="359" y="176" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#B45309">Chat completo → handleSofia() → Perfil</text>
+  <text x="359" y="188" text-anchor="middle" font-family="Arial,sans-serif" font-size="7.5" fill="#6B7280">→ recomendacion_sara + recomendacion_valeria</text>
+  <text x="359" y="212" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#9CA3AF" font-style="italic">Alimenta panel Sofía automáticamente</text>
+
+  <!-- FASE 3 -->
+  <rect x="484" y="56" width="216" height="170" fill="#fff" rx="3"/>
+  <rect x="484" y="56" width="216" height="26" fill="#0369A1" rx="3"/>
+  <rect x="484" y="68" width="216" height="14" fill="#0369A1"/>
+  <text x="496" y="72" font-family="Arial,sans-serif" font-size="9" font-weight="700" fill="#fff" letter-spacing="0.5">FASE 3 · REDIRECCIÓN POST-CHAT</text>
+  <text x="692" y="72" text-anchor="end" font-family="Arial,sans-serif" font-size="8" fill="#BAE6FD">~1h</text>
+
+  <text x="494" y="98" font-family="Arial,sans-serif" font-size="8.5" fill="#374151">▸ Pantalla de cierre con arquetipo final</text>
+  <text x="494" y="112" font-family="Arial,sans-serif" font-size="8.5" fill="#374151">▸ Botón "Email con Sara" → abre panel Sara</text>
+  <text x="494" y="126" font-family="Arial,sans-serif" font-size="8.5" fill="#374151">▸ Botón "Propuesta con Valeria" → abre Valeria</text>
+  <text x="494" y="140" font-family="Arial,sans-serif" font-size="8.5" fill="#374151">▸ Contexto precargado: nombre + arquetipo</text>
+  <text x="494" y="154" font-family="Arial,sans-serif" font-size="8.5" fill="#374151">▸ Sin re-ingreso manual de datos</text>
+
+  <rect x="494" y="165" width="196" height="22" fill="#DBEAFE" rx="2"/>
+  <text x="592" y="176" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#0369A1">Arquetipo clasificado → Sara o Valeria</text>
+  <text x="592" y="188" text-anchor="middle" font-family="Arial,sans-serif" font-size="7.5" fill="#6B7280">→ contexto listo, sin fricción</text>
+  <text x="592" y="212" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#9CA3AF" font-style="italic">Pantalla final del chatbot</text>
+
+  <!-- Arrows between phases -->
+  <line x1="235" y1="141" x2="252" y2="141" stroke="#B89047" stroke-width="1.5" marker-end="url(#arr-gold2)"/>
+  <line x1="467" y1="141" x2="484" y2="141" stroke="#B89047" stroke-width="1.5" marker-end="url(#arr-gold2)"/>
+  <defs>
+    <marker id="arr-gold2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L7,3 z" fill="#B89047"/>
+    </marker>
+    <marker id="arr-purple2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L7,3 z" fill="#7C3AED"/>
+    </marker>
+  </defs>
+
+  <!-- VALERIA SECTION -->
+  <rect x="20" y="244" width="680" height="26" fill="#7C3AED" rx="3"/>
+  <rect x="20" y="256" width="680" height="14" fill="#7C3AED"/>
+  <text x="360" y="262" text-anchor="middle" font-family="Arial,sans-serif" font-size="10" font-weight="700" fill="#fff" letter-spacing="1.5">VALERIA · CAMPAÑAS CON PERFILACIÓN SOFÍA</text>
+
+  <rect x="20" y="270" width="680" height="110" fill="#fff" rx="3"/>
+
+  <!-- 4 cols -->
+  <text x="90" y="292" text-anchor="middle" font-family="Arial,sans-serif" font-size="8.5" font-weight="700" fill="#7C3AED" letter-spacing="0.5">SELECTOR DE ARQUETIPO</text>
+  <text x="90" y="306" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#374151">Al crear campaña,</text>
+  <text x="90" y="318" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#374151">muestra distribución</text>
+  <text x="90" y="330" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#374151">de arquetipos Sofía</text>
+  <text x="90" y="342" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#374151">y permite elegir target</text>
+  <text x="90" y="356" text-anchor="middle" font-family="Arial,sans-serif" font-size="7.5" fill="#9CA3AF" font-style="italic">Ej: 42% son RACIONAL</text>
+  <text x="90" y="368" text-anchor="middle" font-family="Arial,sans-serif" font-size="7.5" fill="#9CA3AF" font-style="italic">→ enfocar campaña ahí</text>
+
+  <line x1="190" y1="276" x2="190" y2="374" stroke="#EDE8DF" stroke-width="1"/>
+
+  <text x="280" y="292" text-anchor="middle" font-family="Arial,sans-serif" font-size="8.5" font-weight="700" fill="#7C3AED" letter-spacing="0.5">COPY ADAPTADO</text>
+  <text x="280" y="306" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#374151">El guion/copy cambia</text>
+  <text x="280" y="318" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#374151">según arquetipo:</text>
+  <text x="280" y="334" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#1D4ED8">LEGADO → historia</text>
+  <text x="280" y="346" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#047857">RACIONAL → ROI</text>
+  <text x="280" y="358" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#6D28D9">ESTATUS → exclusividad</text>
+  <text x="280" y="370" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#B45309">ASPIRACIONAL → lifestyle</text>
+
+  <line x1="360" y1="276" x2="360" y2="374" stroke="#EDE8DF" stroke-width="1"/>
+
+  <text x="450" y="292" text-anchor="middle" font-family="Arial,sans-serif" font-size="8.5" font-weight="700" fill="#7C3AED" letter-spacing="0.5">SEGMENTACIÓN DE LISTA</text>
+  <text x="450" y="306" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#374151">Envío masivo filtra</text>
+  <text x="450" y="318" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#374151">prospectos por arquetipo</text>
+  <text x="450" y="330" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#374151">→ versiones distintas</text>
+  <text x="450" y="342" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#374151">del mismo mensaje</text>
+  <text x="450" y="356" text-anchor="middle" font-family="Arial,sans-serif" font-size="7.5" fill="#9CA3AF" font-style="italic">1 campaña, 4 mensajes</text>
+  <text x="450" y="368" text-anchor="middle" font-family="Arial,sans-serif" font-size="7.5" fill="#9CA3AF" font-style="italic">personalizados</text>
+
+  <line x1="530" y1="276" x2="530" y2="374" stroke="#EDE8DF" stroke-width="1"/>
+
+  <text x="616" y="292" text-anchor="middle" font-family="Arial,sans-serif" font-size="8.5" font-weight="700" fill="#7C3AED" letter-spacing="0.5">PLANTILLAS</text>
+  <text x="616" y="306" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#374151">4 plantillas predefinidas</text>
+  <text x="616" y="318" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#374151">una por arquetipo</text>
+  <text x="616" y="330" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#374151">Valeria sugiere la más</text>
+  <text x="616" y="342" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#374151">relevante según perfil</text>
+  <text x="616" y="356" text-anchor="middle" font-family="Arial,sans-serif" font-size="7.5" fill="#9CA3AF" font-style="italic">+ % del segmento</text>
+  <text x="616" y="368" text-anchor="middle" font-family="Arial,sans-serif" font-size="7.5" fill="#9CA3AF" font-style="italic">en la base actual</text>
+
+  <!-- Footer -->
+  <rect x="20" y="392" width="680" height="110" fill="#fff" rx="3"/>
+  <rect x="20" y="392" width="680" height="22" fill="#001A37" rx="3"/>
+  <rect x="20" y="402" width="680" height="12" fill="#001A37"/>
+  <text x="360" y="408" text-anchor="middle" font-family="Georgia,serif" font-size="10" font-weight="700" fill="#B89047" letter-spacing="2">FLUJO COMPLETO</text>
+
+  <!-- Flow boxes -->
+  <rect x="30" y="422" width="88" height="30" fill="#047857" rx="2"/>
+  <text x="74" y="435" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" font-weight="700" fill="#fff">Prospecto</text>
+  <text x="74" y="446" text-anchor="middle" font-family="Arial,sans-serif" font-size="7.5" fill="#A7F3D0">responde chatbot</text>
+
+  <text x="126" y="440" font-family="Arial,sans-serif" font-size="14" fill="#B89047">→</text>
+
+  <rect x="140" y="422" width="88" height="30" fill="#001A37" rx="2"/>
+  <text x="184" y="435" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" font-weight="700" fill="#B89047">Sofía clasifica</text>
+  <text x="184" y="446" text-anchor="middle" font-family="Arial,sans-serif" font-size="7.5" fill="#6B7280">arquetipo RT</text>
+
+  <text x="236" y="440" font-family="Arial,sans-serif" font-size="14" fill="#B89047">→</text>
+
+  <rect x="250" y="422" width="88" height="30" fill="#B89047" rx="2"/>
+  <text x="294" y="435" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" font-weight="700" fill="#fff">Perfil guardado</text>
+  <text x="294" y="446" text-anchor="middle" font-family="Arial,sans-serif" font-size="7.5" fill="#FEF3C7">+ recs generadas</text>
+
+  <text x="346" y="440" font-family="Arial,sans-serif" font-size="14" fill="#B89047">→</text>
+
+  <rect x="360" y="422" width="88" height="30" fill="#0369A1" rx="2"/>
+  <text x="404" y="435" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" font-weight="700" fill="#fff">Sara redacta</text>
+  <text x="404" y="446" text-anchor="middle" font-family="Arial,sans-serif" font-size="7.5" fill="#BAE6FD">email adaptado</text>
+
+  <text x="456" y="440" font-family="Arial,sans-serif" font-size="14" fill="#B89047">→</text>
+
+  <rect x="470" y="422" width="88" height="30" fill="#7C3AED" rx="2"/>
+  <text x="514" y="435" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" font-weight="700" fill="#fff">Valeria genera</text>
+  <text x="514" y="446" text-anchor="middle" font-family="Arial,sans-serif" font-size="7.5" fill="#DDD6FE">campaña/guion</text>
+
+  <text x="566" y="440" font-family="Arial,sans-serif" font-size="14" fill="#047857">→</text>
+
+  <rect x="580" y="422" width="110" height="30" fill="#EDE8DF" rx="2"/>
+  <text x="635" y="435" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" font-weight="700" fill="#001A37">Cierre acelerado</text>
+  <text x="635" y="446" text-anchor="middle" font-family="Arial,sans-serif" font-size="7.5" fill="#6B7280">experiencia unificada</text>
+</svg>

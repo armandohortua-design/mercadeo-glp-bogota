@@ -5,8 +5,66 @@
  */
 
 const pool = require('./db');
+const nodemailer = require('nodemailer');
 
 const TENANT_ID = 'tenant-glp-001';
+
+// C.1: Notificación al admin cuando se detecta una crisis GRAVE
+async function notifyAdminCrisisGrave({ nivel, titulo, descripcion, tipo, metricaActual, metricaBaseline, variacionPct }) {
+  const adminEmail = process.env.ADMIN_EMAIL;
+  const smtpUser   = process.env.SMTP_USER;
+  const smtpPass   = process.env.SMTP_PASS;
+  if (!adminEmail || !smtpUser || !smtpPass) return;
+
+  const colorNivel  = nivel === 'grave' ? '#DC2626' : nivel === 'moderada' ? '#F59E0B' : '#6B7280';
+  const emojiNivel  = nivel === 'grave' ? '🚨' : nivel === 'moderada' ? '⚠️' : '📊';
+  const labelTipo   = { prospectos_nuevos: 'Prospectos Nuevos', estancamiento: 'Estancamiento de Embudo', valor_pipeline: 'Valor del Pipeline' }[tipo] || tipo;
+
+  try {
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: smtpUser, pass: smtpPass }
+    });
+
+    await transporter.sendMail({
+      from: `"CRM GLP · Alertas" <${smtpUser}>`,
+      to: adminEmail,
+      subject: `${emojiNivel} CRISIS ${nivel.toUpperCase()} detectada — ${labelTipo}`,
+      html: `
+        <div style="font-family:sans-serif;max-width:640px;margin:0 auto">
+          <div style="background:${colorNivel};color:#fff;padding:20px;text-align:center">
+            <h2 style="margin:0;letter-spacing:2px">${emojiNivel} ALERTA DE CRISIS ${nivel.toUpperCase()}</h2>
+            <p style="margin:4px 0;font-size:12px;opacity:.85">${new Date().toLocaleString('es-CO')} · GLP Wealth Management</p>
+          </div>
+          <div style="padding:24px;background:#fff">
+            <h3 style="color:${colorNivel};margin-top:0">${titulo}</h3>
+            <p style="color:#374151;line-height:1.6">${descripcion}</p>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;margin:20px 0">
+              <tr style="background:#f3f4f6">
+                <th style="padding:10px;text-align:left">Métrica</th>
+                <th style="padding:10px;text-align:right">Valor actual</th>
+                <th style="padding:10px;text-align:right">Baseline</th>
+                <th style="padding:10px;text-align:right">Variación</th>
+              </tr>
+              <tr>
+                <td style="padding:10px;border-bottom:1px solid #eee">${labelTipo}</td>
+                <td style="padding:10px;text-align:right;border-bottom:1px solid #eee;font-weight:700;color:${colorNivel}">${typeof metricaActual === 'number' && metricaActual > 1000 ? '$' + metricaActual.toLocaleString() : metricaActual}</td>
+                <td style="padding:10px;text-align:right;border-bottom:1px solid #eee">${typeof metricaBaseline === 'number' && metricaBaseline > 1000 ? '$' + Number(metricaBaseline).toLocaleString() : Number(metricaBaseline).toFixed(1)}</td>
+                <td style="padding:10px;text-align:right;border-bottom:1px solid #eee;color:${colorNivel};font-weight:700">${Number(variacionPct).toFixed(1)}%</td>
+              </tr>
+            </table>
+            <div style="background:#FFF7ED;border-left:4px solid ${colorNivel};padding:14px;margin-bottom:20px">
+              <p style="margin:0;font-size:13px;color:#92400E"><strong>Acción recomendada:</strong> Ingresa al CRM → Dashboard → Panel de Crisis para ver el análisis completo y activar la Respuesta Coordinada del equipo de agentes.</p>
+            </div>
+            <p style="color:#9ca3af;font-size:11px">Esta alerta fue generada automáticamente por el motor de detección de crisis de GLP CRM. Solo se notifica en niveles GRAVE.</p>
+          </div>
+        </div>`
+    });
+    console.log(`[Crisis] 📧 Admin notificado — crisis ${nivel.toUpperCase()} en ${tipo}`);
+  } catch (err) {
+    console.error('[Crisis] Error enviando email al admin:', err.message);
+  }
+}
 
 // Umbrales de variación negativa para cada nivel
 // (porcentaje de caída respecto al baseline)
@@ -81,8 +139,11 @@ async function getBaselineValorPipeline() {
 
   const r = rows[0];
   return {
+    // Si no hay pipeline en Negociación/Cierre ni esta semana ni la anterior, no hay
+    // baseline real que comparar — devolver 0 evita fabricar una "caída del 100%" contra
+    // un baseline inventado de $1.
     actual: Number(r.valor_actual),
-    baseline: Number(r.valor_semana_ant) || Number(r.valor_actual) || 1,
+    baseline: Number(r.valor_semana_ant) || Number(r.valor_actual) || 0,
   };
 }
 
@@ -120,6 +181,9 @@ async function detectCrisis() {
         pn.actual, pn.baseline, varPN
       ]);
       console.log(`[Crisis] ⚠️ ALERTA ${nivelPN.toUpperCase()}: Prospectos nuevos (${varPN.toFixed(1)}%)`);
+      if (nivelPN === 'grave') {
+        await notifyAdminCrisisGrave({ nivel: nivelPN, titulo: `📉 Caída de prospectos nuevos — ${Math.abs(varPN).toFixed(0)}% menos esta semana`, descripcion: `Esta semana ingresaron ${pn.actual} prospectos nuevos. El promedio de las últimas 3 semanas fue ${pn.baseline.toFixed(1)}. Caída de ${Math.abs(varPN).toFixed(1)}%.`, tipo: 'prospectos_nuevos', metricaActual: pn.actual, metricaBaseline: pn.baseline, variacionPct: varPN });
+      }
       alertasCreadas++;
     }
 
@@ -143,6 +207,9 @@ async function detectCrisis() {
         est.actual, est.baseline, varEst
       ]);
       console.log(`[Crisis] ⚠️ ALERTA ${nivelEst.toUpperCase()}: Estancamiento de embudo (${varEst.toFixed(1)}% más que semana ant.)`);
+      if (nivelEst === 'grave') {
+        await notifyAdminCrisisGrave({ nivel: nivelEst, titulo: `🧊 Embudo estancado — ${est.actual} prospectos sin movimiento +10 días`, descripcion: `Hay ${est.actual} prospectos en etapas tempranas sin actividad en más de 10 días. La semana anterior eran ${est.baseline}. Aumento del ${varEst.toFixed(1)}%.`, tipo: 'estancamiento', metricaActual: est.actual, metricaBaseline: est.baseline, variacionPct: varEst });
+      }
       alertasCreadas++;
     }
 
@@ -163,6 +230,9 @@ async function detectCrisis() {
         vp.actual, vp.baseline, varVP
       ]);
       console.log(`[Crisis] ⚠️ ALERTA ${nivelVP.toUpperCase()}: Valor pipeline (${varVP.toFixed(1)}%)`);
+      if (nivelVP === 'grave') {
+        await notifyAdminCrisisGrave({ nivel: nivelVP, titulo: `💸 Pipeline de cierre cayó — $${vp.actual.toLocaleString()} vs $${vp.baseline.toLocaleString()} USD`, descripcion: `El valor total en Negociación y Cierre es $${vp.actual.toLocaleString()} USD. La semana anterior fue $${vp.baseline.toLocaleString()} USD. Variación: ${varVP.toFixed(1)}%.`, tipo: 'valor_pipeline', metricaActual: vp.actual, metricaBaseline: vp.baseline, variacionPct: varVP });
+      }
       alertasCreadas++;
     }
 

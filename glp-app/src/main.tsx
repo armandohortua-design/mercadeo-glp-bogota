@@ -1,13 +1,27 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { MARKET_STUDY_DB } from './marketStudyDb'
-import { C, PROJECTS, PROJECT_IMG, Project } from './projectsData'
+import { C, PROJECTS, PROJECT_IMG, Project, SEPARACION_PROYECTOS_DEFAULT, SeparacionProyectosTabla, getSeparacionProyecto } from './projectsData'
 import { ProjectDetailView } from './projectDetail'
-import { supabase } from './lib/supabase'
+import { API_ROOT } from './apiRoot'
+import { getImageFor, fetchLiveProjectImages } from './liveProjectImages'
+import { applyUnidadesToProjects } from './unidadesOverride'
 
-const trackFaqClick = (question: string, category: string) => {
-  supabase.from('faq_clicks').insert({ question, category, source: 'landing' }).then(() => {});
+// Antes se insertaba directo al cliente de Supabase (RLS + errores silenciosos). Ahora
+// pasa por el backend, que registra el clic por faq_id real — no se puede desincronizar
+// por texto porque no compara texto en absoluto.
+const trackFaqClick = (faqId: number | undefined) => {
+  if (!faqId) return; // FAQ del respaldo fijo (sin id real) — no hay nada que registrar
+  fetch(`${API_ROOT}/api/faq-clicks`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ faq_id: faqId, source: 'landing' }),
+  }).catch(() => {});
 };
+
+// FAQ_DATA_FALLBACK: contenido fijo por si el backend no responde (la landing es pública y
+// no puede depender de que el CRM esté arriba). Cuando el fetch a /api/faqs funciona, ese
+// contenido reemplaza a este — así landing y CRM comparten EXACTAMENTE el mismo texto de
+// pregunta, y los clics reales de la landing sí se pueden cruzar con las FAQs del CRM para
+// contar "Más Consultadas" (antes tenían textos redactados por separado y nunca coincidían).
 
 /* """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
    GLP  Grupo Los Pueblos · Landing Page
@@ -15,10 +29,10 @@ const trackFaqClick = (question: string, category: string) => {
    """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""" */
 
 // ────────────────────────────────────────────────────────
-type FAQ = { q: string; a: string }
+type FAQ = { q: string; a: string; id?: number }
 type FAQCategory = { title: string; icon: string; items: FAQ[] }
 
-const FAQ_DATA: FAQCategory[] = [
+const FAQ_DATA_FALLBACK: FAQCategory[] = [
   {
     title: 'Estabilidad Macroeconómica',
     icon: '\u{1F3DB}\u{FE0F}',
@@ -162,11 +176,27 @@ const AnimatedCounter: React.FC<{ end: number; suffix: string; prefix?: string; 
 const Navbar: React.FC = () => {
   const [scrolled, setScrolled] = React.useState(false)
   const [menuOpen, setMenuOpen] = React.useState(false)
+  const [activeSection, setActiveSection] = React.useState('inicio')
 
   React.useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 60)
     window.addEventListener('scroll', handleScroll)
     return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  React.useEffect(() => {
+    const ids = ['inicio', 'projects', 'why-panama', 'trayectoria', 'testimonios', 'faq', 'contact']
+    const sections = ids.map(id => document.getElementById(id)).filter(Boolean) as HTMLElement[]
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) setActiveSection(entry.target.id)
+        })
+      },
+      { rootMargin: '-40% 0px -55% 0px', threshold: 0 }
+    )
+    sections.forEach(s => observer.observe(s))
+    return () => observer.disconnect()
   }, [])
 
   const linkStyle: React.CSSProperties = {
@@ -183,9 +213,17 @@ const Navbar: React.FC = () => {
     borderBottom: '1px solid transparent',
   }
 
+  // Mismo orden en que aparecen las secciones al hacer scroll — antes el menú
+  // listaba Nosotros antes que Proyectos aunque en la página Proyectos ya aparecía
+  // primero, así que un clic en el nav no coincidía con lo que el scroll mostraba.
   const links = [
+    { label: 'Inicio', target: 'inicio' },
     { label: 'Proyectos', target: 'projects' },
     { label: '¿Por qué Panamá?', target: 'why-panama' },
+    // Apunta a "trayectoria" (la historia de GLP), no a "nosotros" (que en realidad
+    // es la sección de aliados — Capital Brokers, Colombia Law Group). El nav decía
+    // "Nosotros" pero aterrizaba directo en Capital Brokers, sin que GLP apareciera.
+    { label: 'Nosotros', target: 'trayectoria' },
     { label: 'FAQ', target: 'faq' },
     { label: 'Contacto', target: 'contact' },
   ]
@@ -193,28 +231,20 @@ const Navbar: React.FC = () => {
   return (
     <nav style={{
       position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000,
-      background: scrolled ? 'rgba(255, 255, 255, 0.85)' : 'transparent',
-      backdropFilter: 'blur(10px)',
-      boxShadow: scrolled ? '0 1px 15px rgba(0,0,0,0.05)' : 'none',
+      background: scrolled ? 'rgba(255, 255, 255, 0.85)' : C.teal,
+      backdropFilter: scrolled ? 'blur(10px)' : 'none',
+      boxShadow: scrolled ? '0 1px 15px rgba(0,0,0,0.05)' : '0 1px 15px rgba(0,0,0,0.15)',
       borderBottom: scrolled ? `1px solid ${C.sand}` : 'none',
       transition: 'all 0.4s ease',
       padding: scrolled ? '14px 0' : '24px 0',
     }}>
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        {/* Logo */}
+        {/* Logo — marca "GLP" (Grupo Los Pueblos) reemplazada por Capital Brokers
+            Properties. Solo texto en la landing (sin isotipo), a pedido del usuario. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }} onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-          <div style={{
-            width: 44, height: 44, borderRadius: 0,
-            background: scrolled ? C.teal : 'rgba(255,255,255,0.15)',
-            border: `1.5px solid ${scrolled ? C.teal : C.white}`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontWeight: 800, fontSize: '1.2rem', color: C.white,
-            backdropFilter: 'blur(8px)', transition: 'all 0.3s',
-            fontFamily: C.fontSerif,
-          }}>GLP</div>
           <div>
             <div style={{ fontWeight: 600, fontSize: '1.1rem', color: scrolled ? C.text : C.white, fontFamily: C.fontSerif, letterSpacing: '0.03em', lineHeight: 1.2, transition: 'color 0.3s' }}>
-              Grupo Los Pueblos
+              Capital Brokers Properties
             </div>
             <div style={{ fontSize: '0.65rem', color: scrolled ? C.textSec : 'rgba(255,255,255,0.7)', letterSpacing: '0.18em', fontFamily: C.fontSans, textTransform: 'uppercase', transition: 'color 0.3s', marginTop: 2 }}>
               Real Estate · Panamá
@@ -224,19 +254,50 @@ const Navbar: React.FC = () => {
 
         {/* Desktop Links */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 28 }} className="nav-links-desktop">
-          {links.map(l => (
-            <a key={l.target} style={linkStyle} onClick={() => smoothScroll(l.target)}
-              onMouseEnter={e => {
-                e.currentTarget.style.color = C.coral;
-                e.currentTarget.style.borderBottomColor = C.coral;
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.color = scrolled ? C.text : C.white;
-                e.currentTarget.style.borderBottomColor = 'transparent';
-              }}>
-              {l.label}
-            </a>
-          ))}
+          {links.map(l => {
+            const active = activeSection === l.target
+            // Sobre la foto (sin scroll) el rojo corporativo (#A6192E, oscuro) se pierde
+            // contra fondos igual de oscuros — se sube a un rojo más claro/saturado solo
+            // en ese estado, y se añade una placa oscura translúcida detrás para
+            // garantizar contraste sin depender del tono de la foto de fondo. Sobre
+            // blanco (scrolled) el rojo corporativo ya se lee bien tal cual.
+            const activeColor = scrolled ? C.red : '#FF6B5B'
+            return (
+              <a key={l.target} style={{
+                ...linkStyle,
+                color: active ? activeColor : linkStyle.color,
+                borderBottomColor: active ? activeColor : 'transparent',
+                background: active && !scrolled ? 'rgba(0,20,45,0.35)' : 'transparent',
+                padding: active && !scrolled ? '6px 10px' : linkStyle.padding,
+                borderRadius: active && !scrolled ? 4 : 0,
+                textShadow: active && !scrolled ? '0 1px 4px rgba(0,0,0,0.4)' : 'none',
+              }} onClick={() => smoothScroll(l.target)}
+                onMouseEnter={e => {
+                  e.currentTarget.style.color = scrolled ? C.red : '#FF6B5B';
+                  e.currentTarget.style.borderBottomColor = scrolled ? C.red : '#FF6B5B';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.color = active ? activeColor : (scrolled ? C.text : C.white);
+                  e.currentTarget.style.borderBottomColor = active ? activeColor : 'transparent';
+                }}>
+                {l.label}
+              </a>
+            )
+          })}
+          {/* Mismo look que el resto de los links (sin recuadro) — antes eran botones
+              con borde, un estilo distinto al de Inicio/Nosotros/Proyectos/etc. */}
+          <a href="/portal.html" style={linkStyle}
+            onMouseEnter={e => { e.currentTarget.style.color = C.red; e.currentTarget.style.borderBottomColor = C.red; }}
+            onMouseLeave={e => { e.currentTarget.style.color = scrolled ? C.text : C.white; e.currentTarget.style.borderBottomColor = 'transparent'; }}>
+            Portal Clientes
+          </a>
+          {/* Antes era un botón flotante circular fijo en la esquina inferior — se
+              integra como una opción más del menú principal. */}
+          <a href="/crm.html" target="_blank" rel="noopener noreferrer" style={linkStyle}
+            onMouseEnter={e => { e.currentTarget.style.color = C.red; e.currentTarget.style.borderBottomColor = C.red; }}
+            onMouseLeave={e => { e.currentTarget.style.color = scrolled ? C.text : C.white; e.currentTarget.style.borderBottomColor = 'transparent'; }}>
+            Intranet
+          </a>
         </div>
 
         {/* Mobile Hamburger */}
@@ -257,10 +318,16 @@ const Navbar: React.FC = () => {
           padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16,
         }}>
           {links.map(l => (
-            <a key={l.target} style={{ ...linkStyle, color: C.text, fontSize: '0.8rem' }} onClick={() => { smoothScroll(l.target); setMenuOpen(false) }}>
+            <a key={l.target} style={{ ...linkStyle, color: activeSection === l.target ? C.red : C.text, fontSize: '0.8rem' }} onClick={() => { smoothScroll(l.target); setMenuOpen(false) }}>
               {l.label}
             </a>
           ))}
+          <a href="/portal.html" style={{ ...linkStyle, color: C.text, fontSize: '0.8rem' }}>
+            Portal Clientes
+          </a>
+          <a href="/crm.html" target="_blank" rel="noopener noreferrer" style={{ ...linkStyle, color: C.text, fontSize: '0.8rem' }}>
+            Intranet
+          </a>
         </div>
       )}
 
@@ -275,14 +342,26 @@ const Navbar: React.FC = () => {
   )
 }
 // ────────────────────────────────────────────────────────
-const Hero: React.FC = () => {
+const Hero: React.FC<{ onSearch: (f: { category: string; price: string; beds: string }) => void }> = ({ onSearch }) => {
   const [visible, setVisible] = React.useState(false)
   React.useEffect(() => { setTimeout(() => setVisible(true), 100) }, [])
 
+  const [searchCategory, setSearchCategory] = React.useState('todos')
+  const [searchPrice, setSearchPrice] = React.useState('todos')
+  const [searchBeds, setSearchBeds] = React.useState('todos')
+
+  const runSearch = () => {
+    onSearch({ category: searchCategory, price: searchPrice, beds: searchBeds })
+    smoothScroll('projects')
+  }
+
   return (
-    <section style={{
+    <section id="inicio" style={{
       minHeight: '100vh',
-      backgroundImage: `linear-gradient(rgba(0, 35, 73, 0.2), rgba(0, 35, 73, 0.45)), url(/img/beachfront_residence_families.png)`,
+      // Overlay más claro que antes (la foto se veía muy oscura) — se mantiene una
+      // franja más oscura solo en los primeros ~160px (zona del nav) para que el menú
+      // siga siendo legible sin depender del tono de la foto de fondo.
+      backgroundImage: `linear-gradient(180deg, rgba(0, 20, 45, 0.45) 0px, rgba(0, 35, 73, 0.12) 160px, rgba(0, 35, 73, 0.16) 100%), url(/img/beachfront_residence_families.png)`,
       backgroundSize: 'cover',
       backgroundPosition: 'center',
       display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
@@ -314,20 +393,69 @@ const Hero: React.FC = () => {
           fontSize: 'clamp(2.4rem, 5vw, 4.2rem)', fontWeight: 400,
           color: C.white, lineHeight: 1.15, margin: '0 0 24px',
           letterSpacing: '0.01em', fontFamily: C.fontSerif,
+          textShadow: '0 2px 16px rgba(0,20,45,0.45)',
         }}>
           Invierte en Panamá.<br />
-          <span style={{ fontStyle: 'italic', color: C.coral }}>
+          <span style={{ fontStyle: 'italic', color: C.red, fontWeight: 600, textShadow: '0 2px 12px rgba(0,0,0,0.35)' }}>
             Rentabilidad en USD.
           </span>
         </h1>
 
         <p style={{
-          fontSize: 'clamp(0.95rem, 2vw, 1.15rem)', color: 'rgba(255,255,255,0.85)',
+          fontSize: 'clamp(0.95rem, 2vw, 1.15rem)', color: 'rgba(255,255,255,0.92)',
           maxWidth: 650, margin: '0 auto', lineHeight: 1.6, fontWeight: 400,
           fontFamily: C.fontSans, letterSpacing: '0.03em',
+          textShadow: '0 2px 10px rgba(0,20,45,0.4)',
         }}>
           40+ años de trayectoria · 15 proyectos exclusivos · Desde USD $120,000
         </p>
+
+        {/* Buscador rápido — mismas 3 categorías que ya existían como filtros
+            avanzados dentro de Proyectos, fijadas de una vez desde el hero para no
+            obligar a bajar y volver a elegir. El CTA "Buscar" vive en su propia franja
+            de ancho completo, siempre pegada a los campos — antes flexeaba junto a los
+            selects y, en cuanto no cabían los 4 en una fila, el botón caía a una línea
+            aparte con su propio margen y esquinas redondeadas, quedando como una pastilla
+            suelta flotando debajo del buscador en vez de leerse como parte del mismo. */}
+        <div style={{
+          maxWidth: 880, width: '100%', margin: '36px auto 0',
+          borderRadius: 6, overflow: 'hidden',
+          boxShadow: '0 20px 50px rgba(0,15,35,0.35)',
+        }}>
+          <div style={{
+            background: 'rgba(255,255,255,0.97)', padding: '10px 6px',
+            display: 'flex', flexWrap: 'wrap' as const, alignItems: 'stretch',
+          }}>
+            {[
+              { label: 'Ubicación', value: searchCategory, set: setSearchCategory, options: [
+                ['todos', 'Todas las zonas'], ['Golf y Country Club', 'Golf y Country Club'],
+                ['Marina Panamá', 'Marina Panamá'], ['Ciudad', 'Ciudad'], ['Playa', 'Playa'],
+              ]},
+              { label: 'Presupuesto', value: searchPrice, set: setSearchPrice, options: [
+                ['todos', 'Cualquier precio'], ['200', 'Hasta $200,000'], ['350', 'Hasta $350,000'],
+                ['500', 'Hasta $500,000'], ['over500', 'Más de $500,000'],
+              ]},
+              { label: 'Habitaciones', value: searchBeds, set: setSearchBeds, options: [
+                ['todos', 'Cualquier número'], ['1', '1 Habitación'], ['2', '2 Habitaciones'], ['3', '3+ Habitaciones'],
+              ]},
+            ].map((f, i) => (
+              <div key={f.label} style={{ flex: '1 1 180px', display: 'flex', flexDirection: 'column' as const, padding: '9px 20px', borderRight: i < 2 ? `1px solid ${C.sand}` : 'none', textAlign: 'left' as const }}>
+                <label style={{ fontSize: '0.6rem', letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: C.coral, fontWeight: 700, marginBottom: 4, fontFamily: C.fontSans }}>{f.label}</label>
+                <select value={f.value} onChange={e => f.set(e.target.value)}
+                  style={{ border: 'none', background: 'none', fontFamily: C.fontSans, fontSize: '0.8rem', color: C.teal, fontWeight: 600, outline: 'none', cursor: 'pointer', padding: 0 }}>
+                  {f.options.map(([val, lbl]) => <option key={val} value={val}>{lbl}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+          <button onClick={runSearch} style={{
+            display: 'block', width: '100%', background: C.red, color: C.white, border: 'none',
+            padding: '15px 0', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.1em',
+            textTransform: 'uppercase' as const, cursor: 'pointer', fontFamily: C.fontSans,
+          }}>
+            Buscar
+          </button>
+        </div>
       </div>
 
       {/* Counters */}
@@ -344,33 +472,8 @@ const Hero: React.FC = () => {
         <AnimatedCounter end={40} suffix="+" label="Años GLP" />
       </div>
 
-      {/* Explorar Proyectos Button placed below the counters */}
-      <div style={{
-        display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap',
-        marginTop: 50, position: 'relative', zIndex: 2,
-        opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(30px)',
-        transition: 'all 1.8s ease',
-      }}>
-        <button onClick={() => smoothScroll('projects')} style={{
-          background: C.white, color: C.teal, border: `1.5px solid ${C.white}`,
-          padding: '16px 40px', borderRadius: 0, fontWeight: 700, fontSize: '0.85rem',
-          textTransform: 'uppercase', letterSpacing: '0.12em', cursor: 'pointer',
-          transition: 'all 0.3s ease', boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
-          fontFamily: C.fontSans,
-        }}
-          onMouseEnter={e => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.color = C.white;
-            e.currentTarget.style.transform = 'translateY(-2px)';
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.background = C.white;
-            e.currentTarget.style.color = C.teal;
-            e.currentTarget.style.transform = 'translateY(0)';
-          }}>
-          Explorar Proyectos
-        </button>
-      </div>
+      {/* Se quitó "Explorar Proyectos" — redundante con el botón "Buscar" del
+          buscador, que ya baja a Proyectos (y además filtrado). */}
     </section>
   )
 }
@@ -400,44 +503,34 @@ const getZoneNotes = (project: any) => {
 const ProjectCard: React.FC<{
   project: Project;
   index: number;
-  origIndex: number;
-  onZoom: (img: string) => void;
-  expanded: boolean;
-  setExpanded: (val: boolean) => void;
-  onTriggerCalculator: (i: number) => void;
-  onTriggerContact: (name: string) => void;
-}> = ({ project, index, origIndex, onZoom, expanded, setExpanded, onTriggerCalculator, onTriggerContact }) => {
+  separacionTabla: SeparacionProyectosTabla;
+}> = ({ project, index, separacionTabla }) => {
   const [hovered, setHovered] = React.useState(false)
-  const [cardSearchQuery, setCardSearchQuery] = React.useState(project.zone.split(',')[0])
 
-  const matchedInsights = React.useMemo(() => {
-    if (!cardSearchQuery.trim()) return [];
-    const q = cardSearchQuery.toLowerCase();
-    return MARKET_STUDY_DB.filter(item =>
-      item.text.toLowerCase().includes(q) ||
-      item.section.toLowerCase().includes(q)
-    );
-  }, [cardSearchQuery]);
-
-  const typeLabel = { patrimonial: 'Patrimonial', disfrute: 'Disfrute', renta: 'Renta' }[project.type]
   const gradient = getGradient(project.type, index)
-  const imgs = PROJECT_IMG[project.name]
+  const imgs = getImageFor(project.name, PROJECT_IMG[project.name])
   const heroStyle: React.CSSProperties = imgs
     ? { backgroundImage: `url(${imgs.main})`, backgroundSize: 'cover', backgroundPosition: 'center' }
     : { background: gradient }
+  const goToDetail = () => window.open(`/project.html?name=${encodeURIComponent(project.name)}`, '_blank');
+
+  // Formato editorial: foto más grande con el precio superpuesto (antes vivía en el
+  // cuerpo, separado de la foto) y la nota de zona visible de entrada — antes solo
+  // existía dentro de la ficha de detalle, a la que había que hacer clic para verla.
+  const zoneNote = getZoneNotes(project);
+  const [zoneTitle, ...zoneRest] = zoneNote.split(':');
+  const zoneDesc = zoneRest.join(':').trim();
 
   return (
     <div
       id={`project-card-${encodeURIComponent(project.name)}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onClick={() => {
-        window.open(`/project.html?name=${encodeURIComponent(project.name)}`, '_blank');
-      }}
+      onClick={goToDetail}
       style={{
-        background: C.white, borderRadius: 0, overflow: 'hidden',
+        background: C.white, borderRadius: 6, overflow: 'hidden',
         border: `1px solid ${C.sand}`,
-        boxShadow: hovered ? '0 12px 30px rgba(0,35,73,0.08)' : 'none',
+        boxShadow: hovered ? '0 16px 36px rgba(0,35,73,0.12)' : '0 2px 10px rgba(0,35,73,0.04)',
         transform: hovered ? 'translateY(-6px)' : 'translateY(0)',
         transition: 'all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
         cursor: 'pointer', position: 'relative',
@@ -446,211 +539,92 @@ const ProjectCard: React.FC<{
         height: '100%',
       }}
     >
-      {/* Photo image area container with zoom effect */}
-      <div style={{ height: 220, overflow: 'hidden', position: 'relative' }}>
+      {/* Photo */}
+      <div style={{ height: 320, overflow: 'hidden', position: 'relative' }}>
         <div
-          onClick={e => {
-            e.stopPropagation();
-            onZoom(imgs?.main || '');
-          }}
           style={{
             height: '100%',
             width: '100%',
             ...heroStyle,
             transition: 'transform 0.5s ease',
-            transform: hovered ? 'scale(1.05)' : 'scale(1)',
-            cursor: 'zoom-in',
+            transform: hovered ? 'scale(1.06)' : 'scale(1)',
           }}
         />
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,20,45,0.65), rgba(0,20,45,0) 55%)', pointerEvents: 'none' }} />
+        <div style={{
+          position: 'absolute', top: 14, left: 14,
+          background: 'rgba(6,214,160,0.95)', color: C.white,
+          padding: '4px 12px', borderRadius: 20,
+          fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em',
+          fontFamily: C.fontSans,
+        }}>
+          Disponible
+        </div>
+        <div style={{
+          position: 'absolute', top: 14, right: 14,
+          background: 'rgba(255,255,255,0.92)', color: C.red,
+          padding: '4px 12px', borderRadius: 20,
+          fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em',
+          fontFamily: C.fontSans,
+        }}>
+          {project.tag}
+        </div>
+        <div style={{ position: 'absolute', bottom: 16, left: 18, color: C.white }}>
+          <div style={{ fontSize: '0.6rem', letterSpacing: '0.1em', textTransform: 'uppercase', opacity: 0.85, marginBottom: 3, fontFamily: C.fontSans }}>Desde</div>
+          <div style={{ fontFamily: C.fontSerif, fontSize: '1.6rem', fontWeight: 500, textShadow: '0 2px 10px rgba(0,15,35,0.5)' }}>{fmt(project.price)}</div>
+        </div>
       </div>
 
       {/* Card body */}
-      <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', flex: 1 }}>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          <h3 style={{ margin: '0 0 4px', fontSize: '1.25rem', fontWeight: 400, fontFamily: C.fontSerif, color: C.text }}>
-            <a
-              href={`/project.html?name=${encodeURIComponent(project.name)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={e => e.stopPropagation()}
-              style={{ color: 'inherit', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}
-              onMouseEnter={e => e.currentTarget.style.color = C.coral}
-              onMouseLeave={e => e.currentTarget.style.color = C.text}
-            >
-              {project.name} <span style={{ fontSize: '0.85rem', color: C.textSec }}> </span>
-            </a>
-          </h3>
-          <p style={{ margin: '0 0 16px', fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: C.textSec, fontFamily: C.fontSans }}>{project.zone}</p>
+      <div style={{ padding: '20px 22px 22px', display: 'flex', flexDirection: 'column', flex: 1 }}>
+        <p style={{ margin: '0 0 6px', fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: C.textSec, fontFamily: C.fontSans }}>{project.zone}</p>
+        <h3 style={{ margin: '0 0 12px', fontSize: '1.3rem', fontWeight: 400, fontFamily: C.fontSerif, color: C.red }}>
+          {project.name}
+        </h3>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <div style={{ fontSize: '1.35rem', fontWeight: 400, color: C.teal, fontFamily: C.fontSerif }}>
-              Desde {fmt(project.price)}
-            </div>
+        {/* Nota de zona — visible sin clic */}
+        <div style={{ background: C.bg, borderLeft: `3px solid ${C.coral}`, padding: '10px 12px', marginBottom: 16 }}>
+          {zoneTitle && zoneDesc ? (
+            <>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: C.teal, marginBottom: 2, fontFamily: C.fontSans }}>{zoneTitle}</div>
+              <div style={{ fontSize: '0.78rem', color: C.textSec, lineHeight: 1.5, fontFamily: C.fontSans }}>{zoneDesc}</div>
+            </>
+          ) : (
+            <div style={{ fontSize: '0.78rem', color: C.textSec, lineHeight: 1.5, fontFamily: C.fontSans }}>{zoneNote}</div>
+          )}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0, borderTop: `1px solid ${C.sand}`, borderBottom: `1px solid ${C.sand}`, padding: '12px 0', marginTop: 'auto', marginBottom: 16 }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: C.teal, fontFamily: C.fontSans }}>{project.area}</div>
+            <div style={{ fontSize: '0.58rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: C.textSec, marginTop: 2, fontFamily: C.fontSans }}>Área</div>
           </div>
-
-          <div style={{ display: 'flex', gap: 16, fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.textSec, fontFamily: C.fontSans, marginBottom: 8 }}>
-            <span>Hab: {project.beds.split('- ')[0]}</span>
-            <span>Área: {project.area}</span>
+          <div style={{ textAlign: 'center', borderLeft: `1px solid ${C.sand}`, borderRight: `1px solid ${C.sand}` }}>
+            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: C.teal, fontFamily: C.fontSans }}>{project.beds}</div>
+            <div style={{ fontSize: '0.58rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: C.textSec, marginTop: 2, fontFamily: C.fontSans }}>Habitaciones</div>
           </div>
-          <div style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', color: C.coral, fontFamily: C.fontSans, marginBottom: 16 }}>
-            Entrega: {project.delivery}
-          </div>
-
-          <div style={{
-            marginTop: 16, paddingTop: 16,
-            borderTop: `1px solid ${C.sand}`,
-          }}>
-            {/* PHOTO GALLERY */}
-            {imgs && imgs.gallery.length > 0 && (
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.text, fontFamily: C.fontSans }}>Galería del Proyecto</div>
-                  <div style={{ fontSize: '0.7rem', color: C.textSec, fontStyle: 'italic', fontFamily: C.fontSans }}>Ampliar foto</div>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(imgs.gallery.length, 3)}, 1fr)`, gap: 8 }}>
-                  {imgs.gallery.slice(0, 3).map((g, gi) => (
-                    <div key={gi} style={{ borderRadius: 0, overflow: 'hidden', height: 80 }}
-                      onClick={e => { e.stopPropagation(); onZoom(g); }}>
-                      <img src={g} alt={`${project.name} ${gi+1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'zoom-in', transition: 'transform 0.3s' }}
-                        onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.05)')}
-                        onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')} />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Spec details in 2-column card grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12, marginBottom: 16, fontSize: '0.8rem', fontFamily: C.fontSans }}>
-              {/* Ocultado por solicitud: Precio/m²
-              <div style={{ background: C.white, padding: '8px 10px', borderRadius: 0, border: `1px solid ${C.sand}` }}>
-                <span style={{ color: C.textSec, display: 'block', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>Precio/m²</span>
-                <strong style={{ color: C.text, fontWeight: 700 }}>USD ${project.priceM2}</strong>
-              </div>
-              */}
-              {/* Ocultado por solicitud: Renta/m²
-              <div style={{ background: C.white, padding: '8px 10px', borderRadius: 0, border: `1px solid ${C.sand}` }}>
-                <span style={{ color: C.textSec, display: 'block', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>Renta/m²</span>
-                <strong style={{ color: C.text, fontWeight: 700 }}>USD ${project.rentM2}</strong>
-              </div>
-              */}
-              {/* Ocultado por solicitud: Valorización
-              <div style={{ background: C.white, padding: '8px 10px', borderRadius: 0, border: `1px solid ${C.sand}` }}>
-                <span style={{ color: C.textSec, display: 'block', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>Valorización</span>
-                <strong style={{ color: C.text, fontWeight: 700 }}>{project.appreciation} anual</strong>
-              </div>
-              */}
-              {/* Ocultado por solicitud: Perfil del Inquilino
-              <div style={{ background: C.white, padding: '8px 10px', borderRadius: 0, border: `1px solid ${C.sand}` }}>
-                <span style={{ color: C.textSec, display: 'block', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>Inquilino</span>
-                <strong style={{ color: C.text, fontWeight: 700 }}>{project.tenant}</strong>
-              </div>
-              */}
-            </div>
-
-            {/* SECCIN DESTACADA: AMENIDADES Y FORTALEZAS DE LA ZONA */}
-            <div style={{
-              background: `linear-gradient(135deg, ${C.teal} 0%, ${C.sky} 100%)`,
-              color: C.white,
-              borderRadius: 0,
-              padding: '16px 20px',
-              marginTop: 'auto',
-              height: 260,
-              display: 'flex',
-              flexDirection: 'column',
-              boxShadow: '0 4px 15px rgba(0,35,73,0.1)',
-            }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: C.coral, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6, fontFamily: C.fontSans }}>
-                Amenities y Zonas de Interés
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-                {project.amenities.map(a => (
-                  <span key={a} style={{
-                    background: 'rgba(255,255,255,0.12)', color: C.white,
-                    padding: '4px 10px', borderRadius: 0, fontSize: '0.68rem', fontWeight: 600,
-                    letterSpacing: '0.03em', fontFamily: C.fontSans,
-                  }}>{a}</span>
-                ))}
-              </div>
-              <div style={{
-                fontSize: '0.75rem', color: 'rgba(255,255,255,0.85)', lineHeight: 1.4, borderTop: '1px solid rgba(255,255,255,0.15)', paddingTop: 10, fontStyle: 'italic', fontFamily: C.fontSans
-              }}>
-                {getZoneNotes(project)}
-              </div>
-            </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: C.teal, fontFamily: C.fontSans }}>${getSeparacionProyecto(project, separacionTabla).toLocaleString()}</div>
+            <div style={{ fontSize: '0.58rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: C.textSec, marginTop: 2, fontFamily: C.fontSans }}>Separación</div>
           </div>
         </div>
 
-        {/* Redesigned Actions Row without Estilo and with new Buttons */}
-        <div style={{
-          marginTop: 18, paddingTop: 18, borderTop: `1px dashed ${C.sand}`,
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-        }}>
-          <div style={{ display: 'flex', gap: 8, width: '100%' }}>
-            <a 
-              href={`/project.html?name=${encodeURIComponent(project.name)}&tab=cuota`}
-              target="_blank" 
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                flex: 1, textDecoration: 'none', textAlign: 'center',
-                background: C.teal, color: C.white, borderRadius: 0,
-                border: `1px solid ${C.teal}`,
-                padding: '8px 10px', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer',
-                textTransform: 'uppercase', letterSpacing: '0.08em',
-                transition: 'all 0.3s ease',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontFamily: C.fontSans,
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = C.teal; }}
-              onMouseLeave={e => { e.currentTarget.style.background = C.teal; e.currentTarget.style.color = C.white; }}
-            >
-              Simular Inicial
-            </a>
-            
-            <a 
-              href={`/project.html?name=${encodeURIComponent(project.name)}`}
-              target="_blank" 
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                flex: 1, textDecoration: 'none', textAlign: 'center',
-                background: C.coral, color: C.white, borderRadius: 0,
-                border: `1px solid ${C.coral}`,
-                padding: '8px 10px', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer',
-                textTransform: 'uppercase', letterSpacing: '0.08em',
-                transition: 'all 0.3s ease',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontFamily: C.fontSans,
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = C.coral; }}
-              onMouseLeave={e => { e.currentTarget.style.background = C.coral; e.currentTarget.style.color = C.white; }}
-            >
-              Ficha Técnica
-            </a>
-
-            <a 
-              href={`/project.html?name=${encodeURIComponent(project.name)}&tab=credito`}
-              target="_blank" 
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                flex: 1, textDecoration: 'none', textAlign: 'center',
-                background: 'transparent', color: C.teal, borderRadius: 0,
-                border: `1px solid ${C.teal}`,
-                padding: '8px 10px', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer',
-                textTransform: 'uppercase', letterSpacing: '0.08em',
-                transition: 'all 0.3s ease',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontFamily: C.fontSans,
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = C.teal; e.currentTarget.style.color = C.white; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = C.teal; }}
-            >
-              Simular Crédito
-            </a>
-          </div>
-        </div>
+        <button
+          onClick={e => { e.stopPropagation(); goToDetail(); }}
+          style={{
+            width: '100%', textDecoration: 'none', textAlign: 'center',
+            background: C.red, color: C.white, borderRadius: 0,
+            border: `1px solid ${C.red}`,
+            padding: '10px 10px', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer',
+            textTransform: 'uppercase', letterSpacing: '0.08em',
+            transition: 'all 0.3s ease',
+            fontFamily: C.fontSans,
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = C.red; }}
+          onMouseLeave={e => { e.currentTarget.style.background = C.red; e.currentTarget.style.color = C.white; }}
+        >
+          Ver Proyecto
+        </button>
       </div>
     </div>
   )
@@ -658,23 +632,50 @@ const ProjectCard: React.FC<{
 
 // ────────────────────────────────────────────────────────
 const ProjectsSection: React.FC<{
-  onZoom: (img: string) => void;
-  activeProjIndex: number | null;
-  setActiveProjIndex: (i: number | null) => void;
-  onTriggerCalculator: (i: number) => void;
-  onTriggerContact: (name: string) => void;
   projects: Project[];
-}> = ({ onZoom, activeProjIndex, setActiveProjIndex, onTriggerCalculator, onTriggerContact, projects }) => {
+  // El buscador rápido del hero fija estos tres filtros (ubicación/presupuesto/
+  // habitaciones) al hacer clic en "Buscar" — se leen como valor inicial y luego el
+  // usuario puede seguir ajustándolos aquí normalmente, como antes.
+  initialFilters?: { category?: string; price?: string; beds?: string } | null;
+}> = ({ projects, initialFilters }) => {
+  // Valor de Separación por Proyecto — configurable en el CRM (Configuración → Financiero).
+  // Arranca con el default local y se actualiza si el backend responde, para que un cambio
+  // del administrador se refleje en la ficha técnica pública sin tocar código.
+  const [separacionTabla, setSeparacionTabla] = React.useState<SeparacionProyectosTabla>(SEPARACION_PROYECTOS_DEFAULT);
+  React.useEffect(() => {
+    fetch(`${API_ROOT}/api/settings/separacion_proyectos`)
+      .then(r => r.json())
+      .then(data => { if (data && data.porProyecto) setSeparacionTabla(data); })
+      .catch(() => {});
+  }, []);
   const [filter, setFilter] = React.useState<string>('todos')
-  const [selectedCategory, setSelectedCategory] = React.useState<string>('todos')
-  const [selectedPrice, setSelectedPrice] = React.useState<string>('todos')
-  const [selectedBeds, setSelectedBeds] = React.useState<string>('todos')
+  const [selectedCategory, setSelectedCategory] = React.useState<string>(initialFilters?.category || 'todos')
+  const [selectedPrice, setSelectedPrice] = React.useState<string>(initialFilters?.price || 'todos')
+  const [selectedBeds, setSelectedBeds] = React.useState<string>(initialFilters?.beds || 'todos')
+  // Filtros avanzados (Ubicación/Presupuesto/Habitaciones) empiezan colapsados — ya
+  // existe el mismo buscador arriba, en el hero; mostrar ambos a la vez duplicaba el
+  // control. Este queda como "refinar búsqueda" para quien ya está viendo el
+  // portafolio y quiere afinar más (ej. por habitaciones, que el hero no cubre).
+  const [filtersOpen, setFiltersOpen] = React.useState(false)
 
+  // El buscador del hero puede activarse varias veces con el usuario ya en la página
+  // (sin recargar) — sin este efecto, el estado inicial solo se toma la primera vez
+  // que el componente monta y clics posteriores en "Buscar" no actualizarían nada.
+  React.useEffect(() => {
+    if (!initialFilters) return;
+    if (initialFilters.category) setSelectedCategory(initialFilters.category);
+    if (initialFilters.price) setSelectedPrice(initialFilters.price);
+    if (initialFilters.beds) setSelectedBeds(initialFilters.beds);
+  }, [initialFilters]);
+
+  // Cada perfil lleva una explicación de una línea — sin ella, "Patrimonial" o
+  // "Disfrute" no son evidentes por sí solos para alguien que solo quiere ver el
+  // portafolio, a diferencia de un filtro concreto como "3 habitaciones".
   const filters = [
-    { key: 'todos', label: 'Todos' },
-    { key: 'renta', label: 'Renta' },
-    { key: 'disfrute', label: 'Disfrute' },
-    { key: 'patrimonial', label: 'Patrimonial' },
+    { key: 'todos', label: 'Todos', desc: 'Todo el portafolio, sin filtrar por perfil de inversión.' },
+    { key: 'renta', label: 'Renta', desc: 'Enfocado en retorno por arriendo — cap rate y ocupación como criterio principal.' },
+    { key: 'disfrute', label: 'Disfrute', desc: 'Para uso personal y vacacional, con potencial de arriendo secundario.' },
+    { key: 'patrimonial', label: 'Patrimonial', desc: 'Preservación y valorización de capital en dólares a largo plazo.' },
   ]
 
   // ────────────────────────────────────────────────────────
@@ -720,7 +721,7 @@ const ProjectsSection: React.FC<{
   }, [sortedProjects, filter, selectedCategory, selectedPrice, selectedBeds]);
 
   return (
-    <section id="projects" style={{ padding: '100px 24px', background: C.bg }}>
+    <section id="projects" style={{ padding: '70px 24px 100px', background: C.bg }}>
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: 48 }}>
           <span style={{
@@ -730,11 +731,11 @@ const ProjectsSection: React.FC<{
             textTransform: 'uppercase', marginBottom: 14,
             fontFamily: C.fontSans,
           }}>PORTAFOLIO</span>
-          <h2 style={{ fontSize: 'clamp(1.8rem, 4vw, 2.6rem)', fontWeight: 400, color: C.text, margin: '0 0 12px', fontFamily: C.fontSerif }}>
+          <h2 style={{ fontSize: 'clamp(1.8rem, 4vw, 2.6rem)', fontWeight: 400, color: C.red, margin: '0 0 12px', fontFamily: C.fontSerif }}>
             Nuestros Proyectos de Inversión
           </h2>
           <p style={{ fontSize: '0.95rem', color: C.textSec, maxWidth: 600, margin: '0 auto', fontFamily: C.fontSans, letterSpacing: '0.02em' }}>
-            Explore los activos inmobiliarios más exclusivos en Ciudad de Panamá, Ocean Reef Islands y Playa Caracol.
+            Explore los activos inmobiliarios más exclusivos en Golf y Country Club, Marina Panamá, Ciudad y Playa.
           </p>
         </div>
 
@@ -773,7 +774,30 @@ const ProjectsSection: React.FC<{
           })}
         </div>
 
-        {/* Advanced Filter Controls */}
+        {/* Explicación del perfil activo — una línea, cambia según el tab elegido */}
+        <p style={{
+          textAlign: 'center', fontSize: '0.8rem', color: C.textSec, fontFamily: C.fontSans,
+          maxWidth: 560, margin: '0 auto 32px', lineHeight: 1.5,
+        }}>
+          {filters.find(f => f.key === filter)?.desc}
+        </p>
+
+        {/* Refinar búsqueda — colapsado por defecto: el buscador del hero ya cubre
+            Ubicación/Presupuesto/Tipo, esto es solo para quien quiere afinar más
+            (ej. Habitaciones) sin duplicar el mismo control dos veces en la página. */}
+        <div style={{ textAlign: 'center', marginBottom: filtersOpen ? 16 : 48 }}>
+          <button onClick={() => setFiltersOpen(v => !v)} style={{
+            background: 'none', border: `1px solid ${C.sand}`, color: C.teal,
+            padding: '9px 22px', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em',
+            textTransform: 'uppercase', cursor: 'pointer', fontFamily: C.fontSans,
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+          }}>
+            Refinar búsqueda
+            <span style={{ fontSize: '0.65rem', transform: filtersOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▾</span>
+          </button>
+        </div>
+
+        {filtersOpen && (
         <div style={{
           display: 'flex',
           justifyContent: 'center',
@@ -806,9 +830,10 @@ const ProjectsSection: React.FC<{
               }}
             >
               <option value="todos">Todas las clasificaciones</option>
-              <option value="Proyecto de Ciudad">Proyecto de Ciudad</option>
-              <option value="Ocean Reef Islands">Ocean Reef Islands</option>
-              <option value="Playa Caracol">Playa Caracol</option>
+              <option value="Golf y Country Club">Golf y Country Club</option>
+              <option value="Marina Panamá">Marina Panamá</option>
+              <option value="Ciudad">Ciudad</option>
+              <option value="Playa">Playa</option>
             </select>
           </div>
 
@@ -863,6 +888,7 @@ const ProjectsSection: React.FC<{
             </select>
           </div>
         </div>
+        )}
 
         {/* Reorganized Gallery by Category */}
         {filtered.length === 0 ? (
@@ -870,14 +896,15 @@ const ProjectsSection: React.FC<{
             No se encontraron proyectos con los filtros seleccionados.
           </div>
         ) : (
-          (['Proyecto de Ciudad', 'Ocean Reef Islands', 'Playa Caracol'] as const).map(catName => {
+          (['Golf y Country Club', 'Marina Panamá', 'Ciudad', 'Playa'] as const).map(catName => {
             const catProjects = filtered.filter(p => p.category === catName);
             if (catProjects.length === 0) return null;
 
             const categoryDescriptions = {
-              'Proyecto de Ciudad': 'Residencias urbanas exclusivas de alta rentabilidad en las zonas más cotizadas de la Ciudad de Panamá.',
-              'Ocean Reef Islands': 'El máximo nivel de lujo caribeño en las únicas islas artificiales residenciales de la región con marina privada.',
-              'Playa Caracol': 'Exclusivos apartamentos de descanso y disfrute frente al océano con arenas blancas y club de surf privado.'
+              'Golf y Country Club': 'Residencias exclusivas junto al campo de golf Jack Nicklaus en Santa María, arquitectura biofílica y club house de primer nivel.',
+              'Marina Panamá': 'El máximo nivel de lujo caribeño frente al mar en Punta Pacífica, con marina privada y acceso directo al yacht club.',
+              'Ciudad': 'Residencias urbanas exclusivas de alta rentabilidad en las zonas más cotizadas de la Ciudad de Panamá.',
+              'Playa': 'Exclusivos apartamentos de descanso y disfrute frente al océano con arenas blancas y club de surf privado.'
             };
 
             return (
@@ -897,18 +924,12 @@ const ProjectsSection: React.FC<{
                   marginBottom: 24
                 }}>
                   {catProjects.map((p, i) => {
-                    const origIndex = projects.findIndex(proj => proj.name === p.name);
                     return (
                       <ProjectCard
                         key={p.name}
                         project={p}
                         index={i}
-                        origIndex={origIndex}
-                        onZoom={onZoom}
-                        expanded={activeProjIndex === origIndex}
-                        setExpanded={(val) => setActiveProjIndex(val ? origIndex : null)}
-                        onTriggerCalculator={onTriggerCalculator}
-                        onTriggerContact={onTriggerContact}
+                        separacionTabla={separacionTabla}
                       />
                     );
                   })}
@@ -923,20 +944,53 @@ const ProjectsSection: React.FC<{
 }
 
 // ────────────────────────────────────────────────────────
+// Todo lo que es nivel PAÍS vive aquí — antes "ventajas migratorias/impositivas"
+// estaba partido en InvestmentSection, separado de estos 6 stats por un bloque entero
+// de contenido de GLP (empresa) en el medio, obligando al lector a saltar de país a
+// empresa y de vuelta a país en el mismo scroll.
 const WhyPanamaSection: React.FC = () => {
   const stats = [
     { num: '01', title: 'Dolarizado desde 1904', desc: 'Cero riesgo de devaluación. Sus rentas y patrimonio en la moneda más estable del mundo.' },
-    { num: '02', title: '0% Predial por 20 años', desc: 'Propiedades nuevas exentas del impuesto de inmuebles hasta por dos décadas.' },
-    { num: '03', title: '3% Retención de Impuesto', desc: 'Retención en la fuente del 3% sobre el precio de venta total al momento de desinvertir, un esquema simple y competitivo.' },
-    { num: '04', title: 'Residencia desde $300K', desc: 'Inversión de USD $300,000 en inmuebles otorga residencia permanente inmediata.' },
-    { num: '05', title: 'Hub Logístico: Canal', desc: 'USD $4B+ anuales del Canal impulsan la economía, empleo y demanda de vivienda premium.' },
-    { num: '06', title: '7.8% Rentabilidad Promedio', desc: 'Atractivos niveles de retorno bruto por alquiler en dólares estadounidenses en segmentos residenciales premium.' },
-    { num: '07', title: '+29% Inversión 2026', desc: 'Crecimiento proyectado en inversión inmobiliaria y construcción para el período 20252026.' },
-    { num: '08', title: 'Inversión Internacional Líder', desc: 'Destino preferido de inversión para capitales y familias de toda la región gracias a su estabilidad jurídica y económica.' },
+    { num: '02', title: '3% Retención de Impuesto', desc: 'Retención en la fuente del 3% sobre el precio de venta total al momento de desinvertir, un esquema simple y competitivo.' },
+    { num: '03', title: 'Hub Logístico: Canal', desc: 'USD $4B+ anuales del Canal impulsan la economía, empleo y demanda de vivienda premium.' },
+    { num: '04', title: '7.8% Rentabilidad Promedio', desc: 'Atractivos niveles de retorno bruto por alquiler en dólares estadounidenses en segmentos residenciales premium.' },
+    { num: '05', title: '+29% Inversión 2026', desc: 'Crecimiento proyectado en inversión inmobiliaria y construcción para el período 2025-2026.' },
+    { num: '06', title: 'Inversión Internacional Líder', desc: 'Destino preferido de inversión para capitales y familias de toda la región gracias a su estabilidad jurídica y económica.' },
+  ]
+
+  const advantageGroups = [
+    {
+      title: 'Ventajas de Panamá como país',
+      items: [
+        'Ubicación estratégica: conectividad global a través del Canal de Panamá y su aeropuerto internacional.',
+        'Economía estable y en crecimiento, con el dólar estadounidense como moneda oficial.',
+        'Infraestructura de clase mundial: puertos, carreteras y telecomunicaciones avanzadas.',
+        'Clima cálido todo el año y riqueza natural con playas, montañas y biodiversidad.',
+        'Seguridad y calidad de vida en un entorno cosmopolita.',
+      ]
+    },
+    {
+      title: 'Ventajas migratorias',
+      items: [
+        'Programa de Inversionista Calificado: residencia en Panamá mediante la compra de una propiedad desde USD $300,000.',
+        'Posibilidad de residencia permanente y ciudadanía después de cierto tiempo de estadía.',
+        'Facilidad para obtener permisos de trabajo vinculados a las visas de residencia.',
+        'Beneficios para jubilados con el programa Pensionado, incluyendo descuentos exclusivos en servicios y bienes.',
+      ]
+    },
+    {
+      title: 'Ventajas impositivas',
+      items: [
+        'Ingresos generados fuera de Panamá están exentos de impuestos (sistema tributario territorial).',
+        'Mínimos costos fiscales en procesos de compraventa de propiedades.',
+        'Beneficios en Zonas Francas y Áreas Económicas Especiales para empresas e inversores.',
+        'Tratados de doble tributación con varios países, que reducen las cargas fiscales para inversionistas extranjeros.',
+      ]
+    },
   ]
 
   return (
-    <section id="why-panama" style={{ padding: '100px 24px', background: C.white, borderBottom: `1px solid ${C.sand}` }}>
+    <div style={{ padding: '100px 24px', background: C.white }}>
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: 56 }}>
           <span style={{
@@ -946,36 +1000,60 @@ const WhyPanamaSection: React.FC = () => {
             textTransform: 'uppercase', marginBottom: 14,
             fontFamily: C.fontSans,
           }}>VENTAJAS COMPETITIVAS</span>
-          <h2 style={{ fontSize: 'clamp(1.8rem, 4vw, 2.6rem)', fontWeight: 400, color: C.text, margin: '0 0 12px', fontFamily: C.fontSerif }}>
+          <h2 style={{ fontSize: 'clamp(1.8rem, 4vw, 2.6rem)', fontWeight: 400, color: C.red, margin: '0 0 12px', fontFamily: C.fontSerif }}>
             ¿Por qué Panamá?
           </h2>
           <p style={{ fontSize: '0.95rem', color: C.textSec, maxWidth: 600, margin: '0 auto', fontFamily: C.fontSans, letterSpacing: '0.02em' }}>
-            8 razones fundamentales por las que los inversionistas más sofisticados eligen Panamá.
+            6 razones fundamentales por las que los inversionistas más sofisticados eligen Panamá.
           </p>
         </div>
 
         {/* Stats grid */}
         <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+          display: 'flex',
+          flexWrap: 'wrap',
+          justifyContent: 'center',
           gap: 24,
+          marginBottom: 64,
         }}>
           {stats.map(s => (
             <div key={s.title} style={{
-              background: C.bg, borderRadius: 0, padding: '32px 24px',
+              background: C.white, borderRadius: 0, padding: '32px 24px',
               border: `1px solid ${C.sand}`,
               transition: 'all 0.3s ease',
+              flex: '1 1 260px', maxWidth: 300, minWidth: 260,
             }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = C.teal; e.currentTarget.style.background = C.white; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = C.sand; e.currentTarget.style.background = C.bg; }}>
+              onMouseEnter={e => { e.currentTarget.style.borderColor = C.teal; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = C.sand; }}>
               <div style={{ fontSize: '1.75rem', fontWeight: 400, fontFamily: C.fontSerif, color: C.coral, marginBottom: 16 }}>{s.num}</div>
               <h4 style={{ margin: '0 0 8px', fontSize: '1.05rem', fontWeight: 600, color: C.text, fontFamily: C.fontSans }}>{s.title}</h4>
               <p style={{ margin: 0, fontSize: '0.85rem', color: C.textSec, lineHeight: 1.6, fontFamily: C.fontSans }}>{s.desc}</p>
             </div>
           ))}
         </div>
+
+        {/* Ventajas: migratorias / impositivas — antes vivían en otro componente
+            (InvestmentSection), separadas de estos stats por un bloque completo de
+            contenido de GLP en el medio. Mismo tema (país), un solo lugar. */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24 }}>
+          {advantageGroups.map(group => (
+            <div key={group.title} style={{ background: C.bg, border: `1px solid ${C.sand}`, padding: '28px 24px' }}>
+              <h4 style={{ margin: '0 0 18px', fontSize: '0.95rem', fontWeight: 700, color: C.red, fontFamily: C.fontSans, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {group.title}
+              </h4>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {group.items.map((item, i) => (
+                  <li key={i} style={{ display: 'flex', gap: 10, fontSize: '0.82rem', color: C.textSec, lineHeight: 1.55, fontFamily: C.fontSans }}>
+                    <span style={{ color: C.coral, flexShrink: 0 }}>—</span>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
       </div>
-    </section>
+    </div>
   )
 }
 
@@ -1420,10 +1498,34 @@ const FAQSection: React.FC = () => {
   const [activeCategory, setActiveCategory] = React.useState(0)
   const [faqSearch, setFaqSearch] = React.useState('')
   const [openItems, setOpenItems] = React.useState<Record<string, boolean>>({})
+  const [faqData, setFaqData] = React.useState<FAQCategory[]>(FAQ_DATA_FALLBACK)
 
-  const toggle = (key: string, question: string, category: string) =>
+  // Trae las FAQs reales del CRM (misma tabla que usan Sara/Valeria) para que landing y
+  // CRM compartan idéntico texto de pregunta — si falla, se queda con el fallback fijo en
+  // vez de romper la sección pública.
+  React.useEffect(() => {
+    fetch(`${API_ROOT}/api/faqs`).then(r => r.json()).then((rows: any[]) => {
+      if (!Array.isArray(rows) || rows.length === 0) return;
+      const iconByTitle: Record<string, string> = {};
+      FAQ_DATA_FALLBACK.forEach(cat => { iconByTitle[cat.title] = cat.icon; });
+      const order = FAQ_DATA_FALLBACK.map(cat => cat.title);
+      const grouped: Record<string, FAQ[]> = {};
+      rows.forEach(r => {
+        const cat = r.categoria || 'Otros';
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push({ q: r.pregunta, a: r.respuesta, id: Number(r.id) });
+      });
+      const titles = [...order.filter(t => grouped[t]), ...Object.keys(grouped).filter(t => !order.includes(t))];
+      const rebuilt: FAQCategory[] = titles.map(title => ({
+        title, icon: iconByTitle[title] || '❓', items: grouped[title],
+      }));
+      if (rebuilt.length > 0) setFaqData(rebuilt);
+    }).catch(() => {});
+  }, []);
+
+  const toggle = (key: string, faqId: number | undefined) =>
     setOpenItems(prev => {
-      if (!prev[key]) trackFaqClick(question, category); // solo al abrir
+      if (!prev[key]) trackFaqClick(faqId); // solo al abrir
       return { ...prev, [key]: !prev[key] };
     });
 
@@ -1431,7 +1533,7 @@ const FAQSection: React.FC = () => {
     if (!faqSearch.trim()) return null;
     const query = faqSearch.toLowerCase();
     const results: { faq: FAQ; categoryTitle: string; key: string }[] = [];
-    FAQ_DATA.forEach((cat, catIdx) => {
+    faqData.forEach((cat, catIdx) => {
       cat.items.forEach((item, itemIdx) => {
         if (item.q.toLowerCase().includes(query) || item.a.toLowerCase().includes(query)) {
           results.push({
@@ -1443,7 +1545,7 @@ const FAQSection: React.FC = () => {
       });
     });
     return results;
-  }, [faqSearch]);
+  }, [faqSearch, faqData]);
 
   return (
     <section id="faq" style={{ padding: '100px 24px', background: C.white }}>
@@ -1456,7 +1558,7 @@ const FAQSection: React.FC = () => {
             textTransform: 'uppercase', marginBottom: 14,
             fontFamily: C.fontSans,
           }}>FAQ</span>
-          <h2 style={{ fontSize: 'clamp(1.8rem, 4vw, 2.4rem)', fontWeight: 400, color: C.text, margin: '0 0 12px', fontFamily: C.fontSerif }}>
+          <h2 style={{ fontSize: 'clamp(1.8rem, 4vw, 2.4rem)', fontWeight: 400, color: C.red, margin: '0 0 12px', fontFamily: C.fontSerif }}>
             Preguntas Frecuentes
           </h2>
           <p style={{ fontSize: '0.95rem', color: C.textSec, fontFamily: C.fontSans, letterSpacing: '0.02em' }}>
@@ -1486,7 +1588,7 @@ const FAQSection: React.FC = () => {
           <div style={{
             display: 'flex', gap: 8, marginBottom: 32, flexWrap: 'wrap', justifyContent: 'center',
           }}>
-            {FAQ_DATA.map((cat, i) => (
+            {faqData.map((cat, i) => (
               <button key={cat.title} onClick={() => setActiveCategory(i)} style={{
                 background: activeCategory === i ? C.teal : 'transparent',
                 color: activeCategory === i ? C.white : C.text,
@@ -1519,7 +1621,7 @@ const FAQSection: React.FC = () => {
                   <FAQItem
                     faq={item.faq}
                     isOpen={!!openItems[item.key]}
-                    toggle={() => toggle(item.key, item.faq.q, item.categoryTitle)}
+                    toggle={() => toggle(item.key, item.faq.id)}
                   />
                 </div>
               ))
@@ -1529,12 +1631,12 @@ const FAQSection: React.FC = () => {
               </div>
             )
           ) : (
-            FAQ_DATA[activeCategory].items.map((faq, i) => (
+            (faqData[activeCategory] || faqData[0]).items.map((faq, i) => (
               <FAQItem
                 key={`${activeCategory}-${i}`}
                 faq={faq}
                 isOpen={!!openItems[`${activeCategory}-${i}`]}
-                toggle={() => toggle(`${activeCategory}-${i}`, faq.q, FAQ_DATA[activeCategory].title)}
+                toggle={() => toggle(`${activeCategory}-${i}`, faq.id)}
               />
             ))
           )}
@@ -1546,7 +1648,7 @@ const FAQSection: React.FC = () => {
 
 // ────────────────────────────────────────────────────────
 const Footer: React.FC = () => (
-  <footer id="contact" style={{
+  <footer style={{
     background: '#0A1F3F',
     color: C.white, padding: '100px 24px 40px',
     borderTop: `1px solid ${C.sand}`,
@@ -1575,38 +1677,6 @@ const Footer: React.FC = () => (
             </svg>
             WhatsApp
           </a>
-        </div>
-      </div>
-
-      {/* Partners */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-        gap: 40, marginBottom: 48, paddingBottom: 48,
-        borderBottom: '1px solid rgba(255,255,255,0.15)',
-      }}>
-        <div>
-          <h4 style={{ margin: '0 0 12px', fontWeight: 600, fontSize: '0.75rem', fontFamily: C.fontSans, textTransform: 'uppercase', letterSpacing: '0.1em', color: C.coral }}>
-            Capital Brokers
-          </h4>
-          <p style={{ margin: 0, opacity: 0.7, fontSize: '0.85rem', lineHeight: 1.6, fontFamily: C.fontSans }}>
-            Firma global de banca de inversión y placement agent con presencia en Colombia, España, Panamá, Estados Unidos y EAU. Especialistas en estructuración financiera, levantamiento de capital, soluciones de capital de trabajo internacional (factoring) y estructuración de fondos de capital privado.
-          </p>
-        </div>
-        <div>
-          <h4 style={{ margin: '0 0 12px', fontWeight: 600, fontSize: '0.75rem', fontFamily: C.fontSans, textTransform: 'uppercase', letterSpacing: '0.1em', color: C.coral }}>
-            Colombia Law Group
-          </h4>
-          <p style={{ margin: 0, opacity: 0.7, fontSize: '0.85rem', lineHeight: 1.6, fontFamily: C.fontSans }}>
-            Firma legal que ofrece servicios jurídicos y tributarios expertos para extranjeros y empresas en Colombia. Especialistas en estructuración de inversiones, derecho inmobiliario, procesos de visas y migración, derecho cambiario, societario y comercial.
-          </p>
-        </div>
-        <div>
-          <h4 style={{ margin: '0 0 12px', fontWeight: 600, fontSize: '0.75rem', fontFamily: C.fontSans, textTransform: 'uppercase', letterSpacing: '0.1em', color: C.coral }}>
-            Grupo Valverde
-          </h4>
-          <p style={{ margin: 0, opacity: 0.7, fontSize: '0.85rem', lineHeight: 1.6, fontFamily: C.fontSans }}>
-            En Grupo Valverde creamos más que proyectos inmobiliarios; construimos hogares que equilibran lo económico, social y ambiental en Colombia. Nuestro compromiso es ofrecer viviendas de alta calidad, accesibles y con un enfoque de sostenibilidad.
-          </p>
         </div>
       </div>
 
@@ -1646,7 +1716,7 @@ const Footer: React.FC = () => (
           Se recomienda consultar con asesores profesionales antes de tomar decisiones de inversión. GLP y sus aliados actúan como facilitadores de información, no como fiduciarios.
         </p>
         <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.6, fontWeight: 500, fontFamily: C.fontSans, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          © 2026 Grupo Los Pueblos (GLP). Todos los derechos reservados.
+          © 2026 Capital Brokers Properties. Todos los derechos reservados.
         </p>
       </div>
     </div>
@@ -1691,13 +1761,33 @@ const GlobalStyles: React.FC = () => (
 )
 
 // ────────────────────────────────────────────────────────
-const GLPTrayectoria: React.FC = () => {
+// Un solo bloque para "¿en quién estoy confiando mi dinero?" — antes esta pregunta se
+// respondía en tres momentos distintos del scroll (Razones para invertir con GLP,
+// Trayectoria, Nosotros/aliados), sin conexión entre ellos. Ahora es una sola sección
+// con tres sub-bloques en orden: quiénes somos (trayectoria) → por qué elegirnos →
+// con quién trabajamos (aliados).
+const WhyGLPSection: React.FC = () => {
+  const reasons = [
+    {
+      title: 'Nuestra experiencia',
+      desc: 'Casi 4 décadas de trayectoria y reputación nos avalan como una opción confiable y sólida para inversores que buscan oportunidades de alto rendimiento en el sector inmobiliario panameño.'
+    },
+    {
+      title: 'Desarrollos disruptivos',
+      desc: 'Diseñamos proyectos que rompen paradigmas, combinando innovación arquitectónica, ubicaciones estratégicas y rentabilidad comprobada para nuestros inversionistas.'
+    },
+    {
+      title: 'Acompañamiento a tu medida',
+      desc: 'Nos adaptamos a las necesidades de cada inversionista, con opciones flexibles de pago, acompañamiento personalizado y transparencia en cada etapa del proceso.'
+    },
+  ]
+
   return (
-    <section id="trayectoria" style={{ padding: '80px 24px', background: C.white, borderBottom: `1px solid ${C.sand}` }}>
+    <section id="trayectoria" style={{ padding: '90px 24px', background: C.white, borderBottom: `1px solid ${C.sand}` }}>
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 48, alignItems: 'center' }}>
-          
-          {/* Text side */}
+
+        {/* Quiénes somos */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 48, alignItems: 'center', marginBottom: 72 }}>
           <div>
             <span style={{
               display: 'inline-block', borderBottom: `1px solid ${C.teal}`,
@@ -1706,26 +1796,30 @@ const GLPTrayectoria: React.FC = () => {
               letterSpacing: '0.15em', textTransform: 'uppercase',
               fontFamily: C.fontSans
             }}>
-              Trayectoria y Confianza
+              ¿Por qué GLP?
             </span>
-            <h2 style={{ fontSize: 'clamp(2rem, 4vw, 2.8rem)', fontWeight: 400, color: C.text, margin: '0 0 20px', lineHeight: 1.15, fontFamily: C.fontSerif }}>
+            <h2 style={{ fontSize: 'clamp(2rem, 4vw, 2.8rem)', fontWeight: 400, color: C.red, margin: '0 0 20px', lineHeight: 1.15, fontFamily: C.fontSerif }}>
               Líderes en el Desarrollo Inmobiliario de Panamá
             </h2>
             <p style={{ fontSize: '1rem', color: C.textSec, lineHeight: 1.7, marginBottom: 20, fontFamily: C.fontSans }}>
-              Con más de <strong>40 años de trayectoria</strong>, Grupo Los Pueblos (GLP) se ha consolidado como la empresa promotora y desarrolladora inmobiliaria más importante y confiable de Panamá, transformando el paisaje urbano de la región con proyectos icónicos de clase mundial.
+              Con más de <strong>40 años de trayectoria</strong>, Capital Brokers Properties se ha consolidado como la empresa promotora y desarrolladora inmobiliaria más importante y confiable de Panamá, transformando el paisaje urbano de la región con proyectos icónicos de clase mundial.
             </p>
             <p style={{ fontSize: '0.95rem', color: C.textSec, lineHeight: 1.7, marginBottom: 28, fontFamily: C.fontSans }}>
               Nuestra trayectoria incluye el diseño, desarrollo y entrega de mega-proyectos emblemáticos que redefinieron el comercio y el estilo de vida, tales como <strong>Albrook Mall</strong> (el centro comercial más grande de América Latina), las exclusivas <strong>Ocean Reef Islands</strong> (las primeras islas artificiales de la región), <strong>Santa María Golf & Country Club</strong>, <strong>Federal Mall</strong> en David, y residencias de lujo y playa de altísimo valor.
             </p>
-            <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-              <div style={{ borderLeft: `2px solid ${C.coral}`, paddingLeft: 16 }}>
-                <div style={{ fontSize: '1.05rem', fontWeight: 600, color: C.text, fontFamily: C.fontSans }}>Confianza Garantizada</div>
-                <div style={{ fontSize: '0.85rem', color: C.textSec, fontFamily: C.fontSans, marginTop: 4 }}>Seguridad jurídica, alta plusvalía y calidad constructiva certificada.</div>
-              </div>
-            </div>
+            <a href="#contact" onClick={e => { e.preventDefault(); smoothScroll('contact') }} style={{
+              display: 'inline-block', background: C.teal, color: C.white,
+              padding: '13px 32px', textDecoration: 'none', fontWeight: 600, fontSize: '0.75rem',
+              textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: C.fontSans,
+              transition: 'background 0.2s ease',
+            }}
+              onMouseEnter={e => e.currentTarget.style.background = C.red}
+              onMouseLeave={e => e.currentTarget.style.background = C.teal}
+            >
+              Contacto
+            </a>
           </div>
 
-          {/* Stats & Icons side */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
             {[
               { number: '40+', label: 'Años de Experiencia', desc: 'Liderando el mercado regional.' },
@@ -1746,12 +1840,133 @@ const GLPTrayectoria: React.FC = () => {
               </div>
             ))}
           </div>
+        </div>
 
+        {/* Por qué elegirnos */}
+        <div style={{ marginBottom: 72 }}>
+          <h3 style={{ fontSize: '1.5rem', fontWeight: 400, color: C.teal, fontFamily: C.fontSerif, textAlign: 'center', marginBottom: 32 }}>
+            Razones para invertir con Capital Brokers Properties
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 24 }}>
+            {reasons.map(r => (
+              <div key={r.title} style={{ background: C.bg, border: `1px solid ${C.sand}`, padding: '28px 24px' }}>
+                <h4 style={{ margin: '0 0 10px', fontSize: '1.02rem', fontWeight: 600, color: C.text, fontFamily: C.fontSans }}>{r.title}</h4>
+                <p style={{ margin: 0, fontSize: '0.85rem', color: C.textSec, lineHeight: 1.65, fontFamily: C.fontSans }}>{r.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Con quién trabajamos */}
+        <div>
+          <h3 style={{ fontSize: '1.5rem', fontWeight: 400, color: C.teal, fontFamily: C.fontSerif, textAlign: 'center', marginBottom: 12 }}>
+            Un Ecosistema de Confianza para tu Inversión
+          </h3>
+          <p style={{ fontSize: '0.9rem', color: C.textSec, maxWidth: 700, margin: '0 auto 32px', textAlign: 'center', fontFamily: C.fontSans, lineHeight: 1.7 }}>
+            Aliados especializados que acompañan al inversionista colombiano en cada etapa: estructuración financiera y asesoría legal.
+          </p>
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: 32, maxWidth: 760, margin: '0 auto',
+          }}>
+            <div style={{ padding: '28px 26px', border: `1px solid ${C.sand}`, borderTop: `3px solid ${C.red}`, background: C.bg }}>
+              <h4 style={{ margin: '0 0 12px', fontWeight: 600, fontSize: '0.8rem', fontFamily: C.fontSans, textTransform: 'uppercase', letterSpacing: '0.1em', color: C.red }}>
+                Capital Brokers
+              </h4>
+              <p style={{ margin: 0, color: C.textSec, fontSize: '0.88rem', lineHeight: 1.6, fontFamily: C.fontSans }}>
+                Firma global de banca de inversión y placement agent con presencia en Colombia, España, Panamá, Estados Unidos y EAU. Especialistas en estructuración financiera, levantamiento de capital, soluciones de capital de trabajo internacional (factoring) y estructuración de fondos de capital privado.
+              </p>
+            </div>
+            <div style={{ padding: '28px 26px', border: `1px solid ${C.sand}`, borderTop: `3px solid ${C.red}`, background: C.bg }}>
+              <h4 style={{ margin: '0 0 12px', fontWeight: 600, fontSize: '0.8rem', fontFamily: C.fontSans, textTransform: 'uppercase', letterSpacing: '0.1em', color: C.red }}>
+                Colombia Law Group
+              </h4>
+              <p style={{ margin: 0, color: C.textSec, fontSize: '0.88rem', lineHeight: 1.6, fontFamily: C.fontSans }}>
+                Firma legal que ofrece servicios jurídicos y tributarios expertos para extranjeros y empresas en Colombia. Especialistas en estructuración de inversiones, derecho inmobiliario, procesos de visas y migración, derecho cambiario, societario y comercial.
+              </p>
+            </div>
+            {/* Grupo Valverde — oculto a pedido de Armando (2026-08-11), se retomará a futuro.
+            <div style={{ padding: '28px 26px', border: `1px solid ${C.sand}`, borderTop: `3px solid ${C.red}`, background: C.bg }}>
+              <h4 style={{ margin: '0 0 12px', fontWeight: 600, fontSize: '0.8rem', fontFamily: C.fontSans, textTransform: 'uppercase', letterSpacing: '0.1em', color: C.red }}>
+                Grupo Valverde
+              </h4>
+              <p style={{ margin: 0, color: C.textSec, fontSize: '0.88rem', lineHeight: 1.6, fontFamily: C.fontSans }}>
+                En Grupo Valverde creamos más que proyectos inmobiliarios; construimos hogares que equilibran lo económico, social y ambiental en Colombia. Nuestro compromiso es ofrecer viviendas de alta calidad, accesibles y con un enfoque de sostenibilidad.
+              </p>
+            </div>
+            */}
+          </div>
+        </div>
+
+      </div>
+    </section>
+  )
+}
+
+// ────────────────────────────────────────────────────────
+// Prueba social — trae los testimonios marcados "Publicado" desde el CRM (Campañas de
+// Marketing → Testimonios). Si no hay ninguno publicado todavía, la sección no se
+// renderiza — mejor no mostrar nada que mostrar un bloque vacío o de relleno.
+type Testimonial = { id: string; nombre: string; rol: string; ciudad: string; foto_url: string; texto: string; rating: number };
+
+const TestimonialsSection: React.FC = () => {
+  const [items, setItems] = React.useState<Testimonial[]>([]);
+  React.useEffect(() => {
+    fetch(`${API_ROOT}/api/testimonials?status=published`)
+      .then(r => r.json())
+      .then(rows => setItems(Array.isArray(rows) ? rows : []))
+      .catch(() => {});
+  }, []);
+
+  if (items.length === 0) return null;
+
+  return (
+    <section id="testimonios" style={{ padding: '90px 24px', background: C.bg, borderBottom: `1px solid ${C.sand}` }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+        <div style={{ textAlign: 'center', marginBottom: 44 }}>
+          <span style={{
+            display: 'inline-block', borderBottom: `1px solid ${C.coral}`,
+            color: C.coral, paddingBottom: 4,
+            fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.15em',
+            textTransform: 'uppercase', marginBottom: 12,
+            fontFamily: C.fontSans,
+          }}>Lo que dicen nuestros inversionistas</span>
+          <h2 style={{ fontSize: 'clamp(1.8rem, 4vw, 2.4rem)', fontWeight: 400, color: C.teal, margin: 0, fontFamily: C.fontSerif }}>
+            Confianza construida con hechos
+          </h2>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 22 }}>
+          {items.map(t => (
+            <div key={t.id} style={{ background: C.white, border: `1px solid ${C.sand}`, padding: '28px 26px', textAlign: 'left' }}>
+              <div style={{ color: C.coral, fontSize: '0.8rem', letterSpacing: 2, marginBottom: 14 }}>{'★'.repeat(t.rating || 5)}</div>
+              <p style={{ fontFamily: C.fontSerif, fontStyle: 'italic', fontSize: '1rem', color: C.text, lineHeight: 1.55, margin: '0 0 20px' }}>
+                "{t.texto}"
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                {t.foto_url ? (
+                  <img src={t.foto_url} alt={t.nombre} style={{ width: 42, height: 42, borderRadius: '50%', objectFit: 'cover' }} />
+                ) : (
+                  <div style={{ width: 42, height: 42, borderRadius: '50%', background: C.sand, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 700, color: C.teal, fontFamily: C.fontSans }}>
+                    {t.nombre.slice(0, 1).toUpperCase()}
+                  </div>
+                )}
+                <div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: C.teal, fontFamily: C.fontSans }}>{t.nombre}</div>
+                  <div style={{ fontSize: '0.72rem', color: C.textSec, fontFamily: C.fontSans }}>{[t.rol, t.ciudad].filter(Boolean).join(' · ')}</div>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </section>
   )
 }
+
+// ────────────────────────────────────────────────────────
+// NosotrosSection se fusionó dentro de WhyGLPSection (sub-bloque "Con quién
+// trabajamos") — antes era una sección aparte repitiendo la misma pregunta de
+// confianza que Trayectoria y Razones para invertir, más abajo en el scroll.
 
 const saveProspectToLocal = (name: string, email: string, phone: string, project: string, message: string, channel: string, projects: Project[] = PROJECTS) => {
   const saved = localStorage.getItem('glp_crm_prospects');
@@ -1801,6 +2016,17 @@ const saveProspectToLocal = (name: string, email: string, phone: string, project
   localStorage.setItem('glp_crm_prospects', JSON.stringify(currentProspects));
 };
 
+// Rango de presupuesto en el formulario en vez de un número exacto — menos fricción para el
+// visitante, y llega directo sin depender de que la IA lo infiera de una conversación (el
+// formulario web nunca manda transcript, así que antes ese dato nunca se registraba).
+const PRESUPUESTO_RANGOS: { value: string; label: string; usd: number | null }[] = [
+  { value: '', label: 'Prefiero no indicarlo', usd: null },
+  { value: 'lt200', label: 'Menos de $200,000', usd: 150000 },
+  { value: '200-400', label: '$200,000 – $400,000', usd: 300000 },
+  { value: '400-600', label: '$400,000 – $600,000', usd: 500000 },
+  { value: 'gt600', label: 'Más de $600,000', usd: 700000 },
+];
+
 const ContactSection: React.FC<{
   contactProject: string;
   setContactProject: (p: string) => void;
@@ -1811,7 +2037,20 @@ const ContactSection: React.FC<{
   const [whatsapp, setWhatsapp] = React.useState('');
   const [mensaje, setMensaje] = React.useState('');
   const [channel, setChannel] = React.useState('Broker');
+  const [presupuesto, setPresupuesto] = React.useState('');
+  const [citaFecha, setCitaFecha] = React.useState('');
+  const [citaHora, setCitaHora] = React.useState('');
   const [submitted, setSubmitted] = React.useState(false);
+  const [citaAgendada, setCitaAgendada] = React.useState(false);
+
+  const horaSlots = React.useMemo(() => {
+    const slots: string[] = [];
+    for (let h = 9; h <= 17; h++) {
+      slots.push(`${String(h).padStart(2, '0')}:00`);
+      if (h < 17) slots.push(`${String(h).padStart(2, '0')}:30`);
+    }
+    return slots;
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1822,10 +2061,10 @@ const ContactSection: React.FC<{
 
     // ────────────────────────────────────────────────────────
     saveProspectToLocal(nombre, correo, whatsapp, contactProject, mensaje, channel, projects);
-    
+
     // ────────────────────────────────────────────────────────
     try {
-      await fetch('http://localhost:3001/api/contact', {
+      await fetch(`${API_ROOT}/api/contact`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1834,22 +2073,51 @@ const ContactSection: React.FC<{
           phone: whatsapp,
           project: contactProject,
           message: mensaje,
-          channel: channel || 'Web'
+          channel: channel || 'Web',
+          presupuesto_usd: PRESUPUESTO_RANGOS.find(r => r.value === presupuesto)?.usd ?? undefined
         })
       });
+      localStorage.setItem('glp_session_prospect', JSON.stringify({ email: correo, nombre }));
     } catch (err) {
       console.warn('Backend server is offline or unreachable. SMTP mail skipped, operating in standalone localStorage mode.', err);
     }
 
+    let citaOk = false;
+    if (citaFecha && citaHora) {
+      try {
+        await fetch(`${API_ROOT}/api/citas`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prospecto_email: correo,
+            prospecto_nombre: nombre,
+            proyecto: contactProject,
+            fecha: citaFecha,
+            hora: citaHora,
+            canal: channel || 'Web',
+            notas: mensaje
+          })
+        });
+        citaOk = true;
+      } catch (err) {
+        console.warn('No se pudo agendar la cita (backend offline).', err);
+      }
+    }
+
     setSubmitted(true);
+    setCitaAgendada(citaOk);
     setNombre('');
     setCorreo('');
     setWhatsapp('');
     setMensaje('');
-    
+    setPresupuesto('');
+    setCitaFecha('');
+    setCitaHora('');
+
     const targetProject = contactProject;
     setTimeout(() => {
       setSubmitted(false);
+      setCitaAgendada(false);
       setContactProject('General');
       if (targetProject && targetProject !== 'General') {
         const el = document.getElementById(`project-card-${encodeURIComponent(targetProject)}`);
@@ -1990,6 +2258,54 @@ const ContactSection: React.FC<{
             </select>
           </div>
 
+          <div style={{ marginBottom: 20 }}>
+            <label style={{ display: 'block', marginBottom: 6, fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', color: C.textSec }}>
+              Presupuesto Estimado (Opcional)
+            </label>
+            <select
+              value={presupuesto}
+              onChange={e => setPresupuesto(e.target.value)}
+              style={{
+                width: '100%', padding: '12px 14px', borderRadius: 0,
+                border: `1px solid ${C.sand}`, fontSize: '0.85rem', color: C.text,
+                background: C.white, cursor: 'pointer', outline: 'none', boxSizing: 'border-box'
+              }}
+            >
+              {PRESUPUESTO_RANGOS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </select>
+          </div>
+
+          <div style={{ marginBottom: 20 }}>
+            <label style={{ display: 'block', marginBottom: 6, fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', color: C.textSec }}>
+              Agendar Cita (Opcional)
+            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <input
+                type="date"
+                value={citaFecha}
+                onChange={e => setCitaFecha(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+                style={{
+                  width: '100%', padding: '12px 14px', borderRadius: 0,
+                  border: `1px solid ${C.sand}`, fontSize: '0.85rem', color: C.text,
+                  background: C.white, outline: 'none', boxSizing: 'border-box'
+                }}
+              />
+              <select
+                value={citaHora}
+                onChange={e => setCitaHora(e.target.value)}
+                style={{
+                  width: '100%', padding: '12px 14px', borderRadius: 0,
+                  border: `1px solid ${C.sand}`, fontSize: '0.85rem', color: C.text,
+                  background: C.white, cursor: 'pointer', outline: 'none', boxSizing: 'border-box'
+                }}
+              >
+                <option value="">Hora (opcional)</option>
+                {horaSlots.map(h => <option key={h} value={h}>{h}</option>)}
+              </select>
+            </div>
+          </div>
+
           <div style={{ marginBottom: 24 }}>
             <label style={{ display: 'block', marginBottom: 6, fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', color: C.textSec }}>
               Mensaje / Comentarios
@@ -2024,6 +2340,7 @@ const ContactSection: React.FC<{
             }}>
               <div>
                 <strong>Solicitud recibida.</strong> Tu información ha sido registrada en el sistema de atención y nos contactaremos a la brevedad.
+                {citaAgendada && <> <strong>Tu cita ha quedado agendada.</strong></>}
               </div>
             </div>
           )}
@@ -2054,12 +2371,19 @@ const ContactSection: React.FC<{
 const ChatbotWidget: React.FC = () => {
   const [isOpen, setIsOpen] = React.useState(false);
   const [messages, setMessages] = React.useState<{id: number, text: string, sender: 'bot' | 'user'}[]>([
-    { id: 1, text: '¡Hola! Soy Sara, del equipo de atención al cliente de Grupo Los Pueblos. Cuéntame, ¿qué te trajo por aquí hoy?', sender: 'bot' }
+    { id: 1, text: '¡Hola! Soy Sara, del equipo de atención al cliente de Capital Brokers Properties. Cuéntame, ¿qué te trajo por aquí hoy?', sender: 'bot' }
   ]);
   const [inputValue, setInputValue] = React.useState('');
   const [isTyping, setIsTyping] = React.useState(false);
-  const [interactionCount, setInteractionCount] = React.useState(0);
   const endOfMessagesRef = React.useRef<HTMLDivElement>(null);
+  // Antes cada mensaje calificante creaba/parchaba el prospecto usando el correo como llave
+  // (o un correo SINTÉTICO tipo "sin-correo-...@chatbot.glp" cuando no había uno real, que
+  // terminaba visible en el CRM). Ahora cada apertura del widget tiene un session_id estable
+  // que el backend usa para acumular TODA la conversación en una sola fila desde el primer
+  // mensaje que trae contacto real — ya no se registra nada sin correo/teléfono real, y ya
+  // no se inventa un correo falso.
+  const sessionIdRef = React.useRef(`chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  const leadRegisteredRef = React.useRef(false);
 
   React.useEffect(() => {
     if (endOfMessagesRef.current) {
@@ -2074,37 +2398,48 @@ const ChatbotWidget: React.FC = () => {
     setMessages(currentMessages);
     setInputValue('');
     setIsTyping(true);
-    setInteractionCount(prev => prev + 1);
 
     // ────────────────────────────────────────────────────────
     const lower = text.toLowerCase();
-    const emailMatch = text.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
+    // Tolera espacios sueltos alrededor de "@" (ej. "fulano @ gmail.com", común al escribir
+    // rápido desde el celular) — antes esos casos no matcheaban y el prospecto nunca se
+    // registraba pese a que el visitante sí dejó su correo.
+    const emailMatch = text.match(/[a-zA-Z0-9._%+\-]+\s*@\s*[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
     // Teléfono: mínimo 10 dígitos seguidos (evita capturar presupuestos como 250000)
     const phoneMatch = text.match(/[\+]?[\d][\d\s\-\(\)]{9,}/);
     const hasContactInfo = !!(emailMatch || phoneMatch);
-    if (hasContactInfo) {
-      const extractedEmail = emailMatch ? emailMatch[0].trim() : '';
+    // Solo se registra un prospecto cuando hay un dato de contacto real (correo o teléfono)
+    // en el mensaje actual, o cuando la sesión YA quedó registrada antes (para que el resto
+    // de la conversación se siga acumulando en la misma fila, con presupuesto/temas de
+    // interés actualizados) — ya no hay auto-registro a los 3 turnos sin contacto.
+    const shouldRegister = hasContactInfo || leadRegisteredRef.current;
+    if (shouldRegister) {
+      const extractedEmail = emailMatch ? emailMatch[0].replace(/\s+/g, '').trim() : '';
       const extractedPhone = phoneMatch ? phoneMatch[0].replace(/\s+/g, '').trim() : '';
-      if (!extractedEmail && !extractedPhone) return; // nada útil que registrar
-      fetch('http://localhost:3001/api/contact', {
+      leadRegisteredRef.current = true;
+      fetch(`${API_ROOT}/api/contact`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: 'Lead Chatbot SARA',
-          email: extractedEmail || `sin-correo-${Date.now()}@chatbot.glp`,
+          name: 'Visitante Web',
+          email: extractedEmail,
           phone: extractedPhone,
           project: 'Asesora Personalizada - GLP',
-          message: `Datos de contacto: ${text}`,
+          message: hasContactInfo ? `Datos de contacto: ${text}` : text,
           channel: 'Chatbot SARA',
+          sessionId: sessionIdRef.current,
           conversationHistory: currentMessages.map(m => `${m.sender === 'user' ? 'Cliente' : 'SARA'}: ${m.text}`).join('\n')
         })
       }).catch(()=>null);
     }
 
     try {
-      const res = await fetch('http://localhost:3001/api/chat', {
+      const res = await fetch(`${API_ROOT}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: currentMessages })
+        // sessionId permite al backend correlacionar esta conversación con el prospecto
+        // real (creado por /api/contact vía chat_session_id) para guardar ahí el perfil
+        // psicográfico que Sofía detecta en vivo — sin esto, el perfil nunca llegaría al CRM.
+        body: JSON.stringify({ messages: currentMessages, sessionId: sessionIdRef.current })
       });
       
       const data = await res.json();
@@ -2120,7 +2455,7 @@ const ChatbotWidget: React.FC = () => {
       // ────────────────────────────────────────────────────────
       setTimeout(() => {
         setIsTyping(false);
-        let botResponse = '¡Entiendo! Para brindarte la mejor asesoría con toda nuestra información, ¿podrías dejarme tu correo o número de WhatsApp y un broker especializado de Grupo Los Pueblos se comunicará contigo de inmediato?';
+        let botResponse = '¡Entiendo! Para brindarte la mejor asesoría con toda nuestra información, ¿podrías dejarme tu correo o número de WhatsApp y un broker especializado de Capital Brokers Properties se comunicará contigo de inmediato?';
         if (hasContactInfo) {
             botResponse = '¡Gracias por tus datos! Los hemos registrado exitosamente. Un asesor se comunicará contigo muy pronto. ¡Excelente día!';
         }
@@ -2161,7 +2496,7 @@ const ChatbotWidget: React.FC = () => {
                   background: C.white, display: 'flex', alignItems: 'center', justifyContent: 'center',
                   overflow: 'hidden'
                 }}>
-                  <img src="/img/agent_sara_customer.png" alt="SARA" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e)=> e.currentTarget.style.display = 'none'} />
+                  <img src="/img/agents/sara.png" alt="SARA" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e)=> e.currentTarget.style.display = 'none'} />
                 </div>
                 <div>
                   <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>Sara Valenzuela</div>
@@ -2255,19 +2590,21 @@ const ChatbotWidget: React.FC = () => {
             background: `linear-gradient(135deg, ${C.teal} 0%, ${C.sky} 100%)`,
             color: C.white, border: 'none',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer',
+            cursor: 'pointer', overflow: 'hidden',
             boxShadow: '0 4px 15px rgba(14, 165, 172, 0.4)',
             transition: 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
           }}
           onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
           onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+          title="Chatea con Sara"
         >
           {isOpen ? (
             <span style={{ fontSize: '1.5rem' }}>✕</span>
           ) : (
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-            </svg>
+            // Foto de Sara en vez del ícono genérico de burbuja de chat — le pone cara
+            // humana al widget, igual que en el resto del CRM.
+            <img src="/img/agents/sara.png" alt="Sara" style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.parentElement!.innerHTML = '<span style="font-size:1.4rem;font-weight:800">S</span>'; }} />
           )}
         </button>
       </div>
@@ -2288,48 +2625,50 @@ const ChatbotWidget: React.FC = () => {
 
 // ────────────────────────────────────────────────────────
 const LandingPage: React.FC = () => {
-  const [lightboxImg, setLightboxImg] = React.useState<string | null>(null)
-  const [expandedProjIndex, setExpandedProjIndex] = React.useState<number | null>(null)
-  const [calculatorProjIndex, setCalculatorProjIndex] = React.useState<number | null>(null)
   const [contactProject, setContactProject] = React.useState<string>('General')
   const [projectsList, setProjectsList] = React.useState<Project[]>(PROJECTS)
 
   // main.tsx usa projectsData.ts (tipo Project con campo 'beds', 'area', etc.)
   // El endpoint /api/projects sirve ProjectData del CRM (campo 'bedrooms') — estructuras distintas
-  // La landing mantiene su propio catálogo estático en projectsData.ts
+  // La landing mantiene su propio catálogo estático en projectsData.ts (copy de marketing),
+  // pero las FOTOS sí se homologan con el CRM en tiempo real vía liveProjectImages.ts.
+  const [, setImgTick] = React.useState(0);
+  React.useEffect(() => { fetchLiveProjectImages().then(() => setImgTick(t => t + 1)); }, []);
+  // Sobrescribe precio/área/recámaras/baños con los rangos reales del inventario (unidad-por-unidad)
+  // cuando el proyecto ya tiene unidades cargadas — mismo patrón de tick que las fotos en vivo.
+  const [, setUnidTick] = React.useState(0);
+  React.useEffect(() => { applyUnidadesToProjects().then(changed => { if (changed) setUnidTick(t => t + 1); }); }, []);
 
-  const handleTriggerContact = (projectName: string) => {
-    setContactProject(projectName);
-    setTimeout(() => {
-      const el = document.getElementById('contact');
-      if (el) el.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
-  };
+  // Filtros del buscador rápido del hero — se aplican a Proyectos al hacer clic en
+  // "Buscar". Objeto nuevo en cada búsqueda (no solo los valores) para que el efecto
+  // en ProjectsSection dispare incluso si el usuario busca dos veces seguidas con los
+  // mismos filtros.
+  const [heroFilters, setHeroFilters] = React.useState<{ category: string; price: string; beds: string } | null>(null);
 
   // ────────────────────────────────────────────────────────
 
   return (
     <>
       <GlobalStyles />
+      {/* Orden pensado desde la decisión de compra: el portafolio (lo que la
+          persona vino a ver) sube justo después del hero, en vez de aparecer
+          recién en cuarto lugar. Trayectoria/Nosotros (credibilidad de marca)
+          se mueven después de "¿Por qué Panamá?" — siguen presentes, solo ya
+          no son lo primero que se ve tras el hero. */}
       <Navbar />
-      <Hero />
-      <GLPTrayectoria />
+      <Hero onSearch={f => setHeroFilters({ ...f })} />
       <ProjectsSection
-        onZoom={setLightboxImg}
-        activeProjIndex={expandedProjIndex}
-        setActiveProjIndex={setExpandedProjIndex}
-        onTriggerCalculator={(idx) => setCalculatorProjIndex(idx)}
-        onTriggerContact={handleTriggerContact}
         projects={projectsList}
+        initialFilters={heroFilters}
       />
-      <WhyPanamaSection />
-      {calculatorProjIndex !== null && (
-        <CalculatorSection
-          selectedProject={calculatorProjIndex}
-          setSelectedProject={setCalculatorProjIndex}
-          projects={projectsList}
-        />
-      )}
+      {/* Un solo bloque por tema: primero país (¿Por qué Panamá?), después empresa
+          (¿Por qué GLP? — fusiona lo que antes eran Trayectoria, Razones para invertir
+          y Nosotros/aliados en tres momentos separados del scroll). */}
+      <section id="why-panama" style={{ background: C.white, borderBottom: `1px solid ${C.sand}` }}>
+        <WhyPanamaSection />
+      </section>
+      <WhyGLPSection />
+      <TestimonialsSection />
       <FAQSection />
       <ContactSection
         contactProject={contactProject}
@@ -2338,83 +2677,8 @@ const LandingPage: React.FC = () => {
       />
       <Footer />
 
-      {/* Botón Flotante de Acceso CRM */}
-      <a
-        href="/crm.html"
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{
-          position: 'fixed',
-          bottom: '24px',
-          left: '24px',
-          zIndex: 999,
-          background: C.teal,
-          color: C.white,
-          width: '50px',
-          height: '50px',
-          borderRadius: '50%',
-          border: `1px solid ${C.teal}`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          cursor: 'pointer',
-          textDecoration: 'none',
-          boxShadow: '0 4px 15px rgba(14, 165, 172, 0.25)',
-          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        }}
-        onMouseEnter={e => {
-          e.currentTarget.style.background = C.white;
-          e.currentTarget.style.color = C.teal;
-          e.currentTarget.style.transform = 'scale(1.1) rotate(5deg)';
-          e.currentTarget.style.boxShadow = '0 6px 20px rgba(14, 165, 172, 0.4)';
-        }}
-        onMouseLeave={e => {
-          e.currentTarget.style.background = C.teal;
-          e.currentTarget.style.color = C.white;
-          e.currentTarget.style.transform = 'scale(1) rotate(0deg)';
-          e.currentTarget.style.boxShadow = '0 4px 15px rgba(14, 165, 172, 0.25)';
-        }}
-        title="Acceso CRM Administrativo"
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-        </svg>
-      </a>
-
-      {lightboxImg && (
-        <div
-          onClick={() => setLightboxImg(null)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 9999,
-            background: 'rgba(0,0,0,0.85)', display: 'flex',
-            alignItems: 'center', justifyContent: 'center',
-            backdropFilter: 'blur(8px)', cursor: 'zoom-out',
-            animation: 'fadeIn 0.2s ease',
-          }}
-        >
-          <button
-            onClick={(e) => { e.stopPropagation(); setLightboxImg(null); }}
-            style={{
-              position: 'absolute', top: 24, right: 24,
-              background: 'none', border: 'none', color: '#fff',
-              fontSize: '2rem', cursor: 'pointer',
-            }}
-          >
-            ✕
-          </button>
-          <img
-            src={lightboxImg}
-            alt="Zoom"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              maxWidth: '90%', maxHeight: '90%',
-              borderRadius: 8, boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-              objectFit: 'contain',
-            }}
-          />
-        </div>
-      )}
+      {/* El acceso al CRM se movió al menú principal ("Intranet") — antes era este
+          botón flotante fijo en la esquina inferior izquierda. */}
 
       {/* Chatbot Widget */}
       <ChatbotWidget />

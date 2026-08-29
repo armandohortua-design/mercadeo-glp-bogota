@@ -108,11 +108,11 @@ CREATE INDEX IF NOT EXISTS idx_bitacora_tenant ON bitacora(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_drafts_tenant ON drafts(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_activos_tenant ON activos(tenant_id);
 
--- Tenant inicial: GLP Wealth Management
+-- Tenant inicial: GLP Colombia
 INSERT INTO tenants (id, name, domain, status, contact, smtp, openai, apollo)
 VALUES (
   'tenant-glp-001',
-  'GLP Wealth Management',
+  'GLP Colombia',
   'glp.com.pa',
   'active',
   '{"address": "2GFM+R7, C. Ramon H. Jurado, Panamá, Provincia de Panamá, Panamá", "email": "info@glp.com.pa", "website": "www.glp.com.pa", "phone": "+507 836-5000"}',
