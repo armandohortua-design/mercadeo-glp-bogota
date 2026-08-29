@@ -78,3 +78,52 @@ Cada fase termina en un estado desplegable — no es necesario completar las 4 p
 3. **Límite de gasto**: ¿quieres definirlo ya (ej. "$50 USD/mes en llamadas de IA por tenant") o prefieres que primero midamos 2-4 semanas con el logging de la Fase 0 antes de fijar un número?
 
 Empecemos por la Fase 0 en cuanto confirmes los principios de la sección 2 y me des una primera respuesta a estas 3 preguntas — cada paso de ahí en adelante te lo voy explicando y afinando contigo antes de escribir código, como pediste.
+
+---
+
+## 5. Actualización 2026-08-29 — Fases 0-2 ya implementadas; pendientes de la siguiente capa
+
+Gran parte de este documento quedó resuelta en la sesión del 2026-08-29: los 7 agentes
+(Sara, Camilo, Sofía, Valeria, Isabella, Andrea/Cartera, Mónica/Legal) recibieron memoria
+persistente por usuario y por cliente (`server/agentMemory.js`), colaboración de solo
+lectura entre agentes (`buildAgentContext` + `consultar_a_otro_agente`), feedback loop
+humano con alertas de calidad (`server/agentFeedback.js`), herramientas nuevas (búsqueda
+web real, calendario interno, lectura de documentos adjuntos), razonamiento multi-paso
+planificado, modelo/temperatura afinados por tipo de tarea, y auditoría completa de cada
+llamada a herramienta (`server/agentAudit.js`) — la Fase 0 (`agent_runs`, atribución por
+usuario) y buena parte de la Fase 2 (medición de costo real por agente) de este documento
+ya están cubiertas por ese trabajo. Ver el commit `e986158` en `main`.
+
+**Lo que sigue quedando pendiente, en orden de prioridad, para cuando se retome:**
+
+1. **Seguridad real de identidad y permisos** — `x-user` es hoy un header autorreportado
+   por el navegador, sin autenticación real detrás. No hay forma de impedir que un broker
+   dispare una acción de agente sobre datos de otro broker, ni de confiar plenamente en la
+   atribución `triggered_by` de los `agent_runs`. Bloquea cualquier expansión seria a más
+   usuarios reales.
+2. **Límites de gasto reales, no solo medición** (cierra la Fase 2 de este documento) — ya
+   se mide el costo por `agent_run` con el modelo real usado, pero nada impide que un
+   usuario o un bug dispare cientos de llamadas seguidas, sobre todo ahora que
+   Valeria/Isabella usan `gpt-4o` (18-20x más caro que `gpt-4o-mini`). Falta el tope
+   configurable por tenant/agente con aviso proactivo antes de bloquear (principio 5 de la
+   sección 2, nunca implementado).
+3. **Streaming de respuestas** — hoy el usuario espera en silencio 5-7 segundos mientras el
+   agente hace varias rondas de herramientas y recién ahí ve todo de golpe (plan +
+   respuesta). Con streaming vería el plan aparecer primero y cada paso completarse en vivo.
+4. **Suite de evaluación automática (evals)** — no existe ningún set de preguntas de
+   referencia con respuestas esperadas; cada ajuste de prompt se prueba manualmente con
+   curl (como en toda la sesión del 29/08). El feedback loop mide la realidad en
+   producción, pero nada atrapa una regresión antes de publicarla.
+5. **Acciones de escritura más allá de "crear borrador"** — los agentes pueden crear
+   (borradores, insights, perfiles, citas) pero no editar un registro existente (ej.
+   Andrea no puede marcar una cuota como pagada aunque el usuario se lo confirme en el
+   chat). Ampliar el patrón de "acción con aprobación humana" a ediciones, no solo
+   creaciones.
+6. **Búsqueda semántica sobre datos internos** — `consultar_datos` filtra por campos
+   exactos; no puede responder algo como "¿algún cliente mencionó que se muda por trabajo?"
+   porque esa señal vive en texto libre (notas, `resumen_ia`, historial de correos) sin
+   índice vectorial.
+
+Prioridad sugerida para retomar: **#1 y #4 primero** — cualquier otra mejora sobre un
+sistema sin auth real hereda ese riesgo, y sin evals cada cambio de prompt futuro es un
+experimento a ciegas sobre los 7 agentes ya en marcha.
