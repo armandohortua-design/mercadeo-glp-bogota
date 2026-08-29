@@ -7,7 +7,13 @@ const pool = require('./db');
 const { startEmailPoller, pollInbox } = require('./emailPoller');
 const { startProspectMonitor, monitorProspects, saraAutoTrigger72h, detectColdProspects } = require('./prospectMonitor');
 const { startCrisisDetector, detectCrisis } = require('./crisisDetector');
+const agentMemory = require('./agentMemory');
+const agentFeedback = require('./agentFeedback');
+const agentAudit = require('./agentAudit');
 const { startLegalAlertMonitor } = require('./legalAlertMonitor');
+const { startCarteraMonitor } = require('./carteraMonitor');
+const { startContentAgentsMonitor } = require('./contentAgentsMonitor');
+const { startFeedbackMonitor } = require('./agentFeedback');
 const { credencialesConfiguradas: docusignConfigurado, crearSobre: docusignCrearSobre, parseWebhookEvent: docusignParseWebhook } = require('./docusign');
 const { processIncomingMessage } = require('./whatsapp');
 const multer = require('multer');
@@ -43,7 +49,7 @@ async function resolveTenant(req) {
   }
   return {
     id: 'default',
-    name: 'GLP Wealth Management',
+    name: 'GLP Colombia',
     domain: 'glp.com.pa',
     contact: { address: '2GFM+R7, C. Ramon H. Jurado, Panamá', email: 'info@glp.com.pa', website: 'www.glp.com.pa' },
     smtp: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
@@ -176,11 +182,13 @@ async function startAgentRun(tenantId, triggeredBy, agentName, action) {
   }
 }
 // Precios de OpenAI por millón de tokens — Fase 2 (medir gasto real antes de fijar un
-// tope, según lo acordado). Todas las llamadas de agentes hoy usan gpt-4o-mini; si en el
-// futuro algún agente cambia de modelo, agregar su entrada aquí antes de que empiece a
-// registrar costo $0 por error.
+// tope, según lo acordado). Valeria e Isabella usan gpt-4o (más caro, mejor redacción) desde
+// que se afinó modelo/temperatura por tipo de tarea — el resto sigue en gpt-4o-mini. Si un
+// agente cambia de modelo, agregar su entrada aquí antes de que empiece a registrar costo
+// $0 por error.
 const PRECIOS_USD_POR_1M_TOKENS = {
   'gpt-4o-mini': { input: 0.150, output: 0.600 },
+  'gpt-4o': { input: 2.50, output: 10.00 },
 };
 function estimarCostoUsd(model, promptTokens, completionTokens) {
   const precio = PRECIOS_USD_POR_1M_TOKENS[model] || PRECIOS_USD_POR_1M_TOKENS['gpt-4o-mini'];
@@ -239,6 +247,17 @@ app.get('/api/agent-runs', async (req, res) => {
 // para "medir primero" (Fase 2) antes de fijar cualquier tope de gasto. Se agrupa por
 // agente para poder ver, por ejemplo, que Camilo (research con web_search) es el más caro
 // del enjambre, y decidir un límite informado en vez de un número arbitrario.
+// GET /api/agent-runs/:id/steps — la traza completa de UNA respuesta: cada herramienta que
+// el agente invocó, con qué argumentos, qué le respondió y si falló (ver agentAudit.js).
+// Incluye los pasos de una consulta cruzada a otro agente bajo el mismo run_id, así que
+// muestra el razonamiento completo aunque haya cruzado a otro especialista en el camino.
+app.get('/api/agent-runs/:id/steps', async (req, res) => {
+  try {
+    const pasos = await agentAudit.pasosDeRun(req.params.id);
+    res.json(pasos);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/agent-runs/resumen-costo', async (req, res) => {
   try {
     const tenant = await resolveTenant(req);
@@ -432,6 +451,21 @@ app.delete('/api/prospectos/:id', async (req, res) => {
   } catch (e) { console.warn('sofia_profiles table check:', e.message); }
 })();
 
+// Sofía ahora también sondea, en vivo dentro del chat, el segmento de proyecto que el
+// visitante busca (ciudad/golf/isla/playa), su presupuesto y si quiere renta corta/Airbnb —
+// antes esto solo influía en la respuesta de Sara turno a turno y se perdía; con columnas
+// propias queda visible en el perfil del prospecto en el CRM, igual que arquetipo/confianza.
+(async () => {
+  try {
+    await pool.query(`
+      ALTER TABLE sofia_profiles
+        ADD COLUMN IF NOT EXISTS segmento_deseado TEXT,
+        ADD COLUMN IF NOT EXISTS interes_renta_corta BOOLEAN,
+        ADD COLUMN IF NOT EXISTS presupuesto_detectado NUMERIC
+    `);
+  } catch (e) { console.warn('sofia_profiles segmento/renta columns check:', e.message); }
+})();
+
 // ==========================================
 // TESTIMONIOS — para la sección de prueba social de la landing (nombre, rol/ciudad,
 // texto, calificación, foto). 'status' empieza en 'draft': un testimonio cargado en el
@@ -514,6 +548,227 @@ app.delete('/api/testimonials/:id', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ==========================================
+// CAMPAÑAS DE MARKETING — envío real y trazabilidad. Antes "Lanzar campaña" en el CRM
+// solo cambiaba estado a 'activa' en localStorage — ningún correo salía y no quedaba
+// ningún registro. campaign_sends deja un rastro por cada destinatario (enviado/fallido,
+// cuándo, con qué asunto) para que el módulo deje de aparentar una funcionalidad que no
+// tenía. Cubre el envío inmediato de campañas tipo "masiva" (no las secuencias drip
+// automáticas de varios días, que necesitarían un scheduler aparte).
+// ==========================================
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS campaign_sends (
+        id BIGSERIAL PRIMARY KEY,
+        tenant_id TEXT NOT NULL DEFAULT 'tenant-glp-001',
+        campaign_id TEXT NOT NULL,
+        campaign_nombre TEXT,
+        prospecto_id TEXT,
+        prospecto_nombre TEXT,
+        prospecto_correo TEXT,
+        asunto TEXT,
+        status TEXT NOT NULL DEFAULT 'enviado',
+        error TEXT,
+        enviado_por TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+  } catch (e) { console.warn('campaign_sends table check:', e.message); }
+})();
+
+// ==========================================
+// CAMPAÑAS — las campañas en sí (nombre, segmento, contenido, pasos de secuencia) vivían
+// SOLO en localStorage — a diferencia de campaign_sends (el rastro de envíos, que sí quedó en
+// Postgres desde el principio), nunca había una tabla para el registro de la campaña. Mismo
+// patrón que `projects`: el objeto completo como JSONB, porque su forma es rica y anidada
+// (dripPasos, segmentación) y no vale la pena aplanarla a columnas tipadas.
+// ==========================================
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS campaigns (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL DEFAULT 'tenant-glp-001',
+        data JSONB NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+  } catch (e) { console.warn('campaigns table check:', e.message); }
+})();
+
+app.get('/api/campaigns', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { rows } = await pool.query('SELECT data FROM campaigns WHERE tenant_id = $1 ORDER BY created_at DESC', [tenant.id]);
+    res.json(rows.map(r => r.data));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/campaigns', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const campana = req.body;
+    const id = String(campana.id || Date.now());
+    await pool.query(
+      `INSERT INTO campaigns (id, tenant_id, data) VALUES ($1,$2,$3)
+       ON CONFLICT (id) DO UPDATE SET data = $3, updated_at = NOW()`,
+      [id, tenant.id, JSON.stringify({ ...campana, id: campana.id || Number(id) || id })]
+    );
+    res.json({ success: true, id });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/campaigns/:id', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    await pool.query(
+      `UPDATE campaigns SET data = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3`,
+      [JSON.stringify(req.body), String(req.params.id), tenant.id]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/campaigns/:id', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    await pool.query('DELETE FROM campaigns WHERE id = $1 AND tenant_id = $2', [String(req.params.id), tenant.id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/campaigns/send-now', async (req, res) => {
+  try {
+    const { campaignId, campaignNombre, asunto, cuerpo, destinatarios = [] } = req.body;
+    if (!campaignId || !asunto || !cuerpo) return res.status(400).json({ error: 'Faltan campos: campaignId, asunto, cuerpo.' });
+    if (!Array.isArray(destinatarios) || destinatarios.length === 0) return res.status(400).json({ error: 'La campaña no tiene destinatarios (segmento vacío).' });
+
+    const tenant = await resolveTenant(req);
+    const user = resolveUser(req);
+    const transporter = getTransporter(tenant);
+    if (!transporter) return res.status(500).json({ error: 'SMTP no configurado. Verifica SMTP_USER y SMTP_PASS en .env' });
+
+    // Envío secuencial (no Promise.all) — evita saturar el límite de envíos del proveedor
+    // SMTP y deja que un fallo puntual no interrumpa el resto del lote.
+    const resultados = [];
+    for (const dest of destinatarios) {
+      const correo = dest.correo || dest.email;
+      if (!correo) {
+        resultados.push({ prospectoId: dest.id, nombre: dest.nombre, status: 'omitido', error: 'Sin correo registrado' });
+        continue;
+      }
+      const nombreCompleto = `${dest.nombre || ''} ${dest.apellido || ''}`.trim() || 'Cliente';
+      const asuntoPersonalizado = asunto.replace(/{{\s*nombre\s*}}/g, dest.nombre || nombreCompleto);
+      const cuerpoPersonalizado = cuerpo
+        .replace(/{{\s*nombre\s*}}/g, dest.nombre || nombreCompleto)
+        .replace(/{{\s*apellido\s*}}/g, dest.apellido || '')
+        .replace(/{{\s*broker\s*}}/g, dest.broker || user || 'Tu asesor GLP')
+        .replace(/{{\s*proyecto\s*}}/g, dest.proyecto || (dest.proyectos_interes || [])[0] || 'nuestros proyectos')
+        .replace(/{{\s*presupuesto\s*}}/g, dest.presupuesto_usd ? `$${Number(dest.presupuesto_usd).toLocaleString()}` : '');
+      try {
+        await transporter.sendMail({
+          from: `"GLP Colombia" <${process.env.SMTP_USER}>`,
+          to: correo,
+          subject: asuntoPersonalizado,
+          html: cuerpoPersonalizado.replace(/\n/g, '<br>'),
+        });
+        await pool.query(
+          `INSERT INTO campaign_sends (tenant_id, campaign_id, campaign_nombre, prospecto_id, prospecto_nombre, prospecto_correo, asunto, status, enviado_por)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,'enviado',$8)`,
+          [tenant.id, String(campaignId), campaignNombre || null, dest.id ? String(dest.id) : null, nombreCompleto, correo, asuntoPersonalizado, user]
+        );
+        resultados.push({ prospectoId: dest.id, nombre: nombreCompleto, correo, status: 'enviado' });
+      } catch (sendErr) {
+        console.error(`[Campañas] ❌ Error enviando a ${correo}:`, sendErr.message);
+        await pool.query(
+          `INSERT INTO campaign_sends (tenant_id, campaign_id, campaign_nombre, prospecto_id, prospecto_nombre, prospecto_correo, asunto, status, error, enviado_por)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,'fallido',$8,$9)`,
+          [tenant.id, String(campaignId), campaignNombre || null, dest.id ? String(dest.id) : null, nombreCompleto, correo, asuntoPersonalizado, sendErr.message, user]
+        );
+        resultados.push({ prospectoId: dest.id, nombre: nombreCompleto, correo, status: 'fallido', error: sendErr.message });
+      }
+    }
+
+    const enviados = resultados.filter(r => r.status === 'enviado').length;
+    const fallidos = resultados.filter(r => r.status === 'fallido').length;
+    console.log(`[Campañas] "${campaignNombre || campaignId}" — ${enviados} enviados, ${fallidos} fallidos de ${destinatarios.length} destinatarios.`);
+    res.json({ success: true, enviados, fallidos, omitidos: resultados.length - enviados - fallidos, resultados });
+  } catch (err) {
+    console.error('[Campañas] Error en send-now:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// DERIVACIONES A ASESOR HUMANO — desde el chatbot Sara. Antes derivar_a_asesor solo
+// mandaba un correo de alerta; si ese correo se perdía o nadie lo vio a tiempo no quedaba
+// ningún rastro de que el visitante pidió hablar con una persona. Ahora también se
+// persiste, igual que una cita.
+// ==========================================
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS chat_derivaciones (
+        id BIGSERIAL PRIMARY KEY,
+        tenant_id TEXT NOT NULL DEFAULT 'tenant-glp-001',
+        motivo TEXT,
+        visitante_correo TEXT,
+        visitante_telefono TEXT,
+        session_id TEXT,
+        estado TEXT NOT NULL DEFAULT 'pendiente',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+  } catch (e) { console.warn('chat_derivaciones table check:', e.message); }
+})();
+
+app.get('/api/campaigns/sends', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { campaignId } = req.query;
+    const { rows } = campaignId
+      ? await pool.query('SELECT * FROM campaign_sends WHERE tenant_id = $1 AND campaign_id = $2 ORDER BY created_at DESC', [tenant.id, String(campaignId)])
+      : await pool.query('SELECT * FROM campaign_sends WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 200', [tenant.id]);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Antes no existía ningún GET — el panel de "Perfilar Prospectos" del CRM nunca leía esta
+// tabla (solo el chat en vivo la escribía), así que vivía enteramente aparte en localStorage,
+// desconectado de los perfiles reales que ya se estaban guardando en Postgres. Join con
+// prospectos para reconstruir nombre/ocupación/presupuesto que el frontend necesita mostrar,
+// sin duplicar esos campos dentro de sofia_profiles.
+app.get('/api/sofia-profiles', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { rows } = await pool.query(`
+      SELECT sp.prospecto_id, sp.arquetipo, sp.confianza, sp.senales,
+             sp.recomendacion_sara, sp.recomendacion_valeria, sp.updated_at,
+             p.nombre, p.apellido, p.ocupacion, p.presupuesto_usd
+      FROM sofia_profiles sp
+      JOIN prospectos p ON p.id = sp.prospecto_id
+      WHERE sp.tenant_id = $1
+      ORDER BY sp.updated_at DESC
+    `, [tenant.id]);
+    res.json(rows.map(r => ({
+      prospectId: r.prospecto_id,
+      prospectName: `${r.nombre || ''} ${r.apellido || ''}`.trim() || `Prospecto ${r.prospecto_id}`,
+      ocupacion: r.ocupacion || '',
+      presupuesto: Number(r.presupuesto_usd) || 0,
+      arquetipo: r.arquetipo,
+      confianza: r.confianza,
+      senales: r.senales || [],
+      recomendacion_sara: r.recomendacion_sara,
+      recomendacion_valeria: r.recomendacion_valeria,
+      fecha: r.updated_at,
+    })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.put('/api/sofia-profiles/:prospectoId', async (req, res) => {
@@ -1194,12 +1449,17 @@ app.put('/api/drafts/:id', async (req, res) => {
   try {
     const tenant = await resolveTenant(req);
     const { destinatario, subject, body, prioridad } = req.body;
+    // edited_by_human: marca que un humano tocó el contenido antes de aprobarlo — es la
+    // señal que distingue "aprobado tal cual" de "aprobado editado" en el loop de feedback
+    // (ver agentFeedback.js). Solo importa para borradores que un agente generó; para uno
+    // manual no cambia nada observable.
     const { rows } = await pool.query(
       `UPDATE drafts SET
          destinatario = COALESCE($1, destinatario),
          subject = COALESCE($2, subject),
          body = COALESCE($3, body),
-         prioridad = COALESCE($4, prioridad)
+         prioridad = COALESCE($4, prioridad),
+         edited_by_human = true
        WHERE id = $5 AND tenant_id = $6 RETURNING *`,
       [destinatario, subject, body, prioridad, req.params.id, tenant.id]
     );
@@ -1213,7 +1473,16 @@ app.put('/api/drafts/:id', async (req, res) => {
 app.delete('/api/drafts/:id', async (req, res) => {
   try {
     const tenant = await resolveTenant(req);
+    const user = resolveUser(req);
+    // Descartar un borrador que un AGENTE generó es señal real de calidad — se registra
+    // antes de borrarlo (ver agentFeedback.js). Un borrador manual (origen no _ia) no
+    // pasa por este loop.
+    const { rows: existente } = await pool.query('SELECT origen FROM drafts WHERE id = $1 AND tenant_id = $2', [req.params.id, tenant.id]);
     await pool.query('DELETE FROM drafts WHERE id = $1 AND tenant_id = $2', [req.params.id, tenant.id]);
+    if (existente.length > 0) {
+      const agenteOrigen = agentFeedback.agentePorOrigenDraft(existente[0].origen);
+      if (agenteOrigen) await agentFeedback.registrar(tenant.id, agenteOrigen, 'draft', req.params.id, 'discarded', user).catch(() => {});
+    }
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1313,7 +1582,9 @@ app.post('/api/contact', async (req, res) => {
 CONVERSACIÓN:
 ${conversationHistory}
 
-Para calcular score_calificacion suma: menciona_inversion(+20) + menciona_presupuesto(+20) + menciona_panama(+10) + menciona_entrega_o_disponibilidad(+15) + menciona_fecha_decision(+20) + menciona_financiamiento(+10) + menciona_habitaciones(+10) + menciona_rentabilidad(+10) + menciona_uso_propio(+5). Ajusta según tono: listo_para_decidir(+10), solo_cotizando(-10). Máximo 100.`
+Para calcular score_calificacion suma: menciona_fecha_decision(+25) + menciona_presupuesto(+20) + menciona_inversion(+15) + menciona_entrega_o_disponibilidad(+10) + menciona_financiamiento(+10) + menciona_rentabilidad(+10) + contacto_en_turno_de_interes(+10) + menciona_panama(+5) + menciona_habitaciones(+5) + menciona_uso_propio(+5). Ajusta según tono: listo_para_decidir(+15), solo_cotizando(-15). Máximo 100.
+
+contacto_en_turno_de_interes: true SOLO si el cliente dejó su correo/teléfono en el MISMO mensaje (o inmediatamente después) de una señal de interés real (presupuesto, fecha, financiamiento) — no si el contacto vino aislado sin contexto de interés alrededor.`
           }],
           temperature: 0.2, max_tokens: 500,
           response_format: {
@@ -1345,9 +1616,10 @@ Para calcular score_calificacion suma: menciona_inversion(+20) + menciona_presup
                       menciona_habitaciones: { type: 'boolean' },
                       menciona_rentabilidad: { type: 'boolean' },
                       menciona_uso_propio: { type: 'boolean' },
+                      contacto_en_turno_de_interes: { type: 'boolean', description: 'true solo si el correo/teléfono llegó en el mismo turno (o inmediatamente después) de una señal de interés real, no aislado.' },
                       tono_general: { type: 'string', enum: ['curioso', 'interesado', 'listo_para_decidir', 'solo_cotizando', 'desconocido'] },
                     },
-                    required: ['menciona_inversion', 'menciona_panama', 'menciona_presupuesto', 'menciona_entrega_o_disponibilidad', 'menciona_financiamiento', 'menciona_fecha_decision', 'menciona_habitaciones', 'menciona_rentabilidad', 'menciona_uso_propio', 'tono_general'],
+                    required: ['menciona_inversion', 'menciona_panama', 'menciona_presupuesto', 'menciona_entrega_o_disponibilidad', 'menciona_financiamiento', 'menciona_fecha_decision', 'menciona_habitaciones', 'menciona_rentabilidad', 'menciona_uso_propio', 'contacto_en_turno_de_interes', 'tono_general'],
                   },
                   score_calificacion: { type: 'number' },
                 },
@@ -1390,7 +1662,7 @@ Para calcular score_calificacion suma: menciona_inversion(+20) + menciona_presup
         // Generar borrador personalizado con contexto real
         const draftResponse = await openai.chat.completions.create({
           model: 'gpt-4o-mini',
-          messages: [{ role: 'user', content: `Eres Sara Valenzuela, Directora de Customer Success & Back-Office Comercial de ${tenant.name}. Redacta un correo de seguimiento cálido y profesional para ${detectedFirstName}, quien se comunicó con nosotros y mostró interés en: ${analysis.resumen_consulta || project}. Sus temas de interés son: ${(analysis.temas_interes || []).join(', ')}. Proyecto de interés: ${detectedProject}. IMPORTANTE: nunca menciones "chatbot", "asistente virtual" ni "IA" — di simplemente que "nos contactó" o "tuvo la oportunidad de conversar con nuestro equipo". Firma siempre como Sara Valenzuela, Directora de Customer Success & Back-Office Comercial.` }],
+          messages: [{ role: 'user', content: `Eres Sara Valenzuela, Directora de Atención al Cliente y Operaciones Comerciales de ${tenant.name}. Redacta un correo de seguimiento cálido y profesional para ${detectedFirstName}, quien se comunicó con nosotros y mostró interés en: ${analysis.resumen_consulta || project}. Sus temas de interés son: ${(analysis.temas_interes || []).join(', ')}. Proyecto de interés: ${detectedProject}. IMPORTANTE: nunca menciones "chatbot", "asistente virtual" ni "IA" — di simplemente que "nos contactó" o "tuvo la oportunidad de conversar con nuestro equipo". Firma siempre como Sara Valenzuela, Directora de Atención al Cliente y Operaciones Comerciales.` }],
           temperature: 0.7, max_tokens: 500,
           response_format: EMAIL_DRAFT_JSON_SCHEMA,
         });
@@ -1486,7 +1758,7 @@ Para calcular score_calificacion suma: menciona_inversion(+20) + menciona_presup
             <table style="border-collapse:collapse;margin-top:16px;">
               <tr><td style="border-left:3px solid #B89047;padding-left:16px;">
                 <div style="font-size:15px;font-weight:bold;color:#002349;">Sara Valenzuela</div>
-                <div style="font-size:11px;color:#B89047;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Directora de Customer Success & Back-Office Comercial</div>
+                <div style="font-size:11px;color:#B89047;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Directora de Atención al Cliente y Operaciones Comerciales</div>
                 <div style="font-size:13px;font-weight:bold;color:#111827;">${tenant.name}</div>
                 <div style="font-size:11px;color:#4B5563;">${tenant.contact?.address || ''}<br/>
                   <a href="mailto:${tenant.contact?.email || ''}" style="color:#002349;text-decoration:none;font-weight:600;">${tenant.contact?.email || ''}</a> |
@@ -1536,11 +1808,18 @@ Para calcular score_calificacion suma: menciona_inversion(+20) + menciona_presup
     const budgetFromAI = (typeof analysis?.presupuesto_usd === 'number' && analysis.presupuesto_usd > 0) ? analysis.presupuesto_usd : null;
     const budgetUSD = budgetFromForm ?? budgetFromAI;
     const score = analysis?.score_calificacion ?? null;
-    const estadoLead = score !== null ? (score >= 60 ? 'Calificado' : score >= 30 ? 'Contacto Inicial' : 'Lead Frío') : 'Lead Nuevo';
+    // Antes un solo mensaje con presupuesto + "quiero invertir" ya podía sumar 60+ y saltar
+    // directo a "Calificado" sin haber sostenido conversación real — se exige un mínimo de
+    // 3 turnos del cliente antes de subirlo a ese tier, aunque el score numérico ya alcance.
+    const numClienteTurns = conversationHistory ? (conversationHistory.match(/^Cliente:/gm) || []).length : 0;
+    const estadoLead = score !== null
+      ? (score >= 60 && numClienteTurns >= 3 ? 'Calificado' : score >= 30 ? 'Contacto Inicial' : 'Lead Frío')
+      : 'Lead Nuevo';
     const temasInteres = JSON.stringify(analysis?.temas_interes || []);
     const proyectosInteres = JSON.stringify(
       (analysis?.proyectos_mencionados && analysis.proyectos_mencionados.length) ? analysis.proyectos_mencionados : [detectedProject]
     );
+    const perfilInversor = (analysis?.perfil_inversor && analysis.perfil_inversor !== 'desconocido') ? analysis.perfil_inversor : null;
 
     if (existingProspect) {
       // Actualización silenciosa de una conversación/sesión ya registrada: se reescribe
@@ -1557,19 +1836,20 @@ Para calcular score_calificacion suma: menciona_inversion(+20) + menciona_presup
            resumen_ia = COALESCE($6, resumen_ia),
            score_calificacion = COALESCE($7, score_calificacion),
            presupuesto_usd = COALESCE($8, presupuesto_usd),
-           chat_session_id = COALESCE(chat_session_id, $9),
+           perfil_inversor = COALESCE($9, perfil_inversor),
+           chat_session_id = COALESCE(chat_session_id, $10),
            fecha_ultima_actividad = NOW()
-         WHERE id = $10`,
+         WHERE id = $11`,
         [email || null, phone || null, proyectosInteres, enrichedNotes, temasInteres,
-         analysis?.resumen_consulta || null, score, budgetUSD, sessionId || null, existingProspect.id]
+         analysis?.resumen_consulta || null, score, budgetUSD, perfilInversor, sessionId || null, existingProspect.id]
       );
     } else {
       await pool.query(
-        `INSERT INTO prospectos (tenant_id, nombre, apellido, correo, telefono, proyectos_interes, forma_contacto, estado, canal, notas, presupuesto_usd, temas_interes, resumen_ia, score_calificacion, chat_session_id, fecha_registro, fecha_ultima_actividad)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW(),NOW())`,
+        `INSERT INTO prospectos (tenant_id, nombre, apellido, correo, telefono, proyectos_interes, forma_contacto, estado, canal, notas, presupuesto_usd, temas_interes, resumen_ia, score_calificacion, perfil_inversor, chat_session_id, fecha_registro, fecha_ultima_actividad)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW(),NOW())`,
         [tenant.id, detectedFirstName, '', email || '', phone || '',
          proyectosInteres, channel || 'Web', estadoLead, channel || 'Web',
-         enrichedNotes, budgetUSD, temasInteres, analysis?.resumen_consulta || null, score, sessionId || null]
+         enrichedNotes, budgetUSD, temasInteres, analysis?.resumen_consulta || null, score, perfilInversor, sessionId || null]
       );
     }
 
@@ -1638,6 +1918,15 @@ app.post('/api/send-draft', async (req, res) => {
 
     await pool.query('UPDATE drafts SET status = $1, sent_by = $2, sent_at = NOW() WHERE id = $3', ['sent', user, id]);
 
+    // Loop de feedback (ver agentFeedback.js): un borrador que un agente generó y que se
+    // terminó enviando es una aprobación — "tal cual" o "editado" según si se tocó el
+    // contenido antes (edited_by_human, marcado en PUT /api/drafts/:id).
+    const agenteOrigenSend = agentFeedback.agentePorOrigenDraft(draft.origen);
+    if (agenteOrigenSend) {
+      const decision = draft.edited_by_human ? 'approved_edited' : 'approved_as_is';
+      await agentFeedback.registrar(tenant.id, agenteOrigenSend, 'draft', id, decision, user).catch(() => {});
+    }
+
     // Registrar en historial del prospecto si existe
     const { rows: prospectoRows } = await pool.query(
       `SELECT id, historial FROM prospectos WHERE tenant_id = $1 AND correo = $2`,
@@ -1682,8 +1971,8 @@ app.post('/api/send-draft', async (req, res) => {
 // CATÁLOGO GLP — fallback para SARA
 // ==========================================
 const GLP_CATALOG = [
-  { name: 'Armonía', zone: 'Bella Vista — Ciudad de Panamá', tipo: 'Residencia', entrega: 'F1 Inmediata · F2 Q2 2026 · F3 Q2 2028', minPrice: 181000, maxPrice: 235000, areaMin: 45, areaMax: 71, bedrooms: '1, 2 y 3 rec.', capRateMin: 6.0, capRateMax: 7.5, amenities: ['Piscina', 'Gimnasio', 'Lobby diseño', 'Seguridad 24/7', 'Parqueo'] },
-  { name: 'Ventu', zone: 'Bella Vista — Ciudad de Panamá', tipo: 'Hotelero (Airbnb)', entrega: 'Q2 2028', minPrice: 136000, maxPrice: 259000, areaMin: 40, areaMax: 63, bedrooms: '1 y 2 rec.', capRateMin: 8.0, capRateMax: 12.0, amenities: ['Administración hotelera', 'Pool deck', 'Coworking', 'Check-in automático'] },
+  { name: 'Armonía', zone: 'Bella Vista — Ciudad de Panamá', tipo: 'Residencia', entrega: 'F1 Inmediata · F2 Q2 2026 · F3 Q2 2028', minPrice: 181000, maxPrice: 235000, areaMin: 45, areaMax: 71, bedrooms: '1, 2 y 3 rec.', capRateMin: 6.0, capRateMax: 7.5, amenities: ['Piscina', 'Gimnasio', 'Lobby diseño', 'Seguridad 24/7', 'Parqueo'], licenciaTuristica: true },
+  { name: 'Ventu', zone: 'Bella Vista — Ciudad de Panamá', tipo: 'Hotelero (Airbnb)', entrega: 'Q2 2028', minPrice: 136000, maxPrice: 259000, areaMin: 40, areaMax: 63, bedrooms: '1 y 2 rec.', capRateMin: 8.0, capRateMax: 12.0, amenities: ['Administración hotelera', 'Pool deck', 'Coworking', 'Check-in automático'], licenciaTuristica: true },
   { name: 'Ocena', zone: 'Santa María — Ciudad de Panamá', tipo: 'Residencia', entrega: 'Q4 2027', minPrice: 446000, maxPrice: 1200000, areaMin: 100, areaMax: 270, bedrooms: '2 y 3 rec.', capRateMin: 4.7, capRateMax: 6.0, amenities: ['Golf 18 hoyos Jack Nicklaus', 'Club House', 'Piscinas resort', 'Wellness center'] },
   { name: 'Ipanema', zone: 'Costa Sur — Ciudad de Panamá', tipo: 'Residencia', entrega: 'F1 Q1 2028 · F2 Q4 2028', minPrice: 283000, maxPrice: 519000, areaMin: 72, areaMax: 163, bedrooms: '1, 2 y 3 rec.', capRateMin: 6.0, capRateMax: 7.5, amenities: ['Piscina vista al mar', 'Gimnasio', 'Co-working', 'BBQ'] },
   { name: 'Bosco', zone: 'Santa María — Ciudad de Panamá', tipo: 'Residencia', entrega: '2030', minPrice: 474000, maxPrice: 1100000, areaMin: 100, areaMax: 296, bedrooms: '2, 3 y 4 rec.', capRateMin: 5.5, capRateMax: 7.2, amenities: ['Jardines botánicos', 'Piscina natural', 'Senderos de meditación'] },
@@ -1691,14 +1980,14 @@ const GLP_CATALOG = [
   { name: 'The Palms', zone: 'Punta Pacífica — Isla privada', tipo: 'Residencia premium', entrega: 'ENTREGA INMEDIATA', minPrice: 1200000, maxPrice: 1400000, areaMin: 169, areaMax: 239, bedrooms: '2 rec.', capRateMin: 5.5, capRateMax: 7.0, amenities: ['Marina privada 180+ muelles', 'Yacht club', 'Piscinas infinity', 'Spa'] },
   { name: 'Ocean Reef Park', zone: 'Punta Pacífica — Isla privada', tipo: 'Residencia ultra-premium', entrega: 'Q2 2028', minPrice: 1700000, maxPrice: 2100000, areaMin: 491, areaMax: 569, bedrooms: '3 y 4 rec.', capRateMin: 5.0, capRateMax: 6.5, amenities: ['Marina privada', 'Helipuerto', 'Yacht club', 'Club privado'] },
   { name: 'O Club Residences', zone: 'Punta Pacífica — Isla privada', tipo: 'Residencia premium', entrega: 'Q4 2027', minPrice: 1000000, maxPrice: 1400000, areaMin: 183, areaMax: 236, bedrooms: '2 rec.', capRateMin: 5.0, capRateMax: 6.5, amenities: ['Club privado O Club', 'Marina', 'Spa', 'Restaurantes'] },
-  { name: 'Aires del Mar', zone: 'Playa Caracol, Chame — Pacífico', tipo: 'Residencia playa', entrega: 'INMEDIATA · Q4 2026', minPrice: 143000, maxPrice: 207000, areaMin: 42, areaMax: 71, bedrooms: '2 y 3 rec.', capRateMin: 5.8, capRateMax: 8.0, amenities: ['Vista al océano Pacífico', 'Piscinas', 'Jardines', 'Seguridad 24/7'] },
-  { name: 'The Tides', zone: 'Playa Caracol, Chame — Pacífico', tipo: 'Residencia playa', entrega: 'ENTREGA INMEDIATA', minPrice: 278000, maxPrice: 308000, areaMin: 99, areaMax: 99, bedrooms: '2 y 3 rec.', capRateMin: 5.5, capRateMax: 7.5, amenities: ['1.2 km playa privada', 'Surf club', '3 piscinas', 'Restaurante y beach bar'] },
-  { name: 'Brisas del Mar', zone: 'Playa Caracol, Chame — Pacífico', tipo: 'Residencia playa', entrega: 'ENTREGA INMEDIATA', minPrice: 276000, maxPrice: 332000, areaMin: 93, areaMax: 108, bedrooms: '2 y 3 rec.', capRateMin: 5.8, capRateMax: 7.5, amenities: ['Frente al mar', 'Piscina', 'BBQ', 'Seguridad 24/7'] },
-  { name: 'Olas del Mar', zone: 'Playa Caracol, Chame — Pacífico', tipo: 'Residencia playa', entrega: 'ENTREGA INMEDIATA', minPrice: 267000, maxPrice: 398000, areaMin: 69, areaMax: 97, bedrooms: '2 y 3 rec.', capRateMin: 6.0, capRateMax: 8.0, amenities: ['Piscina con vista al mar', 'BBQ', 'Seguridad 24/7'] },
-  { name: 'Surfside', zone: 'Playa Caracol, Chame — Pacífico', tipo: 'Residencia playa / aparthotel', entrega: 'ENTREGA INMEDIATA', minPrice: 314000, maxPrice: 413000, areaMin: 81, areaMax: 107, bedrooms: '2 y 3 rec.', capRateMin: 5.8, capRateMax: 7.5, amenities: ['Playa privada', 'Piscinas y jacuzzi', 'Restaurante y bar', 'Surf lounge'] },
-  { name: 'Beachwalk', zone: 'Playa Caracol, Chame — Pacífico', tipo: 'Residencia playa wellness', entrega: 'Q1 2027', minPrice: 297000, maxPrice: 386000, areaMin: 85, areaMax: 97, bedrooms: '2 y 3 rec.', capRateMin: 5.5, capRateMax: 7.5, amenities: ['Frente al océano', 'Wellness spa', 'Yoga deck', 'Gimnasio exterior'] },
-  { name: 'Seashore', zone: 'Playa Caracol, Chame — Pacífico', tipo: 'Residencia playa', entrega: 'Q4 2027', minPrice: 290000, maxPrice: 490000, areaMin: 84, areaMax: 150, bedrooms: '2 y 3 rec.', capRateMin: 5.8, capRateMax: 7.5, amenities: ['Vista al Pacífico', 'Piscina', 'Área social y BBQ', 'Gimnasio'] },
-  { name: 'Seashore Reserve', zone: 'Playa Caracol, Chame — Pacífico', tipo: 'Residencia playa', entrega: 'Q4 2028', minPrice: 290000, maxPrice: 490000, areaMin: 84, areaMax: 150, bedrooms: '2 y 3 rec.', capRateMin: 5.5, capRateMax: 7.5, amenities: ['Vista al Pacífico', 'Piscina', 'Área social y BBQ', 'Gimnasio'] },
+  { name: 'Aires del Mar', zone: 'Playa Caracol, Chame — Pacífico', tipo: 'Residencia playa', entrega: 'INMEDIATA · Q4 2026', minPrice: 143000, maxPrice: 207000, areaMin: 42, areaMax: 71, bedrooms: '2 y 3 rec.', capRateMin: 5.8, capRateMax: 8.0, amenities: ['Vista al océano Pacífico', 'Piscinas', 'Jardines', 'Seguridad 24/7'], licenciaTuristica: true },
+  { name: 'The Tides', zone: 'Playa Caracol, Chame — Pacífico', tipo: 'Residencia playa', entrega: 'ENTREGA INMEDIATA', minPrice: 278000, maxPrice: 308000, areaMin: 99, areaMax: 99, bedrooms: '2 y 3 rec.', capRateMin: 5.5, capRateMax: 7.5, amenities: ['1.2 km playa privada', 'Surf club', '3 piscinas', 'Restaurante y beach bar'], licenciaTuristica: true },
+  { name: 'Brisas del Mar', zone: 'Playa Caracol, Chame — Pacífico', tipo: 'Residencia playa', entrega: 'ENTREGA INMEDIATA', minPrice: 276000, maxPrice: 332000, areaMin: 93, areaMax: 108, bedrooms: '2 y 3 rec.', capRateMin: 5.8, capRateMax: 7.5, amenities: ['Frente al mar', 'Piscina', 'BBQ', 'Seguridad 24/7'], licenciaTuristica: true },
+  { name: 'Olas del Mar', zone: 'Playa Caracol, Chame — Pacífico', tipo: 'Residencia playa', entrega: 'ENTREGA INMEDIATA', minPrice: 267000, maxPrice: 398000, areaMin: 69, areaMax: 97, bedrooms: '2 y 3 rec.', capRateMin: 6.0, capRateMax: 8.0, amenities: ['Piscina con vista al mar', 'BBQ', 'Seguridad 24/7'], licenciaTuristica: true },
+  { name: 'Surfside', zone: 'Playa Caracol, Chame — Pacífico', tipo: 'Residencia playa / aparthotel', entrega: 'ENTREGA INMEDIATA', minPrice: 314000, maxPrice: 413000, areaMin: 81, areaMax: 107, bedrooms: '2 y 3 rec.', capRateMin: 5.8, capRateMax: 7.5, amenities: ['Playa privada', 'Piscinas y jacuzzi', 'Restaurante y bar', 'Surf lounge'], licenciaTuristica: true },
+  { name: 'Beachwalk', zone: 'Playa Caracol, Chame — Pacífico', tipo: 'Residencia playa wellness', entrega: 'Q1 2027', minPrice: 297000, maxPrice: 386000, areaMin: 85, areaMax: 97, bedrooms: '2 y 3 rec.', capRateMin: 5.5, capRateMax: 7.5, amenities: ['Frente al océano', 'Wellness spa', 'Yoga deck', 'Gimnasio exterior'], licenciaTuristica: true },
+  { name: 'Seashore', zone: 'Playa Caracol, Chame — Pacífico', tipo: 'Residencia playa', entrega: 'Q4 2027', minPrice: 290000, maxPrice: 490000, areaMin: 84, areaMax: 150, bedrooms: '2 y 3 rec.', capRateMin: 5.8, capRateMax: 7.5, amenities: ['Vista al Pacífico', 'Piscina', 'Área social y BBQ', 'Gimnasio'], licenciaTuristica: true },
+  { name: 'Seashore Reserve', zone: 'Playa Caracol, Chame — Pacífico', tipo: 'Residencia playa', entrega: 'Q4 2028', minPrice: 290000, maxPrice: 490000, areaMin: 84, areaMax: 150, bedrooms: '2 y 3 rec.', capRateMin: 5.5, capRateMax: 7.5, amenities: ['Vista al Pacífico', 'Piscina', 'Área social y BBQ', 'Gimnasio'], licenciaTuristica: true },
 ];
 
 // ==========================================
@@ -1744,7 +2033,16 @@ const VALERIA_TONO_POR_ARQUETIPO = {
 
 // Clasifica el arquetipo psicográfico a partir del texto real de la conversación —
 // llamada liviana y barata (gpt-4o-mini, pocos tokens), pensada para correr en cada turno
-// una vez hay suficiente contexto (>=3 mensajes del visitante).
+// una vez hay suficiente contexto (>=2 mensajes del visitante).
+//
+// Antes esto SOLO devolvía el arquetipo para ajustar el tono — la decisión de "¿pido el
+// contacto ahora?" vivía aparte, en una lista rígida de turnos (askCheckpoints = [2,5,9])
+// que disparaba la pregunta sin importar qué acababa de decir el visitante. Resultado real
+// reportado: un "¿cómo estás Sara?" en el turno 2 recibía la misma pregunta de contacto que
+// un mensaje mostrando interés real, porque el sistema solo contaba turnos, no leía la
+// conversación. Ahora Sofía evalúa en la misma llamada si HAY señal real de interés/compra
+// (listoParaContacto) — la decisión de pedir contacto se apoya en su lectura del contexto,
+// no en un contador ciego.
 async function clasificarArquetipoChat(apiKey, conversationText) {
   try {
     const OpenAI = require('openai');
@@ -1753,9 +2051,9 @@ async function clasificarArquetipoChat(apiKey, conversationText) {
       model: 'gpt-4o-mini',
       messages: [{
         role: 'user',
-        content: `Clasifica el arquetipo psicográfico dominante de este visitante de una inmobiliaria, basado SOLO en lo que escribió (ignora las respuestas del bot):\n\n${conversationText}\n\nArquetipos: "estatus" (busca exclusividad/pertenencia), "legado" (preservación patrimonial familiar), "racional" (decide por datos/ROI), "aspiracional" (motivado por estilo de vida).`,
+        content: `Eres Sofía, la analista de perfiles psicográficos de una inmobiliaria de lujo. Analiza SOLO lo que escribió el visitante (ignora las respuestas del bot) en esta conversación de chat:\n\n${conversationText}\n\n1) Clasifica su arquetipo dominante: "estatus" (busca exclusividad/pertenencia), "legado" (preservación patrimonial familiar), "racional" (decide por datos/ROI), "aspiracional" (motivado por estilo de vida).\n2) Evalúa si la conversación YA muestra señales reales de interés de compra/inversión (preguntó por precio, ubicación, financiamiento, disponibilidad, quiere agendar, compara proyectos, habla de presupuesto o plazos) — no small talk, saludos, o preguntas genéricas sin intención de avanzar. Si el visitante solo saludó o hizo una pregunta social/trivial, listoParaContacto debe ser false aunque sea el segundo o tercer mensaje.\n3) Detecta el segmento de proyecto que busca, SOLO si lo dijo explícita o implícitamente (para trabajo/vivir en la ciudad = "ciudad"; mencionó golf, club house, o estilo de vida de club privado = "golf_country_club"; mencionó máxima exclusividad, isla, marina, yates = "isla_privada"; segunda vivienda, descanso, fin de semana, vacacional = "playa"; si no dio ninguna pista = "sin_definir").\n4) Detecta si mencionó presupuesto — el número exacto en USD, o null si no lo dio.\n5) Detecta si mencionó que quiere rentar en corto plazo / Airbnb / alquiler vacacional a turistas (interesRentaCorta: true/false).`,
       }],
-      temperature: 0.3, max_tokens: 150,
+      temperature: 0.3, max_tokens: 250,
       response_format: {
         type: 'json_schema',
         json_schema: {
@@ -1767,14 +2065,36 @@ async function clasificarArquetipoChat(apiKey, conversationText) {
               arquetipo: { type: 'string', enum: ['estatus', 'legado', 'racional', 'aspiracional'] },
               confianza: { type: 'integer' },
               senales: { type: 'array', items: { type: 'string' } },
+              listoParaContacto: { type: 'boolean', description: 'true solo si ya hay señales concretas de interés real de compra/inversión, no small talk' },
+              nivelInteres: { type: 'string', enum: ['bajo', 'medio', 'alto'] },
+              segmentoDeseado: { type: 'string', enum: ['ciudad', 'golf_country_club', 'isla_privada', 'playa', 'sin_definir'] },
+              presupuestoDetectado: { type: ['number', 'null'] },
+              interesRentaCorta: { type: 'boolean' },
             },
-            required: ['arquetipo', 'confianza', 'senales'],
+            required: ['arquetipo', 'confianza', 'senales', 'listoParaContacto', 'nivelInteres', 'segmentoDeseado', 'presupuestoDetectado', 'interesRentaCorta'],
           },
         },
       },
     });
     return JSON.parse(response.choices[0].message.content.trim());
   } catch { return null; }
+}
+
+// Clasifica un proyecto del catálogo en uno de los 4 segmentos de vida/inversión — misma
+// taxonomía que usa Sofía para segmentoDeseado. Antes esto vivía solo como texto dentro del
+// prompt ("no mezcles playa con ciudad") y el modelo principal, escribiendo una lista larga,
+// terminaba incluyendo un proyecto del segmento equivocado igual (probado en producción: una
+// búsqueda de ciudad para trabajo devolvió un proyecto de Playa Caracol). Con esta función se
+// arma una lista blanca real de nombres permitidos y se la inyecta al prompt de forma
+// prominente — el modelo ya no tiene que "recordar" la regla sobre una lista completa, solo
+// respetar una lista corta y explícita.
+function segmentoDeProyecto(p) {
+  const zone = (p.zone || '').toLowerCase();
+  const name = (p.name || '').toLowerCase();
+  if (name.includes('oceana') || name.includes('ocena')) return 'golf_country_club';
+  if (zone.includes('playa caracol') || zone.includes('chame')) return 'playa';
+  if (zone.includes('punta pacífica') || zone.includes('punta pacifica') || zone.includes('isla privada')) return 'isla_privada';
+  return 'ciudad';
 }
 
 app.post('/api/chat', async (req, res) => {
@@ -1790,28 +2110,31 @@ app.post('/api/chat', async (req, res) => {
     const { rows: projectRows } = await pool.query('SELECT data FROM projects WHERE tenant_id = $1', [tenant.id]);
     const projects = projectRows.length > 0 ? projectRows.map(r => r.data) : GLP_CATALOG;
     const catalogSummary = projects.map(p =>
-      `- ${p.name} | ${p.zone} | ${p.tipo || p.type || 'Residencia'} | Precio: $${(p.minPrice || 0).toLocaleString()}–$${(p.maxPrice || 0).toLocaleString()} USD | Áreas: ${p.areaMin || '?'}–${p.areaMax || '?'} m² | ${p.bedrooms || ''} | Entrega: ${p.entrega || 'consultar'} | Amenidades: ${(p.amenities || []).join(', ')}`
+      `- ${p.name} | ${p.zone} | ${p.tipo || p.type || 'Residencia'} | Precio: $${(p.minPrice || 0).toLocaleString()}–$${(p.maxPrice || 0).toLocaleString()} USD | Áreas: ${p.areaMin || '?'}–${p.areaMax || '?'} m² | ${p.bedrooms || ''} | Entrega: ${p.entrega || 'consultar'} | Amenidades: ${(p.amenities || []).join(', ')} | Licencia turística (renta corta/Airbnb): ${p.licenciaTuristica ? 'SÍ tiene' : 'NO tiene'}`
     ).join('\n');
 
     // Antes el prompt solo listaba preguntas de calificación de PRODUCTO (presupuesto,
     // habitaciones, financiamiento...) sin decirle a Sara que su objetivo de negocio real
     // es conseguir un dato de contacto — el chatbot podía sostener una conversación entera
     // sobre el catálogo sin jamás pedir correo o WhatsApp, y sin ese dato el mensaje NUNCA
-    // se convierte en un prospecto real en el CRM (ver hasContactInfo en el frontend). El
-    // "gancho" ahora es una instrucción explícita, con un punto concreto de la conversación
-    // en el que debe pedirse, no una posibilidad que dependía de que la IA lo intuyera.
+    // se convierte en un prospecto real en el CRM (ver hasContactInfo en el frontend).
     const numUserMsgs = messages.filter(m => m.sender === 'user').length;
     const yaTieneContacto = messages.some(m =>
       /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/.test(m.text) || /[\+]?[\d][\d\s\-\(\)]{9,}/.test(m.text)
     );
-    // Antes se forzaba la pregunta de contacto en CADA turno desde el mensaje 2 en
-    // adelante, con un solo ejemplo de frase — el modelo terminaba repitiendo casi la
-    // misma pregunta una y otra vez, sonando a formulario en vez de conversación. Ahora
-    // solo se insiste en un par de puntos concretos de la conversación (con espacio real
-    // entre cada intento) y se le exige variar la redacción respecto a lo que ya preguntó.
-    const askCheckpoints = [2, 5, 9];
     const yaPidioContactoAntes = messages.some(m => m.sender !== 'user' && /correo|whatsapp|whats app/i.test(m.text));
-    const forzarPreguntaContacto = !yaTieneContacto && askCheckpoints.includes(numUserMsgs);
+    // Turnos (mensajes del visitante) transcurridos desde la última vez que se le pidió el
+    // contacto — exige espacio real antes de volver a insistir, en vez de repetir en cada
+    // checkpoint aunque el visitante ya haya ignorado la pregunta.
+    let turnosDesdeUltimaPeticion = Infinity;
+    {
+      let count = 0, lastAskAt = -Infinity;
+      for (const m of messages) {
+        if (m.sender === 'user') count++;
+        else if (/correo|whatsapp|whats app/i.test(m.text)) lastAskAt = count;
+      }
+      turnosDesdeUltimaPeticion = count - lastAskAt;
+    }
 
     // FAQs oficiales — antes esta ruta (el chatbot EN VIVO, el canal de mayor volumen) era
     // la única de las 4 superficies de Sara que NO las veía, así que nunca contribuía al
@@ -1827,16 +2150,40 @@ app.post('/api/chat', async (req, res) => {
     }
 
     // Perfilamiento psicográfico EN VIVO — antes Sofía nunca veía la conversación del
-    // chatbot, así que Sara respondía con el mismo tono/gancho para cualquier visitante.
-    // A partir de 3 mensajes del visitante hay suficiente texto real para clasificar.
+    // chatbot, así que Sara respondía con el mismo tono/gancho para cualquier visitante, y
+    // la pregunta de contacto se disparaba por número de turno (askCheckpoints=[2,5,9]) sin
+    // leer si el visitante había mostrado interés real o solo estaba saludando. Ahora Sofía
+    // corre desde el 2º mensaje del visitante y su señal listoParaContacto — no un contador
+    // ciego — es la que decide si es momento de pedir el dato.
     let arquetipoDetectado = null;
-    if (numUserMsgs >= 3) {
+    if (numUserMsgs >= 2) {
       const conversationText = messages.filter(m => m.sender === 'user').map(m => m.text).join('\n');
       arquetipoDetectado = await clasificarArquetipoChat(apiKey, conversationText);
     }
+    const forzarPreguntaContacto = !yaTieneContacto
+      && !!arquetipoDetectado?.listoParaContacto
+      && turnosDesdeUltimaPeticion >= 3;
+    const SEGMENTO_LABEL = {
+      ciudad: 'CIUDAD / URBANO', golf_country_club: 'GOLF Y COUNTRY CLUB', isla_privada: 'ISLA PRIVADA / PUNTA PACÍFICA', playa: 'PLAYA CARACOL', sin_definir: 'sin definir aún',
+    };
     const perfilTxt = arquetipoDetectado
-      ? `\nPERFIL PSICOGRÁFICO DETECTADO EN VIVO (Sofía, ${arquetipoDetectado.confianza}% confianza): ${arquetipoDetectado.arquetipo.toUpperCase()} — ${arquetipoDetectado.senales.join('; ')}\nAjusta tu tono y tus argumentos a este perfil específico, no uses un tono genérico: ${SARA_TONO_POR_ARQUETIPO[arquetipoDetectado.arquetipo] || ''}`
+      ? `\nPERFIL PSICOGRÁFICO DETECTADO EN VIVO (Sofía, ${arquetipoDetectado.confianza}% confianza): ${arquetipoDetectado.arquetipo.toUpperCase()} — ${arquetipoDetectado.senales.join('; ')}\nAjusta tu tono y tus argumentos a este perfil específico, no uses un tono genérico: ${SARA_TONO_POR_ARQUETIPO[arquetipoDetectado.arquetipo] || ''}\nLectura de Sofía sobre el nivel de interés real de este visitante: ${arquetipoDetectado.nivelInteres.toUpperCase()}.${arquetipoDetectado.nivelInteres === 'bajo' ? ' Todavía no hay señal de interés de compra — no ofrezcas agendar cita ni derivar a un asesor, sigue conversando con naturalidad.' : ''}\nSegmento de proyecto que Sofía detectó (úsalo para filtrar tus recomendaciones, no lo vuelvas a adivinar tú): ${SEGMENTO_LABEL[arquetipoDetectado.segmentoDeseado] || 'sin definir aún'}.${arquetipoDetectado.presupuestoDetectado ? ` Presupuesto detectado: $${Number(arquetipoDetectado.presupuestoDetectado).toLocaleString()} USD.` : ''}${arquetipoDetectado.interesRentaCorta ? ' Quiere renta corta/Airbnb — solo proyectos con licencia turística.' : ''}`
       : '';
+
+    // Lista blanca real (no solo una regla en prosa) de qué proyectos puede recomendar
+    // proactivamente en ESTE turno — filtrada por el segmento que detectó Sofía y, si aplica,
+    // por licencia turística. Es más confiable que pedirle al modelo que aplique la regla él
+    // mismo sobre el catálogo completo: acá directamente no tiene la opción de listar algo
+    // fuera de segmento porque no está en la lista. No restringe preguntas sobre un proyecto
+    // que el cliente ya nombró explícitamente — solo las recomendaciones que Sara propone.
+    let listaPermitidaTxt = '';
+    if (arquetipoDetectado && arquetipoDetectado.segmentoDeseado && arquetipoDetectado.segmentoDeseado !== 'sin_definir') {
+      let permitidos = projects.filter(p => segmentoDeProyecto(p) === arquetipoDetectado.segmentoDeseado);
+      if (arquetipoDetectado.interesRentaCorta) permitidos = permitidos.filter(p => p.licenciaTuristica);
+      listaPermitidaTxt = permitidos.length > 0
+        ? `\n════════════════════════════════════════════════════\nLISTA BLANCA DE RECOMENDACIONES PARA ESTE TURNO — no es opcional:\nSolo puedes recomendar proactivamente estos proyectos: ${permitidos.map(p => p.name).join(', ')}.\nCualquier otro proyecto del catálogo queda fuera de esta recomendación, aunque encaje en presupuesto — no lo menciones como opción. (Si el cliente pregunta por uno específico que no está en esta lista, sí puedes responderle sobre ese proyecto puntual, pero acláraselo si no encaja con lo que dijo que busca.)\n════════════════════════════════════════════════════\n`
+        : `\nNingún proyecto del catálogo encaja con el segmento + filtros detectados para este cliente — dile con honestidad que hoy no tienes una opción exacta para lo que pide, en vez de forzar una recomendación fuera de lugar.\n`;
+    }
 
     // Persistir el perfil en sofia_profiles (fire-and-forget) cuando ya existe un prospecto
     // real vinculado a esta sesión de chat (creado por /api/contact vía chat_session_id) —
@@ -1848,19 +2195,26 @@ app.post('/api/chat', async (req, res) => {
           if (rows[0]) {
             const prospectoId = rows[0].id;
             pool.query(`
-              INSERT INTO sofia_profiles (prospecto_id, tenant_id, arquetipo, confianza, senales, recomendacion_sara, recomendacion_valeria, updated_at)
-              VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
+              INSERT INTO sofia_profiles (prospecto_id, tenant_id, arquetipo, confianza, senales, recomendacion_sara, recomendacion_valeria, segmento_deseado, interes_renta_corta, presupuesto_detectado, updated_at)
+              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
               ON CONFLICT (prospecto_id) DO UPDATE SET
-                arquetipo=$3, confianza=$4, senales=$5, recomendacion_sara=$6, recomendacion_valeria=$7, updated_at=NOW()
+                arquetipo=$3, confianza=$4, senales=$5, recomendacion_sara=$6, recomendacion_valeria=$7,
+                segmento_deseado=COALESCE($8, sofia_profiles.segmento_deseado),
+                interes_renta_corta=COALESCE($9, sofia_profiles.interes_renta_corta),
+                presupuesto_detectado=COALESCE($10, sofia_profiles.presupuesto_detectado),
+                updated_at=NOW()
             `, [prospectoId, tenant.id, arquetipoDetectado.arquetipo, arquetipoDetectado.confianza,
                 JSON.stringify(arquetipoDetectado.senales), SARA_TONO_POR_ARQUETIPO[arquetipoDetectado.arquetipo] || '',
-                VALERIA_TONO_POR_ARQUETIPO[arquetipoDetectado.arquetipo] || '']).catch(() => {});
+                VALERIA_TONO_POR_ARQUETIPO[arquetipoDetectado.arquetipo] || '',
+                arquetipoDetectado.segmentoDeseado !== 'sin_definir' ? arquetipoDetectado.segmentoDeseado : null,
+                arquetipoDetectado.interesRentaCorta, arquetipoDetectado.presupuestoDetectado || null]).catch(() => {});
           }
         }).catch(() => {});
     }
 
     const systemPrompt = `Eres Sara, asesora de inversiones inmobiliarias de ${tenant.name}. Llevas años en este mundo y te apasiona conectar a las personas con la inversión correcta para su momento de vida.
 ${perfilTxt}
+${listaPermitidaTxt}
 ${forzarPreguntaContacto ? `
 ════════════════════════════════════════════════════
 INSTRUCCIÓN PARA ESTA RESPUESTA — LÉELA PRIMERO:
@@ -1881,25 +2235,40 @@ A lo largo de la conversación, de forma natural (nunca en forma de cuestionario
 - Si ya conoce Panamá o es su primera vez mirando este mercado
 
 No preguntes todo junto. Ve hilando la conversación. Si te cuenta algo, reacciona a eso antes de preguntar lo siguiente.
+Antes de soltar una lista de proyectos con precios y áreas exactas, asegúrate de tener al menos ZONA/SEGMENTO y HABITACIONES que busca — si te falta alguno de los dos, pregúntalo en una frase natural dentro de tu respuesta (ej. "¿buscas 1, 2 o más habitaciones?") en vez de saltar directo a una lista detallada. Una vez los tengas, ahí sí da recomendaciones concretas sin seguir preguntando cosas que ya sabes.
 ${yaTieneContacto ? '\nEl visitante YA compartió un dato de contacto en este chat — agradécelo si aún no lo hiciste y sigue asesorando con normalidad, sin volver a pedirlo.' : (!forzarPreguntaContacto ? '\nNo es el momento de pedir el correo/WhatsApp en esta respuesta — concéntrate en la conversación y en generar interés real. Ya habrá otro momento más adelante para pedirlo.' : '')}
 
 CALENDARIO REAL — nunca calcules tú qué día cae en qué fecha, ya te lo doy resuelto. Usa SOLO esta tabla para convertir cualquier día que mencione el visitante ("el viernes", "mañana", "el jueves que viene") a fecha exacta:
 ${buildProximosDiasTexto()}
 
 USO DE HERRAMIENTAS — esto no es opcional ni una posibilidad, es una instrucción directa:
+- Si el visitante dice que quiere agendar, hablar con alguien en una llamada/videollamada, o que le gustaría una cita, pero AÚN NO dio un día y una hora concretas, NO lo derives ni le des un link todavía — pregúntale primero qué días y horarios le quedan bien esta semana (ej. "¿qué día te viene mejor — entre semana o fin de semana? ¿en la mañana o en la tarde?"). Indaga su disponibilidad real antes de intentar cerrar la cita; no asumas ni propongas tú una fecha sin que él la haya dado.
 - En cuanto el visitante mencione un día Y una hora concretas para hablar, primero busca ese día EXACTO en la tabla de arriba (nunca lo calcules de memoria) y confirma la modalidad antes de agendar: pregúntale si prefiere LLAMADA o VIDEOLLAMADA (si no lo dijo ya). Según lo que responda:
   · Si es LLAMADA y no tienes su teléfono/WhatsApp en la conversación, pídeselo primero — sin número no hay a quién llamar.
   · Si es VIDEOLLAMADA y no tienes su correo en la conversación, pídeselo primero — sin correo no hay dónde mandar el link.
-  Solo cuando tengas fecha exacta (de la tabla) + hora + modalidad + el contacto que esa modalidad requiere, llama a la función agendar_cita en ese turno — no antes, y no le preguntes "¿confirmas?" en ese punto: ya tienes todo, agenda y confirma en tu respuesta.
+- NUNCA llames a agendar_cita en el mismo turno en el que acabas de reunir fecha+hora+modalidad+contacto. Primero, en ESE turno, repítele al visitante en texto (sin llamar la función) el día, la hora exacta y la modalidad que entendiste, y pregúntale explícitamente si lo confirma (ej. "Te reservo el martes 2 de septiembre a las 3:00 p.m. por videollamada — ¿confirmas este horario?"). Solo llama a agendar_cita en el turno SIGUIENTE, y solo si el visitante confirmó explícitamente (sí, confirmo, dale, perfecto, así está bien, etc.) — nunca antes de esa confirmación explícita. Si en vez de confirmar cambia el día o la hora, repite el nuevo horario propuesto y vuelve a pedir confirmación; nunca agendes sobre un dato que el visitante no confirmó.
 - En cuanto el visitante pida explícitamente hablar con una persona, un asesor o un humano, DEBES llamar a la función derivar_a_asesor en ESE MISMO turno, no le respondas primero preguntando por qué.
 - Nunca simules en texto que agendaste algo o que derivaste a alguien sin haber llamado la función correspondiente.
+- No esperes SOLO a que el visitante lo pida: si Sofía marcó nivel de interés ALTO y ya tienes su contacto, ofrécele TÚ, de forma natural, el siguiente paso concreto — "¿quieres que te agende una llamada esta semana?" o "¿prefieres que te conecte directo con un asesor para resolver esto con más detalle?" — en vez de seguir solo respondiendo preguntas. No lo ofrezcas si el interés es bajo o medio, ni más de una vez por conversación si ya lo ofreciste y no respondió.
 
 FORMATO DE RESPUESTA — siempre:
 - Separa por bloques temáticos con línea en blanco entre cada uno
-- Usa emojis como ancla visual: 🏠 📍 💰 🗓️ ✨ — pero sin abusar
+- Nunca uses emojis en tu respuesta — ni como viñeta, ni como decoración, ni al final de una frase. Texto plano, sin excepción.
 - Máximo 2–3 líneas por bloque
 - Nunca uses "Cap Rate", "tasa de capitalización" ni jerga técnica — di "retorno estimado" o "lo que puedes esperar recibir mensualmente"
+- Nunca uses formato de enlace markdown — nada de "[texto](url)" ni corchetes alrededor de un link. Si compartes un número de WhatsApp o un link, escríbelo tal cual en texto plano (ej. "escríbenos aquí: https://wa.me/573124824353"), sin corchetes ni paréntesis envolviendo la URL.
 - Termina con una pregunta o comentario que invite a seguir
+
+CRITERIOS PARA RECOMENDAR PROYECTOS — Sofía ya sondeó esto por ti, no lo vuelvas a adivinar:
+- El bloque "PERFIL PSICOGRÁFICO DETECTADO EN VIVO" de arriba trae el segmento, el presupuesto y el interés en renta corta que Sofía detectó de lo que el cliente YA dijo — es tu fuente de verdad, no tu propia relectura de la conversación. Si dice "sin definir aún", el cliente todavía no dio pistas — ahí sí puedes preguntar o mostrar variedad.
+- Los 4 segmentos y qué proyectos caen en cada uno:
+  · CIUDAD / URBANO (Bella Vista, Costa Sur, Panamá Viejo) — vivir o trabajar en la ciudad, cerca de oficinas, día a día urbano.
+  · GOLF Y COUNTRY CLUB (Oceana, en Santa María — su seña de identidad es el campo de golf de 18 hoyos, club house, pickleball/tenis) — estilo de vida de club privado/golf, no un apartamento urbano corriente ni una segunda vivienda de playa.
+  · ISLA PRIVADA / PUNTA PACÍFICA (Ocean Reef Park, The Palms) — ultra-premium, marina, yates, máxima exclusividad.
+  · PLAYA CARACOL (Chame — Pacífico) — segunda vivienda, descanso, fines de semana, alquiler vacacional.
+- En cuanto Sofía marque un segmento (no "sin definir"), tu lista de recomendaciones debe salir EXCLUSIVAMENTE de ese segmento — cero excepciones, cero "también podrías considerar" de otro segmento. Si vas a listar 3 proyectos, los 3 deben ser del mismo segmento. Antes de responder, revisa cada proyecto que estás por incluir contra la zona que Sofía detectó; si uno no encaja, no lo pongas, ni como opción secundaria. Si el segmento detectado cambia de turno a turno porque el cliente dio una nueva pista, ajústate al más reciente, incluso si ya habías sugerido algo de otro segmento antes. Si Sofía marca "sin_definir" y el bot no tiene contexto previo suficiente en esta misma conversación, usa el último mensaje del visitante para inferir tú misma el segmento antes de recomendar, aplicando la misma regla de exclusividad.
+- El campo "Licencia turística" del catálogo SOLO importa cuando el cliente busca renta corta/Airbnb (Sofía marcó interesRentaCorta, o lo mencionó recién). Si no es ese el caso, ignóralo por completo: no lo menciones, no lo uses como razón para recomendar nada, ni lo incluyas en la ficha de un proyecto — no tiene relevancia para alguien que busca vivienda propia, trabajo o inversión sin fines de renta turística. Cuando SÍ aplica, recomienda solo proyectos marcados "SÍ tiene", y si el cliente se interesa en uno sin licencia, dile explícitamente que no es apto para eso antes de seguir hablando de él con ese fin.
+- Segmento Y presupuesto son DOS filtros que se cruzan, no uno que reemplaza al otro. Si Sofía ya detectó un presupuesto y ningún proyecto del segmento detectado entra en ese presupuesto, NO lo presentes como "tu recomendación" ni lo pongas primero — dile en una frase que ese segmento normalmente arranca en un precio más alto que su presupuesto (da el número real), y en la MISMA respuesta ofrécele algo concreto que sí encaje: la opción más económica real de ese segmento si existe, o el segmento más cercano que sí entra en su presupuesto. Nunca dejes la respuesta solo en "deberíamos explorar otras opciones" sin decir cuáles.
 
 CATÁLOGO GLP:
 ${catalogSummary}
@@ -1919,7 +2288,7 @@ ${faqContextText}`;
         type: 'function',
         function: {
           name: 'agendar_cita',
-          description: 'Agenda una llamada o videollamada con un asesor cuando el visitante confirma día, hora y modalidad concretas para hablar con GLP. Requiere haber confirmado antes la modalidad y tener el dato de contacto que esa modalidad necesita (teléfono para llamada, correo para videollamada).',
+          description: 'Agenda una llamada o videollamada con un asesor. SOLO se llama en el turno en el que el visitante CONFIRMA explícitamente (sí, confirmo, dale, perfecto...) un horario que TÚ ya le propusiste y repetiste en un mensaje anterior — nunca en el mismo turno en el que recién juntaste fecha+hora+modalidad+contacto. Requiere modalidad confirmada y el dato de contacto que esa modalidad necesita (teléfono para llamada, correo para videollamada).',
           parameters: {
             type: 'object',
             properties: {
@@ -2008,11 +2377,33 @@ ${faqContextText}`;
               VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *
             `, [tenant.id, visitorEmail, args.nombre || 'Visitante Web', 'Chatbot SARA', args.fecha, args.hora, canal, notasConContacto]);
             resultText = `Cita (${canal}) agendada correctamente para ${args.fecha} a las ${args.hora}. ID: ${rows[0].id}. ${modalidad === 'llamada' ? `Se llamará al ${visitorPhone}.` : `Se enviará el link a ${visitorEmail}.`}`;
+            // Alerta al administrador — antes la cita quedaba solo en la tabla `citas`, sin
+            // avisar a nadie; un administrador solo se enteraba si entraba al CRM a revisar.
+            const transporterCita = getTransporter(tenant);
+            if (transporterCita) {
+              transporterCita.sendMail({
+                from: `"SARA Chatbot — Nueva Cita" <${tenant.smtp?.user || process.env.SMTP_USER}>`,
+                to: process.env.ADMIN_EMAIL || process.env.SMTP_USER,
+                subject: `🗓️ Nueva cita agendada por el chatbot — ${args.fecha} ${args.hora}`,
+                html: `<div style="font-family:sans-serif;line-height:1.6;">
+                  <h2>Cita agendada desde el Chatbot SARA</h2>
+                  <p><strong>Fecha y hora:</strong> ${args.fecha} a las ${args.hora}</p>
+                  <p><strong>Modalidad:</strong> ${canal}</p>
+                  <p><strong>Visitante:</strong> ${args.nombre || 'Visitante Web'}</p>
+                  <p><strong>Contacto:</strong> ${modalidad === 'llamada' ? visitorPhone : visitorEmail}</p>
+                  <p><strong>Motivo:</strong> ${args.motivo || 'No especificado'}</p>
+                </div>`,
+              }).catch(() => {});
+            }
           } catch (e) {
             resultText = `Error agendando la cita: ${e.message}. Informa al visitante que un asesor confirmará el horario manualmente.`;
           }
         }
       } else if (call.function.name === 'derivar_a_asesor') {
+        pool.query(
+          `INSERT INTO chat_derivaciones (tenant_id, motivo, visitante_correo, visitante_telefono, session_id) VALUES ($1,$2,$3,$4,$5)`,
+          [tenant.id, args.motivo || null, visitorEmail, visitorPhone, sessionId || null]
+        ).catch(e => console.warn('chat_derivaciones insert:', e.message));
         const transporter = getTransporter(tenant);
         if (transporter) {
           transporter.sendMail({
@@ -2033,8 +2424,8 @@ ${faqContextText}`;
         // visitante — mejor conversión que pedirle que dé el salto a WhatsApp por su
         // cuenta. Sin teléfono: el link de WhatsApp queda como respaldo inmediato.
         resultText = visitorPhone
-          ? `Derivación notificada al equipo con el número ${visitorPhone} para que un asesor llame directamente. Informa al visitante que un asesor lo va a contactar en los próximos minutos a ese número — y que si prefiere escribir antes, aquí está el WhatsApp del equipo: https://wa.me/${whatsappNumber}`
-          : `Derivación notificada al equipo, pero aún no tienes el teléfono/WhatsApp del visitante. Dale este WhatsApp para continuar de inmediato: https://wa.me/${whatsappNumber} — y pídele su número para que un asesor lo llame directamente en vez de depender de que él escriba primero.`;
+          ? `Derivación notificada al equipo con el número ${visitorPhone} para que un asesor llame directamente. Informa al visitante que un asesor lo va a contactar en los próximos minutos a ese número — y que si prefiere escribir antes, aquí está el WhatsApp del equipo: https://wa.me/${whatsappNumber} (escribe ese link tal cual, en texto plano, sin corchetes ni formato de enlace markdown).`
+          : `Derivación notificada al equipo, pero aún no tienes el teléfono/WhatsApp del visitante. Dale este WhatsApp para continuar de inmediato: https://wa.me/${whatsappNumber} (escribe ese link tal cual, en texto plano, sin corchetes ni formato de enlace markdown) — y pídele su número para que un asesor lo llame directamente en vez de depender de que él escriba primero.`;
       }
 
       toolResults.push({ role: 'tool', tool_call_id: call.id, content: resultText });
@@ -2744,6 +3135,218 @@ app.post('/api/sara/process-prospects', async (req, res) => {
 // cartera de prospectos/mensajes en vez de solo generar borradores. Contexto acotado a
 // los últimos 40 prospectos y 20 mensajes recientes por costo/latencia; para preguntas que
 // requieran más historia el usuario puede acotar por nombre/proyecto en la pregunta misma.
+// ==========================================
+// HERRAMIENTA DE CONSULTA DE DATOS — usada por TODOS los chats de agente (Sara, Camilo,
+// Sofía, Valeria, Isabella, Andrea/Cartera, Mónica/Legal).
+//
+// Motivo: no podemos anticipar cada pregunta agregada que un usuario va a hacer ("¿cuántos
+// en reserva?", "¿cuál es el monto total en mora?", "¿cuántos con broker X?"...) y
+// precalcular cada una a mano — eso no escala. Y dejar que el LLM cuente/sume leyendo el
+// bloque de texto del contexto falla de forma sistemática apenas la lista crece (verificado
+// en producción: Mónica contó 6 clientes en Reserva cuando eran 8 — no fue un descuido,
+// es una limitación conocida de los LLM contando listas de texto).
+//
+// La solución no es "pedirle que tenga más cuidado" — es que el LLM NUNCA cuente: puede
+// pedirle a esta herramienta cualquier conteo/suma/promedio/listado con un filtro
+// estructurado (campo + operador + valor), la herramienta lo ejecuta contra el dataset
+// real en memoria (determinístico, no memoria del modelo) y le devuelve el número exacto
+// para que solo lo redacte. Así cualquier pregunta que surja "sobre la marcha" queda
+// cubierta, sin tener que anticiparla ni tocar código cada vez.
+// ==========================================
+function aplicarFiltroFila(row, f) {
+  if (!f || !f.campo) return true;
+  const v = row[f.campo];
+  if (v === undefined || v === null) return f.operador === '!=' ? true : false;
+  const num = Number(f.valor);
+  const esNumComparable = !isNaN(num) && (typeof v === 'number' || (!isNaN(Number(v))));
+  switch (f.operador) {
+    case '=': return esNumComparable ? Number(v) === num : String(v).toLowerCase() === String(f.valor).toLowerCase();
+    case '!=': return esNumComparable ? Number(v) !== num : String(v).toLowerCase() !== String(f.valor).toLowerCase();
+    case '>': return Number(v) > num;
+    case '<': return Number(v) < num;
+    case '>=': return Number(v) >= num;
+    case '<=': return Number(v) <= num;
+    case 'contiene': return String(v).toLowerCase().includes(String(f.valor).toLowerCase());
+    default: return true;
+  }
+}
+function ejecutarConsultaDatos(dataset, args) {
+  const filtros = Array.isArray(args?.filtros) ? args.filtros : [];
+  const filtrados = (dataset || []).filter(row => filtros.every(f => aplicarFiltroFila(row, f)));
+  const nombres = filtrados.map(r => r.nombre).filter(Boolean);
+  let resultado;
+  if (args?.operacion === 'sumar') resultado = filtrados.reduce((s, r) => s + (Number(r[args.campo]) || 0), 0);
+  else if (args?.operacion === 'promedio') resultado = filtrados.length ? filtrados.reduce((s, r) => s + (Number(r[args.campo]) || 0), 0) / filtrados.length : 0;
+  else if (args?.operacion === 'listar') resultado = filtrados.map(r => (args.campo ? r[args.campo] : r.nombre));
+  else resultado = filtrados.length; // 'contar' o cualquier otro valor
+  return { resultado, total_registros_coincidentes: filtrados.length, nombres: nombres.slice(0, 60) };
+}
+const HERRAMIENTA_CONSULTA_DATOS = {
+  type: 'function',
+  function: {
+    name: 'consultar_datos',
+    description: 'Ejecuta un conteo, suma, promedio o listado EXACTO sobre los registros reales del módulo (ver "CAMPOS DISPONIBLES" en el mensaje del sistema). Úsala SIEMPRE que la pregunta implique "cuántos", "cuál es el total/promedio de", o "cuáles son los que cumplen X" — nunca cuentes ni sumes tú mismo leyendo el texto del contexto, esta herramienta es la única fuente confiable para esos números.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        operacion: { type: 'string', enum: ['contar', 'sumar', 'promedio', 'listar'] },
+        campo: { type: 'string', description: 'Campo numérico a sumar/promediar, o campo a listar. Puede ir vacío para "contar".' },
+        filtros: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              campo: { type: 'string' },
+              operador: { type: 'string', enum: ['=', '!=', '>', '<', '>=', '<=', 'contiene'] },
+              valor: { type: 'string' },
+            },
+            required: ['campo', 'operador', 'valor'],
+          },
+        },
+      },
+      required: ['operacion', 'filtros'],
+    },
+  },
+};
+// Bucle de function-calling: si el modelo pide `consultar_datos`, se ejecuta contra el
+// dataset real y el resultado exacto se le devuelve para que complete la respuesta. Máximo
+// 4 rondas (una pregunta rara vez necesita más de 1-2 consultas encadenadas).
+// herramientasExtra: [{ schema: <tool schema OpenAI>, ejecutar: async (args) => resultado }]
+// — permite que un agente puntual (ej. Andrea/CARTERA con "proponer_borrador_cobranza")
+// tenga una acción propia además de consultar_datos, sin tocar los demás agentes que
+// siguen usando solo el set por defecto.
+// Planificación previa (razonamiento multi-paso): antes de responder, el modelo decide en
+// UNA llamada barata si la pregunta necesita varios pasos encadenados (ej. "identifica los
+// clientes de mayor riesgo, cruza con legal, y redacta 3 borradores priorizados") o si es
+// directa ("¿cuántos clientes en mora?"). Solo si es compleja arma un plan explícito — así
+// una pregunta simple no paga el costo/latencia extra de esta llamada de más.
+// El plan no se "ejecuta" aparte con un motor propio: se inyecta como instrucción explícita
+// en el systemPrompt del bucle reactivo de siempre (chatConHerramientas), guiándolo paso a
+// paso en vez de dejarlo decidir todo de una vez — sigue siendo el mismo motor de tool-
+// calling, ahora con una hoja de ruta declarada antes de empezar.
+async function planificarSiNecesario(openai, question, runId = null) {
+  try {
+    const resp = await openai.chat.completions.create({
+      model: 'gpt-4o-mini', temperature: 0, max_tokens: 300,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: 'Evalúas si una pregunta de un usuario a un agente de negocio necesita VARIOS pasos encadenados para responderse bien (ej. cruzar datos de dos áreas, generar varios artefactos, filtrar y luego actuar sobre el resultado), o si es una consulta directa de un solo paso. Responde SOLO JSON: {"requierePlan": boolean, "pasos": string[]}. Si requierePlan es false, "pasos" va vacío. Máximo 5 pasos, cada uno una frase corta en español, en el orden en que deben resolverse. No incluyas pasos triviales como "saludar" o "responder" — solo pasos que impliquen consultar o cruzar datos, o generar un artefacto.' },
+        { role: 'user', content: question },
+      ],
+    });
+    const parsed = JSON.parse(resp.choices[0].message.content || '{}');
+    const plan = { requierePlan: !!parsed.requierePlan && Array.isArray(parsed.pasos) && parsed.pasos.length > 1, pasos: Array.isArray(parsed.pasos) ? parsed.pasos.slice(0, 5) : [] };
+    agentAudit.registrarPaso(runId, -1, 'planificar', { pregunta: question }, plan, true, 0).catch(() => {});
+    return plan;
+  } catch (err) {
+    // Si falla la planificación, se sigue el camino normal (sin plan) — nunca debe bloquear
+    // la respuesta.
+    return { requierePlan: false, pasos: [] };
+  }
+}
+
+// Modelo/temperatura por tipo de tarea — antes los 7 agentes usaban gpt-4o-mini a
+// temperature 0.3 para TODO, desde contar cuotas vencidas hasta redactar un post de
+// Instagram. Una consulta de datos necesita precisión y determinismo (temperatura baja);
+// una tarea creativa necesita variedad y un modelo con más capacidad redaccional.
+const AGENT_MODEL_CONFIG = {
+  CARTERA:  { model: 'gpt-4o-mini', temperature: 0.1, maxTokens: 500 },  // datos de mora/pagos — precisión ante todo
+  LEGAL:    { model: 'gpt-4o-mini', temperature: 0.1, maxTokens: 500 },  // estado de expedientes — precisión ante todo
+  SOFIA:    { model: 'gpt-4o-mini', temperature: 0.3, maxTokens: 500 },  // análisis de perfiles — balance
+  CAMILO:   { model: 'gpt-4o-mini', temperature: 0.4, maxTokens: 600 },  // research/insights — algo de margen interpretativo
+  SARA:     { model: 'gpt-4o-mini', temperature: 0.4, maxTokens: 600 },  // servicio al cliente — cálido pero factual
+  VALERIA:  { model: 'gpt-4o',      temperature: 0.8, maxTokens: 900 },  // copy — creatividad real, modelo más capaz
+  ISABELLA: { model: 'gpt-4o',      temperature: 0.8, maxTokens: 900 },  // guiones — creatividad real, modelo más capaz
+};
+const DEFAULT_MODEL_CONFIG = { model: 'gpt-4o-mini', temperature: 0.3, maxTokens: 500 };
+
+async function chatConHerramientas(openai, systemPrompt, dataset, history, question, herramientasExtra = [], runId = null, agentKey = null) {
+  const { model: modeloElegido, temperature: temperaturaElegida, maxTokens: maxTokensElegido } = AGENT_MODEL_CONFIG[agentKey] || DEFAULT_MODEL_CONFIG;
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...history.slice(-6).map(h => ({ role: h.role === 'user' ? 'user' : 'assistant', content: h.content })),
+    { role: 'user', content: question },
+  ];
+  const toolsSchema = [HERRAMIENTA_CONSULTA_DATOS, ...herramientasExtra.map(h => h.schema)];
+  const ejecutorPorNombre = { consultar_datos: (args) => ejecutarConsultaDatos(dataset, args) };
+  herramientasExtra.forEach(h => { ejecutorPorNombre[h.schema.function.name] = h.ejecutar; });
+  let promptTokens = 0, completionTokens = 0;
+  const accionesRealizadas = [];
+  // 6 rondas (antes 4): con una herramienta de acción además de consultar_datos (ej.
+  // Andrea: buscar el cliente y LUEGO crear el borrador) el modelo a veces necesita más de
+  // una ronda de tool-calls antes de poder redactar la respuesta final.
+  for (let ronda = 0; ronda < 6; ronda++) {
+    const resp = await openai.chat.completions.create({
+      model: modeloElegido, messages, temperature: temperaturaElegida, max_tokens: maxTokensElegido,
+      tools: toolsSchema, tool_choice: 'auto',
+    });
+    promptTokens += resp.usage?.prompt_tokens || 0;
+    completionTokens += resp.usage?.completion_tokens || 0;
+    const msg = resp.choices[0].message;
+    if (msg.tool_calls && msg.tool_calls.length > 0) {
+      messages.push(msg);
+      for (const tc of msg.tool_calls) {
+        let args = {};
+        try { args = JSON.parse(tc.function.arguments || '{}'); } catch (_) {}
+        const ejecutor = ejecutorPorNombre[tc.function.name];
+        let resultado;
+        const t0 = Date.now();
+        try {
+          resultado = ejecutor ? await ejecutor(args) : { error: `herramienta desconocida: ${tc.function.name}` };
+          if (tc.function.name !== 'consultar_datos' && !resultado?.error) accionesRealizadas.push({ herramienta: tc.function.name, args, resultado });
+        } catch (err) {
+          resultado = { error: err.message };
+        }
+        // Auditoría (ver agentAudit.js): un renglón por cada herramienta invocada en esta
+        // respuesta — nombre, argumentos, resultado, si falló, cuánto tardó. No bloquea el
+        // flujo si falla el registro (catch silencioso), la respuesta al usuario no depende
+        // de esto.
+        agentAudit.registrarPaso(runId, ronda, tc.function.name, args, resultado, !resultado?.error, Date.now() - t0).catch(() => {});
+        messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(resultado) });
+      }
+      continue;
+    }
+    return { answer: msg.content || 'No pude generar una respuesta.', promptTokens, completionTokens, acciones: accionesRealizadas };
+  }
+  return { answer: 'No pude completar la consulta — intenta reformular la pregunta.', promptTokens, completionTokens, acciones: accionesRealizadas };
+}
+
+// Métricas de calidad por agente (ver agentFeedback.js) — % de lo generado que se aprobó
+// tal cual, se aprobó editado, o se descartó. Es la única señal real de si un agente está
+// funcionando bien; antes no había ningún rastro de qué pasaba con lo que generaba.
+app.get('/api/agents/feedback-metrics', async (req, res) => {
+  const tenant = await resolveTenant(req);
+  try {
+    const porAgente = await agentFeedback.metrics(tenant.id);
+    res.json(porAgente);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Hidrata el panel de chat de un agente al abrirlo — antes cada recarga de página perdía
+// toda la conversación porque solo vivía en el estado del navegador. scopeType=user (por
+// defecto) trae lo que ESTE usuario habló con el agente; scopeType=prospecto + scopeId trae
+// lo que se habló SOBRE ese cliente en particular.
+app.get('/api/agents/thread', async (req, res) => {
+  const tenant = await resolveTenant(req);
+  const user = resolveUser(req);
+  const { agent, scopeType = 'user', scopeId } = req.query;
+  if (!agent) return res.status(400).json({ error: 'agent requerido' });
+  try {
+    const id = scopeType === 'prospecto' ? scopeId : user;
+    const thread = await agentMemory.loadThread(tenant.id, agent, scopeType, id);
+    res.json({
+      summary: thread.summary,
+      messages: thread.messages.map(m => ({ role: m.role === 'user' ? 'user' : 'agent', content: m.content })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/sara/chat', async (req, res) => {
   const tenant = await resolveTenant(req);
   const user = resolveUser(req);
@@ -2755,9 +3358,12 @@ app.post('/api/sara/chat', async (req, res) => {
     const apiKey = tenant?.openai?.apiKey || process.env.OPENAI_API_KEY;
     if (!apiKey) { await finishAgentRun(run?.id, { status: 'error', errorDetalle: 'OpenAI API Key requerida.' }); return res.status(500).json({ error: 'OpenAI API Key requerida.' }); }
 
+    // canal/resumen_ia/temas_interes: sin esto Sara no podía saber SI una consulta vino por
+    // correo, la landing o el chatbot, ni de qué trataba realmente — solo veía "prospecto en
+    // tal estado", nada del contenido de su inquietud original.
     const { rows: prospects } = await pool.query(
       `SELECT id, nombre, apellido, estado, correo, telefono, broker_asignado, proyectos_interes,
-              presupuesto_usd, fecha_registro, fecha_ultima_actividad
+              presupuesto_usd, fecha_registro, fecha_ultima_actividad, canal, resumen_ia, temas_interes
        FROM prospectos WHERE tenant_id = $1 ORDER BY fecha_ultima_actividad DESC NULLS LAST LIMIT 40`,
       [tenant.id]
     );
@@ -2772,63 +3378,196 @@ app.post('/api/sara/chat', async (req, res) => {
        WHERE a.tenant_id = $1 AND a.status = 'activa' ORDER BY a.created_at DESC LIMIT 20`,
       [tenant.id]
     );
+    // Sara respondía solo sobre prospectos/mensajes/alertas — no tenía las FAQs (Configuración
+    // → FAQs, 32 respuestas ya redactadas y aprobadas) ni las inquietudes/solicitudes reales
+    // que los clientes dejan por email/WhatsApp en el historial de cada prospecto. Sin esto no
+    // podía responder nada de servicio al cliente real, solo pipeline comercial.
+    const { rows: faqs } = await pool.query(
+      `SELECT categoria, pregunta, respuesta FROM faqs WHERE tenant_id = $1 ORDER BY categoria, veces_usada DESC`,
+      [tenant.id]
+    );
+    // whatsapp_history NO es columna real (esa parte solo vive en el navegador, ver
+    // memoria del proyecto sobre localStorage aún sin migrar) — solo email_history persiste.
+    const { rows: prospectosConHistorial } = await pool.query(
+      `SELECT nombre, apellido, email_history, notas
+       FROM prospectos WHERE tenant_id = $1 AND email_history IS NOT NULL AND jsonb_array_length(email_history) > 0
+       ORDER BY fecha_ultima_actividad DESC NULLS LAST LIMIT 15`,
+      [tenant.id]
+    );
+    // Derivaciones del chatbot a un asesor humano — casos donde un visitante de la web pidió
+    // hablar con alguien real (motivo real, no inventado por el modelo).
+    const { rows: derivaciones } = await pool.query(
+      `SELECT motivo, visitante_correo, estado, created_at FROM chat_derivaciones
+       WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 20`,
+      [tenant.id]
+    ).catch(() => ({ rows: [] }));
+    // Objeciones de mercado que los brokers reportan en campo (precio, dólar/peso,
+    // financiamiento, competencia...) — antes solo vivían en el módulo Conversión, Sara no
+    // las veía y no podía responder "¿qué objeciones hemos tenido este mes?".
+    const { rows: objecionesMercado } = await pool.query(
+      `SELECT broker, prospecto, tipo, descripcion, canal, proyecto, created_at FROM broker_objections
+       WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 30`,
+      [tenant.id]
+    ).catch(() => ({ rows: [] }));
 
     const hoy = new Date();
+    const dataset = prospects.map(p => {
+      const last = p.fecha_ultima_actividad || p.fecha_registro;
+      const dias = last ? Math.floor((hoy - new Date(last)) / 86400000) : null;
+      return { id: p.id, nombre: `${p.nombre} ${p.apellido}`, estado: p.estado, broker: p.broker_asignado || 'sin asignar', proyectos: (p.proyectos_interes || []).join(', '), presupuesto: p.presupuesto_usd || 0, diasSinActividad: dias, canal: p.canal || 'sin canal' };
+    });
     const prospectsCtx = prospects.map(p => {
       const last = p.fecha_ultima_actividad || p.fecha_registro;
       const dias = last ? Math.floor((hoy - new Date(last)) / 86400000) : null;
-      return `- [id:${p.id}] ${p.nombre} ${p.apellido} · ${p.estado} · broker: ${p.broker_asignado || 'sin asignar'} · proyectos: ${(p.proyectos_interes || []).join(', ') || '—'} · presupuesto: $${p.presupuesto_usd || 0} · ${dias != null ? `${dias} días sin actividad` : 'sin actividad registrada'}`;
+      return `- [id:${p.id}] ${p.nombre} ${p.apellido} · ${p.estado} · canal: ${p.canal || 'sin canal'} · broker: ${p.broker_asignado || 'sin asignar'} · proyectos: ${(p.proyectos_interes || []).join(', ') || '—'} · presupuesto: $${p.presupuesto_usd || 0} · ${dias != null ? `${dias} días sin actividad` : 'sin actividad registrada'}${p.resumen_ia ? ` · consulta original: ${p.resumen_ia}` : ''}${(p.temas_interes || []).length > 0 ? ` · temas: ${(p.temas_interes || []).join(', ')}` : ''}`;
     }).join('\n');
     const draftsCtx = drafts.map(d => `- [id:${d.id}] ${d.status} · ${d.prioridad || ''} · para ${d.destinatario} · "${d.subject}" · origen: ${d.origen || 'manual'}`).join('\n');
     const alertsCtx = alerts.map(a => `- ${a.nivel}: ${a.nombre} ${a.apellido}`).join('\n');
+    // "canal" distingue de dónde vino cada consulta (Chatbot SARA / Web / referido/etc.) —
+    // así Sara puede responder "¿qué llegó por el chatbot esta semana?" o "¿qué me llegó por
+    // la landing?" filtrando sobre datos reales en vez de suponer.
+    const derivacionesCtx = derivaciones.map(d => `- ${d.visitante_correo || 'sin correo'} · motivo: ${d.motivo || 'sin especificar'} · estado: ${d.estado} · ${new Date(d.created_at).toISOString().slice(0, 10)}`).join('\n');
+    const objecionesCtx = objecionesMercado.map(o => `- [${o.tipo}] ${o.prospecto || 'sin prospecto'} (${o.broker || 'sin broker'}) · ${o.proyecto || 'sin proyecto'} · canal: ${o.canal || '—'} · "${o.descripcion || ''}" · ${new Date(o.created_at).toISOString().slice(0, 10)}`).join('\n');
+    // FAQs configuradas en Configuración → FAQs (32 respuestas ya redactadas y aprobadas) —
+    // sin esto Sara no podía responder nada de lo que un cliente pregunta normalmente
+    // (predial, financiamiento, residencia, etc.), solo hablar de pipeline comercial.
+    const faqsPorCategoria = {};
+    faqs.forEach(f => { (faqsPorCategoria[f.categoria || 'General'] ??= []).push(f); });
+    const faqsCtx = Object.entries(faqsPorCategoria)
+      .map(([cat, items]) => `${cat}:\n${items.map(f => `  - P: ${f.pregunta}\n    R: ${f.respuesta}`).join('\n')}`)
+      .join('\n');
+    // Inquietudes/solicitudes reales que los clientes ya dejaron por correo — para que Sara
+    // pueda responder "¿qué me preguntó fulano?" o retomar el hilo de una solicitud pendiente.
+    const emailsCtx = prospectosConHistorial.map(p => {
+      const hilo = (p.email_history || []).slice(-3).map(e => `${e.direction === 'in' ? 'Cliente' : 'Sara'}: "${(e.subject || '').slice(0, 60)}" — ${(e.body || '').slice(0, 150).replace(/\n/g, ' ')}`).join(' | ');
+      return `- ${p.nombre} ${p.apellido}: ${hilo}${p.notas ? ` · Notas: ${p.notas.slice(0, 150)}` : ''}`;
+    }).join('\n');
 
     const OpenAI = require('openai');
     const openai = new OpenAI({ apiKey });
-    const gptResponse = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: `Eres Sara, Directora de Experiencia de Cliente de ${tenant.name}. Respondes preguntas del equipo comercial sobre sus propios prospectos, mensajes y alertas — con datos reales, nunca inventados. Si el dato no está en el contexto, dilo explícitamente en vez de suponer. Responde en español, tono directo y profesional, sin relleno.
 
-PROSPECTOS RECIENTES:
+    // Memoria persistente: antes cada chat vivía solo en el navegador y se perdía al
+    // recargar — ahora se recupera lo que ESTE usuario habló con Sara (hilo por usuario) y,
+    // si la pregunta nombra a un cliente conocido, también lo que se habló SOBRE ese
+    // cliente (hilo por prospecto), sin importar quién preguntó antes.
+    const hiloUsuario = await agentMemory.loadThread(tenant.id, 'SARA', 'user', user);
+    const clienteMencionado = prospects.find(p => question.toLowerCase().includes(`${p.nombre} ${p.apellido}`.toLowerCase().trim()));
+    const hiloCliente = clienteMencionado ? await agentMemory.loadThread(tenant.id, 'SARA', 'prospecto', clienteMencionado.id) : null;
+
+    const systemPrompt = `Eres Sara, Directora de Experiencia de Cliente de ${tenant.name}. Atiendes CUALQUIER pregunta de servicio al cliente: dudas frecuentes sobre Panamá/impuestos/residencia/financiamiento (FAQs), inquietudes o solicitudes que un cliente ya dejó por correo, por la landing, o por el chatbot (canal en cada prospecto), objeciones de mercado que reportan los brokers, y también preguntas de pipeline comercial (prospectos, mensajes, alertas). No te limites solo a lo comercial — si preguntan algo que está en las FAQs, respóndelo directamente con esa información aprobada. Usa siempre datos reales del contexto, nunca inventes. Si el dato no está en el contexto, dilo explícitamente en vez de suponer. Responde en español, tono directo y profesional, sin relleno. Menciona el nombre completo del prospecto cuando lo cites, para que quede identificable.
+${hiloUsuario.summary ? `\nMEMORIA DE CONVERSACIONES ANTERIORES CON ESTE USUARIO:\n${hiloUsuario.summary}\n` : ''}${hiloCliente?.summary ? `\nMEMORIA PREVIA SOBRE ${clienteMencionado.nombre} ${clienteMencionado.apellido} (de conversaciones anteriores, con cualquier usuario):\n${hiloCliente.summary}\n` : ''}
+CAMPOS DISPONIBLES para consultar_datos (dataset de prospectos): id, nombre, estado, broker, proyectos, presupuesto, diasSinActividad, canal.
+
+PROSPECTOS RECIENTES (incluye canal de origen — Chatbot SARA/Web/referido/etc. — y la consulta original si vino de landing/chatbot):
 ${prospectsCtx || '(sin prospectos)'}
 
 MENSAJES/BORRADORES RECIENTES:
 ${draftsCtx || '(sin mensajes)'}
 
+PREGUNTAS FRECUENTES (FAQs configuradas, respuestas ya aprobadas — úsalas tal cual):
+${faqsCtx || '(sin FAQs configuradas)'}
+
+INQUIETUDES/SOLICITUDES RECIENTES DE CLIENTES (últimos correos por prospecto):
+${emailsCtx || '(sin correos registrados)'}
+
+SOLICITUDES DEL CHATBOT PARA HABLAR CON UN ASESOR (derivaciones reales):
+${derivacionesCtx || '(sin derivaciones registradas)'}
+
+OBJECIONES DE MERCADO REPORTADAS POR BROKERS (precio, dólar/peso, financiamiento, competencia, etc.):
+${objecionesCtx || '(sin objeciones registradas)'}
+
 ALERTAS ACTIVAS:
-${alertsCtx || '(sin alertas)'}` },
-        ...history.slice(-6).map(h => ({ role: h.role === 'user' ? 'user' : 'assistant', content: h.content })),
-        { role: 'user', content: question },
-      ],
-      temperature: 0.4, max_tokens: 500,
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: 'respuesta_sara',
-          strict: true,
-          schema: {
-            type: 'object',
-            additionalProperties: false,
+${alertsCtx || '(sin alertas)'}
+
+Si te piden redactar/generar una respuesta para un cliente (sobre una FAQ, una inquietud, una derivación), usa la herramienta proponer_borrador_respuesta — SIEMPRE queda como borrador pendiente de aprobación en el Buzón, nunca se envía sola; dilo así al confirmar. Si la pregunta requiere información de otra área (estado de pago, estado legal, un insight de mercado), usa consultar_a_otro_agente en vez de suponer — es de solo lectura. Si necesitas un dato real del mundo, usa buscar_en_internet. Si te piden agendar una cita, usa consultar_calendario y luego proponer_cita — siempre queda pendiente de confirmación humana.`;
+    const herramientasExtraSara = [{
+      schema: {
+        type: 'function',
+        function: {
+          name: 'proponer_borrador_respuesta',
+          description: 'Crea un borrador de correo de respuesta a un cliente, dirigido al Buzón para aprobación humana — NUNCA se envía automáticamente. Úsala cuando te pidan "redacta/responde a X" sobre una FAQ, inquietud o derivación.',
+          parameters: {
+            type: 'object', additionalProperties: false,
             properties: {
-              answer: { type: 'string' },
-              prospectosCitados: { type: 'array', items: { type: 'integer' } },
+              prospectoId: { type: 'integer', description: 'id del prospecto, tal como aparece en el dataset de prospectos' },
+              asunto: { type: 'string' },
+              cuerpo: { type: 'string', description: 'Cuerpo del correo — profesional, cálido, basado en las FAQs/contexto real, nunca inventado.' },
             },
-            required: ['answer', 'prospectosCitados'],
+            required: ['prospectoId', 'asunto', 'cuerpo'],
           },
         },
       },
-    });
-    const parsed = JSON.parse(gptResponse.choices[0].message.content.trim());
-    const citados = prospects.filter(p => parsed.prospectosCitados.includes(p.id))
+      ejecutar: async (args) => {
+        if (!args.prospectoId) return { error: 'Falta prospectoId' };
+        const { rows } = await pool.query('SELECT nombre, apellido, correo FROM prospectos WHERE id = $1 AND tenant_id = $2', [args.prospectoId, tenant.id]);
+        if (rows.length === 0) return { error: 'Cliente no encontrado en prospectos' };
+        const p = rows[0];
+        const draftId = `draft-sara-${Date.now()}`;
+        await pool.query(
+          `INSERT INTO drafts (id, tenant_id, destinatario, project, subject, body, status, prioridad, origen, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())`,
+          [draftId, tenant.id, `${p.nombre} ${p.apellido} (${p.correo || 'sin correo'})`, 'Servicio al Cliente', args.asunto, args.cuerpo, 'pending', 'media', 'sara_ia']
+        );
+        return { creado: true, draftId, mensaje: 'Borrador creado, pendiente de aprobación humana en el Buzón antes de enviarse.' };
+      },
+    }, {
+      schema: {
+        type: 'function',
+        function: {
+          name: 'consultar_a_otro_agente',
+          description: 'Consulta de SOLO LECTURA a otro agente especialista del equipo, usando SU contexto real. Úsala cuando la pregunta requiera cruzar con otra área — ej. estado de pago (Cartera) o estado legal (Legal) de un cliente. El otro agente responde, pero no ejecuta ninguna acción.',
+          parameters: {
+            type: 'object', additionalProperties: false,
+            properties: {
+              agente: { type: 'string', enum: ['CAMILO', 'SOFIA', 'VALERIA', 'ISABELLA', 'CARTERA', 'LEGAL'] },
+              pregunta: { type: 'string' },
+            },
+            required: ['agente', 'pregunta'],
+          },
+        },
+      },
+      ejecutar: async (args) => {
+        if (!args.agente || !AGENT_PERSONAS[args.agente]) return { error: 'Agente inválido' };
+        try {
+          const otro = await buildAgentContext(tenant, args.agente);
+          const otroPrompt = `Eres ${AGENT_PERSONAS[args.agente]} Te está consultando internamente Sara (Directora de Experiencia de Cliente), no un usuario humano — responde directo y conciso con datos reales de tu contexto, sin saludos ni relleno. Si el dato no está en tu contexto, dilo explícitamente.
+
+CAMPOS DISPONIBLES para consultar_datos: ${otro.camposDisponibles || 'nombre'}.
+
+${otro.contextText}`;
+          const { answer: respuestaOtro } = await chatConHerramientas(openai, otroPrompt, otro.dataset, [], args.pregunta, [], run?.id, args.agente);
+          return { agenteConsultado: args.agente, respuesta: respuestaOtro };
+        } catch (err) {
+          return { error: `No se pudo consultar a ${args.agente}: ${err.message}` };
+        }
+      },
+    }, ...herramientasBase(openai, tenant, user, 'SARA')];
+    // El historial persistido reemplaza al `history` que mandaba el cliente — ese vivía
+    // solo en el navegador y se perdía en cada recarga; el hilo guardado en agent_threads
+    // es ahora la fuente de verdad de la conversación (ver agentMemory.js).
+    const historialParaModelo = hiloUsuario.messages.length > 0 ? hiloUsuario.messages : history;
+    // Planificación multi-paso (ver planificarSiNecesario): solo para preguntas que
+    // realmente encadenan varios pasos — una consulta directa no paga este costo extra.
+    const plan = await planificarSiNecesario(openai, question, run?.id);
+    const systemPromptConPlan = plan.requierePlan
+      ? `${systemPrompt}\n\nPLAN A SEGUIR PARA ESTA RESPUESTA (síguelo en orden, un paso a la vez, usando las herramientas que necesites en cada uno, antes de dar la respuesta final):\n${plan.pasos.map((p, i) => `${i + 1}. ${p}`).join('\n')}`
+      : systemPrompt;
+    const { answer, promptTokens, completionTokens } = await chatConHerramientas(openai, systemPromptConPlan, dataset, historialParaModelo, question, herramientasExtraSara, run?.id, 'SARA');
+    const citados = prospects.filter(p => answer.includes(`${p.nombre} ${p.apellido}`))
       .map(p => ({ id: p.id, nombre: `${p.nombre} ${p.apellido}` }));
+
+    await agentMemory.saveTurn(openai, tenant.id, 'SARA', 'user', user, question, answer);
+    for (const c of citados.slice(0, 3)) {
+      await agentMemory.saveTurn(openai, tenant.id, 'SARA', 'prospecto', c.id, question, answer);
+    }
 
     await finishAgentRun(run?.id, {
       status: 'completado',
-      tokensEstimados: (gptResponse.usage?.prompt_tokens || 0) + (gptResponse.usage?.completion_tokens || 0),
-      promptTokens: gptResponse.usage?.prompt_tokens || 0,
-      completionTokens: gptResponse.usage?.completion_tokens || 0,
+      tokensEstimados: promptTokens + completionTokens,
+      promptTokens, completionTokens,
+      model: AGENT_MODEL_CONFIG.SARA.model,
     });
-    res.json({ answer: parsed.answer, citas: citados });
+    res.json({ answer, citas: citados, plan: plan.requierePlan ? plan.pasos : null });
   } catch (err) {
     await finishAgentRun(run?.id, { status: 'error', errorDetalle: err.message });
     res.status(500).json({ error: err.message });
@@ -2845,21 +3584,114 @@ const AGENT_PERSONAS = {
   SOFIA: 'Sofía, PhD en Psicología del Consumidor de Lujo. Analizas perfiles psicográficos de prospectos y detectas su arquetipo de comprador (Coleccionista de Estatus, Preservador de Legado, Decisor Racional, Comprador Aspiracional).',
   VALERIA: 'Valeria, VP de Medios. Redactas copy y gestionas el calendario editorial de campañas — LinkedIn, newsletters, email, redes sociales.',
   ISABELLA: 'Isabella, Embajadora de Marca. Generas guiones de producción de video — Reels, testimoniales, contenido educativo — y coordinas el calendario de producción audiovisual.',
+  CARTERA: 'Andrea, Directora de Cartera y Cobranza. Conoces el estado de pago de cada cliente activo — plan de cuotas, vencimientos, mora, riesgo (verde/amarillo/rojo) y responsable de cada cuenta.',
+  LEGAL: 'Mónica, Directora Legal. Conoces el expediente documental de cada cliente en proceso de compra — qué documentos están firmados, pendientes o en trámite, quién es el responsable de cada uno y las fechas límite.',
 };
-app.post('/api/agents/chat', async (req, res) => {
-  const tenant = await resolveTenant(req);
-  const user = resolveUser(req);
-  const { agent, question, history = [] } = req.body;
-  if (!agent || !AGENT_PERSONAS[agent]) return res.status(400).json({ error: 'agent inválido (CAMILO | SOFIA | VALERIA | ISABELLA)' });
-  if (!question || !question.trim()) return res.status(400).json({ error: 'question requerida' });
+// Construye el contexto de UN agente (dataset/contextText/citas) — extraído como función
+// independiente para que pueda llamarse dos veces: 1) para responder normalmente, y 2)
+// desde la herramienta consultar_a_otro_agente cuando un agente necesita el contexto real
+// de otro para responder algo cruzado (ej. Andrea preguntándole a Mónica por un cliente).
+// Herramientas base compartidas por los 7 agentes (además de consultar_datos y
+// consultar_a_otro_agente, que cada endpoint ya arma por separado): búsqueda web real y
+// calendario interno del CRM (tabla `citas`, la misma que usa la Agenda de Brokers). Antes
+// ningún agente podía ver más allá de los datos internos del CRM ni proponer una cita real
+// — Camilo en particular era "VP de Investigación" sin poder investigar nada fuera del CRM.
+function herramientasBase(openai, tenant, user, agentActual) {
+  return [
+    {
+      schema: {
+        type: 'function',
+        function: {
+          name: 'buscar_en_internet',
+          description: 'Busca información REAL y actual en internet (noticias, tendencias de mercado, competencia, tipo de cambio, indicadores económicos). Úsala cuando la pregunta requiera un dato del mundo real que no está en el CRM — nunca inventes una cifra o tendencia de mercado sin buscarla.',
+          parameters: {
+            type: 'object', additionalProperties: false,
+            properties: { consulta: { type: 'string', description: 'Qué buscar, en lenguaje natural — específico, ej. "tendencia mercado inmobiliario de lujo Panamá 2026" en vez de "mercado".' } },
+            required: ['consulta'],
+          },
+        },
+      },
+      ejecutar: async (args) => {
+        try {
+          const resp = await openai.responses.create({ model: 'gpt-4o-mini', tools: [{ type: 'web_search_preview' }], input: args.consulta });
+          return { resultado: resp.output_text || 'Sin resultados.' };
+        } catch (err) {
+          return { error: `No se pudo buscar en internet: ${err.message}` };
+        }
+      },
+    },
+    {
+      schema: {
+        type: 'function',
+        function: {
+          name: 'consultar_calendario',
+          description: 'Consulta las citas ya agendadas en el calendario interno del CRM (Agenda de Brokers) en un rango de fechas — úsala ANTES de proponer_cita para no chocar con algo ya agendado.',
+          parameters: {
+            type: 'object', additionalProperties: false,
+            properties: {
+              fecha_inicio: { type: 'string', description: 'YYYY-MM-DD' },
+              fecha_fin: { type: 'string', description: 'YYYY-MM-DD' },
+            },
+            required: ['fecha_inicio', 'fecha_fin'],
+          },
+        },
+      },
+      ejecutar: async (args) => {
+        try {
+          const { rows } = await pool.query(
+            `SELECT prospecto_nombre, proyecto, fecha, hora, estado FROM citas
+             WHERE tenant_id = $1 AND fecha >= $2 AND fecha <= $3 ORDER BY fecha, hora`,
+            [tenant.id, args.fecha_inicio, args.fecha_fin]
+          );
+          return { citas: rows.map(r => ({ cliente: r.prospecto_nombre, proyecto: r.proyecto, fecha: fmtDateOnly(r.fecha), hora: r.hora, estado: r.estado })) };
+        } catch (err) {
+          return { error: err.message };
+        }
+      },
+    },
+    {
+      schema: {
+        type: 'function',
+        function: {
+          name: 'proponer_cita',
+          description: 'Propone una cita en el calendario interno del CRM (Agenda de Brokers) — queda con estado "pendiente" para que un broker/humano la confirme, NUNCA se agenda como confirmada automáticamente. Úsala cuando te pidan "agenda/propón una llamada/reunión con X".',
+          parameters: {
+            type: 'object', additionalProperties: false,
+            properties: {
+              prospectoId: { type: 'integer', description: 'id del cliente' },
+              fecha: { type: 'string', description: 'YYYY-MM-DD' },
+              hora: { type: 'string', description: 'HH:MM' },
+              notas: { type: 'string' },
+            },
+            required: ['prospectoId', 'fecha', 'hora'],
+          },
+        },
+      },
+      ejecutar: async (args) => {
+        if (!args.prospectoId) return { error: 'Falta prospectoId' };
+        try {
+          const { rows } = await pool.query('SELECT nombre, apellido, correo, proyectos_interes FROM prospectos WHERE id = $1 AND tenant_id = $2', [args.prospectoId, tenant.id]);
+          if (rows.length === 0) return { error: 'Cliente no encontrado en prospectos' };
+          const p = rows[0];
+          const { rows: creada } = await pool.query(
+            `INSERT INTO citas (tenant_id, prospecto_id, prospecto_email, prospecto_nombre, proyecto, fecha, hora, canal, notas, estado, fuente)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pendiente',$10) RETURNING id`,
+            [tenant.id, args.prospectoId, p.correo, `${p.nombre} ${p.apellido}`, (p.proyectos_interes || [])[0] || null, args.fecha, args.hora, 'agente_ia', args.notas || `Propuesta por ${agentActual}`, `agente_ia_${agentActual.toLowerCase()}`]
+          );
+          return { creada: true, citaId: creada[0].id, mensaje: 'Cita creada con estado "pendiente" en la Agenda de Brokers — un broker debe confirmarla, no se agenda sola.' };
+        } catch (err) {
+          return { error: err.message };
+        }
+      },
+    },
+  ];
+}
 
-  const run = await startAgentRun(tenant.id, user, agent, 'chat');
-  try {
-    const apiKey = tenant?.openai?.apiKey || process.env.OPENAI_API_KEY;
-    if (!apiKey) { await finishAgentRun(run?.id, { status: 'error', errorDetalle: 'OpenAI API Key requerida.' }); return res.status(500).json({ error: 'OpenAI API Key requerida.' }); }
-
+async function buildAgentContext(tenant, agent) {
     let contextText = '';
     let prospectsForCitas = [];
+    let dataset = [];
+    let camposDisponibles = '';
 
     if (agent === 'CAMILO') {
       const { rows: insights } = await pool.query(
@@ -2867,7 +3699,29 @@ app.post('/api/agents/chat', async (req, res) => {
          WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 30`,
         [tenant.id]
       );
-      contextText = `INSIGHTS DE MERCADO RECIENTES:\n${insights.map(i => `- [${i.tipo}/${i.impacto}] ${i.titulo} — ${i.resumen || ''} (${i.status}, ${i.fecha})`).join('\n') || '(sin insights)'}`;
+      // Camilo hacía inteligencia de mercado leyendo solo sus propios insights pasados —
+      // nunca veía la señal cruda que los origina: objeciones reales que reportan los
+      // brokers en campo, y la demanda real (qué proyectos/canales concentran los
+      // prospectos). Sin esto no podía detectar un patrón nuevo, solo repetir lo ya escrito.
+      const { rows: objeciones } = await pool.query(
+        `SELECT tipo, descripcion, proyecto, canal, created_at FROM broker_objections
+         WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 40`,
+        [tenant.id]
+      ).catch(() => ({ rows: [] }));
+      const { rows: demandaRows } = await pool.query(
+        `SELECT proyectos_interes, canal FROM prospectos WHERE tenant_id = $1 AND fecha_registro > NOW() - INTERVAL '90 days'`,
+        [tenant.id]
+      );
+      const porProyecto = {}, porCanal = {};
+      demandaRows.forEach(p => {
+        (p.proyectos_interes || []).forEach(pr => { porProyecto[pr] = (porProyecto[pr] || 0) + 1; });
+        const c = p.canal || 'sin canal'; porCanal[c] = (porCanal[c] || 0) + 1;
+      });
+      const demandaCtx = `Por proyecto (últimos 90 días): ${Object.entries(porProyecto).sort((a, b) => b[1] - a[1]).map(([p, n]) => `${p}: ${n}`).join(', ') || 'sin datos'}\nPor canal: ${Object.entries(porCanal).sort((a, b) => b[1] - a[1]).map(([c, n]) => `${c}: ${n}`).join(', ') || 'sin datos'}`;
+      const objecionesCtx = objeciones.map(o => `- [${o.tipo}] ${o.proyecto || 'sin proyecto'} · canal: ${o.canal || '—'} · "${o.descripcion || ''}" · ${new Date(o.created_at).toISOString().slice(0, 10)}`).join('\n');
+      dataset = insights.map(i => ({ nombre: i.titulo, tipo: i.tipo, impacto: i.impacto, status: i.status, fecha: i.fecha }));
+      camposDisponibles = 'nombre (título del insight), tipo, impacto, status, fecha';
+      contextText = `INSIGHTS DE MERCADO RECIENTES (ya publicados):\n${insights.map(i => `- [${i.tipo}/${i.impacto}] ${i.titulo} — ${i.resumen || ''} (${i.status}, ${i.fecha})`).join('\n') || '(sin insights)'}\n\nSEÑAL CRUDA DE DEMANDA (para detectar patrones NUEVOS, no repetir insights ya escritos):\n${demandaCtx}\n\nOBJECIONES DE MERCADO REPORTADAS POR BROKERS EN CAMPO:\n${objecionesCtx || '(sin objeciones registradas)'}`;
     } else if (agent === 'SOFIA') {
       const { rows: profiles } = await pool.query(
         `SELECT sp.prospecto_id, sp.arquetipo, sp.confianza, sp.senales, p.nombre, p.apellido, p.proyectos_interes
@@ -2875,61 +3729,603 @@ app.post('/api/agents/chat', async (req, res) => {
          WHERE sp.tenant_id = $1 ORDER BY sp.updated_at DESC LIMIT 40`,
         [tenant.id]
       );
-      prospectsForCitas = profiles.map(p => ({ id: p.prospecto_id, nombre: `${p.nombre} ${p.apellido}` }));
-      contextText = `PERFILES PSICOGRÁFICOS:\n${profiles.map(p => `- [id:${p.prospecto_id}] ${p.nombre} ${p.apellido} · arquetipo: ${p.arquetipo} · confianza: ${p.confianza}% · proyectos: ${(p.proyectos_interes || []).join(', ') || '—'} · señales: ${(p.senales || []).join('; ')}`).join('\n') || '(sin perfiles aún)'}`;
+      // Sofía solo veía sus propios perfiles ya calculados — nunca la materia prima real
+      // (resumen_ia, temas_interes, canal) de prospectos SIN perfil aún, así que no podía
+      // proponer un arquetipo nuevo con base en la consulta original del cliente.
+      const { rows: sinPerfil } = await pool.query(
+        `SELECT p.id, p.nombre, p.apellido, p.canal, p.resumen_ia, p.temas_interes, p.presupuesto_usd, p.proyectos_interes
+         FROM prospectos p LEFT JOIN sofia_profiles sp ON sp.prospecto_id = p.id
+         WHERE p.tenant_id = $1 AND sp.prospecto_id IS NULL ORDER BY p.fecha_registro DESC LIMIT 25`,
+        [tenant.id]
+      );
+      const sinPerfilCtx = sinPerfil.map(p => `- [id:${p.id}] ${p.nombre} ${p.apellido} · canal: ${p.canal || 'sin canal'} · presupuesto: $${p.presupuesto_usd || 0} · proyectos: ${(p.proyectos_interes || []).join(', ') || '—'}${p.resumen_ia ? ` · consulta original: ${p.resumen_ia}` : ''}${(p.temas_interes || []).length > 0 ? ` · temas: ${(p.temas_interes || []).join(', ')}` : ''}`).join('\n');
+      prospectsForCitas = profiles.map(p => ({ id: p.prospecto_id, nombre: `${p.nombre} ${p.apellido}` })).concat(sinPerfil.map(p => ({ id: p.id, nombre: `${p.nombre} ${p.apellido}` })));
+      dataset = profiles.map(p => ({ id: p.prospecto_id, nombre: `${p.nombre} ${p.apellido}`, arquetipo: p.arquetipo, confianza: p.confianza, proyectos: (p.proyectos_interes || []).join(', ') }));
+      camposDisponibles = 'id, nombre, arquetipo, confianza (número 0-100), proyectos';
+      contextText = `PERFILES PSICOGRÁFICOS YA CALCULADOS:\n${profiles.map(p => `- [id:${p.prospecto_id}] ${p.nombre} ${p.apellido} · arquetipo: ${p.arquetipo} · confianza: ${p.confianza}% · proyectos: ${(p.proyectos_interes || []).join(', ') || '—'} · señales: ${(p.senales || []).join('; ')}`).join('\n') || '(sin perfiles aún)'}\n\nPROSPECTOS SIN PERFIL AÚN (candidatos a analizar — usa actualizar_perfil_psicografico si te piden perfilarlos):\n${sinPerfilCtx || '(todos los prospectos recientes ya tienen perfil)'}`;
     } else if (agent === 'VALERIA') {
       const { rows: drafts } = await pool.query(
         `SELECT id, canal, asunto, status, type, tags, date FROM valeria_drafts
          WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 30`,
         [tenant.id]
       );
-      contextText = `CONTENIDO/CAMPAÑAS RECIENTES:\n${drafts.map(d => `- [${d.status}] ${d.canal || d.type} · "${d.asunto || ''}" · ${(d.tags || []).join(', ')} · ${d.date}`).join('\n') || '(sin contenido generado aún)'}`;
+      // Valeria redactaba copy sin ver ni los insights de mercado de Camilo (qué está
+      // pasando, qué objeciones hay que rebatir) ni la distribución de arquetipos de Sofía
+      // (a quién le está hablando) — el copy salía genérico, no dirigido.
+      const { rows: insightsCamilo } = await pool.query(
+        `SELECT titulo, resumen, tipo, impacto FROM camilo_insights WHERE tenant_id = $1 AND status != 'aplicado' ORDER BY created_at DESC LIMIT 15`,
+        [tenant.id]
+      ).catch(() => ({ rows: [] }));
+      const { rows: arquetipos } = await pool.query(
+        `SELECT arquetipo, COUNT(*)::int AS n FROM sofia_profiles WHERE tenant_id = $1 GROUP BY arquetipo ORDER BY n DESC`,
+        [tenant.id]
+      ).catch(() => ({ rows: [] }));
+      const insightsCtx = insightsCamilo.map(i => `- [${i.tipo}/${i.impacto}] ${i.titulo} — ${i.resumen || ''}`).join('\n');
+      const arquetiposCtx = arquetipos.map(a => `${a.arquetipo}: ${a.n} cliente(s)`).join(', ');
+      dataset = drafts.map(d => ({ nombre: d.asunto || d.canal || d.type, canal: d.canal || d.type, status: d.status, tags: (d.tags || []).join(', '), fecha: d.date }));
+      camposDisponibles = 'nombre (asunto), canal, status, tags, fecha';
+      contextText = `CONTENIDO/CAMPAÑAS RECIENTES:\n${drafts.map(d => `- [${d.status}] ${d.canal || d.type} · "${d.asunto || ''}" · ${(d.tags || []).join(', ')} · ${d.date}`).join('\n') || '(sin contenido generado aún)'}\n\nINSIGHTS DE MERCADO DE CAMILO (sin aplicar aún — úsalos para fundamentar el copy):\n${insightsCtx || '(sin insights pendientes)'}\n\nDISTRIBUCIÓN DE ARQUETIPOS DE CLIENTES (Sofía) — a quién le hablas:\n${arquetiposCtx || '(sin perfiles aún)'}`;
     } else if (agent === 'ISABELLA') {
       const { rows: scripts } = await pool.query(
         `SELECT id, canal, asunto, status, type, tags, date FROM isabella_scripts
          WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 30`,
         [tenant.id]
       );
-      contextText = `GUIONES DE VIDEO RECIENTES:\n${scripts.map(s => `- [${s.status}] ${s.canal || s.type} · "${s.asunto || ''}" · ${(s.tags || []).join(', ')} · ${s.date}`).join('\n') || '(sin guiones generados aún)'}`;
+      // Mismo problema que Valeria: Isabella producía guiones sin ver insights de mercado
+      // ni arquetipos, y sin ver el calendario de Valeria — riesgo real de duplicar el
+      // mismo tema en video que ya se está cubriendo en copy/newsletter.
+      const { rows: insightsCamilo } = await pool.query(
+        `SELECT titulo, resumen, tipo, impacto FROM camilo_insights WHERE tenant_id = $1 AND status != 'aplicado' ORDER BY created_at DESC LIMIT 15`,
+        [tenant.id]
+      ).catch(() => ({ rows: [] }));
+      const { rows: arquetipos } = await pool.query(
+        `SELECT arquetipo, COUNT(*)::int AS n FROM sofia_profiles WHERE tenant_id = $1 GROUP BY arquetipo ORDER BY n DESC`,
+        [tenant.id]
+      ).catch(() => ({ rows: [] }));
+      const { rows: calendarioValeria } = await pool.query(
+        `SELECT asunto, canal, tags, date FROM valeria_drafts WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 15`,
+        [tenant.id]
+      ).catch(() => ({ rows: [] }));
+      const insightsCtx = insightsCamilo.map(i => `- [${i.tipo}/${i.impacto}] ${i.titulo} — ${i.resumen || ''}`).join('\n');
+      const arquetiposCtx = arquetipos.map(a => `${a.arquetipo}: ${a.n} cliente(s)`).join(', ');
+      const calendarioCtx = calendarioValeria.map(d => `- "${d.asunto || ''}" (${d.canal}) · ${(d.tags || []).join(', ')} · ${d.date}`).join('\n');
+      dataset = scripts.map(s => ({ nombre: s.asunto || s.canal || s.type, canal: s.canal || s.type, status: s.status, tags: (s.tags || []).join(', '), fecha: s.date }));
+      camposDisponibles = 'nombre (asunto), canal, status, tags, fecha';
+      contextText = `GUIONES DE VIDEO RECIENTES:\n${scripts.map(s => `- [${s.status}] ${s.canal || s.type} · "${s.asunto || ''}" · ${(s.tags || []).join(', ')} · ${s.date}`).join('\n') || '(sin guiones generados aún)'}\n\nINSIGHTS DE MERCADO DE CAMILO (sin aplicar aún):\n${insightsCtx || '(sin insights pendientes)'}\n\nDISTRIBUCIÓN DE ARQUETIPOS DE CLIENTES (Sofía):\n${arquetiposCtx || '(sin perfiles aún)'}\n\nCALENDARIO DE COPY DE VALERIA (evita duplicar el mismo tema en video):\n${calendarioCtx || '(sin contenido de Valeria aún)'}`;
+    } else if (agent === 'CARTERA') {
+      const { rows: carteras } = await pool.query(
+        `SELECT id, prospecto_id, prospecto_nombre, proyecto, unidad, precio_total, moneda, fecha_separacion,
+                fecha_escritura, fecha_entrega, modalidad, responsable, cuotas
+         FROM carteras WHERE tenant_id = $1 ORDER BY updated_at DESC LIMIT 40`,
+        [tenant.id]
+      );
+      prospectsForCitas = carteras.filter(c => c.prospecto_id).map(c => ({ id: c.prospecto_id, nombre: c.prospecto_nombre }));
+      const hoyC = new Date().toISOString().slice(0, 10);
+      // Cruce con Legal: qué clientes de cartera NO tienen la escritura pública firmada —
+      // antes Cartera y Legal eran islas separadas, ningún agente veía "en mora Y sin
+      // escritura" (la combinación de riesgo más grave: dinero comprometido sin título).
+      const prospectoIds = carteras.filter(c => c.prospecto_id).map(c => c.prospecto_id);
+      const { rows: escrituras } = prospectoIds.length > 0
+        ? await pool.query(
+            `SELECT prospecto_id, status FROM legal_docs WHERE tenant_id = $1 AND doc_key = 'escritura_publica' AND prospecto_id = ANY($2::int[])`,
+            [tenant.id, prospectoIds]
+          )
+        : { rows: [] };
+      const escrituraPorProspecto = {};
+      escrituras.forEach(e => { escrituraPorProspecto[e.prospecto_id] = e.status; });
+      // OJO — el shape real de cada cuota (columna JSONB `cuotas`) usa `estado` y
+      // `fecha_vencimiento`, NO `status`/`fecha` (ver CuotaCartera en el frontend). Un bug
+      // anterior aquí leía esos campos equivocados: siempre daban `undefined`, así que TODAS
+      // las cuotas —incluidas las ya pagadas— contaban como "pendientes" y la comparación de
+      // fecha vencida nunca podía dar cierto, por lo que Andrea reportaba "sin mora" siempre,
+      // aunque sí hubiera. Además el `riesgo` NO se lee de una columna guardada (puede quedar
+      // desactualizada) — se recalcula aquí con la MISMA regla que el semáforo real del
+      // Panel de Mando (ver calcRiesgo() en el frontend): rojo si hay al menos una cuota
+      // vencida (vencida, o pendiente con fecha ya pasada); amarillo si la próxima pendiente
+      // vence en los próximos 10 días; verde en cualquier otro caso.
+      // Mismo principio que en LEGAL (ver comentario ahí abajo): el conteo/clasificación
+      // por riesgo se resuelve UNA vez aquí en código — nunca se le pide al modelo que
+      // cuente cuántos clientes son rojo/amarillo/verde a partir de la lista de texto.
+      const carterasCalc = carteras.map(c => {
+        const cuotas = Array.isArray(c.cuotas) ? c.cuotas : [];
+        // monto > 0: una cuota "manual" creada como placeholder y nunca completada queda
+        // en $0 — no es deuda real y no debe poder marcar a nadie en mora (caso real:
+        // Adriana Bustamante y Gustavo Peña, corregido 2026-08-28: ver limpieza de datos).
+        const pendientes = cuotas.filter(q => q.estado !== 'pagada' && q.monto > 0);
+        const vencidas = pendientes.filter(q => q.estado === 'vencida' || (q.estado === 'pendiente' && q.fecha_vencimiento < hoyC));
+        const proxima = pendientes.filter(q => q.fecha_vencimiento >= hoyC).sort((a, b) => (a.fecha_vencimiento || '').localeCompare(b.fecha_vencimiento || ''))[0];
+        const diasProxima = proxima ? Math.round((new Date(proxima.fecha_vencimiento).getTime() - new Date(hoyC).getTime()) / 86400000) : null;
+        // Sin plan de pagos (cuotas = []) NO es lo mismo que "al día" — al día implica un
+        // plan real que se está cumpliendo; sin plan es un caso aparte que no debe leerse
+        // como buen comportamiento de pago (caso real: Andrés Felipe Martínez, María Isabel
+        // Rodríguez, ambos sin cuotas cargadas).
+        const riesgo = cuotas.length === 0 ? 'sin_plan' : vencidas.length > 0 ? 'rojo' : (diasProxima !== null && diasProxima <= 10) ? 'amarillo' : 'verde';
+        // Promesas de pago incumplidas: una cuota con `compromiso` (fecha/monto que el
+        // cliente prometió pagar) que sigue sin pagarse después de esa fecha — la señal más
+        // fuerte de riesgo de cobranza real, más que solo "está vencida" una vez.
+        const promesasIncumplidas = cuotas.filter(q => q.compromiso && q.estado !== 'pagada' && q.compromiso.fecha && q.compromiso.fecha < hoyC).length;
+        const sinEscritura = c.prospecto_id ? (escrituraPorProspecto[c.prospecto_id] !== 'firmado' && escrituraPorProspecto[c.prospecto_id] !== 'archivado') : null;
+        return { c, vencidas, pendientes, proxima, diasProxima, riesgo, promesasIncumplidas, sinEscritura };
+      });
+      const RIESGO_LABEL = { rojo: 'En mora', amarillo: 'Atención (vence ≤10 días)', verde: 'Al día', sin_plan: 'Sin plan de pagos cargado (no es "al día", simplemente no se ha configurado un plan aún)' };
+      const porRiesgo = { rojo: [], amarillo: [], verde: [], sin_plan: [] };
+      carterasCalc.forEach(x => porRiesgo[x.riesgo].push(x.c.prospecto_nombre));
+      const totalMora = carterasCalc.reduce((s, x) => s + x.vencidas.reduce((s2, q) => s2 + Number(q.monto || 0), 0), 0);
+      const resumenRiesgo = Object.entries(porRiesgo).map(([r, nombres]) => `- ${RIESGO_LABEL[r]}: ${nombres.length} cliente(s)${nombres.length > 0 ? ` — ${nombres.join(', ')}` : ''}`).join('\n');
+      // Casos compuestos: mora + sin escritura, la combinación de riesgo más grave que
+      // ningún agente por separado podía ver antes.
+      const moraSinEscritura = carterasCalc.filter(x => x.riesgo === 'rojo' && x.sinEscritura);
+      const moraSinEscrituraCtx = moraSinEscritura.length > 0
+        ? moraSinEscritura.map(x => `- ${x.c.prospecto_nombre} (${x.c.proyecto}) · en mora $${x.vencidas.reduce((s, q) => s + Number(q.monto || 0), 0).toLocaleString()} · escritura: ${escrituraPorProspecto[x.c.prospecto_id] || 'no iniciada'}`).join('\n')
+        : '(ningún cliente en mora está simultáneamente sin escritura firmada)';
+      // Proyección de flujo de caja: suma de cuotas pendientes (no vencidas) por mes, próximos
+      // 6 meses — antes solo vivía como vista en Reportes, Andrea no la tenía en su contexto.
+      const proyeccionMeses = {};
+      carterasCalc.forEach(x => {
+        x.pendientes.filter(q => q.fecha_vencimiento >= hoyC).forEach(q => {
+          const mes = (q.fecha_vencimiento || '').slice(0, 7);
+          if (!mes) return;
+          proyeccionMeses[mes] = (proyeccionMeses[mes] || 0) + Number(q.monto || 0);
+        });
+      });
+      const proyeccionCtx = Object.entries(proyeccionMeses).sort(([a], [b]) => a.localeCompare(b)).slice(0, 6)
+        .map(([mes, monto]) => `- ${mes}: $${monto.toLocaleString()}`).join('\n') || '(sin cuotas pendientes futuras)';
+      dataset = carterasCalc.map(({ c, vencidas, diasProxima, riesgo, promesasIncumplidas, sinEscritura }) => ({
+        id: c.prospecto_id, nombre: c.prospecto_nombre, proyecto: c.proyecto, riesgo,
+        montoMora: vencidas.reduce((s, q) => s + Number(q.monto || 0), 0),
+        cuotasEnMora: vencidas.length, precioTotal: Number(c.precio_total || 0), moneda: c.moneda,
+        modalidad: c.modalidad, responsable: c.responsable || 'sin asignar', diasProximaCuota: diasProxima,
+        promesasIncumplidas, sinEscritura: sinEscritura ? 1 : 0,
+      }));
+      camposDisponibles = 'id, nombre, proyecto, riesgo (rojo|amarillo|verde), montoMora, cuotasEnMora, precioTotal, moneda, modalidad, responsable, diasProximaCuota, promesasIncumplidas, sinEscritura (1=sin escritura firmada, 0=con escritura)';
+      // Antes solo se mostraba el RESUMEN por cliente (conteo/monto de mora + la próxima
+      // cuota) — nunca el detalle cuota por cuota, así que Andrea no podía responder "dame
+      // las fechas de las cuotas vencidas" ni "cuál era la programación de pagos completa":
+      // ese dato simplemente no estaba en su contexto, no era un problema de razonamiento.
+      // Se agrega aquí el PLAN DE PAGOS COMPLETO (todas las cuotas, con concepto/monto/
+      // estado/fecha/compromiso) por cliente — el modelo no necesita "contar" nada de esto,
+      // solo leer y citar filas ya dadas, que es donde sí es confiable.
+      const planPagosCtx = carterasCalc.map(({ c, pendientes }) => {
+        const cuotas = Array.isArray(c.cuotas) ? c.cuotas : [];
+        if (cuotas.length === 0) return null;
+        const detalle = cuotas
+          .slice()
+          .sort((a, b) => (a.fecha_vencimiento || '').localeCompare(b.fecha_vencimiento || ''))
+          .map(q => {
+            const vencida = q.estado !== 'pagada' && q.monto > 0 && (q.estado === 'vencida' || (q.estado === 'pendiente' && q.fecha_vencimiento < hoyC));
+            return `${q.concepto || 'Cuota'}: $${Number(q.monto || 0).toLocaleString()} · vence ${q.fecha_vencimiento || 'sin fecha'} · estado: ${q.estado}${vencida ? ' (VENCIDA)' : ''}${q.compromiso?.fecha ? ` · promesa de pago: ${q.compromiso.fecha}${q.compromiso.monto ? ` por $${Number(q.compromiso.monto).toLocaleString()}` : ''}` : ''}`;
+          }).join('; ');
+        return `- ${c.prospecto_nombre} (${c.proyecto}): ${detalle}`;
+      }).filter(Boolean).join('\n');
+      contextText = `RESUMEN NUMÉRICO YA CALCULADO — cítalo literal, NUNCA vuelvas a contar la lista de abajo tú mismo (los LLM cuentan mal listas largas):\n${resumenRiesgo}\n- Monto total en mora (todos los clientes rojo): $${totalMora.toLocaleString()}\n\nREGLA DEL MÓDULO (importante, no la inventes distinto): el riesgo de un cliente es ROJO (en mora) si tiene al menos una cuota con estado "vencida", o "pendiente" cuya fecha de vencimiento ya pasó. Es AMARILLO (atención) si no está en mora pero su próxima cuota pendiente vence en los próximos 10 días. Es VERDE (al día) en cualquier otro caso. Una cuota "pagada" nunca cuenta para mora, sin importar cuándo se pagó.\n\nCLIENTES EN CARTERA:\n${carterasCalc.map(({ c, vencidas, proxima, diasProxima, riesgo, promesasIncumplidas, sinEscritura }) => {
+        return `- [id:${c.prospecto_id}] ${c.prospecto_nombre} · ${c.proyecto}${c.unidad ? ' - ' + c.unidad : ''} · $${Number(c.precio_total || 0).toLocaleString()} ${c.moneda} · modalidad: ${c.modalidad} · riesgo: ${riesgo} (${RIESGO_LABEL[riesgo]}) · responsable: ${c.responsable || 'sin asignar'} · ${vencidas.length > 0 ? `${vencidas.length} cuota(s) EN MORA por $${vencidas.reduce((s, q) => s + Number(q.monto || 0), 0).toLocaleString()}` : 'sin mora'}${promesasIncumplidas > 0 ? ` · ${promesasIncumplidas} PROMESA(S) DE PAGO INCUMPLIDA(S)` : ''}${proxima ? ` · próxima cuota: ${proxima.concepto || 'cuota'} $${Number(proxima.monto || 0).toLocaleString()} vence ${proxima.fecha_vencimiento} (${diasProxima}d)` : ' · sin cuotas pendientes'} · escritura: ${fmtDateOnly(c.fecha_escritura) || 'sin fecha'} · entrega: ${fmtDateOnly(c.fecha_entrega) || 'sin fecha'} · estado escritura pública: ${sinEscritura === null ? 'sin expediente legal' : sinEscritura ? 'PENDIENTE DE FIRMAR' : 'firmada'}`;
+      }).join('\n') || '(sin clientes en cartera aún)'}\n\nCLIENTES EN MORA Y SIN ESCRITURA FIRMADA (riesgo compuesto — el más grave):\n${moraSinEscrituraCtx}\n\nPROYECCIÓN DE FLUJO DE CAJA — cuotas pendientes por mes (próximos 6 meses con datos):\n${proyeccionCtx}\n\nPLAN DE PAGOS COMPLETO POR CLIENTE (todas las cuotas, con fecha, monto, estado y promesa de pago si existe — usa esto para responder cualquier pregunta sobre fechas o programación de cuotas):\n${planPagosCtx || '(sin planes de pago cargados)'}`;
+    } else if (agent === 'LEGAL') {
+      const { rows: docs } = await pool.query(
+        `SELECT ld.prospecto_id, ld.doc_key, ld.status, ld.responsable, ld.due_date, ld.attached_date,
+                p.nombre, p.apellido
+         FROM legal_docs ld JOIN prospectos p ON ld.prospecto_id = p.id
+         WHERE ld.tenant_id = $1 ORDER BY ld.updated_at DESC LIMIT 200`,
+        [tenant.id]
+      );
+      const byProspecto = {};
+      docs.forEach(d => {
+        const key = d.prospecto_id;
+        if (!byProspecto[key]) byProspecto[key] = { id: d.prospecto_id, nombre: `${d.nombre} ${d.apellido}`, docs: [] };
+        byProspecto[key].docs.push(d);
+      });
+      prospectsForCitas = Object.values(byProspecto).map((c) => ({ id: c.id, nombre: c.nombre }));
+      // Misma agrupación de fases y misma regla de "fase actual" que usa el Panel de Mando
+      // real del módulo (ver PHASES / overallPhase() en el frontend) — sin esto, el modelo
+      // adivinaba su propia regla (ej. "solo aparecen en Reserva los que YA tienen la carta de
+      // reserva firmada") que es exactamente al revés de cómo funciona: Reserva es la fase de
+      // ARRANQUE por defecto, un cliente permanece ahí precisamente MIENTRAS le falten esos
+      // documentos, no cuando ya los completó.
+      const FASES_LEGAL = {
+        reserva: ['carta_reserva', 'pago_separacion', 'due_diligence', 'propuesta_comercial'],
+        promesa: ['promesa_compraventa', 'cert_tradicion', 'estudio_titulo', 'paz_salvo', 'poder_notarial'],
+        escritura: ['escritura_publica', 'registro_rph', 'dian_documentos', 'acta_entrega', 'llaves'],
+      };
+      const faseCompleta = (docsCliente, keys) => keys.every(k => {
+        const d = docsCliente.find(x => x.doc_key === k);
+        return d && (d.status === 'firmado' || d.status === 'archivado');
+      });
+      const faseActual = (docsCliente) => {
+        if (faseCompleta(docsCliente, FASES_LEGAL.escritura)) return 'Escritura Completa (trámite legal terminado)';
+        if (faseCompleta(docsCliente, FASES_LEGAL.promesa)) return 'En Trámite Notarial (fase Escritura & Registro)';
+        if (faseCompleta(docsCliente, FASES_LEGAL.reserva)) return 'Promesa en Proceso (fase Promesa)';
+        return 'Reserva en Curso (fase Reserva — aún le faltan documentos de esta fase, por eso sigue aquí)';
+      };
+      // Un LLM lee la lista de abajo y CUENTA a ojo cuántos clientes hay en cada fase —
+      // eso falla sistemáticamente en cuanto la lista pasa de un puñado de líneas (el
+      // usuario ya lo confirmó en producción: Mónica dijo 6, la cifra real era 8). La
+      // corrección no es pedirle "que tenga más cuidado" — un LLM no cuenta bien listas de
+      // texto, punto. La única corrección real es que el conteo NUNCA lo haga el modelo:
+      // se calcula aquí en código (fuente de verdad determinística) y se le entrega ya
+      // resuelto, con instrucción explícita de citarlo tal cual en vez de volver a contar.
+      const porFase = { 'Reserva en Curso (fase Reserva — aún le faltan documentos de esta fase, por eso sigue aquí)': [], 'Promesa en Proceso (fase Promesa)': [], 'En Trámite Notarial (fase Escritura & Registro)': [], 'Escritura Completa (trámite legal terminado)': [] };
+      Object.values(byProspecto).forEach((c) => { porFase[faseActual(c.docs)].push(c.nombre); });
+      const resumenFases = Object.entries(porFase).map(([fase, nombres]) => `- ${fase.split(' (')[0]}: ${nombres.length} cliente(s)${nombres.length > 0 ? ` — ${nombres.join(', ')}` : ''}`).join('\n');
+      const FASE_CORTA = { 'Reserva en Curso (fase Reserva — aún le faltan documentos de esta fase, por eso sigue aquí)': 'Reserva', 'Promesa en Proceso (fase Promesa)': 'Promesa', 'En Trámite Notarial (fase Escritura & Registro)': 'Escritura', 'Escritura Completa (trámite legal terminado)': 'Completo' };
+      dataset = Object.values(byProspecto).map((c) => {
+        const pendientes = c.docs.filter(d => d.status !== 'firmado' && d.status !== 'archivado');
+        const vencidosLegal = pendientes.filter(d => d.due_date && fmtDateOnly(d.due_date) < new Date().toISOString().slice(0, 10));
+        return { id: c.id, nombre: c.nombre, fase: FASE_CORTA[faseActual(c.docs)], documentosTotales: c.docs.length, documentosPendientes: pendientes.length, documentosVencidos: vencidosLegal.length };
+      });
+      camposDisponibles = 'id, nombre, fase (Reserva|Promesa|Escritura|Completo), documentosTotales, documentosPendientes, documentosVencidos';
+      // Cruce con Cartera: un cliente con documentos vencidos Y en mora de pago es el caso
+      // de mayor riesgo compuesto del pipeline — antes Mónica no veía el estado de pago,
+      // solo el expediente documental, así que no podía priorizar por riesgo real de negocio.
+      const { rows: carterasLegal } = await pool.query(
+        `SELECT prospecto_id, prospecto_nombre, cuotas FROM carteras WHERE tenant_id = $1`,
+        [tenant.id]
+      ).catch(() => ({ rows: [] }));
+      const hoyLegal = new Date().toISOString().slice(0, 10);
+      const moraPorProspecto = {};
+      carterasLegal.forEach(c => {
+        const cuotas = Array.isArray(c.cuotas) ? c.cuotas : [];
+        const vencidas = cuotas.filter(q => q.monto > 0 && q.estado !== 'pagada' && (q.estado === 'vencida' || (q.estado === 'pendiente' && q.fecha_vencimiento < hoyLegal)));
+        if (vencidas.length > 0) moraPorProspecto[c.prospecto_id] = vencidas.reduce((s, q) => s + Number(q.monto || 0), 0);
+      });
+      const riesgoCompuesto = Object.values(byProspecto).filter((c) => {
+        const vencidosLegal = c.docs.filter(d => d.status !== 'firmado' && d.status !== 'archivado' && d.due_date && fmtDateOnly(d.due_date) < hoyLegal);
+        return vencidosLegal.length > 0 && moraPorProspecto[c.id] > 0;
+      });
+      const riesgoCompuestoCtx = riesgoCompuesto.length > 0
+        ? riesgoCompuesto.map((c) => `- ${c.nombre}: documentos legales vencidos Y en mora de pago por $${moraPorProspecto[c.id].toLocaleString()} — riesgo compuesto, prioridad alta`).join('\n')
+        : '(ningún cliente combina documentos vencidos con mora de pago)';
+      contextText = `RESUMEN NUMÉRICO YA CALCULADO — cítalo literal, NUNCA vuelvas a contar la lista de abajo tú mismo (los LLM cuentan mal listas largas, este número ya está verificado por código):\n${resumenFases}\n\nREGLA DEL MÓDULO (importante, no la inventes distinto): un cliente aparece en la fase "Reserva" del Panel de Mando precisamente MIENTRAS le falten documentos de esa fase — Reserva es el punto de partida por defecto de todo cliente, no un estado que se alcanza al completar la reserva. Un cliente pasa a la siguiente fase (Promesa, luego Escritura) solo cuando TERMINA todos los documentos de la fase actual.\n\nCASOS DE RIESGO COMPUESTO (documentos vencidos + mora de pago simultáneos — cruce con Cartera):\n${riesgoCompuestoCtx}\n\nEXPEDIENTES LEGALES POR CLIENTE:\n${Object.values(byProspecto).map((c) => {
+        const pendientes = c.docs.filter(d => d.status !== 'firmado' && d.status !== 'archivado');
+        const vencidosLegal = pendientes.filter(d => d.due_date && fmtDateOnly(d.due_date) < new Date().toISOString().slice(0, 10));
+        return `- ${c.nombre}: fase actual — ${faseActual(c.docs)}. ${c.docs.length} documentos totales, ${pendientes.length} pendientes${vencidosLegal.length > 0 ? ` (${vencidosLegal.length} VENCIDOS)` : ''}. Detalle: ${c.docs.map(d => `${LEGAL_DOC_LABELS[d.doc_key] || d.doc_key} [${d.status}${d.responsable ? `, resp: ${d.responsable}` : ''}${d.due_date ? `, vence ${fmtDateOnly(d.due_date)}` : ''}]`).join('; ')}`;
+      }).join('\n') || '(sin expedientes legales aún)'}`;
     }
+  return { contextText, prospectsForCitas, dataset, camposDisponibles };
+}
+
+app.post('/api/agents/chat', async (req, res) => {
+  const tenant = await resolveTenant(req);
+  const user = resolveUser(req);
+  const { agent, question, history = [] } = req.body;
+  if (!agent || !AGENT_PERSONAS[agent]) return res.status(400).json({ error: 'agent inválido (CAMILO | SOFIA | VALERIA | ISABELLA | CARTERA | LEGAL)' });
+  if (!question || !question.trim()) return res.status(400).json({ error: 'question requerida' });
+
+  const run = await startAgentRun(tenant.id, user, agent, 'chat');
+  try {
+    const apiKey = tenant?.openai?.apiKey || process.env.OPENAI_API_KEY;
+    if (!apiKey) { await finishAgentRun(run?.id, { status: 'error', errorDetalle: 'OpenAI API Key requerida.' }); return res.status(500).json({ error: 'OpenAI API Key requerida.' }); }
+
+    const { contextText, prospectsForCitas, dataset, camposDisponibles } = await buildAgentContext(tenant, agent);
 
     const OpenAI = require('openai');
     const openai = new OpenAI({ apiKey });
-    const gptResponse = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: `Eres ${AGENT_PERSONAS[agent]} Trabajas para ${tenant.name}. Respondes preguntas del equipo comercial con datos reales del contexto — si el dato no está ahí, dilo explícitamente en vez de suponer. Responde en español, tono directo y profesional, sin relleno.\n\n${contextText}` },
-        ...history.slice(-6).map(h => ({ role: h.role === 'user' ? 'user' : 'assistant', content: h.content })),
-        { role: 'user', content: question },
-      ],
-      temperature: 0.4, max_tokens: 500,
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: 'respuesta_agente',
-          strict: true,
-          schema: {
-            type: 'object',
-            additionalProperties: false,
+
+    // Cada agente puede además PROPONER una acción real, no solo informar — un borrador o
+    // insight que cae a la cola de aprobación correspondiente (Buzón, Configuración →
+    // Contenido/Guiones, Panel de Camilo, Perfiles de Sofía), NUNCA se envía/publica sola.
+    // Mismo patrón en los 6 agentes: crear ≠ enviar. Instrucciones por agente se arman abajo
+    // en INSTRUCCION_ACCION y se insertan en el systemPrompt.
+    const herramientasExtra = [{
+      schema: {
+        type: 'function',
+        function: {
+          name: 'consultar_a_otro_agente',
+          description: 'Consulta de SOLO LECTURA a otro agente especialista del equipo, usando SU contexto real (nunca inventes lo que otro agente sabría). Úsala cuando la pregunta requiera cruzar con otra área — ej. Andrea (Cartera) preguntándole a Mónica (Legal) el estado de escritura de un cliente, o Valeria preguntándole a Camilo el detalle de un insight. El otro agente responde, pero no ejecuta ninguna acción — solo informa.',
+          parameters: {
+            type: 'object', additionalProperties: false,
             properties: {
-              answer: { type: 'string' },
-              prospectosCitados: { type: 'array', items: { type: 'integer' } },
+              agente: { type: 'string', enum: ['CAMILO', 'SOFIA', 'VALERIA', 'ISABELLA', 'CARTERA', 'LEGAL'], description: 'El agente al que le preguntas — nunca el mismo que está respondiendo.' },
+              pregunta: { type: 'string', description: 'La pregunta puntual a consultarle, en su propio idioma natural.' },
             },
-            required: ['answer', 'prospectosCitados'],
+            required: ['agente', 'pregunta'],
           },
         },
       },
-    });
-    const parsed = JSON.parse(gptResponse.choices[0].message.content.trim());
-    const citados = prospectsForCitas.filter(p => parsed.prospectosCitados.includes(p.id));
+      ejecutar: async (args) => {
+        if (!args.agente || !AGENT_PERSONAS[args.agente]) return { error: 'Agente inválido' };
+        if (args.agente === agent) return { error: 'No puedes consultarte a ti mismo — ya tienes tu propio contexto.' };
+        try {
+          const otro = await buildAgentContext(tenant, args.agente);
+          const otroPrompt = `Eres ${AGENT_PERSONAS[args.agente]} Te está consultando internamente otro agente del equipo (${AGENT_PERSONAS[agent].split(',')[0]}), no un usuario humano — responde directo y conciso con datos reales de tu contexto, sin saludos ni relleno. Si el dato no está en tu contexto, dilo explícitamente.
+
+CAMPOS DISPONIBLES para consultar_datos: ${otro.camposDisponibles || 'nombre'}.
+
+${otro.contextText}`;
+          // Sin herramientasExtra aquí — evita que un agente encadene consultas a otros
+          // agentes indefinidamente (máximo 1 nivel de profundidad).
+          const { answer } = await chatConHerramientas(openai, otroPrompt, otro.dataset, [], args.pregunta, [], run?.id, args.agente);
+          return { agenteConsultado: args.agente, respuesta: answer };
+        } catch (err) {
+          return { error: `No se pudo consultar a ${args.agente}: ${err.message}` };
+        }
+      },
+    }];
+    let notaAccion = '';
+    const INSTRUCCION_ACCION = {};
+    if (agent === 'CARTERA') {
+      herramientasExtra.push({
+        schema: {
+          type: 'function',
+          function: {
+            name: 'proponer_borrador_cobranza',
+            description: 'Crea un borrador de correo de cobranza para un cliente en mora, dirigido al Buzón para aprobación humana — NUNCA se envía automáticamente. Úsala cuando te pidan "redacta/genera un correo de cobranza para X" o similar.',
+            parameters: {
+              type: 'object', additionalProperties: false,
+              properties: {
+                prospectoId: { type: 'integer', description: 'id del cliente, tal como aparece en el dataset de cartera' },
+                asunto: { type: 'string' },
+                cuerpo: { type: 'string', description: 'Cuerpo del correo — tono profesional y firme pero respetuoso, con el monto exacto en mora y la acción esperada.' },
+              },
+              required: ['prospectoId', 'asunto', 'cuerpo'],
+            },
+          },
+        },
+        ejecutar: async (args) => {
+          if (!args.prospectoId) return { error: 'Falta prospectoId' };
+          const { rows } = await pool.query('SELECT nombre, apellido, correo FROM prospectos WHERE id = $1 AND tenant_id = $2', [args.prospectoId, tenant.id]);
+          if (rows.length === 0) return { error: 'Cliente no encontrado en prospectos' };
+          const p = rows[0];
+          const draftId = `draft-cobranza-${Date.now()}`;
+          await pool.query(
+            `INSERT INTO drafts (id, tenant_id, destinatario, project, subject, body, status, prioridad, origen, created_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())`,
+            [draftId, tenant.id, `${p.nombre} ${p.apellido} (${p.correo || 'sin correo'})`, 'Cobranza', args.asunto, args.cuerpo, 'pending', 'alta', 'cobranza_ia']
+          );
+          notaAccion = `Borrador de cobranza creado para ${p.nombre} ${p.apellido} — pendiente de aprobación en el Buzón, no se envió.`;
+          return { creado: true, draftId, mensaje: 'Borrador creado, pendiente de aprobación humana en el Buzón antes de enviarse.' };
+        },
+      });
+      INSTRUCCION_ACCION.CARTERA = ' Si te piden generar/redactar un correo de cobranza para un cliente, usa la herramienta proponer_borrador_cobranza — SIEMPRE queda como borrador pendiente de aprobación, nunca se envía sola; dilo así al confirmar.';
+    } else if (agent === 'LEGAL') {
+      herramientasExtra.push({
+        schema: {
+          type: 'function',
+          function: {
+            name: 'proponer_recordatorio_documento',
+            description: 'Crea un borrador de correo recordatorio sobre un documento legal pendiente o vencido, dirigido al Buzón para aprobación humana — NUNCA se envía automáticamente. Úsala cuando te pidan "redacta/genera un recordatorio para X sobre su documento Y" o similar.',
+            parameters: {
+              type: 'object', additionalProperties: false,
+              properties: {
+                prospectoId: { type: 'integer', description: 'id del cliente, tal como aparece en el dataset legal' },
+                asunto: { type: 'string' },
+                cuerpo: { type: 'string', description: 'Cuerpo del correo — tono profesional, nombrando el documento exacto pendiente/vencido y la fecha límite si existe.' },
+              },
+              required: ['prospectoId', 'asunto', 'cuerpo'],
+            },
+          },
+        },
+        ejecutar: async (args) => {
+          if (!args.prospectoId) return { error: 'Falta prospectoId' };
+          const { rows } = await pool.query('SELECT nombre, apellido, correo FROM prospectos WHERE id = $1 AND tenant_id = $2', [args.prospectoId, tenant.id]);
+          if (rows.length === 0) return { error: 'Cliente no encontrado en prospectos' };
+          const p = rows[0];
+          const draftId = `draft-legal-${Date.now()}`;
+          await pool.query(
+            `INSERT INTO drafts (id, tenant_id, destinatario, project, subject, body, status, prioridad, origen, created_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())`,
+            [draftId, tenant.id, `${p.nombre} ${p.apellido} (${p.correo || 'sin correo'})`, 'Legal', args.asunto, args.cuerpo, 'pending', 'media', 'legal_ia']
+          );
+          notaAccion = `Recordatorio legal creado para ${p.nombre} ${p.apellido} — pendiente de aprobación en el Buzón, no se envió.`;
+          return { creado: true, draftId, mensaje: 'Borrador creado, pendiente de aprobación humana en el Buzón antes de enviarse.' };
+        },
+      });
+      // Mónica solo veía metadatos del documento adjunto (nombre/fecha/status) — nunca su
+      // contenido real. Descarga el archivo desde attached_url y se lo pasa al modelo como
+      // archivo real (no como texto pegado) para que pueda citar datos concretos de adentro.
+      herramientasExtra.push({
+        schema: {
+          type: 'function',
+          function: {
+            name: 'leer_documento_adjunto',
+            description: 'Lee el CONTENIDO REAL de un documento legal adjunto (no solo su nombre/status) y devuelve un resumen de lo que dice — úsala cuando te pidan algo específico del contenido de un documento ya adjuntado (ej. "¿qué dice la escritura de X?").',
+            parameters: {
+              type: 'object', additionalProperties: false,
+              properties: {
+                prospectoId: { type: 'integer' },
+                docKey: { type: 'string', description: 'clave del documento, ej. escritura_publica, promesa_compraventa' },
+              },
+              required: ['prospectoId', 'docKey'],
+            },
+          },
+        },
+        ejecutar: async (args) => {
+          try {
+            const { rows } = await pool.query(
+              'SELECT attached_url, attached_name FROM legal_docs WHERE prospecto_id = $1 AND doc_key = $2 AND tenant_id = $3',
+              [args.prospectoId, args.docKey, tenant.id]
+            );
+            if (rows.length === 0 || !rows[0].attached_url) return { error: 'Ese documento no tiene un archivo adjuntado todavía.' };
+            const { attached_url, attached_name } = rows[0];
+            const descarga = await fetch(attached_url);
+            if (!descarga.ok) return { error: `No se pudo descargar el archivo adjunto (${descarga.status}) — puede que el enlace requiera acceso o ya no exista.` };
+            const buf = Buffer.from(await descarga.arrayBuffer());
+            if (buf.length > 15 * 1024 * 1024) return { error: 'El archivo es demasiado grande para leerlo aquí (>15MB).' };
+            const contentType = descarga.headers.get('content-type') || 'application/pdf';
+            const resp = await openai.responses.create({
+              model: 'gpt-4o-mini',
+              input: [{
+                role: 'user',
+                content: [
+                  { type: 'input_file', file_data: `data:${contentType};base64,${buf.toString('base64')}`, filename: attached_name || 'documento.pdf' },
+                  { type: 'input_text', text: 'Resume en español, en máximo 200 palabras, el contenido real de este documento — nombres, fechas, montos, cláusulas relevantes si las hay.' },
+                ],
+              }],
+            });
+            return { resumen: resp.output_text || 'No se pudo extraer contenido del documento.' };
+          } catch (err) {
+            return { error: `No se pudo leer el documento: ${err.message}` };
+          }
+        },
+      });
+      INSTRUCCION_ACCION.LEGAL = ' Si te piden generar/redactar un recordatorio sobre un documento pendiente o vencido, usa la herramienta proponer_recordatorio_documento — SIEMPRE queda como borrador pendiente de aprobación, nunca se envía sola; dilo así al confirmar. Si te preguntan algo sobre el CONTENIDO real de un documento ya adjuntado (no solo su status), intenta SIEMPRE leer_documento_adjunto primero — nunca respondas "no tengo acceso" sin haberlo intentado; si la herramienta devuelve error (sin archivo adjuntado, enlace roto), ahí sí dilo explícitamente.';
+    } else if (agent === 'CAMILO') {
+      herramientasExtra.push({
+        schema: {
+          type: 'function',
+          function: {
+            name: 'crear_insight_mercado',
+            description: 'Publica un nuevo insight de inteligencia de mercado en el Panel de Camilo, con status "nuevo" (pendiente de revisión, no se aplica solo). Úsala cuando detectes un patrón real en la señal de demanda u objeciones que aún NO esté en los insights ya publicados.',
+            parameters: {
+              type: 'object', additionalProperties: false,
+              properties: {
+                titulo: { type: 'string' },
+                resumen: { type: 'string', description: 'Explicación del patrón detectado, citando los datos reales (proyecto/canal/objeción) que lo sustentan.' },
+                tipo: { type: 'string', enum: ['mercado', 'crisis', 'oportunidad', 'audiencia'] },
+                impacto: { type: 'string', enum: ['alto', 'medio', 'bajo'] },
+              },
+              required: ['titulo', 'resumen', 'tipo', 'impacto'],
+            },
+          },
+        },
+        ejecutar: async (args) => {
+          const id = `insight-ia-${Date.now()}`;
+          const fecha = new Date().toISOString().slice(0, 10);
+          await pool.query(
+            `INSERT INTO camilo_insights (id, tenant_id, titulo, resumen, tipo, impacto, status, fecha, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,'nuevo',$7,NOW(),NOW())`,
+            [id, tenant.id, args.titulo, args.resumen, args.tipo, args.impacto, fecha]
+          );
+          notaAccion = `Insight "${args.titulo}" publicado en el Panel de Camilo — pendiente de revisión.`;
+          return { creado: true, insightId: id, mensaje: 'Insight publicado con status "nuevo", pendiente de revisión del equipo.' };
+        },
+      });
+      INSTRUCCION_ACCION.CAMILO = ' Si detectas un patrón real y nuevo en la señal de demanda u objeciones (no ya cubierto en los insights publicados), usa la herramienta crear_insight_mercado para dejarlo registrado — queda como "nuevo", pendiente de revisión, dilo así al confirmar.';
+    } else if (agent === 'SOFIA') {
+      herramientasExtra.push({
+        schema: {
+          type: 'function',
+          function: {
+            name: 'actualizar_perfil_psicografico',
+            description: 'Crea o actualiza el perfil psicográfico (arquetipo) de un cliente, basado en su consulta original, temas de interés y presupuesto. Úsala cuando te pidan "perfila a X" o "qué arquetipo es X".',
+            parameters: {
+              type: 'object', additionalProperties: false,
+              properties: {
+                prospectoId: { type: 'integer', description: 'id del prospecto, tal como aparece en el dataset' },
+                arquetipo: { type: 'string', enum: ['Coleccionista de Estatus', 'Preservador de Legado', 'Decisor Racional', 'Comprador Aspiracional'] },
+                confianza: { type: 'integer', description: 'confianza del análisis, 0-100' },
+                senales: { type: 'array', items: { type: 'string' }, description: 'señales concretas del contexto que sustentan el arquetipo (canal, temas, presupuesto, consulta original)' },
+              },
+              required: ['prospectoId', 'arquetipo', 'confianza', 'senales'],
+            },
+          },
+        },
+        ejecutar: async (args) => {
+          if (!args.prospectoId) return { error: 'Falta prospectoId' };
+          const { rows } = await pool.query('SELECT nombre, apellido FROM prospectos WHERE id = $1 AND tenant_id = $2', [args.prospectoId, tenant.id]);
+          if (rows.length === 0) return { error: 'Cliente no encontrado en prospectos' };
+          const p = rows[0];
+          await pool.query(
+            `INSERT INTO sofia_profiles (prospecto_id, tenant_id, arquetipo, confianza, senales, updated_at)
+             VALUES ($1,$2,$3,$4,$5,NOW())
+             ON CONFLICT (prospecto_id) DO UPDATE SET arquetipo = $3, confianza = $4, senales = $5, updated_at = NOW()`,
+            [args.prospectoId, tenant.id, args.arquetipo, args.confianza, JSON.stringify(args.senales || [])]
+          );
+          notaAccion = `Perfil psicográfico de ${p.nombre} ${p.apellido} actualizado: ${args.arquetipo} (${args.confianza}%).`;
+          return { creado: true, mensaje: 'Perfil guardado en Sofía — ya visible en el módulo.' };
+        },
+      });
+      INSTRUCCION_ACCION.SOFIA = ' Si te piden perfilar a un cliente sin perfil aún, usa la herramienta actualizar_perfil_psicografico con base en sus señales reales (canal, temas de interés, consulta original, presupuesto) — nunca inventes señales que no estén en el contexto.';
+    } else if (agent === 'VALERIA') {
+      herramientasExtra.push({
+        schema: {
+          type: 'function',
+          function: {
+            name: 'crear_borrador_contenido',
+            description: 'Crea un borrador de copy/campaña en la cola de Contenido, con status "pending" (no se publica solo). Úsala cuando te pidan "redacta un post/newsletter/copy sobre X".',
+            parameters: {
+              type: 'object', additionalProperties: false,
+              properties: {
+                asunto: { type: 'string' },
+                canal: { type: 'string', description: 'ej. LinkedIn, Newsletter, Email, Instagram' },
+                contenido: { type: 'string', description: 'El copy completo redactado.' },
+                tags: { type: 'array', items: { type: 'string' } },
+              },
+              required: ['asunto', 'canal', 'contenido'],
+            },
+          },
+        },
+        ejecutar: async (args) => {
+          const id = `valeria-ia-${Date.now()}`;
+          const fecha = new Date().toISOString().slice(0, 10);
+          await pool.query(
+            `INSERT INTO valeria_drafts (id, tenant_id, content, type, status, canal, asunto, tags, origen_agentivo, date, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,'pending',$5,$6,$7,'ia_chat',$8,NOW(),NOW())`,
+            [id, tenant.id, args.contenido, args.canal, args.canal, args.asunto, args.tags || [], fecha]
+          );
+          notaAccion = `Borrador de contenido "${args.asunto}" creado para ${args.canal} — pendiente de aprobación.`;
+          return { creado: true, draftId: id, mensaje: 'Borrador creado con status "pending", pendiente de aprobación humana antes de publicarse.' };
+        },
+      });
+      INSTRUCCION_ACCION.VALERIA = ' Si te piden redactar copy/contenido, usa la herramienta crear_borrador_contenido para dejarlo en la cola de aprobación — nunca se publica sola, dilo así al confirmar. Fundamenta el copy en los insights de mercado y arquetipos del contexto cuando aplique.';
+    } else if (agent === 'ISABELLA') {
+      herramientasExtra.push({
+        schema: {
+          type: 'function',
+          function: {
+            name: 'crear_guion_video',
+            description: 'Crea un guion de video en la cola de Producción, con status "pending" (no se produce solo). Úsala cuando te pidan "genera un guion sobre X".',
+            parameters: {
+              type: 'object', additionalProperties: false,
+              properties: {
+                asunto: { type: 'string' },
+                canal: { type: 'string', description: 'ej. Reel, Testimonial, Educativo' },
+                contenido: { type: 'string', description: 'El guion completo redactado.' },
+                tags: { type: 'array', items: { type: 'string' } },
+              },
+              required: ['asunto', 'canal', 'contenido'],
+            },
+          },
+        },
+        ejecutar: async (args) => {
+          const id = `isabella-ia-${Date.now()}`;
+          const fecha = new Date().toISOString().slice(0, 10);
+          await pool.query(
+            `INSERT INTO isabella_scripts (id, tenant_id, content, type, status, canal, asunto, tags, origen_agentivo, date, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,'pending',$5,$6,$7,'ia_chat',$8,NOW(),NOW())`,
+            [id, tenant.id, args.contenido, args.canal, args.canal, args.asunto, args.tags || [], fecha]
+          );
+          notaAccion = `Guion de video "${args.asunto}" creado para ${args.canal} — pendiente de aprobación.`;
+          return { creado: true, scriptId: id, mensaje: 'Guion creado con status "pending", pendiente de aprobación humana antes de producirse.' };
+        },
+      });
+      INSTRUCCION_ACCION.ISABELLA = ' Si te piden generar un guion de video, usa la herramienta crear_guion_video para dejarlo en la cola de aprobación — nunca se produce solo, dilo así al confirmar. Evita duplicar un tema que ya está en el calendario de copy de Valeria.';
+    }
+    herramientasExtra.push(...herramientasBase(openai, tenant, user, agent));
+
+    // Memoria persistente (ver agentMemory.js): hilo por usuario (continuidad de trabajo de
+    // quien pregunta) + hilo por registro citado (continuidad de caso — lo que se habló
+    // sobre ESE cliente/registro, sin importar quién preguntó antes).
+    const hiloUsuario = await agentMemory.loadThread(tenant.id, agent, 'user', user);
+    const registroMencionado = prospectsForCitas.find(p => p.nombre && question.toLowerCase().includes(p.nombre.toLowerCase().trim()));
+    const hiloRegistro = registroMencionado ? await agentMemory.loadThread(tenant.id, agent, 'prospecto', registroMencionado.id) : null;
+
+    const systemPrompt = `Eres ${AGENT_PERSONAS[agent]} Trabajas para ${tenant.name}. Respondes preguntas del equipo comercial con datos reales del contexto — si el dato no está ahí, dilo explícitamente en vez de suponer. Menciona el nombre completo del cliente/registro cuando lo cites, para que quede identificable. Responde en español, tono directo y profesional, sin relleno. Si la pregunta requiere información de otra área (ej. estado legal, estado de pago, un insight de mercado, un perfil psicográfico), usa la herramienta consultar_a_otro_agente en vez de suponer — es de solo lectura, nunca ejecuta acciones por ti. Si necesitas un dato real del mundo (tendencia de mercado, tipo de cambio, noticia), usa buscar_en_internet en vez de inventarlo. Si te piden agendar/proponer una cita, usa consultar_calendario para ver disponibilidad y luego proponer_cita — SIEMPRE queda pendiente de confirmación humana.${INSTRUCCION_ACCION[agent] || ''}
+${hiloUsuario.summary ? `\nMEMORIA DE CONVERSACIONES ANTERIORES CON ESTE USUARIO:\n${hiloUsuario.summary}\n` : ''}${hiloRegistro?.summary ? `\nMEMORIA PREVIA SOBRE ${registroMencionado.nombre} (de conversaciones anteriores, con cualquier usuario):\n${hiloRegistro.summary}\n` : ''}
+CAMPOS DISPONIBLES para consultar_datos: ${camposDisponibles || 'nombre'}.
+
+${contextText}`;
+    const historialParaModelo = hiloUsuario.messages.length > 0 ? hiloUsuario.messages : history;
+    // Planificación multi-paso (ver planificarSiNecesario): solo para preguntas que
+    // realmente encadenan varios pasos — una consulta directa no paga este costo extra.
+    const plan = await planificarSiNecesario(openai, question, run?.id);
+    const systemPromptConPlan = plan.requierePlan
+      ? `${systemPrompt}\n\nPLAN A SEGUIR PARA ESTA RESPUESTA (síguelo en orden, un paso a la vez, usando las herramientas que necesites en cada uno, antes de dar la respuesta final):\n${plan.pasos.map((p, i) => `${i + 1}. ${p}`).join('\n')}`
+      : systemPrompt;
+    const { answer, promptTokens, completionTokens } = await chatConHerramientas(openai, systemPromptConPlan, dataset, historialParaModelo, question, herramientasExtra, run?.id, agent);
+    const citados = prospectsForCitas.filter(p => answer.includes(p.nombre));
+
+    await agentMemory.saveTurn(openai, tenant.id, agent, 'user', user, question, answer);
+    for (const c of citados.slice(0, 3)) {
+      await agentMemory.saveTurn(openai, tenant.id, agent, 'prospecto', c.id, question, answer);
+    }
 
     await finishAgentRun(run?.id, {
       status: 'completado',
-      tokensEstimados: (gptResponse.usage?.prompt_tokens || 0) + (gptResponse.usage?.completion_tokens || 0),
-      promptTokens: gptResponse.usage?.prompt_tokens || 0,
-      completionTokens: gptResponse.usage?.completion_tokens || 0,
+      tokensEstimados: promptTokens + completionTokens,
+      promptTokens, completionTokens,
+      model: (AGENT_MODEL_CONFIG[agent] || DEFAULT_MODEL_CONFIG).model,
     });
-    res.json({ answer: parsed.answer, citas: citados });
+    res.json({ answer, citas: citados, plan: plan.requierePlan ? plan.pasos : null });
   } catch (err) {
     await finishAgentRun(run?.id, { status: 'error', errorDetalle: err.message });
     res.status(500).json({ error: err.message });
@@ -2998,7 +4394,7 @@ app.post('/api/sara/send-email', async (req, res) => {
     }));
 
     await transporter.sendMail({
-      from: `"Sara Valenzuela · GLP Wealth Management" <${process.env.SMTP_USER}>`,
+      from: `"Sara Valenzuela · GLP Colombia" <${process.env.SMTP_USER}>`,
       to,
       subject,
       html: body.replace(/\n/g, '<br>'),
@@ -3087,8 +4483,25 @@ app.put('/api/brand-profile', async (req, res) => {
 });
 
 // ==========================================
-// SETTINGS GENÉRICO (market-report, etc.)
+// SETTINGS GENÉRICO (market-report, brand_profile, predial_tramos, etc.) — sin CREATE TABLE
+// en ningún archivo de este repo pese a que ya se usaba (brand_profile), lo que sugiere que
+// solo existe porque alguien la creó a mano en la base de producción. Se agrega defensivo
+// para que un entorno nuevo (staging, otro tenant) no falle en el primer PUT.
 // ==========================================
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS settings (
+        tenant_id TEXT NOT NULL,
+        key TEXT NOT NULL,
+        data JSONB,
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (tenant_id, key)
+      )
+    `);
+  } catch (e) { console.warn('settings table check:', e.message); }
+})();
+
 app.put('/api/settings/:key', async (req, res) => {
   try {
     const tenant = await resolveTenant(req);
@@ -3381,21 +4794,30 @@ app.post('/api/camilo/insights', async (req, res) => {
 
 app.patch('/api/camilo/insights/:id', async (req, res) => {
   try {
+    const user = resolveUser(req);
     const { status } = req.body;
     await pool.query(
       'UPDATE camilo_insights SET status = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3',
       [status, req.params.id, TENANT]
     );
+    // Un insight que se marca "revisado"/"aplicado" es una aprobación — no hay concepto de
+    // edición aquí (el insight no tiene un editor de contenido), así que siempre cuenta
+    // como aprobado tal cual (ver agentFeedback.js).
+    if (status === 'revisado' || status === 'aplicado') {
+      await agentFeedback.registrar(TENANT, 'CAMILO', 'insight', req.params.id, 'approved_as_is', user).catch(() => {});
+    }
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.delete('/api/camilo/insights/:id', async (req, res) => {
   try {
+    const user = resolveUser(req);
     await pool.query(
       'DELETE FROM camilo_insights WHERE id = $1 AND tenant_id = $2',
       [req.params.id, TENANT]
     );
+    await agentFeedback.registrar(TENANT, 'CAMILO', 'insight', req.params.id, 'discarded', user).catch(() => {});
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -3434,7 +4856,14 @@ app.post('/api/valeria/drafts', async (req, res) => {
 
 app.patch('/api/valeria/drafts/:id', async (req, res) => {
   try {
+    const user = resolveUser(req);
     const d = req.body;
+    // edited_by_human: se marca cada vez que este PATCH trae `content` — así, cuando más
+    // tarde el status pase a aprobado, se sabe si hubo edición antes o no (ver
+    // agentFeedback.js). Una vez marcado true no se revierte.
+    const { rows: prevRows } = await pool.query('SELECT status, origen_agentivo, edited_by_human FROM valeria_drafts WHERE id = $1 AND tenant_id = $2', [req.params.id, TENANT]);
+    const prev = prevRows[0];
+    const seEdito = d.content !== undefined && d.content !== null;
     await pool.query(
       `UPDATE valeria_drafts SET
          status = COALESCE($1, status),
@@ -3442,21 +4871,33 @@ app.patch('/api/valeria/drafts/:id', async (req, res) => {
          fecha_aprobacion = COALESCE($3, fecha_aprobacion),
          notas_admin = COALESCE($4, notas_admin),
          content = COALESCE($5, content),
+         edited_by_human = edited_by_human OR $6,
          updated_at = NOW()
-       WHERE id = $6 AND tenant_id = $7`,
-      [d.status, d.aprobado_por, d.fecha_aprobacion, d.notas_admin, d.content,
+       WHERE id = $7 AND tenant_id = $8`,
+      [d.status, d.aprobado_por, d.fecha_aprobacion, d.notas_admin, d.content, seEdito,
        req.params.id, TENANT]
     );
+    // Feedback solo si esto fue generado por Valeria (origen_agentivo) y el status pasa a
+    // aprobado/activo desde algo distinto (evita registrar dos veces el mismo evento).
+    if (prev && prev.origen_agentivo === 'ia_chat' && (d.status === 'approved' || d.status === 'active') && prev.status !== d.status) {
+      const decision = (prev.edited_by_human || seEdito) ? 'approved_edited' : 'approved_as_is';
+      await agentFeedback.registrar(TENANT, 'VALERIA', 'content', req.params.id, decision, user).catch(() => {});
+    }
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.delete('/api/valeria/drafts/:id', async (req, res) => {
   try {
+    const user = resolveUser(req);
+    const { rows: existente } = await pool.query('SELECT origen_agentivo FROM valeria_drafts WHERE id = $1 AND tenant_id = $2', [req.params.id, TENANT]);
     await pool.query(
       'DELETE FROM valeria_drafts WHERE id = $1 AND tenant_id = $2',
       [req.params.id, TENANT]
     );
+    if (existente[0]?.origen_agentivo === 'ia_chat') {
+      await agentFeedback.registrar(TENANT, 'VALERIA', 'content', req.params.id, 'discarded', user).catch(() => {});
+    }
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -3494,26 +4935,40 @@ app.post('/api/isabella/scripts', async (req, res) => {
 
 app.patch('/api/isabella/scripts/:id', async (req, res) => {
   try {
+    const user = resolveUser(req);
     const d = req.body;
+    const { rows: prevRows } = await pool.query('SELECT status, origen_agentivo, edited_by_human FROM isabella_scripts WHERE id = $1 AND tenant_id = $2', [req.params.id, TENANT]);
+    const prev = prevRows[0];
+    const seEdito = d.content !== undefined && d.content !== null;
     await pool.query(
       `UPDATE isabella_scripts SET
          status = COALESCE($1, status),
          notas_admin = COALESCE($2, notas_admin),
          content = COALESCE($3, content),
+         edited_by_human = edited_by_human OR $4,
          updated_at = NOW()
-       WHERE id = $4 AND tenant_id = $5`,
-      [d.status, d.notas_admin, d.content, req.params.id, TENANT]
+       WHERE id = $5 AND tenant_id = $6`,
+      [d.status, d.notas_admin, d.content, seEdito, req.params.id, TENANT]
     );
+    if (prev && prev.origen_agentivo === 'ia_chat' && (d.status === 'approved' || d.status === 'active') && prev.status !== d.status) {
+      const decision = (prev.edited_by_human || seEdito) ? 'approved_edited' : 'approved_as_is';
+      await agentFeedback.registrar(TENANT, 'ISABELLA', 'script', req.params.id, decision, user).catch(() => {});
+    }
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.delete('/api/isabella/scripts/:id', async (req, res) => {
   try {
+    const user = resolveUser(req);
+    const { rows: existente } = await pool.query('SELECT origen_agentivo FROM isabella_scripts WHERE id = $1 AND tenant_id = $2', [req.params.id, TENANT]);
     await pool.query(
       'DELETE FROM isabella_scripts WHERE id = $1 AND tenant_id = $2',
       [req.params.id, TENANT]
     );
+    if (existente[0]?.origen_agentivo === 'ia_chat') {
+      await agentFeedback.registrar(TENANT, 'ISABELLA', 'script', req.params.id, 'discarded', user).catch(() => {});
+    }
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -4723,6 +6178,38 @@ app.post('/webhook/docusign', async (req, res) => {
   } catch (e) { console.warn('legal_alerts table check:', e.message); }
 })();
 
+// Auto-crear tabla cartera_alerts (evita reenviar el mismo aviso de mora en <48h) — mismo
+// patrón que legal_alerts, ver carteraMonitor.js.
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS cartera_alerts (
+        id SERIAL PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        cartera_id TEXT NOT NULL,
+        monto_mora NUMERIC NOT NULL DEFAULT 0,
+        cuotas_en_mora INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+  } catch (e) { console.warn('cartera_alerts table check:', e.message); }
+})();
+
+// Últimas alertas de mora generadas por el monitor — para mostrarlas en el CRM sin
+// esperar a que llegue el correo (ej. un badge o lista en el módulo Cartera).
+app.get('/api/cartera-alerts', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    const { rows } = await pool.query(
+      `SELECT ca.*, c.prospecto_nombre, c.proyecto
+       FROM cartera_alerts ca JOIN carteras c ON c.id = ca.cartera_id
+       WHERE ca.tenant_id = $1 ORDER BY ca.created_at DESC LIMIT 50`,
+      [tenant.id]
+    );
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Asegura las columnas de baja de prospecto (razón de caída tipificada) si aún no existen.
 (async () => {
   try {
@@ -4733,6 +6220,15 @@ app.post('/webhook/docusign', async (req, res) => {
         ADD COLUMN IF NOT EXISTS fecha_perdida DATE
     `);
   } catch (e) { console.warn('prospectos razon_perdida columns check:', e.message); }
+})();
+
+// El perfil de inversor (renta/patrimonial/disfrute/mixto) que detecta el análisis del
+// chatbot en /api/contact SIEMPRE se calculó, pero antes solo quedaba enterrado como texto
+// dentro de `notas` — no se podía filtrar ni reportar por perfil de inversor en el CRM.
+(async () => {
+  try {
+    await pool.query(`ALTER TABLE prospectos ADD COLUMN IF NOT EXISTS perfil_inversor TEXT`);
+  } catch (e) { console.warn('prospectos perfil_inversor column check:', e.message); }
 })();
 
 // El historial de correos por prospecto ("Bandeja Unificada") nunca tuvo columna real —
@@ -5251,4 +6747,7 @@ app.listen(PORT, () => {
   startProspectMonitor();
   startCrisisDetector();
   startLegalAlertMonitor();
+  startCarteraMonitor();
+  startContentAgentsMonitor();
+  startFeedbackMonitor();
 });

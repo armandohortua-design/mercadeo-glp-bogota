@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { PROJECTS, PROJECT_IMG, C } from './projectsData';
+import { PROJECTS, PROJECT_IMG, C, SEPARACION_PROYECTOS_DEFAULT, SeparacionProyectosTabla, getSeparacionProyecto, BROCHURES_LOCAL } from './projectsData';
 import { getImageFor, fetchLiveProjectImages } from './liveProjectImages';
 import { Lightbox, LightboxState } from './Lightbox';
 import { API_ROOT } from './apiRoot';
@@ -108,6 +108,15 @@ export const ProjectDetailView: React.FC = () => {
 
   const [precio, setPrecio] = useState(project.price);
   const [montoCuotaInicial, setMontoCuotaInicial] = useState(() => Math.round(project.price * 0.5));
+  // Valor de Separación por Proyecto — configurable en el CRM (Configuración → Financiero).
+  const [separacionTabla, setSeparacionTabla] = useState<SeparacionProyectosTabla>(SEPARACION_PROYECTOS_DEFAULT);
+  React.useEffect(() => {
+    fetch(`${API_ROOT}/api/settings/separacion_proyectos`)
+      .then(r => r.json())
+      .then(data => { if (data && data.porProyecto) setSeparacionTabla(data); })
+      .catch(() => {});
+  }, []);
+  const separacionDefault = getSeparacionProyecto(project, separacionTabla);
   const [tasa, setTasa] = useState(8.5);
   const [plazo, setPlazo] = useState(20);
   const [activeCalcTab, setActiveCalcTab] = useState<'cuota' | 'credito'>('cuota');
@@ -457,6 +466,28 @@ export const ProjectDetailView: React.FC = () => {
             </div>
 
 
+            {/* Brochures — enlace TEMPORAL a ruta local mientras se suben a un hosting
+                real (ver comentario en projectsData.ts, BROCHURE_BASE). No se muestra si el
+                proyecto no tiene brochure cargado. */}
+            {BROCHURES_LOCAL[project.name] && (
+              <div style={{ background: C.white, borderRadius: 0, padding: 24, border: `1px solid ${C.sand}`, marginBottom: 20 }}>
+                <h3 style={{ fontSize: '0.75rem', fontWeight: 600, color: C.red, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
+                  Brochures
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {BROCHURES_LOCAL[project.name].map(b => (
+                    <a key={b.url} href={b.url} target="_blank" rel="noopener noreferrer"
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, color: C.teal, textDecoration: 'none', fontSize: '0.85rem', fontWeight: 600, padding: '8px 10px', background: C.bg, border: `1px solid ${C.sand}` }}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
+                      </svg>
+                      {b.label}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Amenities Card */}
             <div style={{ background: C.white, borderRadius: 0, padding: 24, border: `1px solid ${C.sand}` }}>
               <h3 style={{ fontSize: '0.75rem', fontWeight: 600, color: C.red, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
@@ -530,6 +561,7 @@ export const ProjectDetailView: React.FC = () => {
             setPrecio={setPrecio}
             setMontoCuotaInicial={setMontoCuotaInicial}
             onCalculationComplete={handleCuotaCalculationComplete}
+            separacionDefault={separacionDefault}
           />
         )}
 
@@ -891,14 +923,15 @@ export const ProjectDetailView: React.FC = () => {
 };
 
 // ── Cuota Inicial Simulator Component ──────────────────────────
-const SEPARACION_FIJA = 2000;
-
 interface CuotaInicialProps {
   precio: number;
   montoCuotaInicial: number;
   setPrecio: (v: number) => void;
   setMontoCuotaInicial: (v: number) => void;
   onCalculationComplete?: () => void;
+  // Configurable en el CRM (Configuración → Financiero → "Separación por Proyecto"), por
+  // proyecto/categoría — ya no un fijo de $2,000 igual para todos.
+  separacionDefault: number;
 }
 
 const CuotaInicialSimulator: React.FC<CuotaInicialProps> = ({
@@ -906,12 +939,22 @@ const CuotaInicialSimulator: React.FC<CuotaInicialProps> = ({
   montoCuotaInicial,
   setPrecio,
   setMontoCuotaInicial,
-  onCalculationComplete
+  onCalculationComplete,
+  separacionDefault
 }) => {
-  const [showTable, setShowTable] = React.useState(false);
-  const [mesesPlan, setMesesPlan] = React.useState(24);
-  const [separacion, setSeparacion] = React.useState(2000);
-  const [requierePlazo, setRequierePlazo] = React.useState(false);
+  // El plan de pago diferido (plazo en cuotas para financiar el saldo de la cuota inicial)
+  // se movió a la Calculadora interna del CRM (Configuración → Financiero) — es una
+  // negociación caso a caso que maneja el equipo comercial, no algo que un visitante
+  // anónimo de la web deba simular o ver publicado. Esta vista pública se queda solo con
+  // el desglose simple de contado (separación + saldo de cuota inicial).
+  const [separacion, setSeparacion] = React.useState(separacionDefault);
+  // El fetch de la tabla configurada en el CRM resuelve DESPUÉS del primer render (arranca
+  // con el fallback local) — sin este efecto, `separacion` se quedaría pegado a ese fallback
+  // aunque el admin tenga un valor distinto configurado para este proyecto.
+  const separacionTocada = React.useRef(false);
+  React.useEffect(() => {
+    if (!separacionTocada.current) setSeparacion(separacionDefault);
+  }, [separacionDefault]);
   const [pctCuotaInicial, setPctCuotaInicial] = React.useState(() => precio > 0 ? Math.round((montoCuotaInicial / precio) * 100) : 50);
 
   React.useEffect(() => {
@@ -927,17 +970,9 @@ const CuotaInicialSimulator: React.FC<CuotaInicialProps> = ({
     if (!onCalculationComplete) return;
     const timer = setTimeout(() => onCalculationComplete(), 3000);
     return () => clearTimeout(timer);
-  }, [montoCuotaInicial, mesesPlan, separacion, onCalculationComplete]);
+  }, [montoCuotaInicial, separacion, onCalculationComplete]);
 
   const restante = Math.max(0, montoCuotaInicial - separacion);
-  const cuotaMensualPlan = mesesPlan > 0 ? restante / mesesPlan : 0;
-  const totalPagado = separacion + restante;
-
-  const mesesTable = Array.from({ length: mesesPlan }, (_, i) => {
-    const mes = i + 1;
-    const pagado = separacion + cuotaMensualPlan * mes;
-    return { mes, cuota: cuotaMensualPlan, acumulado: pagado, restante: Math.max(0, montoCuotaInicial - pagado) };
-  });
 
   return (
     <div id="cuota-inicial-simulator" style={{
@@ -1009,6 +1044,7 @@ const CuotaInicialSimulator: React.FC<CuotaInicialProps> = ({
             value={formatComma(separacion)}
             onChange={e => {
               const v = Number(e.target.value.replace(/\D/g, ''));
+              separacionTocada.current = true;
               setSeparacion(Math.min(montoCuotaInicial, v));
             }}
             style={{
@@ -1041,194 +1077,34 @@ const CuotaInicialSimulator: React.FC<CuotaInicialProps> = ({
         </div>
       </div>
 
-      {/* Plazo Toggle Option Button */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: C.bg, padding: '16px 20px', border: `1px solid ${C.sand}`, marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
-        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: C.text }}>¿Requiere plazo diferido para pagar el saldo de la cuota inicial?</span>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button
-            type="button"
-            onClick={() => { setRequierePlazo(false); setShowTable(false); }}
-            style={{
-              padding: '8px 16px', borderRadius: 0,
-              border: `1px solid ${C.teal}`,
-              background: !requierePlazo ? C.teal : 'transparent',
-              color: !requierePlazo ? C.white : C.teal,
-              fontWeight: 600, cursor: 'pointer', fontSize: '0.75rem',
-              textTransform: 'uppercase', letterSpacing: '0.05em', outline: 'none',
-              transition: 'all 0.3s ease', fontFamily: C.fontSans
-            }}
-          >
-            No, Pago al Contado
-          </button>
-          <button
-            type="button"
-            onClick={() => setRequierePlazo(true)}
-            style={{
-              padding: '8px 16px', borderRadius: 0,
-              border: `1px solid ${C.teal}`,
-              background: requierePlazo ? C.teal : 'transparent',
-              color: requierePlazo ? C.white : C.teal,
-              fontWeight: 600, cursor: 'pointer', fontSize: '0.75rem',
-              textTransform: 'uppercase', letterSpacing: '0.05em', outline: 'none',
-              transition: 'all 0.3s ease', fontFamily: C.fontSans
-            }}
-          >
-            Sí, Solicitar Plazo
-          </button>
-        </div>
-      </div>
-
-      {/* Conditional Plazo Fields */}
-      {requierePlazo && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 24, alignItems: 'center', marginBottom: 24, padding: '20px 0', borderTop: `1px solid ${C.sand}` }}>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', color: C.textSec, marginBottom: 6 }}>
-              Plazo de Amortización (Cuotas)
-            </label>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {[24, 36].map(m => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setMesesPlan(m)}
-                  style={{
-                    flex: 1, padding: '10px 12px', borderRadius: 0,
-                    border: mesesPlan === m ? `1px solid ${C.teal}` : `1px solid ${C.sand}`,
-                    background: mesesPlan === m ? C.teal : 'transparent',
-                    color: mesesPlan === m ? C.white : C.text, fontWeight: 600, cursor: 'pointer',
-                    fontSize: '0.8rem', transition: 'all 0.3s ease', outline: 'none',
-                    fontFamily: C.fontSans, textTransform: 'uppercase', letterSpacing: '0.05em'
-                  }}
-                >
-                  {m} Meses
-                </button>
-              ))}
-            </div>
-          </div>
-          <div style={{ background: C.bg, padding: '14px 18px', border: `1px solid ${C.sand}` }}>
-            <span style={{ display: 'block', fontSize: '0.65rem', color: C.textSec, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 4 }}>
-              Cuota Mensual Correspondiente (Sin Intereses)
-            </span>
-            <span style={{ fontSize: '1.25rem', fontWeight: 600, color: C.white, background: C.coral, padding: '4px 12px', display: 'inline-block', fontFamily: C.fontSerif }}>
-              {fmt(Math.round(cuotaMensualPlan))}
-            </span>
-          </div>
-        </div>
-      )}
-
       {/* Summary Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14, marginBottom: 24 }}>
-        {requierePlazo ? (
-          [
-            { label: 'Separación al contado', value: fmt(separacion), color: C.teal, bg: C.bg },
-            { label: `Saldo en ${mesesPlan} cuotas`, value: fmt(Math.round(restante)), color: C.text, bg: C.bg },
-            { label: 'Cuota mensual', value: fmt(Math.round(cuotaMensualPlan)), color: C.white, bg: C.coral, highlight: true },
-            { label: 'Total cuota inicial', value: fmt(Math.round(totalPagado)), color: C.teal, bg: C.bg },
-            { label: `% del precio`, value: `${pctCuotaInicial}%`, color: C.textSec, bg: C.bg },
-          ].map(c => (
-            <div key={c.label} style={{
-              background: c.bg, borderRadius: 0, padding: '14px 16px',
-              border: c.highlight ? `1px solid ${c.bg}` : `1px solid ${C.sand}`,
-              color: c.highlight ? C.white : C.text
-            }}>
-              <div style={{ fontSize: '0.65rem', color: c.highlight ? 'rgba(255,255,255,0.9)' : C.textSec, marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>{c.label}</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 400, color: c.highlight ? C.white : c.color, fontFamily: C.fontSerif }}>{c.value}</div>
-            </div>
-          ))
-        ) : (
-          [
-            { label: 'Separación al contado', value: fmt(separacion), color: C.teal, bg: C.bg },
-            { label: 'Saldo cuota inicial (contado)', value: fmt(Math.round(restante)), color: C.text, bg: C.bg },
-            { label: 'Total cuota inicial', value: fmt(Math.round(montoCuotaInicial)), color: C.white, bg: C.teal, highlight: true },
-            { label: `% del precio`, value: `${pctCuotaInicial}%`, color: C.textSec, bg: C.bg },
-          ].map(c => (
-            <div key={c.label} style={{
-              background: c.bg, borderRadius: 0, padding: '14px 16px',
-              border: c.highlight ? `1px solid ${c.bg}` : `1px solid ${C.sand}`,
-              color: c.highlight ? C.white : C.text
-            }}>
-              <div style={{ fontSize: '0.65rem', color: c.highlight ? 'rgba(255,255,255,0.9)' : C.textSec, marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>{c.label}</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 400, color: c.highlight ? C.white : c.color, fontFamily: C.fontSerif }}>{c.value}</div>
-            </div>
-          ))
-        )}
+        {[
+          { label: 'Separación al contado', value: fmt(separacion), color: C.teal, bg: C.bg },
+          { label: 'Saldo cuota inicial (contado)', value: fmt(Math.round(restante)), color: C.text, bg: C.bg },
+          { label: 'Total cuota inicial', value: fmt(Math.round(montoCuotaInicial)), color: C.white, bg: C.teal, highlight: true },
+          { label: `% del precio`, value: `${pctCuotaInicial}%`, color: C.textSec, bg: C.bg },
+        ].map(c => (
+          <div key={c.label} style={{
+            background: c.bg, borderRadius: 0, padding: '14px 16px',
+            border: c.highlight ? `1px solid ${c.bg}` : `1px solid ${C.sand}`,
+            color: c.highlight ? C.white : C.text
+          }}>
+            <div style={{ fontSize: '0.65rem', color: c.highlight ? 'rgba(255,255,255,0.9)' : C.textSec, marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>{c.label}</div>
+            <div style={{ fontSize: '1.2rem', fontWeight: 400, color: c.highlight ? C.white : c.color, fontFamily: C.fontSerif }}>{c.value}</div>
+          </div>
+        ))}
       </div>
 
       {/* Info banner */}
       <div style={{
         background: C.bg, border: `1px solid ${C.sand}`, borderRadius: 0,
-        padding: '12px 16px', fontSize: '0.82rem', color: C.textSec, marginBottom: 20, lineHeight: 1.5,
+        padding: '12px 16px', fontSize: '0.82rem', color: C.textSec, marginBottom: 4, lineHeight: 1.5,
       }}>
-        {requierePlazo ? (
-          <>
-            <strong>¿Cómo funciona?</strong> Hoy pagas la separación de <strong>{fmt(separacion)}</strong> para reservar el inmueble.
-            Los <strong>{fmt(Math.round(restante))}</strong> restantes se dividen en {mesesPlan} cuotas mensuales de <strong>{fmt(Math.round(cuotaMensualPlan))}</strong> sin intereses.
-            Al completar el plazo habrás cubierto la cuota inicial y procederás con la hipoteca por <strong>{fmt(Math.round(precio - montoCuotaInicial))}</strong>.
-          </>
-        ) : (
-          <>
-            <strong>¿Cómo funciona?</strong> Hoy pagas la separación de <strong>{fmt(separacion)}</strong> para reservar el inmueble.
-            El saldo de la cuota inicial (<strong>{fmt(Math.round(restante))}</strong>) se cancela al contado según los hitos establecidos.
-            Finalmente, procedes con la hipoteca por <strong>{fmt(Math.round(precio - montoCuotaInicial))}</strong>.
-          </>
-        )}
+        <strong>¿Cómo funciona?</strong> Hoy pagas la separación de <strong>{fmt(separacion)}</strong> para reservar el inmueble.
+        El saldo de la cuota inicial (<strong>{fmt(Math.round(restante))}</strong>) se cancela al contado según los hitos establecidos.
+        Finalmente, procedes con la hipoteca por <strong>{fmt(Math.round(precio - montoCuotaInicial))}</strong>. Si necesitas un plazo diferido para el saldo de la cuota inicial, coordina las condiciones con tu asesor GLP.
       </div>
-
-      {/* Toggle Table (only visible if requires installments) */}
-      {requierePlazo && (
-        <button
-          onClick={() => setShowTable(v => !v)}
-          style={{
-            background: 'transparent', color: C.teal, border: `1px solid ${C.teal}`, borderRadius: 0,
-            padding: '10px 24px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer',
-            transition: 'all 0.3s ease', marginBottom: showTable ? 20 : 0,
-            textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: C.fontSans
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = C.teal; e.currentTarget.style.color = C.white; }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = C.teal; }}
-        >
-          {showTable ? 'Ocultar tabla mes a mes' : 'Ver plan de pagos mes a mes'}
-        </button>
-      )}
-
-      {/* Monthly payment table (only visible if requires installments and table toggled) */}
-      {requierePlazo && showTable && (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-            <thead>
-              <tr style={{ background: C.bg, borderBottom: `2px solid ${C.sand}` }}>
-                <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, color: C.textSec }}>Mes</th>
-                <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: C.textSec }}>Concepto</th>
-                <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: C.textSec }}>Pago</th>
-                <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: C.textSec }}>Acumulado</th>
-                <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: C.textSec }}>Saldo restante</th>
-              </tr>
-            </thead>
-            <tbody>
-              {/* Row 0: Separación */}
-              <tr style={{ background: C.bg, borderBottom: `1px solid ${C.sand}` }}>
-                <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600, color: C.teal }}>0</td>
-                <td style={{ padding: '8px 12px', textAlign: 'right', color: C.text, fontWeight: 600 }}>Separación (hoy)</td>
-                <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, color: C.palm }}>{fmt(separacion)}</td>
-                <td style={{ padding: '8px 12px', textAlign: 'right' }}>{fmt(separacion)}</td>
-                <td style={{ padding: '8px 12px', textAlign: 'right', color: C.text, fontWeight: 600 }}>{fmt(Math.round(montoCuotaInicial - separacion))}</td>
-              </tr>
-              {/* Months 1-X */}
-              {mesesTable.map(r => (
-                <tr key={r.mes} style={{ borderBottom: `1px solid ${C.sand}`, background: r.mes % 2 === 0 ? C.bg : C.white }}>
-                  <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600, color: C.teal }}>{r.mes}</td>
-                  <td style={{ padding: '8px 12px', textAlign: 'right', color: C.textSec, fontSize: '0.82rem' }}>Cuota mensual</td>
-                  <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, color: C.palm }}>{fmt(Math.round(r.cuota))}</td>
-                  <td style={{ padding: '8px 12px', textAlign: 'right' }}>{fmt(Math.round(r.acumulado))}</td>
-                  <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, color: r.restante <= 0 ? C.palm : C.text }}>
-                    {r.restante <= 0 ? 'Completada' : fmt(Math.round(r.restante))}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </div>
   );
 };

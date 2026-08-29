@@ -3,6 +3,7 @@ import { BarChart, Bar, LineChart, Line, ComposedChart, XAxis, YAxis, CartesianG
 import { MARKET_STUDY_DB } from '../marketStudyDb';
 import { supabase, uploadProjectImage, uploadFile, TENANT_ID as SUPABASE_TENANT_ID } from '../lib/supabase';
 import { PROJECT_IMG } from '../projectsData';
+import { getSeparacionProyecto } from '../projectsData';
 import jsPDF from 'jspdf';
 
 // ── Exportar estudios de Camilo a PDF ────────────────────────────────────
@@ -21,6 +22,10 @@ function pdfNewDoc(title: string, subtitle: string) {
   doc.setFontSize(9);
   doc.text('GLP WEALTH MANAGEMENT · INTELIGENCIA DE MERCADO', marginX, 30);
   doc.setTextColor(255, 255, 255);
+  // Título en serif (equivalente jsPDF de la Cormorant Garamond/Georgia que usa
+  // el resto de la plataforma para encabezados) — antes salía en helvetica, por
+  // eso el PDF se sentía con una tipografía distinta al resto del CRM.
+  doc.setFont('times', 'bold');
   doc.setFontSize(16);
   doc.text(title, marginX, 54);
   doc.setFont('helvetica', 'normal');
@@ -41,7 +46,7 @@ function pdfCheckPageBreak(doc: jsPDF, y: number, needed = 20) {
 }
 function pdfHeading(doc: jsPDF, marginX: number, y: number, text: string) {
   y = pdfCheckPageBreak(doc, y, 26);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(0, 26, 55);
   doc.text(text, marginX, y);
@@ -187,6 +192,58 @@ const InfoTip = ({ text, benchmark }: { text: string; benchmark?: string }) => {
   );
 };
 
+// ── HISTORIAL DE ENVÍOS DE CAMPAÑA — trazabilidad real: uno por destinatario, con
+// estado (enviado/fallido) y hora. Se consulta on-demand vía /api/campaigns/sends
+// en vez de vivir en localStorage, porque son registros que el backend deja al
+// enviar (ver POST /api/campaigns/send-now en server/index.js).
+const CampaignSendsLog = ({ campaignId }: { campaignId: number | string }) => {
+  const [rows, setRows] = React.useState<any[] | null>(null);
+  const [error, setError] = React.useState('');
+  React.useEffect(() => {
+    let cancelled = false;
+    setRows(null); setError('');
+    fetch(`${API_ROOT}/api/campaigns/sends?campaignId=${encodeURIComponent(String(campaignId))}`)
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setRows(Array.isArray(d) ? d : []); })
+      .catch(e => { if (!cancelled) setError(e.message); });
+    return () => { cancelled = true; };
+  }, [campaignId]);
+
+  if (error) return <div style={{ fontSize: 12, color: '#c0392b' }}>No se pudo cargar el historial: {error}</div>;
+  if (rows === null) return <div style={{ fontSize: 12, color: '#6B7280' }}>Cargando historial…</div>;
+  if (rows.length === 0) return <div style={{ fontSize: 12, color: '#6B7280', padding: '8px 0' }}>Sin envíos registrados aún para esta campaña.</div>;
+
+  return (
+    <div style={{ maxHeight: 280, overflowY: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <thead>
+          <tr style={{ borderBottom: '1px solid #E5E7EB' }}>
+            <th style={{ textAlign: 'left', padding: '6px 8px', color: '#6B7280', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Destinatario</th>
+            <th style={{ textAlign: 'left', padding: '6px 8px', color: '#6B7280', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Correo</th>
+            <th style={{ textAlign: 'left', padding: '6px 8px', color: '#6B7280', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Estado</th>
+            <th style={{ textAlign: 'left', padding: '6px 8px', color: '#6B7280', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Fecha</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((s: any) => (
+            <tr key={s.id} style={{ borderBottom: '1px solid #F3F4F6' }} title={s.error || undefined}>
+              <td style={{ padding: '6px 8px', color: '#111827' }}>{s.prospecto_nombre || '—'}</td>
+              <td style={{ padding: '6px 8px', color: '#4B5563' }}>{s.prospecto_correo || '—'}</td>
+              <td style={{ padding: '6px 8px' }}>
+                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', padding: '2px 8px', borderRadius: 20,
+                  color: s.status === 'enviado' ? '#166534' : '#B91C1C', background: s.status === 'enviado' ? '#F0FDF4' : '#FEF2F2' }}>
+                  {s.status === 'enviado' ? '✓ Enviado' : '✕ Fallido'}
+                </span>
+              </td>
+              <td style={{ padding: '6px 8px', color: '#4B5563' }}>{s.created_at ? new Date(s.created_at).toLocaleString() : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
 // ── ELEGANT SVG ICON LIBRARY ─────────────────────────────────
 const Icon = ({ name, size = 24, color = 'currentColor', style = {} }: { name: string; size?: number; color?: string; style?: React.CSSProperties }) => {
   const s = { width: size, height: size, display: 'inline-block', flexShrink: 0, ...style };
@@ -234,6 +291,42 @@ const fmt = (n: number, d = 0) => Number(n).toLocaleString('en-US', { maximumFra
 const usd = (n: number) => '$' + fmt(n);
 const pct = (n: number) => Number(n).toFixed(1) + '%';
 
+// ── IMPUESTO PREDIAL — tabla de tarifas "Otras Propiedades" (comerciales, terrenos,
+// segundas viviendas/vacacionales) ────────────────────────────────────────────
+// Tramos MARGINALES, no una tasa plana sobre el total — cada tramo solo grava el
+// remanente que cae DENTRO de ese tramo, igual que una tabla de impuesto sobre la renta:
+//   $0 – $30,000        → exento (0%)
+//   $30,000 – $250,000  → 0.6% sobre el excedente de $30,000
+//   > $250,000          → 0.8% sobre el excedente de $250,000 (además del tramo anterior)
+// Editable desde la UI (Costos Legales) porque la ley cambia estos umbrales/tasas de vez en
+// cuando — solo el último tramo (`hasta: null`) queda fijo como "sin límite superior"; el
+// `desde` de cada tramo se deriva del `hasta` del anterior, así los tramos nunca quedan con
+// huecos ni se solapan aunque el admin edite los montos.
+type PredialTramoCfg = { hasta: number | null; tasa: number };
+const PREDIAL_TRAMOS_DEFAULT: PredialTramoCfg[] = [
+  { hasta: 30000, tasa: 0 },
+  { hasta: 250000, tasa: 0.006 },
+  { hasta: null, tasa: 0.008 },
+];
+function calcPredialTabla(valorFiscal: number, tramosCfg: PredialTramoCfg[] = PREDIAL_TRAMOS_DEFAULT): { total: number; detalle: { desde: number; hasta: number; tasa: number; base: number; impuesto: number }[] } {
+  const v = Math.max(0, valorFiscal || 0);
+  let total = 0;
+  let desdeAcum = 0;
+  const detalle = tramosCfg.map(t => {
+    const hastaVal = t.hasta == null ? Infinity : t.hasta;
+    // Remanente de ESTE tramo: lo que cae entre `desde` y `hasta`, nunca negativo ni
+    // mayor al ancho real del tramo — así un activo de $300k solo paga 0.8% sobre los
+    // $50k que exceden $250k, no sobre los $300k completos.
+    const base = Math.max(0, Math.min(v, hastaVal) - desdeAcum);
+    const impuesto = base * t.tasa;
+    total += impuesto;
+    const row = { desde: desdeAcum, hasta: hastaVal, tasa: t.tasa, base, impuesto };
+    desdeAcum = hastaVal;
+    return row;
+  });
+  return { total, detalle };
+}
+
 // ── PROJECTS DATABASE ─────────────────────────────────────────
 type ProjectData = {
   name: string; zone: string; zoneShort: string; investorType: string;
@@ -262,6 +355,33 @@ type ProjectData = {
   fechaActualizacionMercado?: string;
 };
 
+// Misma taxonomía de 4 segmentos que usa el backend (server/index.js) para el chatbot/Sofía —
+// duplicada aquí porque este archivo no importa del servidor. Si se ajusta una, ajustar la otra.
+function segmentoDeProyecto(p: { name?: string; zone?: string }): 'ciudad' | 'golf_country_club' | 'isla_privada' | 'playa' {
+  const zone = (p.zone || '').toLowerCase();
+  const name = (p.name || '').toLowerCase();
+  if (name.includes('oceana') || name.includes('ocena')) return 'golf_country_club';
+  if (zone.includes('playa caracol') || zone.includes('chame')) return 'playa';
+  if (zone.includes('punta pacífica') || zone.includes('punta pacifica') || zone.includes('isla privada')) return 'isla_privada';
+  return 'ciudad';
+}
+
+// ── Comparativo real Panamá vs Colombia (Calculadora → Comparativo) ──────────────
+// Extiende la tabla de inflación proyectada (Configuración → Financiero, 2026–2045) a
+// cualquier horizonte pedido, repitiendo la última tasa conocida si el plazo excede la
+// tabla — evita romper si alguien pone un plazo de hipoteca de 25-30 años.
+function proyeccionTasas(tabla: { colombia: number; panama: number }[], pais: 'colombia' | 'panama', anios: number): number[] {
+  const rates = tabla.map(r => pais === 'colombia' ? r.colombia : r.panama);
+  const ultima = rates[rates.length - 1] ?? (pais === 'colombia' ? 0.03 : 0.02);
+  const out: number[] = [];
+  for (let i = 0; i < anios; i++) out.push(rates[i] ?? ultima);
+  return out;
+}
+// Factor de crecimiento compuesto de una serie de tasas anuales — 1.0 = sin crecimiento.
+function factorAcumulado(rates: number[]): number {
+  return rates.reduce((acc, r) => acc * (1 + r), 1);
+}
+
 const PROJECTS: ProjectData[] = [
   // ── CIUDAD ──────────────────────────────────────
   {
@@ -269,7 +389,7 @@ const PROJECTS: ProjectData[] = [
     zone: 'Bella Vista — Ciudad de Panamá', zoneShort: 'Armonía / Bella Vista',
     investorType: 'renta', entrega: 'F1 Inmediata · F2 Q2 2026 · F3 Q2 2028',
     minPrice: 181000, maxPrice: 235000, areaMin: 45, areaMax: 71, bedrooms: '1, 2 y 3 rec.',
-    capRateMin: 6.0, capRateMax: 7.5, vacancyDef: 6,
+    capRateMin: 6.0, capRateMax: 7.5, vacancyDef: 10,
     rentSuggest: 1100, rentM2Min: 12, rentM2Max: 16, condominioMes: 220,
     appreciationDef: 4.0, appreciationNote: 'Bella Vista es uno de los corredores más demandados de Ciudad de Panamá. Valorización 4–6% anual. F1 con entrega inmediata ofrece plusvalía desde el primer día.',
     amenities: ['Piscina y área social', 'Gimnasio moderno', 'Lobby de diseño', 'Seguridad 24/7', 'Parqueo'],
@@ -282,7 +402,7 @@ const PROJECTS: ProjectData[] = [
     zone: 'Bella Vista — Ciudad de Panamá', zoneShort: 'Ventu / Bella Vista',
     investorType: 'patrimonial', entrega: 'Q2 2028',
     minPrice: 136000, maxPrice: 259000, areaMin: 40, areaMax: 63, bedrooms: '1 y 2 rec.',
-    capRateMin: 8.0, capRateMax: 12.0, vacancyDef: 20,
+    capRateMin: 8.0, capRateMax: 12.0, vacancyDef: 10,
     rentSuggest: 2400, rentM2Min: 0, rentM2Max: 0, condominioMes: 250,
     appreciationDef: 4.5, appreciationNote: 'Único proyecto hotelero optimizado para renta corta (Airbnb/Booking) en Bella Vista. Administración profesional incluida. 4–5% valorización anual.',
     amenities: ['Diseño Airbnb optimizado', 'Administración hotelera', 'Pool deck', 'Coworking', 'Check-in automático', 'Seguridad 24/7'],
@@ -296,7 +416,7 @@ const PROJECTS: ProjectData[] = [
     zone: 'Santa María — Ciudad de Panamá', zoneShort: 'Oceana / Santa María',
     investorType: 'patrimonial', entrega: 'Q4 2027',
     minPrice: 446000, maxPrice: 1200000, areaMin: 100, areaMax: 270, bedrooms: '2 y 3 rec.',
-    capRateMin: 4.7, capRateMax: 6.0, vacancyDef: 4,
+    capRateMin: 4.7, capRateMax: 6.0, vacancyDef: 10,
     rentSuggest: 3500, rentM2Min: 20, rentM2Max: 25, condominioMes: 550,
     appreciationDef: 5.0, appreciationNote: 'Única comunidad con golf Jack Nicklaus en Santa María. Demanda de ejecutivos y familias expat. 5–7% valorización anual.',
     amenities: ['Golf 18 hoyos Jack Nicklaus', 'Club House', 'Piscinas resort', 'Pickleball y tenis', 'Co-working', 'Wellness center', 'Concierge'],
@@ -310,7 +430,7 @@ const PROJECTS: ProjectData[] = [
     zone: 'Costa Sur — Ciudad de Panamá', zoneShort: 'Ipanema / Costa Sur',
     investorType: 'disfrute', entrega: 'F1 Q1 2028 · F2 Q4 2028',
     minPrice: 283000, maxPrice: 519000, areaMin: 72, areaMax: 163, bedrooms: '1, 2 y 3 rec.',
-    capRateMin: 6.0, capRateMax: 7.5, vacancyDef: 6,
+    capRateMin: 6.0, capRateMax: 7.5, vacancyDef: 10,
     rentSuggest: 1600, rentM2Min: 12, rentM2Max: 18, condominioMes: 280,
     appreciationDef: 4.0, appreciationNote: 'Costa del Este es hub corporativo multinacional. Alta demanda de ejecutivos expat. 4–6% valorización anual.',
     amenities: ['Piscina con vista al mar', 'Gimnasio', 'Co-working', 'BBQ y lounge', 'Seguridad 24/7', 'Parque infantil'],
@@ -326,7 +446,7 @@ const PROJECTS: ProjectData[] = [
     zone: 'Santa María — Ciudad de Panamá', zoneShort: 'Bosco di Santa Maria / Santa María',
     investorType: 'patrimonial', entrega: '2030',
     minPrice: 474000, maxPrice: 1100000, areaMin: 100, areaMax: 296, bedrooms: '2, 3 y 4 rec.',
-    capRateMin: 5.5, capRateMax: 7.2, vacancyDef: 5,
+    capRateMin: 5.5, capRateMax: 7.2, vacancyDef: 10,
     rentSuggest: 2800, rentM2Min: 13, rentM2Max: 18, condominioMes: 420,
     appreciationDef: 4.5, appreciationNote: 'Santa María en consolidación definitiva. Proyecto de lujo con jardines botánicos. 4–6% valorización anual.',
     amenities: ['Jardines botánicos', 'Piscina natural', 'Gimnasio', 'Senderos de meditación', 'Áreas sociales', 'Seguridad 24/7'],
@@ -342,7 +462,7 @@ const PROJECTS: ProjectData[] = [
     zone: 'Punta Pacífica — Ciudad de Panamá', zoneShort: 'The Palms / Punta Pacífica',
     investorType: 'patrimonial', entrega: 'ENTREGA INMEDIATA',
     minPrice: 1200000, maxPrice: 1400000, areaMin: 169, areaMax: 239, bedrooms: '2 rec.',
-    capRateMin: 5.5, capRateMax: 7.0, vacancyDef: 4,
+    capRateMin: 5.5, capRateMax: 7.0, vacancyDef: 10,
     rentSuggest: 5500, rentM2Min: 22, rentM2Max: 30, condominioMes: 700,
     appreciationDef: 5.5, appreciationNote: 'Isla artificial exclusiva con acceso a marina privada. Activo de mayor plusvalía del portafolio. 6–8% valorización anual.',
     amenities: ['Marina privada 180+ muelles', 'Yacht club', 'Piscinas infinity', 'Spa y wellness', 'Restaurantes', 'Beach club', 'Seguridad 24/7'],
@@ -358,7 +478,7 @@ const PROJECTS: ProjectData[] = [
     zone: 'Punta Pacífica — Ciudad de Panamá', zoneShort: 'Ocean Reef Park / Punta Pacífica',
     investorType: 'patrimonial', entrega: 'Q2 2028',
     minPrice: 1700000, maxPrice: 2100000, areaMin: 491, areaMax: 569, bedrooms: '3 y 4 rec.',
-    capRateMin: 5.0, capRateMax: 6.5, vacancyDef: 4,
+    capRateMin: 5.0, capRateMax: 6.5, vacancyDef: 10,
     rentSuggest: 9000, rentM2Min: 18, rentM2Max: 25, condominioMes: 900,
     appreciationDef: 6.0, appreciationNote: 'La unidad de mayor tamaño y valor del portafolio. Acceso directo al Johns Hopkins. 6–9% valorización anual.',
     amenities: ['Marina privada', 'Yacht club', 'Piscinas infinity', 'Helipuerto', 'Spa y wellness', 'Restaurantes', 'Club privado'],
@@ -374,7 +494,7 @@ const PROJECTS: ProjectData[] = [
     zone: 'Playa Caracol, Chame — Pacífico', zoneShort: 'Aires del Mar / Playa Caracol',
     investorType: 'renta', entrega: 'INMEDIATA · Q4 2026',
     minPrice: 143000, maxPrice: 207000, areaMin: 42, areaMax: 71, bedrooms: '2 y 3 rec.',
-    capRateMin: 5.8, capRateMax: 8.0, vacancyDef: 11,
+    capRateMin: 5.8, capRateMax: 8.0, vacancyDef: 10,
     rentSuggest: 950, rentM2Min: 9, rentM2Max: 13, condominioMes: 180,
     appreciationDef: 3.5, appreciationNote: 'Producto de entrada a Playa Caracol. Alta demanda vacacional de colombianos y panameños. 3.5–5% valorización.',
     amenities: ['Vista al océano Pacífico', 'Piscinas', 'Parques infantiles', 'Jardines', 'Seguridad 24/7'],
@@ -417,7 +537,7 @@ const PROJECTS: ProjectData[] = [
     zone: 'Playa Caracol, Chame — Pacífico', zoneShort: 'Olas del Mar / Playa Caracol',
     investorType: 'renta', entrega: 'ENTREGA INMEDIATA',
     minPrice: 267000, maxPrice: 398000, areaMin: 69, areaMax: 97, bedrooms: '2 y 3 rec.',
-    capRateMin: 6.0, capRateMax: 8.0, vacancyDef: 11,
+    capRateMin: 6.0, capRateMax: 8.0, vacancyDef: 10,
     rentSuggest: 1050, rentM2Min: 8, rentM2Max: 12, condominioMes: 220,
     appreciationDef: 3.5, appreciationNote: 'Playa Caracol lidera valorización en el Pacífico panameño. Entrega inmediata. 4–6% anual en proyectos nuevos.',
     amenities: ['Piscina con vista al mar', 'Zona de BBQ', 'Área social', 'Seguridad 24/7', 'Parque infantil'],
@@ -1592,19 +1712,216 @@ export default function CRMDashboard() {
       })
       .catch(e => console.error('Error cargando proyectos (usando caché local):', e));
   }, []);
-  const [commissionEntities, setCommissionEntities] = useState<{name:string;pct:number}[]>(() => {
-    try {
-      const saved = localStorage.getItem('glp_commission_entities');
-      if (saved) { const parsed = JSON.parse(saved); if (Array.isArray(parsed) && parsed.length > 0) return parsed; }
-    } catch {}
-    return [
-      { name: 'Colombia Law Group', pct: 1 },
-      { name: 'Grupo Valverde', pct: 1 },
-      { name: 'Capital Brokers', pct: 1 },
-      { name: 'Red de Brokers (distribuible)', pct: 2 },
-    ];
-  });
-  useEffect(() => { try { localStorage.setItem('glp_commission_entities', JSON.stringify(commissionEntities)); } catch {} }, [commissionEntities]);
+  const COMMISSION_ENTITIES_DEFAULT = [
+    { name: 'Colombia Law Group', pct: 1 },
+    { name: 'Grupo Valverde', pct: 1 },
+    { name: 'Capital Brokers', pct: 1 },
+    { name: 'Red de Brokers (distribuible)', pct: 2 },
+  ];
+  // Igual que predial_tramos: tabla de negocio compartida por todo el equipo, no un dato de
+  // sesión — vive en el backend (tabla `settings`) en vez de localStorage para que un cambio
+  // lo vea todo el mundo, no solo quien lo editó desde su navegador.
+  const [commissionEntities, setCommissionEntities] = useState<{name:string;pct:number}[]>(COMMISSION_ENTITIES_DEFAULT);
+  const commissionEntitiesLoaded = useRef(false);
+  useEffect(() => {
+    fetch(`${API_ROOT}/api/settings/commission_entities`)
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data) && data.length > 0) setCommissionEntities(data); })
+      .catch(() => {})
+      .finally(() => { commissionEntitiesLoaded.current = true; });
+  }, []);
+  useEffect(() => {
+    if (!commissionEntitiesLoaded.current) return;
+    fetch(`${API_ROOT}/api/settings/commission_entities`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(commissionEntities),
+    }).catch(() => {});
+  }, [commissionEntities]);
+  // Valorización pre-entrega — antes un único 20% global ajustable por cálculo. Un activo de
+  // ciudad, uno de golf, uno de isla/marina y uno de playa se valorizan distinto entre
+  // separación y entrega, así que ahora es una tabla por SEGMENTO (no por activo individual),
+  // parametrizable en Configuración → Financiero y aplicada automáticamente según el segmento
+  // del proyecto seleccionado (misma taxonomía que segmentoDeProyecto/Sofía).
+  const VALORIZACION_SEGMENTOS_DEFAULT = [
+    { segmento: 'ciudad', label: 'Ciudad / Urbano', pct: 20 },
+    { segmento: 'golf_country_club', label: 'Golf y Country Club', pct: 20 },
+    { segmento: 'isla_privada', label: 'Isla Privada / Punta Pacífica', pct: 20 },
+    { segmento: 'playa', label: 'Playa Caracol', pct: 20 },
+  ];
+  const [valorizacionSegmentos, setValorizacionSegmentos] = useState<{ segmento: string; label: string; pct: number }[]>(
+    VALORIZACION_SEGMENTOS_DEFAULT.map(v => ({ ...v }))
+  );
+  const valorizacionSegmentosLoaded = useRef(false);
+  useEffect(() => {
+    fetch(`${API_ROOT}/api/settings/valorizacion_pre_entrega_segmentos`)
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data) && data.length > 0) setValorizacionSegmentos(data); })
+      .catch(() => {})
+      .finally(() => { valorizacionSegmentosLoaded.current = true; });
+  }, []);
+  useEffect(() => {
+    if (!valorizacionSegmentosLoaded.current) return;
+    fetch(`${API_ROOT}/api/settings/valorizacion_pre_entrega_segmentos`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(valorizacionSegmentos),
+    }).catch(() => {});
+  }, [valorizacionSegmentos]);
+
+  // Valor de Separación por proyecto — se usa al desplegar la ficha técnica pública de cada
+  // proyecto (el default de la página, y el que se muestra en la tarjeta del landing). El
+  // objeto viaja tal cual (porProyecto/porCategoria/default) porque la landing lo consume
+  // en el mismo shape vía /api/settings/separacion_proyectos (ver SEPARACION_PROYECTOS_DEFAULT
+  // en src/projectsData.ts, que es el fallback local usado ahí antes de que este fetch responda).
+  const SEPARACION_PROYECTOS_DEFAULT_CRM = {
+    porProyecto: {
+      'Bosco di Santa Maria': 5000, 'Casa Bosco': 10000, 'Ipanema': 2500, 'Armonia': 2500,
+      'Ventu': 2500, 'Oceana': 5000, 'Panama Viejo': 1000, 'Vied': 2500,
+    } as Record<string, number>,
+    porCategoria: { 'Playa': 2000, 'Marina Panamá': 10000 } as Record<string, number>,
+    default: 2000,
+  };
+  const [separacionProyectos, setSeparacionProyectos] = useState(SEPARACION_PROYECTOS_DEFAULT_CRM);
+  const separacionProyectosLoaded = useRef(false);
+  useEffect(() => {
+    fetch(`${API_ROOT}/api/settings/separacion_proyectos`)
+      .then(r => r.json())
+      .then(data => { if (data && data.porProyecto) setSeparacionProyectos(data); })
+      .catch(() => {})
+      .finally(() => { separacionProyectosLoaded.current = true; });
+  }, []);
+  useEffect(() => {
+    if (!separacionProyectosLoaded.current) return;
+    fetch(`${API_ROOT}/api/settings/separacion_proyectos`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(separacionProyectos),
+    }).catch(() => {});
+  }, [separacionProyectos]);
+
+  // Arriendo por m² parametrizado por segmento de proyecto, renta corta y renta larga.
+  // Cifras provisionales — el admin las ajusta en Configuración → Financiero.
+  const ARRIENDO_M2_SEGMENTOS_DEFAULT = [
+    { segmento: 'ciudad', label: 'Ciudad / Urbano', corta: 25, larga: 25 },
+    { segmento: 'golf_country_club', label: 'Golf y Country Club', corta: 25, larga: 25 },
+    { segmento: 'isla_privada', label: 'Isla Privada / Punta Pacífica', corta: 25, larga: 25 },
+    { segmento: 'playa', label: 'Playa Caracol', corta: 25, larga: 25 },
+  ];
+  const [arriendoM2Segmentos, setArriendoM2Segmentos] = useState<{ segmento: string; label: string; corta: number; larga: number }[]>(
+    ARRIENDO_M2_SEGMENTOS_DEFAULT.map(v => ({ ...v }))
+  );
+  const arriendoM2SegmentosLoaded = useRef(false);
+  useEffect(() => {
+    fetch(`${API_ROOT}/api/settings/arriendo_m2_segmentos`)
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data) && data.length > 0) setArriendoM2Segmentos(data); })
+      .catch(() => {})
+      .finally(() => { arriendoM2SegmentosLoaded.current = true; });
+  }, []);
+  useEffect(() => {
+    if (!arriendoM2SegmentosLoaded.current) return;
+    fetch(`${API_ROOT}/api/settings/arriendo_m2_segmentos`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(arriendoM2Segmentos),
+    }).catch(() => {});
+  }, [arriendoM2Segmentos]);
+
+  // Inflación proyectada Colombia/Panamá 2026–2045 — base: documento del cliente
+  // "Proyecciones_Inflacion_Colombia_Panama_2026_2045.xlsx" (expectativas BanRep jul-2026 y
+  // convergencia a meta 3,0% para Colombia; FMI Art. IV 2025 y supuesto estructural 2,0% de
+  // largo plazo para Panamá). Parametrizable en Configuración → Financiero.
+  const INFLACION_PROYECTADA_DEFAULT = [
+    { anio: 2026, colombia: 0.066, panama: 0.02, fuenteColombia: 'Expectativa analistas BanRep (jul-2026)', fuentePanama: 'FMI Art. IV 2025: IPC promedio proyectado 2,0%' },
+    { anio: 2027, colombia: 0.05, panama: 0.02, fuenteColombia: 'Expectativa analistas BanRep (jul-2026)', fuentePanama: 'FMI Art. IV 2025: IPC promedio proyectado 2,0%' },
+    { anio: 2028, colombia: 0.04, panama: 0.02, fuenteColombia: 'Supuesto de convergencia lineal hacia meta 3,0%', fuentePanama: 'FMI Art. IV 2025: IPC promedio proyectado 2,0%' },
+    { anio: 2029, colombia: 0.03, panama: 0.02, fuenteColombia: 'Supuesto estructural: meta BanRep 3,0%', fuentePanama: 'FMI Art. IV 2025: IPC promedio proyectado 2,0%' },
+    { anio: 2030, colombia: 0.03, panama: 0.02, fuenteColombia: 'Supuesto estructural: meta BanRep 3,0%', fuentePanama: 'FMI Art. IV 2025: IPC promedio proyectado 2,0%' },
+    { anio: 2031, colombia: 0.03, panama: 0.02, fuenteColombia: 'Supuesto estructural: meta BanRep 3,0%', fuentePanama: 'Supuesto estructural de largo plazo 2,0%' },
+    { anio: 2032, colombia: 0.03, panama: 0.02, fuenteColombia: 'Supuesto estructural: meta BanRep 3,0%', fuentePanama: 'Supuesto estructural de largo plazo 2,0%' },
+    { anio: 2033, colombia: 0.03, panama: 0.02, fuenteColombia: 'Supuesto estructural: meta BanRep 3,0%', fuentePanama: 'Supuesto estructural de largo plazo 2,0%' },
+    { anio: 2034, colombia: 0.03, panama: 0.02, fuenteColombia: 'Supuesto estructural: meta BanRep 3,0%', fuentePanama: 'Supuesto estructural de largo plazo 2,0%' },
+    { anio: 2035, colombia: 0.03, panama: 0.02, fuenteColombia: 'Supuesto estructural: meta BanRep 3,0%', fuentePanama: 'Supuesto estructural de largo plazo 2,0%' },
+    { anio: 2036, colombia: 0.03, panama: 0.02, fuenteColombia: 'Supuesto estructural: meta BanRep 3,0%', fuentePanama: 'Supuesto estructural de largo plazo 2,0%' },
+    { anio: 2037, colombia: 0.03, panama: 0.02, fuenteColombia: 'Supuesto estructural: meta BanRep 3,0%', fuentePanama: 'Supuesto estructural de largo plazo 2,0%' },
+    { anio: 2038, colombia: 0.03, panama: 0.02, fuenteColombia: 'Supuesto estructural: meta BanRep 3,0%', fuentePanama: 'Supuesto estructural de largo plazo 2,0%' },
+    { anio: 2039, colombia: 0.03, panama: 0.02, fuenteColombia: 'Supuesto estructural: meta BanRep 3,0%', fuentePanama: 'Supuesto estructural de largo plazo 2,0%' },
+    { anio: 2040, colombia: 0.03, panama: 0.02, fuenteColombia: 'Supuesto estructural: meta BanRep 3,0%', fuentePanama: 'Supuesto estructural de largo plazo 2,0%' },
+    { anio: 2041, colombia: 0.03, panama: 0.02, fuenteColombia: 'Supuesto estructural: meta BanRep 3,0%', fuentePanama: 'Supuesto estructural de largo plazo 2,0%' },
+    { anio: 2042, colombia: 0.03, panama: 0.02, fuenteColombia: 'Supuesto estructural: meta BanRep 3,0%', fuentePanama: 'Supuesto estructural de largo plazo 2,0%' },
+    { anio: 2043, colombia: 0.03, panama: 0.02, fuenteColombia: 'Supuesto estructural: meta BanRep 3,0%', fuentePanama: 'Supuesto estructural de largo plazo 2,0%' },
+    { anio: 2044, colombia: 0.03, panama: 0.02, fuenteColombia: 'Supuesto estructural: meta BanRep 3,0%', fuentePanama: 'Supuesto estructural de largo plazo 2,0%' },
+    { anio: 2045, colombia: 0.03, panama: 0.02, fuenteColombia: 'Supuesto estructural: meta BanRep 3,0%', fuentePanama: 'Supuesto estructural de largo plazo 2,0%' },
+  ];
+  const [inflacionProyectada, setInflacionProyectada] = useState(INFLACION_PROYECTADA_DEFAULT.map(v => ({ ...v })));
+  const inflacionProyectadaLoaded = useRef(false);
+  useEffect(() => {
+    fetch(`${API_ROOT}/api/settings/inflacion_proyectada`)
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data) && data.length > 0) setInflacionProyectada(data); })
+      .catch(() => {})
+      .finally(() => { inflacionProyectadaLoaded.current = true; });
+  }, []);
+  useEffect(() => {
+    if (!inflacionProyectadaLoaded.current) return;
+    fetch(`${API_ROOT}/api/settings/inflacion_proyectada`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(inflacionProyectada),
+    }).catch(() => {});
+  }, [inflacionProyectada]);
+
+  // Dos supuestos más del comparativo real (Configuración → Financiero), validados con
+  // datos reales de BanRep/DANE (ver conversación): el spread real del CDT (2.5% es el
+  // promedio de largo plazo, con volatilidad real observada entre 0.3% y 3.9% en 2020–2024
+  // — no una cifra fija año a año) y el tope de renta bruta nominal para el escenario de
+  // inmobiliario en Colombia (5% anual, no confundir con retorno real).
+  // express.json() usa strict:true por defecto — rechaza un número JSON suelto como cuerpo
+  // ("2.5" no es válido, solo objetos/arrays lo son). Se envuelve en { value } al guardar y
+  // se desenvuelve al leer, en vez de tocar la config global de body-parser por dos campos.
+  const [cdtSpreadReal, setCdtSpreadReal] = useState(2.5);
+  const cdtSpreadRealLoaded = useRef(false);
+  useEffect(() => {
+    fetch(`${API_ROOT}/api/settings/cdt_spread_real`)
+      .then(r => r.json())
+      .then(data => { if (data && typeof data.value === 'number') setCdtSpreadReal(data.value); })
+      .catch(() => {})
+      .finally(() => { cdtSpreadRealLoaded.current = true; });
+  }, []);
+  useEffect(() => {
+    if (!cdtSpreadRealLoaded.current) return;
+    fetch(`${API_ROOT}/api/settings/cdt_spread_real`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: cdtSpreadReal }),
+    }).catch(() => {});
+  }, [cdtSpreadReal]);
+
+  const [coRentaBrutaPct, setCoRentaBrutaPct] = useState(5);
+  const coRentaBrutaPctLoaded = useRef(false);
+  useEffect(() => {
+    fetch(`${API_ROOT}/api/settings/co_renta_bruta_pct`)
+      .then(r => r.json())
+      .then(data => { if (data && typeof data.value === 'number') setCoRentaBrutaPct(data.value); })
+      .catch(() => {})
+      .finally(() => { coRentaBrutaPctLoaded.current = true; });
+  }, []);
+  useEffect(() => {
+    if (!coRentaBrutaPctLoaded.current) return;
+    fetch(`${API_ROOT}/api/settings/co_renta_bruta_pct`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: coRentaBrutaPct }),
+    }).catch(() => {});
+  }, [coRentaBrutaPct]);
+
+  // La pestaña "Comparativo vs. Colombia" queda oculta por defecto — solo un admin la
+  // prende desde Configuración → Financiero. Igual patrón que los demás ajustes: backend
+  // real (tabla `settings`), no localStorage, para que sea una decisión de todo el equipo,
+  // no del navegador de quien la activó.
+  const [comparativoActivo, setComparativoActivo] = useState(false);
+  const comparativoActivoLoaded = useRef(false);
+  useEffect(() => {
+    fetch(`${API_ROOT}/api/settings/comparativo_activo`)
+      .then(r => r.json())
+      .then(data => { if (data && typeof data.value === 'boolean') setComparativoActivo(data.value); })
+      .catch(() => {})
+      .finally(() => { comparativoActivoLoaded.current = true; });
+  }, []);
+  useEffect(() => {
+    if (!comparativoActivoLoaded.current) return;
+    fetch(`${API_ROOT}/api/settings/comparativo_activo`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: comparativoActivo }),
+    }).catch(() => {});
+  }, [comparativoActivo]);
+
   const [editingProject, setEditingProject] = useState<string | null>(null);
 
   // ── Unidades de inventario por proyecto (unidad-por-unidad, viene del Excel de listas
@@ -1954,7 +2271,7 @@ export default function CRMDashboard() {
     return DEFAULT_BUSINESS_RULES;
   });
   const [businessRulesDirty, setBusinessRulesDirty] = useState(false);
-  const [configTab, setConfigTab] = useState<'general'|'usuarios'|'portal'|'brokers'|'comisiones'|'reglas'|'integraciones'|'backups'|'costos_ia'>('general');
+  const [configTab, setConfigTab] = useState<'general'|'usuarios'|'portal'|'brokers'|'comisiones'|'financiero'|'reglas'|'integraciones'|'backups'|'costos_ia'>('general');
   const [portalResetMsg, setPortalResetMsg] = useState<Record<string, string>>({});
   const [editingBrokerId, setEditingBrokerId] = useState<number | null>(null);
   useEffect(() => {
@@ -1997,6 +2314,12 @@ export default function CRMDashboard() {
           estado: FUNNEL_STAGES.includes(p.estado) || p.estado === 'Perdido' ? p.estado : (p.estado === 'Calificado' ? 'Calificación' : 'Contacto Inicial'),
           proyectos_interes: Array.isArray(p.proyectos_interes) ? p.proyectos_interes : (typeof p.proyectos_interes === 'string' ? JSON.parse(p.proyectos_interes || '[]') : []),
           historial: Array.isArray(p.historial) ? p.historial : (typeof p.historial === 'string' ? JSON.parse(p.historial || '[]') : []),
+          // fecha_entrada nunca la puebla el backend (solo fecha_registro) — se usaba en
+          // decenas de sitios (orden por defecto, "Registrado el", estadísticas de nuevos
+          // por mes) asumiendo que siempre existía. Para todo prospecto creado por el
+          // chatbot/formulario web quedaba undefined, así que esos leads reales nunca
+          // aparecían en las cohortes mensuales y ordenaban de forma impredecible.
+          fecha_entrada: p.fecha_entrada || p.fecha_registro || null,
         })));
       })
       .catch(e => console.error('Error refrescando prospectos:', e));
@@ -2096,6 +2419,9 @@ export default function CRMDashboard() {
             estado: FUNNEL_STAGES.includes(p.estado) || p.estado === 'Perdido' ? p.estado : (p.estado === 'Calificado' ? 'Calificación' : 'Contacto Inicial'),
             proyectos_interes: Array.isArray(p.proyectos_interes) ? p.proyectos_interes : (typeof p.proyectos_interes === 'string' ? JSON.parse(p.proyectos_interes || '[]') : []),
             historial: Array.isArray(p.historial) ? p.historial : (typeof p.historial === 'string' ? JSON.parse(p.historial || '[]') : []),
+            // Ver comentario igual en fetchProspects — fecha_entrada nunca la puebla el
+            // backend, solo fecha_registro.
+            fecha_entrada: p.fecha_entrada || p.fecha_registro || null,
           }));
           setProspects(loaded);
           try { localStorage.setItem('glp_crm_prospects', JSON.stringify(loaded)); } catch {}
@@ -2308,6 +2634,11 @@ export default function CRMDashboard() {
       costoTotal: 0, alertas: [],
     },
   ];
+  // Las campañas en sí (nombre, segmento, contenido, pasos de secuencia) vivían solo en
+  // localStorage — a diferencia de campaign_sends (el rastro de envíos, ya en Postgres desde
+  // que se construyó), nunca había tabla para el registro de la campaña. Ahora vive en
+  // /api/campaigns (tabla `campaigns`, JSONB por campaña); localStorage queda solo como
+  // fallback si el backend no responde al cargar, igual que prospects/brokers/etc.
   const [campanas, setCampanas] = useState<any[]>(() => {
     try {
       const saved = localStorage.getItem('glp_campanas');
@@ -2315,7 +2646,30 @@ export default function CRMDashboard() {
     } catch {}
     return INITIAL_CAMPANAS;
   });
-  useEffect(() => { try { localStorage.setItem('glp_campanas', JSON.stringify(campanas)); } catch {} }, [campanas]);
+  const campanasLoaded = useRef(false);
+  const prevCampanaIds = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    fetch(`${API_ROOT}/api/campaigns`)
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data) && data.length > 0) { setCampanas(data); prevCampanaIds.current = new Set(data.map((c: any) => String(c.id))); } })
+      .catch(() => {})
+      .finally(() => { campanasLoaded.current = true; });
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem('glp_campanas', JSON.stringify(campanas)); } catch {}
+    if (!campanasLoaded.current) return;
+    const currentIds = new Set(campanas.map(c => String(c.id)));
+    campanas.forEach(c => {
+      fetch(`${API_ROOT}/api/campaigns`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(c) }).catch(() => {});
+    });
+    prevCampanaIds.current.forEach(id => {
+      if (!currentIds.has(id)) fetch(`${API_ROOT}/api/campaigns/${id}`, { method: 'DELETE' }).catch(() => {});
+    });
+    prevCampanaIds.current = currentIds;
+  }, [campanas]);
+  // id de la campaña "masiva" que se está enviando ahora mismo vía /api/campaigns/send-now
+  // — deshabilita el botón de lanzar para no disparar el mismo envío dos veces.
+  const [sendingCampaignId, setSendingCampaignId] = useState<number | string | null>(null);
   const [nuevaCampana, setNuevaCampana] = useState<any>({
     nombre: '', tipo: 'drip', canal: 'Email', objetivo: 'nurturing',
     segmentoEtapas: [], segmentoPresupMin: 0, segmentoPresupMax: 9999999,
@@ -2530,21 +2884,59 @@ export default function CRMDashboard() {
       setCalcUnidadId('');
     }
   }, [calcProject]);
+  // Plan de pago diferido de la cuota inicial — antes vivía públicamente en la página del
+  // proyecto (visible a cualquier visitante); se movió aquí porque el plazo/las cuotas sin
+  // interés son una negociación caso a caso que solo debe manejar el equipo comercial, no
+  // algo que se le muestre/simule a un desconocido en la web.
+  const [plazoDiferidoSeparacion, setPlazoDiferidoSeparacion] = useState(2000);
+  const [plazoDiferidoMeses, setPlazoDiferidoMeses] = useState(24);
+  const [plazoDiferidoTablaAbierta, setPlazoDiferidoTablaAbierta] = useState(false);
   const [calcPrecio, setCalcPrecio] = useState(300000);
   const [calcArea, setCalcArea] = useState(100);
   const [calcUnidadId, setCalcUnidadId] = useState<number | ''>('');
   const [calcCuotaInicial, setCalcCuotaInicial] = useState(50);
   const [calcTasaHip, setCalcTasaHip] = useState(8.5);
   const [calcPlazo, setCalcPlazo] = useState(20);
-  const [calcRentaM2, setCalcRentaM2] = useState(12);
+  const [calcRentaM2, setCalcRentaM2] = useState(25);
+  const [calcTipoRenta, setCalcTipoRenta] = useState<'corta' | 'larga'>('corta'); // define la tarifa/m² del segmento (Configuración → Financiero)
   const [calcFeePM, setCalcFeePM] = useState(10);          // % sobre renta efectiva
   const [calcFeePMFixed, setCalcFeePMFixed] = useState(0);  // $ mensual fijo (sincronizado con %)
   const [calcValorFiscal, setCalcValorFiscal] = useState(0); // valor fiscal; 0 = usar 70% del comercial
   const [calcAdmin, setCalcAdmin] = useState(0);
   const [calcPredial, setCalcPredial] = useState(1);         // % sobre valor fiscal
+  // Tramos del impuesto predial — tabla legal que aplica a TODO el portafolio (igual que la
+  // ley cambia una sola vez para todos, no cálculo por cálculo), así que vive en el backend
+  // (tabla `settings`, misma que ya usa brand_profile) en vez de localStorage: localStorage es
+  // por navegador/dispositivo — un admin que la edite desde su laptop no la vería reflejada
+  // para el resto del equipo, ni sobreviviría a un cambio de equipo o borrado de caché.
+  const [predialTramos, setPredialTramos] = useState<{ hasta: number | null; tasa: number }[]>(
+    PREDIAL_TRAMOS_DEFAULT.map(t => ({ ...t }))
+  );
+  const predialTramosLoaded = useRef(false);
+  useEffect(() => {
+    fetch(`${API_ROOT}/api/settings/predial_tramos`)
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data) && data.length === 3) setPredialTramos(data); })
+      .catch(() => {})
+      .finally(() => { predialTramosLoaded.current = true; });
+  }, []);
+  useEffect(() => {
+    // Evita que el PUT del primer render (con el default, antes de que llegue el GET) le
+    // gane la carrera al valor real guardado y lo sobreescriba de vuelta al default.
+    if (!predialTramosLoaded.current) return;
+    fetch(`${API_ROOT}/api/settings/predial_tramos`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(predialTramos),
+    }).catch(() => {});
+  }, [predialTramos]);
+  const [predialEditando, setPredialEditando] = useState(false);
   const [calcCondominio, setCalcCondominio] = useState(0);
-  const [calcVacancia, setCalcVacancia] = useState(8);
+  const [calcVacancia, setCalcVacancia] = useState(10);
   const [calcValorizacion, setCalcValorizacion] = useState(1.0);
+  // Plusvalía de un solo golpe entre la fecha de separación (precio de preventa) y la
+  // entrega del apartamento — distinta de la valorización anual, que es el ritmo de
+  // apreciación una vez el activo ya está construido y en el mercado. Se aplica una sola vez
+  // sobre el precio de compra, y desde ahí arranca a componer la valorización anual.
+  const [calcValorizacionPreEntrega, setCalcValorizacionPreEntrega] = useState(20);
   // Fundamentales macro del país del tenant (inflación + apreciación inmobiliaria real,
   // vía /api/macro-fundamentals) — la Calculadora ya no fija la valorización por proyecto,
   // sino por el país donde opera el tenant (GLP en Panamá, pero el software es multi-país).
@@ -2571,6 +2963,13 @@ export default function CRMDashboard() {
   const [calcImpuestoVentaPct, setCalcImpuestoVentaPct] = useState(2); // % impuesto de transferencia/venta sobre EV
   const [calcCostosCierrePct, setCalcCostosCierrePct] = useState(0.5); // % costos legales de cierre sobre EV
   const [calcTab, setCalcTab] = useState<'activo' | 'proyeccion' | 'gastos' | 'legal' | 'analisis' | 'comparativo'>('activo');
+  // Si queda seleccionada la pestaña justo cuando se desactiva (o se cargó desactivada
+  // después de que el usuario ya la había abierto), vuelve a la primera pestaña en vez de
+  // dejar la vista en blanco. comparativoActivo se declara arriba, mucho antes que calcTab
+  // en el cuerpo del componente — este efecto tiene que ir después de AMBAS declaraciones.
+  useEffect(() => {
+    if (!comparativoActivo && calcTab === 'comparativo') setCalcTab('activo');
+  }, [comparativoActivo, calcTab]);
   const [prospectDetailTab, setProspectDetailTab] = useState<'general' | 'comercial' | 'actividades' | 'comunicaciones'>('general');
 
   // ── AGENTS STATE ────────────────────────────────────────────
@@ -2615,6 +3014,24 @@ export default function CRMDashboard() {
       return demo;
     } catch { return []; }
   });
+  // El GET real solo existe ahora — antes esta tabla nunca se leía desde el CRM, solo se
+  // escribía desde el chat en vivo. Al montar, se trae lo real del backend y se le mezclan
+  // los perfiles que solo existen en localStorage (el mini-quiz de Sofía genera un
+  // prospectId ficticio con Date.now() para gente que aún no es un prospecto real en la
+  // base — esos no tienen dónde vivir en sofia_profiles, que exige un prospecto real por FK).
+  useEffect(() => {
+    fetch(`${API_ROOT}/api/sofia-profiles`)
+      .then(r => r.json())
+      .then((backendProfiles: SofiaProfile[]) => {
+        if (!Array.isArray(backendProfiles)) return;
+        setSofiaProfiles(prev => {
+          const backendIds = new Set(backendProfiles.map(p => p.prospectId));
+          const soloLocal = prev.filter(p => !backendIds.has(p.prospectId));
+          return [...backendProfiles, ...soloLocal];
+        });
+      })
+      .catch(() => {});
+  }, []);
   const [sofiaToValeriaContext, setSofiaToValeriaContext] = useState<SofiaProfile | null>(null);
   const [sofiaToSaraContext, setSofiaToSaraContext] = useState<SofiaProfile | null>(null);
   const [sofiaChatState, setSofiaChatState] = useState<{
@@ -2723,7 +3140,7 @@ export default function CRMDashboard() {
   // antes dos pestañas separadas que en realidad son la misma pregunta: "¿qué falta cobrar
   // y qué tan urgente es?") → Cierre (estado legal/escritura del mismo cliente).
   const [carteraTab, setCarteraTab] = useState<'resumen'|'cuotas'|'cobranza'>('resumen');
-  const [carteraView, setCarteraView] = useState<'clientes'|'reportes'>('clientes');
+  const [carteraView, setCarteraView] = useState<'clientes'|'reportes'|'chat'>('clientes');
   // "Hoy" ya no es una vista aparte — su contenido (urgentes, compromisos, docs en
   // revisión) vive como panel colapsable dentro del Panel de Mando, para no obligar a
   // saltar entre modos para ver la misma cartera desde dos ángulos.
@@ -3273,7 +3690,7 @@ Genera una respuesta FAQ breve y profesional (3-5 oraciones) que Sara pueda envi
   const [valeriaFilterCanal, setValeriaFilterCanal] = useState<string>('todos');
   const [valeriaTab, setValeriaTab] = useState<'bitacora' | 'contenido' | 'perfil' | 'chat'>('contenido');
   const [saraPanelTab, setSaraPanelTab] = useState<'correos' | 'chat'>('correos');
-  const [saraChatMsgs, setSaraChatMsgs] = useState<{ role: 'user' | 'agent'; content: string; citas?: { id: number; nombre: string }[] }[]>([]);
+  const [saraChatMsgs, setSaraChatMsgs] = useState<{ role: 'user' | 'agent'; content: string; citas?: { id: number; nombre: string }[]; plan?: string[] }[]>([]);
   const [saraChatInput, setSaraChatInput] = useState('');
   const [saraChatLoading, setSaraChatLoading] = useState(false);
   // Bandeja de Sara al estilo Outlook: lista compacta (remitente/fecha/asunto) a la
@@ -4805,6 +5222,18 @@ Responde SOLO con JSON sin bloques de código:
   // ══════════════════════════════════════════════════════
   const today = () => new Date().toISOString().split('T')[0];
 
+  // Los prospectos creados a mano solo guardan fecha (YYYY-MM-DD, sin hora — así es today()),
+  // pero los que llegan del chatbot/formulario web sí traen timestamp completo desde el
+  // backend (fecha_registro) — mostrar SOLO la fecha en esos casos escondía la hora exacta a
+  // la que entró un lead real, justo el dato que hace falta para trazabilidad.
+  const fmtFechaHora = (raw?: string | null): string => {
+    if (!raw) return '—';
+    if (!raw.includes('T')) return raw; // fecha simple (creado a mano), sin hora que mostrar
+    const d = new Date(raw);
+    if (isNaN(d.getTime())) return raw;
+    return d.toLocaleString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+
   const calcIRR = (cashFlows: number[]): number | null => {
     const npv = (r: number) => cashFlows.reduce((acc, cf, t) => acc + cf / Math.pow(1 + r, t), 0);
     let lo = -0.999, hi = 10;
@@ -4827,27 +5256,108 @@ Responde SOLO con JSON sin bloques de código:
   // ── Chat interactivo por agente — mismo patrón que Sara, generalizado para
   // reutilizarlo en Camilo, Sofía y Valeria sin repetir la UI 3 veces más. Cada
   // agente guarda su propio historial en `agentChats[agentKey]`.
-  const [agentChats, setAgentChats] = useState<Record<string, { msgs: { role: 'user' | 'agent'; content: string; citas?: { id: number; nombre: string }[] }[]; input: string; loading: boolean }>>({});
-  const getAgentChat = (key: string) => agentChats[key] || { msgs: [], input: '', loading: false };
-  const setAgentChatField = (key: string, patch: Partial<{ msgs: any[]; input: string; loading: boolean }>) => {
-    setAgentChats(prev => ({ ...prev, [key]: { ...getAgentChat(key), ...patch } }));
+  const [agentChats, setAgentChats] = useState<Record<string, { msgs: { role: 'user' | 'agent'; content: string; citas?: { id: number; nombre: string }[]; plan?: string[] }[]; input: string; loading: boolean }>>({});
+  const AGENT_CHAT_DEFAULT = { msgs: [] as any[], input: '', loading: false };
+  const getAgentChat = (key: string) => agentChats[key] || AGENT_CHAT_DEFAULT;
+  // BUG real (reportado por el usuario: "el prompt sigue manteniendo la pregunta anterior"):
+  // este merge usaba `getAgentChat(key)` — una lectura del `agentChats` capturado por closure
+  // en el momento en que `sendAgentChat` se creó — en vez del `prev` real que entrega el
+  // updater de React. Tras el await a la API, esa closure seguía viendo el estado ANTERIOR
+  // al de "limpiar el input", así que el segundo `setAgentChatField` (cuando llega la
+  // respuesta) volvía a escribir el `input` viejo encima del ''. Usar `prev` (el estado
+  // realmente vigente al aplicar la actualización) elimina la condición de carrera.
+  const setAgentChatField = (key: string, patch: Partial<{ msgs: any[]; input: string; loading: boolean }> | ((current: typeof AGENT_CHAT_DEFAULT) => Partial<{ msgs: any[]; input: string; loading: boolean }>)) => {
+    setAgentChats(prev => {
+      const current = prev[key] || AGENT_CHAT_DEFAULT;
+      const resolved = typeof patch === 'function' ? patch(current) : patch;
+      return { ...prev, [key]: { ...current, ...resolved } };
+    });
   };
+  // Calidad de agentes (ver server/agentFeedback.js): % de lo que cada agente generó que
+  // se aprobó tal cual, se aprobó editado, o se descartó — única señal real de si un
+  // agente funciona bien. Se refresca junto con la hidratación de memoria (mismo useEffect
+  // de montaje) y cada vez que se abre el panel "Agentes IA".
+  type FeedbackMetric = { approved_as_is: number; approved_edited: number; discarded: number; total: number; pctDescartado: number; pctEditado: number; pctAprobadoTalCual: number };
+  const [agentFeedbackMetrics, setAgentFeedbackMetrics] = useState<Record<string, FeedbackMetric>>({});
+  const loadAgentFeedbackMetrics = async () => {
+    try {
+      const res = await fetch(`${API_ROOT}/api/agents/feedback-metrics`);
+      const data = await res.json();
+      setAgentFeedbackMetrics(data || {});
+    } catch (_) { /* panel simplemente no muestra métricas si falla */ }
+  };
+  useEffect(() => { loadAgentFeedbackMetrics(); }, []);
+  // Auditoría (ver server/agentAudit.js): bitácora de las respuestas recientes de los
+  // agentes +, al expandir una, la traza completa de qué herramientas usó, con qué
+  // argumentos y qué resultado — sin esto no había forma de reconstruir por qué un agente
+  // llegó a una respuesta puntual.
+  type AgentRunRow = { id: number | string; agent_name: string; action: string; status: string; costo_estimado_usd: number | null; latencia_ms: number | null; started_at: string };
+  type AgentRunStep = { ronda: number; tool_name: string; args: any; resultado: any; ok: boolean; duracion_ms: number };
+  const [agentRunsRecientes, setAgentRunsRecientes] = useState<AgentRunRow[]>([]);
+  const [runExpandido, setRunExpandido] = useState<string | number | null>(null);
+  const [pasosRunExpandido, setPasosRunExpandido] = useState<AgentRunStep[]>([]);
+  const [cargandoPasos, setCargandoPasos] = useState(false);
+  const loadAgentRunsRecientes = async () => {
+    try {
+      const res = await fetch(`${API_ROOT}/api/agent-runs`, { headers: { 'x-tenant-id': 'tenant-glp-001' } });
+      const data = await res.json();
+      setAgentRunsRecientes(Array.isArray(data) ? data.slice(0, 15) : []);
+    } catch (_) { /* la bitácora simplemente no se muestra si falla */ }
+  };
+  useEffect(() => { loadAgentRunsRecientes(); }, []);
+  const toggleRunExpandido = async (runId: number | string) => {
+    if (runExpandido === runId) { setRunExpandido(null); setPasosRunExpandido([]); return; }
+    setRunExpandido(runId);
+    setCargandoPasos(true);
+    try {
+      const res = await fetch(`${API_ROOT}/api/agent-runs/${runId}/steps`, { headers: { 'x-tenant-id': 'tenant-glp-001' } });
+      const data = await res.json();
+      setPasosRunExpandido(Array.isArray(data) ? data : []);
+    } catch (_) { setPasosRunExpandido([]); }
+    setCargandoPasos(false);
+  };
+  // Memoria persistente (ver server/agentMemory.js): al montar el CRM, se hidrata cada
+  // panel de agente con lo último que ESTE usuario habló con él — antes cada recarga de
+  // página perdía la conversación completa porque solo vivía en `agentChats` (estado del
+  // navegador). Corre una sola vez al login, sin esperar a que el usuario abra cada panel.
+  useEffect(() => {
+    if (!currentUser) return;
+    // Sara usa su propio estado (saraChatMsgs) en vez de agentChats — mismo patrón que en
+    // el resto del componente, ver comentario junto a su panel.
+    (async () => {
+      try {
+        const res = await fetch(`${API_ROOT}/api/agents/thread?agent=SARA&scopeType=user`, { headers: { 'x-user': currentUser } });
+        const data = await res.json();
+        if (Array.isArray(data.messages) && data.messages.length > 0) setSaraChatMsgs(data.messages);
+      } catch (_) { /* si falla la hidratación, el panel simplemente arranca vacío */ }
+    })();
+    const agentes = ['CAMILO', 'SOFIA', 'VALERIA', 'ISABELLA', 'CARTERA', 'LEGAL'];
+    agentes.forEach(async (agentKey) => {
+      try {
+        const res = await fetch(`${API_ROOT}/api/agents/thread?agent=${agentKey}&scopeType=user`, { headers: { 'x-user': currentUser } });
+        const data = await res.json();
+        if (Array.isArray(data.messages) && data.messages.length > 0) {
+          setAgentChatField(agentKey, () => ({ msgs: data.messages }));
+        }
+      } catch (_) { /* si falla la hidratación, el panel simplemente arranca vacío */ }
+    });
+  }, [currentUser]);
   const sendAgentChat = async (agentKey: string) => {
     const chat = getAgentChat(agentKey);
     const q = chat.input.trim();
     if (!q || chat.loading) return;
     const history = chat.msgs.map(m => ({ role: m.role, content: m.content }));
-    setAgentChatField(agentKey, { msgs: [...chat.msgs, { role: 'user', content: q }], input: '', loading: true });
+    setAgentChatField(agentKey, (c) => ({ msgs: [...c.msgs, { role: 'user', content: q }], input: '', loading: true }));
     try {
       const res = await fetch(`${API_ROOT}/api/agents/chat`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-user': currentUser || 'desconocido' },
         body: JSON.stringify({ agent: agentKey, question: q, history }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error');
-      setAgentChatField(agentKey, { msgs: [...getAgentChat(agentKey).msgs, { role: 'agent', content: data.answer, citas: data.citas }], loading: false });
+      setAgentChatField(agentKey, (c) => ({ msgs: [...c.msgs, { role: 'agent', content: data.answer, citas: data.citas, plan: data.plan || undefined }], loading: false }));
     } catch (e: any) {
-      setAgentChatField(agentKey, { msgs: [...getAgentChat(agentKey).msgs, { role: 'agent', content: `No pude responder eso — ${e.message || 'intenta de nuevo'}.` }], loading: false });
+      setAgentChatField(agentKey, (c) => ({ msgs: [...c.msgs, { role: 'agent', content: `No pude responder eso — ${e.message || 'intenta de nuevo'}.` }], loading: false }));
     }
   };
   // navy/gold/border son los colores locales de CADA panel (no siempre son los mismos
@@ -4857,6 +5367,24 @@ Responde SOLO con JSON sin bloques de código:
   // plano (markdown básico de GPT) — antes se mostraban los asteriscos literales sin
   // procesar. Convierte **texto** a negrilla real y alinea los números de lista en una
   // columna fija en vez de dejarlos pegados al texto.
+  // Razonamiento multi-paso (ver server/planificarSiNecesario en index.js): cuando la
+  // pregunta necesitó varios pasos encadenados, el backend devuelve el plan que siguió —
+  // se muestra como una hoja de ruta arriba de la respuesta, no solo el resultado final,
+  // para que quede claro qué hizo el agente y en qué orden.
+  const renderPlanBlock = (plan: string[] | undefined, accentColor: string) => {
+    if (!plan || plan.length === 0) return null;
+    return (
+      <div style={{ fontSize: 10.5, background: `${accentColor}0D`, border: `1px solid ${accentColor}33`, borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
+        <div style={{ fontWeight: 600, color: accentColor, marginBottom: 4, letterSpacing: '0.04em', fontSize: 9, textTransform: 'uppercase' as const }}>Plan seguido</div>
+        {plan.map((paso, i) => (
+          <div key={i} style={{ display: 'flex', gap: 6, marginTop: 2, color: '#4B5563' }}>
+            <span style={{ color: accentColor, fontWeight: 600 }}>✓</span>
+            <span>{paso}</span>
+          </div>
+        ))}
+      </div>
+    );
+  };
   const renderChatContent = (text: string) => {
     const renderInline = (s: string) => {
       const parts = s.split(/(\*\*[^*]+\*\*)/g);
@@ -4889,7 +5417,14 @@ Responde SOLO con JSON sin bloques de código:
     const chat = getAgentChat(agentKey);
     return (
       <div style={{ display: 'flex', flexDirection: 'column' as const, height: 'calc(100vh - 180px)', maxWidth: 760, margin: '0 auto' }}>
-        <div style={{ flex: 1, overflowY: 'auto' as const, padding: '24px 4px', display: 'flex', flexDirection: 'column' as const, gap: 12 }}>
+        {/* Auto-scroll al fondo en cada render — sin esto, tras la primera pregunta el
+            usuario quedaba viendo la conversación desde arriba, con la respuesta lejos del
+            campo de texto, y tenía que bajar a mano para seguir preguntando. Callback ref
+            (no useEffect) a propósito: esta función se invoca dentro de un componente gigante
+            compartido por todos los módulos — un useEffect condicional aquí violaría las
+            Rules of Hooks en cuanto el usuario cambiara de pestaña. */}
+        <div ref={el => { if (el) el.scrollTop = el.scrollHeight; }}
+          style={{ flex: 1, overflowY: 'auto' as const, padding: '24px 4px', display: 'flex', flexDirection: 'column' as const, gap: 12 }}>
           {chat.msgs.length === 0 && (
             <div style={{ textAlign: 'center' as const, color: '#9CA3AF', fontSize: 12, marginTop: 40 }}>{placeholder}</div>
           )}
@@ -4903,18 +5438,9 @@ Responde SOLO con JSON sin bloques de código:
                 borderBottomRightRadius: m.role === 'user' ? 3 : 10,
                 borderBottomLeftRadius: m.role === 'agent' ? 3 : 10,
               }}>
+                {m.role === 'agent' && renderPlanBlock(m.plan, gold)}
                 {renderChatContent(m.content)}
               </div>
-              {m.citas && m.citas.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6, marginTop: 6 }}>
-                  {m.citas.map((c: any) => (
-                    <button key={c.id} onClick={() => { setAgentHistoryDetail(null); setPreviousModule('agentes'); setActiveModule('prospectos'); }}
-                      style={{ fontSize: 10, padding: '3px 9px', borderRadius: 20, background: '#fff', border: `1px solid ${border}`, color: '#6B7280', cursor: 'pointer' }}>
-                      📎 {c.nombre}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
           ))}
           {chat.loading && (
@@ -4942,10 +5468,25 @@ Responde SOLO con JSON sin bloques de código:
     if (!p) return;
     setCalcPrecio(p.minPrice);
     setCalcArea(p.areaMin);
-    setCalcRentaM2(p.rentM2Max || p.rentM2Min || 12);
     setCalcVacancia(p.vacancyDef);
     setCalcCondominio(0); // always default to 0
     setCalcValorizacion(1.0); // parametrizable — 1% por defecto, el usuario la ajusta libremente
+    // Valorización pre-entrega según el segmento del proyecto (Configuración → Financiero),
+    // no un 20% plano para todos — ciudad, golf, isla y playa se valorizan distinto.
+    const segmento = segmentoDeProyecto(p);
+    const cfgSegmento = valorizacionSegmentos.find(v => v.segmento === segmento);
+    setCalcValorizacionPreEntrega(cfgSegmento ? cfgSegmento.pct : 20);
+    // Renta por m² según el segmento del proyecto y el tipo de renta (corta/larga), parametrizada
+    // en Configuración → Financiero. Si el segmento no está en la tabla, cae al dato propio del
+    // proyecto y, en su defecto, a $25/m².
+    const cfgArriendo = arriendoM2Segmentos.find(v => v.segmento === segmento);
+    const tarifaSegmento = cfgArriendo ? (calcTipoRenta === 'corta' ? cfgArriendo.corta : cfgArriendo.larga) : null;
+    setCalcRentaM2(tarifaSegmento ?? p.rentM2Max ?? p.rentM2Min ?? 25);
+    // Plan de Pago Diferido (tarjeta en "Activo y Financiación"): el valor de la propiedad
+    // ya lo toma directo de calcPrecio (mismo campo que el resto de la calculadora) — solo
+    // hace falta sincronizar la separación, que sí es propia de este plan y no existe en
+    // ningún otro lado de la calculadora.
+    setPlazoDiferidoSeparacion(getSeparacionProyecto({ name: p.name, category: p.category }, separacionProyectos));
   };
 
   // ══════════════════════════════════════════════════════
@@ -6046,7 +6587,7 @@ Responde SOLO con JSON sin bloques de código:
           <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
             <div style={{ background: T.card, padding: '12px 14px', borderRadius: 6, flex: 1, border: `1px solid ${T.borderLight}`, borderTop: `3px solid ${T.danger}` }}>
               <div style={{ fontSize: 10, color: T.textSec, letterSpacing: '0.04em', fontWeight: 600 }}>Valor de Ventas Caídas</div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: T.danger, fontFamily: T.fontSans, fontVariantNumeric: 'tabular-nums', marginTop: 4 }}>{usd(totalLost)}</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: T.text, fontFamily: T.fontSans, fontVariantNumeric: 'tabular-nums', marginTop: 4 }}>{usd(totalLost)}</div>
             </div>
             <div style={{ background: T.card, padding: '12px 14px', borderRadius: 6, flex: 1, border: `1px solid ${T.borderLight}`, borderTop: '3px solid #2E5C8A' }}>
               <div style={{ fontSize: 10, color: T.textSec, letterSpacing: '0.04em', fontWeight: 600 }}>Negocios Caídos Registrados</div>
@@ -6105,7 +6646,7 @@ Responde SOLO con JSON sin bloques de código:
                   @media print{ body{padding:20px;} }
                 </style></head><body>
                   <h1>Ventas Caídas</h1>
-                  <div class="sub">GLP · Grupo Los Pueblos · ${today()}</div>
+                  <div class="sub">Capital Brokers Properties · ${today()}</div>
                   <table><thead><tr><th>Cliente</th><th>Proyecto</th><th>Broker</th><th>Fecha</th><th>Motivo</th><th>Razón específica</th><th class="num">Valor USD</th></tr></thead>
                   <tbody>${rowsHtml}</tbody></table>
                   <div class="total">Total: ${usd(lostSales.reduce((s, x) => s + x.value, 0))} · ${lostSales.length} objeciones</div>
@@ -6140,8 +6681,10 @@ Responde SOLO con JSON sin bloques de código:
                   <td style={{ padding: 8 }}>{s.project}</td>
                   <td style={{ padding: 8 }}>{s.broker}</td>
                   <td style={{ padding: 8 }}>{s.date}</td>
-                  <td style={{ padding: 8 }}>{s.category ? badge(s.category, T.sand, T.text) : <span style={{ color: T.textSec, fontSize: 11 }}>Sin categorizar</span>}</td>
-                  <td style={{ padding: 8, color: T.danger, fontWeight: 500 }}>⚠️ {s.reason}</td>
+                  <td style={{ padding: 8, color: T.text }}>{s.category || <span style={{ color: T.textSec, fontSize: 11 }}>Sin categorizar</span>}</td>
+                  <td style={{ padding: 8, color: T.text, fontStyle: 'italic' as const }}>
+                    {s.category && s.reason.startsWith(`${s.category} — `) ? s.reason.slice(s.category.length + 3) : s.reason}
+                  </td>
                   <td style={{ padding: 8, textAlign: 'right', fontWeight: 700, color: T.textSec }}>{usd(s.value)}</td>
                   <td style={{ padding: 8, textAlign: 'center' }}>
                     <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
@@ -6327,44 +6870,42 @@ Responde SOLO con JSON sin bloques de código:
     // se repite aquí porque ese cálculo vive dentro del render del panel de Camilo, con
     // scope propio, y el Dashboard general lo necesita para su propio drilldown.
     const renderRankingProspectosDrilldown = () => {
-      const ranked = [...prospects]
-        .filter(p => !['Post-venta', 'Perdido'].includes(p.estado))
+      // Presidencia solo necesita saber quién está a punto de firmar — sin el detalle
+      // interno de scoring. Lista los prospectos en Negociación o Cierre, los más
+      // avanzados (Cierre) primero.
+      const enCierre = [...prospects]
+        .filter(p => ['Negociación', 'Cierre'].includes(p.estado))
         .map(p => ({
           ...p,
-          score: getProspectScore(p),
           timing: getTimingDays(p),
           objActivasTipo: objections.filter(o => o.prospecto && p.nombre && o.prospecto.toLowerCase().includes(p.nombre.toLowerCase())).map(o => o.tipo),
         }))
-        .sort((a, b) => b.score - a.score);
+        .sort((a, b) => (a.estado === 'Cierre' ? 0 : 1) - (b.estado === 'Cierre' ? 0 : 1));
       return (
         <div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr style={{ borderBottom: `2px solid ${T.border}` }}>
-                  {['#', 'Prospecto', 'Etapa', 'Score %', 'Cierre est.', 'Objeciones activas', 'Recomendación Sara'].map(h => (
+                  {['#', 'Prospecto', 'Etapa', 'Presupuesto', 'Cierre est.', 'Objeciones activas', 'Broker'].map(h => (
                     <th key={h} style={{ padding: '8px 10px', textAlign: 'left', color: T.textSec, fontSize: 11, fontWeight: 700 }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {ranked.map((p, i) => {
-                  const scoreBg = p.score >= 70 ? '#10B98120' : p.score >= 40 ? '#F59E0B20' : '#EF444420';
-                  const scoreColor = p.score >= 70 ? '#10B981' : p.score >= 40 ? '#F59E0B' : '#EF4444';
-                  const rec = p.score >= 70 ? 'Llamar hoy — cierre inminente' :
-                    p.score >= 50 ? 'Enviar propuesta actualizada' :
-                    p.score >= 30 ? 'Email de valor + agenda reunión' : 'Reactivar con incentivo especial';
-                  return (
+                {enCierre.length === 0 ? (
+                  <tr><td colSpan={7} style={{ padding: '20px 10px', textAlign: 'center', color: T.textSec, fontSize: 12 }}>Sin prospectos en Negociación o Cierre</td></tr>
+                ) : enCierre.map((p, i) => (
                     <tr key={p.id} style={{ borderBottom: `1px solid ${T.borderLight}`, background: i % 2 === 0 ? T.bg : 'transparent' }}>
                       <td style={{ padding: '8px 10px', color: T.textSec, fontWeight: 700 }}>{i + 1}</td>
                       <td style={{ padding: '8px 10px' }}>
                         <div style={{ fontWeight: 600, color: T.text }}>{p.nombre} {p.apellido}</div>
-                        <div style={{ fontSize: 10, color: T.textSec }}>${(p.presupuesto_usd || 0).toLocaleString()} USD · {p.ocupacion || '—'}</div>
+                        <div style={{ fontSize: 10, color: T.textSec }}>{p.ocupacion || '—'}</div>
                       </td>
-                      <td style={{ padding: '8px 10px', color: T.text }}>{p.estado}</td>
                       <td style={{ padding: '8px 10px' }}>
-                        <div style={{ display: 'inline-block', background: scoreBg, color: scoreColor, fontWeight: 800, fontSize: 13, padding: '3px 10px', borderRadius: 6 }}>{p.score}%</div>
+                        <div style={{ display: 'inline-block', background: p.estado === 'Cierre' ? `${T.coral}20` : `${T.teal}14`, color: p.estado === 'Cierre' ? T.coral : T.teal, fontWeight: 700, fontSize: 11, padding: '3px 10px', borderRadius: 6 }}>{p.estado}</div>
                       </td>
+                      <td style={{ padding: '8px 10px', color: T.text }}>${(p.presupuesto_usd || 0).toLocaleString()} USD</td>
                       <td style={{ padding: '8px 10px', color: T.text }}>{p.timing > 0 ? `~${p.timing}d` : 'Cerrado'}</td>
                       <td style={{ padding: '8px 10px' }}>
                         {p.objActivasTipo.length > 0
@@ -6376,10 +6917,9 @@ Responde SOLO con JSON sin bloques de código:
                           : <span style={{ fontSize: 10, color: T.textSec }}>Sin objeciones</span>
                         }
                       </td>
-                      <td style={{ padding: '8px 10px', fontSize: 11, color: T.text, maxWidth: 180 }}>{rec}</td>
+                      <td style={{ padding: '8px 10px', fontSize: 11, color: T.text }}>{p.broker_asignado || '—'}</td>
                     </tr>
-                  );
-                })}
+                  ))}
               </tbody>
             </table>
           </div>
@@ -6478,7 +7018,7 @@ Responde SOLO con JSON sin bloques de código:
             'conversion':     { tip:`Cálculo: prospectos en Cierre o Post-venta ÷ total de prospectos. ${prospects.filter(p => ['Cierre','Post-venta'].includes(p.estado)).length} de ${prospects.length} prospectos cerraron.`, benchmark:'Inmobiliario premium: 10–20% · Top performers: >25%' },
             'prospects_total':{ tip:'Total de prospectos registrados en el CRM. Incluye todos los estados. Haz clic para ver el detalle por etapa.', benchmark:'Volumen mínimo para estadísticas confiables: ≥50 prospectos' },
             'brokers_active': { tip:'Número de brokers con estado activo. Un broker activo debe gestionar entre 15 y 25 prospectos simultáneamente para ser productivo.', benchmark:'Ratio óptimo: 1 broker por cada 20–25 prospectos activos' },
-            'ranking_prospectos': { tip:'Prospecto activo con mayor score de conversión (mismo cálculo que la pestaña Ranking de Camilo: etapa, presupuesto, objeciones y timing). Haz clic para ver el ranking completo.', benchmark:'Score ≥70%: contactar hoy · 40–69%: seguimiento activo · <40%: reactivar' },
+            'ranking_prospectos': { tip:'Prospectos activos en etapa de Negociación o Cierre — los que están más cerca de firmar. Haz clic para ver el listado completo.', benchmark:undefined },
             'camilo_prospects':{ tip:'Prospectos que el Agente Camilo está investigando o ha calificado automáticamente. Camilo pre-califica leads antes de asignarlos a un broker.', benchmark:undefined },
             'sara_history':   { tip:'Número de correos gestionados por Sara, la agente de seguimiento por email. Un alto volumen indica buena automatización del nurturing.', benchmark:undefined },
             'next_event':     { tip:'Días hasta el próximo evento comercial programado. Los eventos son una fuente clave de prospectos nuevos.', benchmark:'Frecuencia recomendada: al menos 1 evento comercial por mes' },
@@ -6539,7 +7079,7 @@ Responde SOLO con JSON sin bloques de código:
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 7, padding: '16px 18px 18px' }}>
                         {top3.map(([name, score], i) => {
-                          const colors = [T.teal, T.coral, `${T.teal}77`];
+                          const colors = [T.teal, `${T.teal}B3`, `${T.teal}66`];
                           const pct = Math.round((score / maxVal) * 100);
                           return (
                             <div key={name}>
@@ -6560,21 +7100,43 @@ Responde SOLO con JSON sin bloques de código:
                 {kpiCard('conversion',     'trend-up',   <>{fmt(kpiConversion)}%</>,         'Conversión Global',  'Ver Detalle (Objeciones)', T.teal)}
                 {kpiCard('prospects_total','users',       <>{prospects.length}</>,                                                                   'Prospectos Totales', 'Ver Detalle (Drilldown)', T.teal)}
                 {(() => {
-                  // Mismo cálculo de score que la pestaña "Ranking Prospectos" de Camilo —
-                  // reemplaza el tile de "Brokers Activos" (conteo estático, poco accionable
-                  // día a día) por el prospecto activo mejor rankeado, que sí dice qué hacer
-                  // hoy. Los brokers activos siguen visibles en el módulo Brokers.
-                  const top = [...prospects]
-                    .filter(p => !['Post-venta', 'Perdido'].includes(p.estado))
-                    .map(p => ({ ...p, score: getProspectScore(p) }))
-                    .sort((a, b) => b.score - a.score)[0];
-                  const rec = !top ? '' : top.score >= 70 ? 'Llamar hoy — cierre inminente' :
-                    top.score >= 50 ? 'Enviar propuesta actualizada' :
-                    top.score >= 30 ? 'Email de valor + agenda reunión' : 'Reactivar con incentivo especial';
-                  return kpiCard('ranking_prospectos', 'handshake',
-                    top ? <>{top.score}%</> : <>—</>,
-                    top ? `Top: ${top.nombre}` : 'Ranking Prospectos',
-                    top ? rec : 'Sin prospectos activos', T.teal);
+                  // Presidencia no necesita el detalle del score interno — necesita saber a
+                  // quién llamar hoy. Este tile reemplaza el ranking por score con la lista de
+                  // prospectos que ya están en Negociación o Cierre (las etapas de cierre del
+                  // pipeline, ver FUNNEL_STAGES), ordenados por los más avanzados primero.
+                  const enCierre = [...prospects]
+                    .filter(p => ['Negociación', 'Cierre'].includes(p.estado))
+                    .sort((a, b) => (a.estado === 'Cierre' ? 0 : 1) - (b.estado === 'Cierre' ? 0 : 1));
+                  const top3Cierre = enCierre.slice(0, 3);
+                  return (
+                    <div onClick={() => { setActiveDrilldown(activeDrilldown?.type === 'ranking_prospectos' ? null : { type: 'ranking_prospectos', data: { enCierre } } as any); setCarteraRightOpen(false); }}
+                      style={{ background: T.card, border: `1px solid ${activeDrilldown?.type === 'ranking_prospectos' ? T.teal : T.border}`, borderRadius: 6, overflow: 'hidden', cursor: 'pointer', transition: 'all 0.2s', boxShadow: activeDrilldown?.type === 'ranking_prospectos' ? `0 0 0 1px ${T.teal}` : 'none' }}>
+                      <div style={{ background: KPI_ACCENT, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {kpiIcon('ranking_prospectos')}
+                        <div style={{ fontSize: 9, fontWeight: 700, color: '#C9DCEF', letterSpacing: '0.14em', textTransform: 'uppercase' as const, display: 'flex', alignItems: 'center', gap: 4 }}>
+                          Fase de Cierre{DASH_TIPS['ranking_prospectos'] && <InfoTip text={DASH_TIPS['ranking_prospectos'].tip} benchmark={DASH_TIPS['ranking_prospectos'].benchmark}/>}
+                        </div>
+                      </div>
+                      {enCierre.length === 0 ? (
+                        <div style={{ padding: '16px 18px 18px' }}>
+                          <div style={{ fontSize: 30, fontWeight: 800, color: T.text, lineHeight: 1, fontFamily: T.fontSans }}>0</div>
+                          <div style={{ fontSize: 10.5, color: T.textSec, marginTop: 8, fontWeight: 600 }}>Sin prospectos en Negociación o Cierre</div>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 7, padding: '16px 18px 18px' }}>
+                          {top3Cierre.map((p) => (
+                            <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 10 }}>
+                              <span style={{ fontWeight: 700, color: T.teal }}>{p.nombre} {p.apellido}</span>
+                              <span style={{ color: p.estado === 'Cierre' ? T.coral : T.textSec, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.06em', fontSize: 9 }}>{p.estado}</span>
+                            </div>
+                          ))}
+                          {enCierre.length > 3 && (
+                            <div style={{ fontSize: 10, color: T.textSec, fontWeight: 600, marginTop: -2 }}>+{enCierre.length - 3} más</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
                 })()}
                 <div onClick={() => { setActiveDrilldown(activeDrilldown?.type === 'next_event' ? null : { type: 'next_event' }); setCarteraRightOpen(false); }}
                   style={{ background: T.card, border: `1px solid ${activeDrilldown?.type === 'next_event' ? T.teal : T.border}`, borderRadius: 6, overflow: 'hidden', cursor: nextEvent ? 'pointer' : 'default', transition: 'all 0.2s', boxShadow: activeDrilldown?.type === 'next_event' ? `0 0 0 1px ${T.teal}` : 'none' }}>
@@ -6600,7 +7162,7 @@ Responde SOLO con JSON sin bloques de código:
 
         {/* Active Drilldown Container */}
         {activeDrilldown && (
-          <div style={{ marginTop: 24, background: '#FAF9F6', borderRadius: 4, padding: 20, border: `1px solid ${T.border}`, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+          <div style={{ marginTop: 24, background: T.bg, borderRadius: 4, padding: 20, border: `1px solid ${T.border}`, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottom: `1px solid ${T.border}`, paddingBottom: 10 }}>
               <div>
                 <div style={{ fontSize: 9, textTransform: 'uppercase' as const, letterSpacing: '2px', color: '#9CA3AF', marginBottom: 4 }}>
@@ -6610,7 +7172,7 @@ Responde SOLO con JSON sin bloques de código:
                   {activeDrilldown.type === 'source' && 'Canal de captación'}
                   {activeDrilldown.type === 'prospects_total' && 'Registro general'}
                   {activeDrilldown.type === 'brokers_active' && 'Red comercial'}
-                  {activeDrilldown.type === 'ranking_prospectos' && 'Priorización comercial'}
+                  {activeDrilldown.type === 'ranking_prospectos' && 'Pipeline comercial'}
                   {activeDrilldown.type === 'camilo_prospects' && 'Inteligencia IA'}
                   {activeDrilldown.type === 'sara_history' && 'Seguimiento IA'}
                   {activeDrilldown.type === 'next_event' && 'Agenda comercial'}
@@ -6623,7 +7185,7 @@ Responde SOLO con JSON sin bloques de código:
                   {activeDrilldown.type === 'source' && `Leads por Fuente — ${activeDrilldown.source}`}
                   {activeDrilldown.type === 'prospects_total' && 'Prospectos Registrados'}
                   {activeDrilldown.type === 'brokers_active' && 'Red de Brokers Activos'}
-                  {activeDrilldown.type === 'ranking_prospectos' && 'Ranking de Prospectos por Score'}
+                  {activeDrilldown.type === 'ranking_prospectos' && 'Prospectos en Fase de Cierre'}
                   {activeDrilldown.type === 'camilo_prospects' && 'Prospectos Identificados por Camilo'}
                   {activeDrilldown.type === 'sara_history' && 'Historial de Correos y Registros de Sara'}
                   {activeDrilldown.type === 'next_event' && 'Próximo Evento Comercial'}
@@ -6651,7 +7213,7 @@ Responde SOLO con JSON sin bloques de código:
               lostSales.forEach(s => { count2[s.project] = (count2[s.project] || 0) + 1; });
               const top3full = Object.entries(count2).sort((a, b) => b[1] - a[1]).slice(0, 3);
               const rankLabels = ['I', 'II', 'III'];
-              const rankColors = ['#B89047', '#8C8C8C', '#A0714F'];
+              const rankColors = [T.teal, `${T.teal}B3`, `${T.teal}66`];
               return (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
                   {top3full.map(([pname, score], i) => {
@@ -6660,58 +7222,58 @@ Responde SOLO con JSON sin bloques de código:
                     const cerrados = closedSales.filter(s => s.project === pname);
                     const caidos = lostSales.filter(s => s.project === pname);
                     return (
-                      <div key={pname} style={{ background: '#fff', padding: '24px 20px', border: `1px solid ${i === 0 ? '#D4AF6B' : '#E5E7EB'}`, borderTop: `3px solid ${rankColors[i]}`, position: 'relative' as const, display: 'flex', flexDirection: 'column' as const, height: '100%' }}>
+                      <div key={pname} style={{ background: T.card, padding: '24px 20px', border: `1px solid ${T.border}`, borderTop: `3px solid ${rankColors[i]}`, position: 'relative' as const, display: 'flex', flexDirection: 'column' as const, height: '100%' }}>
                         {/* Ranking */}
                         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
                           <div>
                             <div style={{ fontSize: 9, textTransform: 'uppercase' as const, letterSpacing: '2px', color: rankColors[i], marginBottom: 6, fontWeight: 600 }}>
                               Posición {rankLabels[i]}
                             </div>
-                            <div style={{ fontFamily: T.fontSerif, fontSize: 20, fontWeight: 400, color: '#111827', lineHeight: 1.2 }}>{pname}</div>
+                            <div style={{ fontFamily: T.fontSans, fontSize: 17, fontWeight: 800, color: T.text, lineHeight: 1.2, letterSpacing: '-0.01em' }}>{pname}</div>
                           </div>
-                          <div style={{ fontSize: 28, fontFamily: T.fontSerif, fontWeight: 300, color: rankColors[i], lineHeight: 1 }}>{rankLabels[i]}</div>
+                          <div style={{ fontSize: 24, fontFamily: T.fontSans, fontWeight: 800, color: rankColors[i], lineHeight: 1 }}>{rankLabels[i]}</div>
                         </div>
 
                         {/* Datos del proyecto */}
                         {proj && (
-                          <div style={{ marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid #F3F4F6' }}>
-                            <div style={{ fontSize: 10, textTransform: 'uppercase' as const, letterSpacing: '1px', color: '#9CA3AF', marginBottom: 4 }}>{proj.zone}</div>
-                            <div style={{ fontSize: 12, color: '#374151', marginBottom: 3 }}>
+                          <div style={{ marginBottom: 16, paddingBottom: 16, borderBottom: `1px solid ${T.borderLight}` }}>
+                            <div style={{ fontSize: 10, textTransform: 'uppercase' as const, letterSpacing: '1px', color: T.textSec, marginBottom: 4, fontWeight: 600 }}>{proj.zone}</div>
+                            <div style={{ fontSize: 12, color: T.text, fontWeight: 600, marginBottom: 3 }}>
                               ${(proj.minPrice || 0).toLocaleString()} – ${(proj.maxPrice || 0).toLocaleString()} USD
                             </div>
-                            <div style={{ fontSize: 11, color: '#9CA3AF' }}>
+                            <div style={{ fontSize: 11, color: T.textSec }}>
                               {proj.bedrooms} rec. · {proj.areaMin}–{proj.areaMax} m²
-                              <span style={{ marginLeft: 8, paddingLeft: 8, borderLeft: '1px solid #E5E7EB' }}>Entrega {proj.entrega}</span>
+                              <span style={{ marginLeft: 8, paddingLeft: 8, borderLeft: `1px solid ${T.border}` }}>Entrega {proj.entrega}</span>
                             </div>
                           </div>
                         )}
 
                         {/* Métricas */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0, marginBottom: 16, border: '1px solid #F3F4F6' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0, marginBottom: 16, border: `1px solid ${T.borderLight}` }}>
                           {[
                             { label: 'Interesados', val: interesados.length },
                             { label: 'Cerrados', val: cerrados.length },
                             { label: 'Caídos', val: caidos.length },
                           ].map(({ label, val }, idx) => (
-                            <div key={label} style={{ padding: '10px 8px', textAlign: 'center' as const, borderRight: idx < 2 ? '1px solid #F3F4F6' : 'none' }}>
-                              <div style={{ fontFamily: T.fontSerif, fontSize: 24, fontWeight: 400, color: '#111827', lineHeight: 1 }}>{val}</div>
-                              <div style={{ fontSize: 8, textTransform: 'uppercase' as const, letterSpacing: '1.5px', color: '#9CA3AF', marginTop: 4 }}>{label}</div>
+                            <div key={label} style={{ padding: '10px 8px', textAlign: 'center' as const, borderRight: idx < 2 ? `1px solid ${T.borderLight}` : 'none' }}>
+                              <div style={{ fontFamily: T.fontSans, fontSize: 22, fontWeight: 800, color: T.text, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{val}</div>
+                              <div style={{ fontSize: 8, textTransform: 'uppercase' as const, letterSpacing: '1.5px', color: T.textSec, marginTop: 4, fontWeight: 600 }}>{label}</div>
                             </div>
                           ))}
                         </div>
 
                         {/* Lista prospectos — altura fija con scroll interno para que las
                             3 tarjetas midan lo mismo sin importar cuántos prospectos tenga cada una. */}
-                        <div style={{ fontSize: 9, textTransform: 'uppercase' as const, letterSpacing: '1.5px', color: '#9CA3AF', marginBottom: 8 }}>Prospectos interesados</div>
+                        <div style={{ fontSize: 9, textTransform: 'uppercase' as const, letterSpacing: '1.5px', color: T.textSec, marginBottom: 8, fontWeight: 600 }}>Prospectos interesados</div>
                         <div style={{ flex: 1, minHeight: 140, maxHeight: 140, overflowY: 'auto' as const }}>
                           {interesados.length === 0 ? (
-                            <div style={{ fontSize: 11, color: '#9CA3AF', fontStyle: 'italic' }}>Sin prospectos aún</div>
+                            <div style={{ fontSize: 11, color: T.textSec, fontStyle: 'italic' }}>Sin prospectos aún</div>
                           ) : (
                             <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 0 }}>
                               {interesados.map((p, idx) => (
-                                <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, padding: '6px 0', borderBottom: idx < interesados.length - 1 ? '1px solid #F9FAFB' : 'none' }}>
-                                  <span style={{ fontFamily: T.fontSerif, fontSize: 13, fontWeight: 400, color: '#111827' }}>{p.nombre} {p.apellido}</span>
-                                  <span style={{ fontSize: 9, textTransform: 'uppercase' as const, letterSpacing: '0.8px', color: '#9CA3AF' }}>{p.estado}</span>
+                                <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, padding: '6px 0', borderBottom: idx < interesados.length - 1 ? `1px solid ${T.borderLight}` : 'none' }}>
+                                  <span style={{ fontFamily: T.fontSans, fontSize: 12, fontWeight: 600, color: T.text }}>{p.nombre} {p.apellido}</span>
+                                  <span style={{ fontSize: 9, textTransform: 'uppercase' as const, letterSpacing: '0.8px', color: T.textSec, fontWeight: 600 }}>{p.estado}</span>
                                 </div>
                               ))}
                             </div>
@@ -6719,23 +7281,23 @@ Responde SOLO con JSON sin bloques de código:
                         </div>
 
                         {/* Score */}
-                        <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #F3F4F6', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                        <div style={{ marginTop: 16, paddingTop: 12, borderTop: `1px solid ${T.borderLight}`, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 5, position: 'relative' as const }}>
-                            <span style={{ fontSize: 9, textTransform: 'uppercase' as const, letterSpacing: '1.5px', color: '#9CA3AF' }}>Score de demanda</span>
+                            <span style={{ fontSize: 9, textTransform: 'uppercase' as const, letterSpacing: '1.5px', color: T.textSec, fontWeight: 600 }}>Score de demanda</span>
                             <div style={{ position: 'relative' as const, display: 'inline-flex' }}
                               onMouseEnter={e => { const t = (e.currentTarget as HTMLElement).querySelector('.score-tip') as HTMLElement; if(t) t.style.display='block'; }}
                               onMouseLeave={e => { const t = (e.currentTarget as HTMLElement).querySelector('.score-tip') as HTMLElement; if(t) t.style.display='none'; }}>
-                              <span style={{ width: 14, height: 14, borderRadius: '50%', background: '#E5E7EB', color: '#6B7280', fontSize: 9, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'default', flexShrink: 0, lineHeight: 1 }}>?</span>
-                              <div className="score-tip" style={{ display: 'none', position: 'absolute' as const, bottom: 20, left: '50%', transform: 'translateX(-50%)', width: 220, background: '#1F2937', color: '#F9FAFB', fontSize: 10, lineHeight: 1.6, padding: '10px 12px', zIndex: 999, pointerEvents: 'none' as const, boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }}>
-                                <div style={{ fontWeight: 700, marginBottom: 6, color: '#B89047' }}>Cómo se calcula</div>
+                              <span style={{ width: 14, height: 14, borderRadius: '50%', background: T.borderLight, color: T.textSec, fontSize: 9, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'default', flexShrink: 0, lineHeight: 1 }}>?</span>
+                              <div className="score-tip" style={{ display: 'none', position: 'absolute' as const, bottom: 20, left: '50%', transform: 'translateX(-50%)', width: 220, background: T.teal, color: '#F9FAFB', fontSize: 10, lineHeight: 1.6, padding: '10px 12px', zIndex: 999, pointerEvents: 'none' as const, boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }}>
+                                <div style={{ fontWeight: 700, marginBottom: 6, color: T.coral }}>Cómo se calcula</div>
                                 <div>Prospectos interesados: <strong>×2 pts</strong></div>
                                 <div>Ventas cerradas: <strong>×3 pts</strong></div>
                                 <div>Leads perdidos: <strong>×1 pt</strong></div>
-                                <div style={{ marginTop: 6, color: '#9CA3AF', fontSize: 9 }}>Refleja la tracción real del proyecto en el mercado. Mayor score = mayor demanda acumulada.</div>
+                                <div style={{ marginTop: 6, color: '#C9DCEF', fontSize: 9 }}>Refleja la tracción real del proyecto en el mercado. Mayor score = mayor demanda acumulada.</div>
                               </div>
                             </div>
                           </div>
-                          <span style={{ fontFamily: T.fontSerif, fontSize: 20, fontWeight: 400, color: rankColors[i] }}>{score} pts</span>
+                          <span style={{ fontFamily: T.fontSans, fontSize: 17, fontWeight: 800, color: rankColors[i] }}>{score} pts</span>
                         </div>
                       </div>
                     );
@@ -6964,17 +7526,16 @@ Responde SOLO con JSON sin bloques de código:
 
   const LeadScoreCard = ({ p }: { p: Prospect }) => {
     const { total, desglose } = calcLeadScore(p);
-    const color = total >= 70 ? '#16a34a' : total >= 40 ? '#d97706' : '#dc2626';
+    const color = total >= 70 ? T.success : total >= 40 ? T.warning : T.danger;
     const label = total >= 70 ? 'Caliente' : total >= 40 ? 'Tibio' : 'Frío';
-    const bgLabel = total >= 70 ? '#f0fdf4' : total >= 40 ? '#fffbeb' : '#fef2f2';
     const ff = T.fontSans;
     return (
-      <div style={{background:'#f8fafc',border:`1px solid ${T.border}`,borderRadius:10,padding:'14px 16px'}}>
+      <div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:10,padding:'14px 16px'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
           <span style={{fontSize:11,fontWeight:700,color:T.textSec,textTransform:'uppercase',letterSpacing:'0.06em',fontFamily:ff}}>Lead Score IA</span>
           <div style={{display:'flex',alignItems:'center',gap:8}}>
             <span style={{fontSize:22,fontWeight:800,color,fontFamily:ff}}>{total}</span>
-            <span style={{fontSize:10,fontWeight:700,background:bgLabel,color,border:`1px solid ${color}30`,borderRadius:20,padding:'2px 8px',fontFamily:ff}}>{label}</span>
+            <span style={{fontSize:10,fontWeight:700,background:`${color}18`,color,border:`1px solid ${color}30`,borderRadius:20,padding:'2px 8px',fontFamily:ff}}>{label}</span>
           </div>
         </div>
         {/* Barra total */}
@@ -7300,7 +7861,7 @@ Responde SOLO con JSON sin bloques de código:
         // Masthead
         html += `<div class="masthead">
           <div>
-            <div class="brand">GLP · Grupo Los Pueblos</div>
+            <div class="brand">Capital Brokers Properties</div>
             <div class="brand-sub">Panama · Real Estate &amp; Investment</div>
           </div>
           <div class="doc-label">
@@ -7358,7 +7919,7 @@ Responde SOLO con JSON sin bloques de código:
 
         // Footer
         html += `<div class="footer">
-          <div class="footer-brand">GLP · Grupo Los Pueblos · Panama</div>
+          <div class="footer-brand">Capital Brokers Properties · Panama</div>
           <div class="footer-note">Este documento es de carácter confidencial. Emitido por la plataforma GLP CRM. Todos los montos expresados en dólares americanos (USD).</div>
         </div>`;
 
@@ -7830,18 +8391,18 @@ Responde SOLO con JSON sin bloques de código:
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
               <div>
                 <div style={{ fontSize: 20, fontWeight: 700, color: T.text }}>{dp.nombre} {dp.apellido}</div>
-                <div style={{ fontSize: 13, color: T.textSec }}>{dp.ocupacion} · Registrado el {dp.fecha_entrada}</div>
+                <div style={{ fontSize: 13, color: T.textSec }}>{dp.ocupacion} · Registrado el {fmtFechaHora(dp.fecha_entrada)}</div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 {/* Score badge compacto en header */}
-                {(() => { const sc = calcClosingProb(dp); const c = sc>=70?'#16a34a':sc>=40?'#d97706':'#dc2626'; const ff=T.fontSans; return (
-                  <div style={{display:'flex',flexDirection:'column',alignItems:'center',background:'#f8fafc',border:`2px solid ${c}`,borderRadius:8,padding:'4px 10px',minWidth:52}}>
+                {(() => { const sc = calcClosingProb(dp); const c = sc>=70?T.success:sc>=40?T.warning:T.danger; const ff=T.fontSans; return (
+                  <div style={{display:'flex',flexDirection:'column',alignItems:'center',background:T.bg,border:`2px solid ${c}`,borderRadius:8,padding:'4px 10px',minWidth:52}}>
                     <span style={{fontSize:18,fontWeight:800,color:c,lineHeight:1,fontFamily:ff}}>{sc}</span>
                     <span style={{fontSize:8,fontWeight:700,color:c,textTransform:'uppercase',letterSpacing:'0.05em',fontFamily:ff}}>Score</span>
                   </div>
                 ); })()}
                 {badge(dp.estado, T.sand, T.text)}
-                <button onClick={() => setProspectEdit(isEditing ? null : dp.id)} style={btnSecondary({ padding: '4px 12px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 6 })}>
+                <button onClick={() => { if (isEditing) saveProspectBackend(dp); setProspectEdit(isEditing ? null : dp.id); }} style={btnSecondary({ padding: '4px 12px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 6 })}>
                   {isEditing ? (
                     <>
                       {renderButtonIcon('check')}
@@ -7952,7 +8513,7 @@ Responde SOLO con JSON sin bloques de código:
                   </div>
                   <div>
                     <div style={labelStyle}>Fecha de Registro</div>
-                    <div>{dp.fecha_entrada}</div>
+                    <div>{fmtFechaHora(dp.fecha_entrada)}</div>
                   </div>
                 </div>
 
@@ -7966,13 +8527,15 @@ Responde SOLO con JSON sin bloques de código:
                       {(dp.notas || '').split('\n').map((line, i) => {
                         const isSeparator = /^---/.test(line.trim());
                         if (isSeparator) return <hr key={i} style={{ border: 'none', borderTop: `1px solid ${T.borderLight}`, margin: '10px 0' }} />;
+                        // Líneas de resumen (emoji al inicio) → fondo suave, sin el ícono —
+                        // el fondo ya distingue estas líneas, el emoji sobraba.
+                        const isHighlight = /^[📋🏠🔍👤🎯✅💬💰]/.test(line.trim());
+                        const cleanLine = isHighlight ? line.trim().replace(/^[📋🏠🔍👤🎯✅💬💰]\s*/, '') : line;
                         // Renderizar **negrita**
-                        const parts = line.split(/(\*\*[^*]+\*\*)/g).map((part, j) => {
+                        const parts = cleanLine.split(/(\*\*[^*]+\*\*)/g).map((part, j) => {
                           if (/^\*\*[^*]+\*\*$/.test(part)) return <strong key={j}>{part.slice(2, -2)}</strong>;
                           return <span key={j}>{part}</span>;
                         });
-                        // Líneas de resumen (emoji al inicio) → fondo suave
-                        const isHighlight = /^[📋🏠🔍👤🎯✅💬💰]/.test(line.trim());
                         return (
                           <div key={i} style={isHighlight ? { background: T.sand, borderRadius: 6, padding: '3px 8px', marginBottom: 4, fontWeight: 500, color: T.text } : { marginBottom: 2, color: T.textSec }}>
                             {parts}
@@ -8605,7 +9168,7 @@ Responde SOLO con JSON sin bloques de código:
                         {p.nombre} {p.apellido}
                       </span>
                     </td>
-                    <td style={{ padding: '10px 12px', fontSize: 12 }}>{p.fecha_entrada}</td>
+                    <td style={{ padding: '10px 12px', fontSize: 12 }}>{fmtFechaHora(p.fecha_entrada)}</td>
                     <td style={{ padding: '10px 12px', fontSize: 12 }}>{p.ocupacion}</td>
                     <td style={{ padding: '10px 12px' }}>
                       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -9389,7 +9952,7 @@ Responde SOLO con JSON sin bloques de código:
                             @media print{ body{padding:20px;} }
                           </style></head><body>
                             <h1>${ev.titulo}</h1>
-                            <div class="sub">${ev.venue} · ${ev.fecha} · GLP · Grupo Los Pueblos</div>
+                            <div class="sub">${ev.venue} · ${ev.fecha} · Capital Brokers Properties</div>
                             <table><thead><tr><th>Concepto</th><th style="text-align:right">Valor USD</th></tr></thead><tbody>${rowsHtml}</tbody></table>
                             <div class="totals">
                               <div>Presupuesto asignado: <b>${usd(ev.presupuesto_asignado)}</b></div>
@@ -10883,12 +11446,12 @@ Responde SOLO con JSON sin bloques de código:
                 setSaraChatLoading(true);
                 try {
                   const res = await fetch(`${API_ROOT}/api/sara/chat`, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'x-user': currentUser || 'desconocido' },
                     body: JSON.stringify({ question: q, history }),
                   });
                   const data = await res.json();
                   if (!res.ok) throw new Error(data.error || 'Error');
-                  setSaraChatMsgs(prev => [...prev, { role: 'agent', content: data.answer, citas: data.citas }]);
+                  setSaraChatMsgs(prev => [...prev, { role: 'agent', content: data.answer, citas: data.citas, plan: data.plan || undefined }]);
                 } catch (e: any) {
                   setSaraChatMsgs(prev => [...prev, { role: 'agent', content: `No pude responder eso — ${e.message || 'intenta de nuevo'}.` }]);
                 } finally {
@@ -10897,7 +11460,10 @@ Responde SOLO con JSON sin bloques de código:
               };
               return (
                 <div style={{ display: 'flex', flexDirection: 'column' as const, height: 'calc(100vh - 180px)', maxWidth: 760, margin: '0 auto' }}>
-                  <div style={{ flex: 1, overflowY: 'auto' as const, padding: '24px 4px', display: 'flex', flexDirection: 'column' as const, gap: 12 }}>
+                  {/* Auto-scroll al fondo — mismo fix que el resto de los agentes (ver
+                      renderAgentChatPanel), este bloque es el único chat que no lo reutiliza. */}
+                  <div ref={el => { if (el) el.scrollTop = el.scrollHeight; }}
+                    style={{ flex: 1, overflowY: 'auto' as const, padding: '24px 4px', display: 'flex', flexDirection: 'column' as const, gap: 12 }}>
                     {saraChatMsgs.length === 0 && (
                       <div style={{ textAlign: 'center' as const, color: '#9CA3AF', fontSize: 12, marginTop: 40 }}>
                         Pregúntale a Sara sobre tus prospectos, mensajes pendientes o alertas — ej. "¿qué leads llevan más de 5 días sin respuesta?"
@@ -10913,18 +11479,9 @@ Responde SOLO con JSON sin bloques de código:
                           borderBottomRightRadius: m.role === 'user' ? 3 : 10,
                           borderBottomLeftRadius: m.role === 'agent' ? 3 : 10,
                         }}>
+                          {m.role === 'agent' && renderPlanBlock(m.plan, S_GOLD)}
                           {renderChatContent(m.content)}
                         </div>
-                        {m.citas && m.citas.length > 0 && (
-                          <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6, marginTop: 6 }}>
-                            {m.citas.map(c => (
-                              <button key={c.id} onClick={() => { setAgentHistoryDetail(null); setPreviousModule('agentes'); setActiveModule('prospectos'); }}
-                                style={{ fontSize: 10, padding: '3px 9px', borderRadius: 20, background: '#fff', border: `1px solid ${S_PARCH}`, color: '#6B7280', cursor: 'pointer' }}>
-                                📎 {c.nombre}
-                              </button>
-                            ))}
-                          </div>
-                        )}
                       </div>
                     ))}
                     {saraChatLoading && (
@@ -13227,20 +13784,26 @@ Responde SOLO con JSON sin bloques de código:
     const cuotaAnualHip = cuotaMes * 12;
     const cuotaInicialdUSD = calcPrecio * (calcCuotaInicial / 100);
 
-    // Income
-    const rentaMensual = calcRentaM2 * calcArea;
+    // Income — renta por m² y vacancia solo aplican para perfiles con ingreso por alquiler
+    // (Renta/Disfrute). Antes se usaban siempre, aunque el campo estuviera oculto en la UI
+    // para Patrimonial — un activo de plusvalía pura terminaba con "ingreso por renta" en las
+    // cuentas sin que el cliente hubiera pedido eso.
+    const esPerfilRenta = calcPerfil === 'renta';
+    const rentaMensual = esPerfilRenta ? calcRentaM2 * calcArea : 0;
     const rentaMensualEfectiva = rentaMensual * (1 - calcVacancia / 100);
     const ingresoBrutoAnual = rentaMensualEfectiva * 12;
     const capRateBruto = cuotaInicialdUSD > 0 ? (rentaMensual * 12 / cuotaInicialdUSD) * 100 : 0;
 
     // Expenses
-    const valorFiscal = calcValorFiscal > 0 ? calcValorFiscal : calcPrecio * 0.70; // 70% del comercial si no se especifica
+    const valorFiscal = calcValorFiscal > 0 ? calcValorFiscal : calcPrecio; // 100% del valor comercial si no se especifica
     // PM: % sobre renta efectiva; el $ fijo es referencia visual (sincronizado externamente)
     const feePMMensual = calcFeePMFixed > 0 ? calcFeePMFixed : rentaMensualEfectiva * (calcFeePM / 100);
     const gastosPM = feePMMensual * 12;           // property management annual
     const gastosAdmin = 0;                      // always 0 (removed input)
     const gastosCondominio = calcCondominio * 12; // Admin Conjunto annual
-    const gastosPredial = valorFiscal * (calcPredial / 100); // % sobre valor fiscal
+    // Automático por tabla de tramos (ya no un % manual) — ver PREDIAL_TRAMOS/calcPredialTabla.
+    const predialCalc = calcPredialTabla(valorFiscal, predialTramos);
+    const gastosPredial = predialCalc.total;
     const gastosSeguro = valorFiscal * (calcSeguro / 100);   // % sobre valor fiscal
     const gastosMantenimiento = 0;              // always 0
     const totalGastosMensual = feePMMensual + (gastosCondominio / 12) + (gastosPredial / 12) + (gastosSeguro / 12);
@@ -13252,7 +13815,10 @@ Responde SOLO con JSON sin bloques de código:
     const roiEquity = cuotaInicialdUSD > 0 ? (noi / cuotaInicialdUSD) * 100 : 0; // NOI sobre equity real desembolsado
     const cashOnCash = cuotaInicialdUSD > 0 ? ((noi - cuotaAnualHip) / cuotaInicialdUSD) * 100 : 0; // flujo libre sobre equity
     const flujoLibreMensual = (noi - cuotaAnualHip) / 12;
-    const valorFuturo = calcPrecio * Math.pow(1 + calcValorizacion / 100, calcPlazo);
+    // Base para toda proyección de valor: precio de compra + la plusvalía de entrega (un solo
+    // golpe, no compuesta) — desde ahí arranca a componer la valorización anual post-entrega.
+    const precioBaseValorizacion = calcPrecio * (1 + calcValorizacionPreEntrega / 100);
+    const valorFuturo = precioBaseValorizacion * Math.pow(1 + calcValorizacion / 100, calcPlazo);
 
     // Year-by-year table (correct amortization)
     const yearlyTable: Array<{
@@ -13270,7 +13836,7 @@ Responde SOLO con JSON sin bloques de código:
     }> = [];
     let deudaRemanente = montoFinanciado;
     for (let y = 1; y <= calcPlazo; y++) {
-      const valorActivoY = calcPrecio * Math.pow(1 + calcValorizacion / 100, y);
+      const valorActivoY = precioBaseValorizacion * Math.pow(1 + calcValorizacion / 100, y);
       const ingresoAnualY = rentaMensual * 12 * (1 - calcVacancia / 100);
       const gastosAnualY = totalGastos;
       const noiY = ingresoAnualY - gastosAnualY;
@@ -13295,7 +13861,7 @@ Responde SOLO con JSON sin bloques de código:
     }
 
     // Sale calculation (EV → Equity → Net Proceeds)
-    const ventaValor = calcPrecio * Math.pow(1 + calcValorizacion / 100, calcVenderAnio); // Enterprise Value
+    const ventaValor = precioBaseValorizacion * Math.pow(1 + calcValorizacion / 100, calcVenderAnio); // Enterprise Value
     const deudaAlVender = yearlyTable[Math.min(calcVenderAnio, calcPlazo) - 1]?.deuda ?? montoFinanciado;
     const equityValue = ventaValor - deudaAlVender; // Equity Value = EV - remaining debt
     const costoComision = ventaValor * (calcComisionPct / 100);
@@ -13321,28 +13887,82 @@ Responde SOLO con JSON sin bloques de código:
     const tirRaw = calcIRR(tirFlows);
     const tirPct = tirRaw !== null ? tirRaw * 100 : null;
 
-    // CDT comparison
-    const cdtRate = 10.5;
-    const cdtDevaluation = 6;
-    const cdtRealRate = cdtRate - cdtDevaluation;
-    const cdtFutureValue = cuotaInicialdUSD * Math.pow(1 + cdtRealRate / 100, calcPlazo);
+    // ── Comparativo real: Panamá vs. CDT Colombia vs. Inmobiliario Colombia ──
+    // Cada alternativa se deflacta con la inflación ACUMULADA de su propio país (tabla de
+    // Configuración → Financiero, extendida más allá de 2045 repitiendo la última tasa si el
+    // plazo lo requiere) — evita tener que proyectar una tasa de cambio COP/USD, que es un
+    // supuesto adicional y más volátil que comparar retornos reales directamente.
+    const tasasPanama = proyeccionTasas(inflacionProyectada, 'panama', calcPlazo);
+    const tasasColombia = proyeccionTasas(inflacionProyectada, 'colombia', calcPlazo);
+    const inflAcumPanama = factorAcumulado(tasasPanama) - 1;
+    const inflAcumColombia = factorAcumulado(tasasColombia) - 1;
 
-    // GLP patrimonio neto al final del plazo
-    // Al final del plazo hipotecario la deuda es ~0, el activo vale valorFuturo
-    // Los FCF acumulados son la suma real año a año (pueden ser negativos en años iniciales)
+    // GLP (Panamá) — patrimonio neto nominal al final del plazo, igual que antes.
     const fcfAcumulado = yearlyTable.reduce((s, r) => s + r.flujoPostHip, 0);
     const deudaFinal = yearlyTable[yearlyTable.length - 1]?.deuda ?? 0;
     const patrimonioNetoGLP = valorFuturo - deudaFinal + fcfAcumulado;
     const gananciaNetaGLP = patrimonioNetoGLP - cuotaInicialdUSD;
+    // Real = nominal deflactado por la inflación acumulada de Panamá en el mismo horizonte.
+    const patrimonioRealGLP = patrimonioNetoGLP / (1 + inflAcumPanama);
+    const realAnualGLP = cuotaInicialdUSD > 0 && calcPlazo > 0
+      ? (Math.pow(Math.max(patrimonioRealGLP, 0) / cuotaInicialdUSD, 1 / calcPlazo) - 1) * 100 : 0;
+
+    // CDT Colombia — tasa nominal año a año = inflación de Colombia ESE año + spread real
+    // configurable (default 2.5%), reinvertida compuesto — así se modela la convergencia a
+    // la baja de las tasas de reinversión en la medida en que la inflación también converge,
+    // en vez de una tasa fija todo el horizonte.
+    let cdtNominal = cuotaInicialdUSD;
+    tasasColombia.forEach(r => { cdtNominal *= (1 + r + cdtSpreadReal / 100); });
+    const cdtFutureValue = cdtNominal;
+    const cdtReal = cdtNominal / (1 + inflAcumColombia);
+    const cdtRealAnual = cuotaInicialdUSD > 0 && calcPlazo > 0
+      ? (Math.pow(Math.max(cdtReal, 0) / cuotaInicialdUSD, 1 / calcPlazo) - 1) * 100 : 0;
+
+    // Inmobiliario Colombia — el activo se valoriza con el IPC (compuesto) y genera una renta
+    // bruta NOMINAL con tope configurable (default 5% anual, no confundir con retorno real).
+    const coApreciado = cuotaInicialdUSD * factorAcumulado(tasasColombia);
+    const coRentaAcumulada = cuotaInicialdUSD * (coRentaBrutaPct / 100) * calcPlazo;
+    const coNominalFinal = coApreciado + coRentaAcumulada;
+    const coReal = coNominalFinal / (1 + inflAcumColombia);
+    const coRealAnual = cuotaInicialdUSD > 0 && calcPlazo > 0
+      ? (Math.pow(Math.max(coReal, 0) / cuotaInicialdUSD, 1 / calcPlazo) - 1) * 100 : 0;
+
     const diferencialVsCDT = patrimonioNetoGLP - cdtFutureValue;
 
+    // Decimales del step (step=0.1 → 1 decimal, step=1 o 10000 → 0) — redondear a esta
+    // precisión evita los residuos de punto flotante típicos de JS (0.1+0.2 style) al
+    // escribir directamente en el campo, en vez de solo arrastrar el slider.
+    const stepDecimals = (step: number) => { const s = step.toString(); const i = s.indexOf('.'); return i === -1 ? 0 : s.length - i - 1; };
+    const clampRound = (raw: number, min: number, max: number, step: number) => {
+      if (isNaN(raw)) return min;
+      const clamped = Math.min(max, Math.max(min, raw));
+      const d = stepDecimals(step);
+      return Number(clamped.toFixed(d));
+    };
+    // sliderInput se invoca como función normal ({sliderInput(...)}), no como componente JSX
+    // (<SliderInput/>) — no puede usar useState (rompería las Rules of Hooks, el "componente"
+    // no tiene una identidad estable en el árbol de fibers). El campo numérico queda
+    // no-controlado (defaultValue) y se remonta con key={value} cuando el valor cambia desde
+    // afuera (el slider, o al cambiar de unidad/proyecto), sin necesitar estado propio.
     const sliderInput = (label: string, value: number, setter: (v: number) => void, min: number, max: number, step: number, suffix: string = '') => (
       <div style={{ marginBottom: 12 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
           <label style={labelStyle}>{label}</label>
-          <span style={{ fontSize: 13, fontWeight: 700, color: T.teal }}>{suffix === '$' ? usd(value) : value + suffix}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {suffix === '$' && <span style={{ fontSize: 13, fontWeight: 700, color: T.teal }}>$</span>}
+            <input
+              key={value}
+              type="number"
+              defaultValue={value}
+              min={min} max={max} step={step}
+              onBlur={e => setter(clampRound(parseFloat(e.target.value), min, max, step))}
+              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+              style={{ width: 90, fontSize: 13, fontWeight: 700, color: T.teal, textAlign: 'right', border: `1px solid ${T.border}`, borderRadius: 4, padding: '2px 6px', fontFamily: 'inherit', outline: 'none' }}
+            />
+            {suffix !== '$' && <span style={{ fontSize: 13, fontWeight: 700, color: T.teal }}>{suffix}</span>}
+          </div>
         </div>
-        <input type="range" min={min} max={max} step={step} value={value} onChange={e => setter(Number(e.target.value))}
+        <input type="range" min={min} max={max} step={step} value={value} onChange={e => setter(clampRound(Number(e.target.value), min, max, step))}
           style={{ width: '100%', accentColor: T.teal }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: T.textSec }}>
           <span>{suffix === '$' ? usd(min) : min + suffix}</span>
@@ -13482,7 +14102,9 @@ Responde SOLO con JSON sin bloques de código:
                   { id: 'gastos', label: 'Gastos Operativos' },
                   { id: 'legal', label: 'Costos Legales' },
                   { id: 'analisis', label: 'Análisis Financiero' },
-                  { id: 'comparativo', label: 'Comparativo vs. Colombia' },
+                  // Oculta por defecto — solo aparece si un admin la activó en
+                  // Configuración → Financiero (comparativoActivo, ver arriba).
+                  ...(comparativoActivo ? [{ id: 'comparativo' as const, label: 'Comparativo vs. Colombia' }] : []),
                 ] as { id: 'activo' | 'proyeccion' | 'gastos' | 'legal' | 'analisis' | 'comparativo'; label: string }[]).map(t => (
                   <button key={t.id} onClick={() => setCalcTab(t.id)}
                     style={{
@@ -13547,8 +14169,89 @@ Responde SOLO con JSON sin bloques de código:
                     })()}
                     {sliderInput('Precio del activo', calcPrecio, setCalcPrecio, proj.minPrice, proj.minPrice * 4, 10000, '$')}
                     {sliderInput('Metraje (m²)', calcArea, setCalcArea, proj.areaMin, proj.areaMax, 1, ' m²')}
-                    {sliderInput('Renta por m²/mes', calcRentaM2, setCalcRentaM2, 5, 35, 1, ' USD')}
-                    {sliderInput('Vacancia', calcVacancia, setCalcVacancia, 0, 30, 1, '%')}
+                    {/* Renta/Vacancia SOLO aplican (se muestran y se calculan) cuando el
+                        perfil es específicamente "Renta" — ni Patrimonial (no arrienda) ni
+                        Disfrute (segunda residencia de uso propio, sin modelar ingreso por
+                        alquiler) los activan. El switch prende/apaga tener un perfil de
+                        alquiler seleccionado en absoluto; Renta/Disfrute abajo elige cuál —
+                        pero solo Renta despliega y usa los campos de arrendamiento. */}
+                    {(() => {
+                      const perfilSeleccionado = calcPerfil === 'renta' || calcPerfil === 'disfrute';
+                      return (
+                        <div style={{ background: T.bg, borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                            <div style={{ fontSize: 11, color: T.textSec, lineHeight: 1.4 }}>
+                              Genera ingreso por alquiler <span style={{ color: T.textSec, opacity: 0.75 }}>(Renta activa renta por m² y vacancia)</span>
+                            </div>
+                            <button
+                              role="switch" aria-checked={perfilSeleccionado}
+                              onClick={() => setCalcPerfil(perfilSeleccionado ? null : 'renta')}
+                              style={{
+                                flexShrink: 0, width: 40, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer',
+                                background: perfilSeleccionado ? T.teal : T.border, position: 'relative', transition: 'background 0.15s',
+                              }}>
+                              <div style={{
+                                position: 'absolute', top: 2, left: perfilSeleccionado ? 20 : 2,
+                                width: 18, height: 18, borderRadius: '50%', background: '#fff',
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.3)', transition: 'left 0.15s',
+                              }} />
+                            </button>
+                          </div>
+                          {perfilSeleccionado && (
+                            <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                              {(['renta', 'disfrute'] as const).map(id => {
+                                const p = INVESTOR_PROFILES.find(x => x.id === id)!;
+                                return (
+                                  <button key={id} onClick={() => setCalcPerfil(id)}
+                                    style={{
+                                      borderRadius: 20, padding: '4px 12px', cursor: 'pointer', fontSize: 11, fontWeight: 600,
+                                      border: `1.5px solid ${calcPerfil === id ? p.color : T.border}`,
+                                      background: calcPerfil === id ? `${p.color}18` : T.card,
+                                      color: calcPerfil === id ? p.color : T.textSec,
+                                    }}>
+                                    {p.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    {calcPerfil === 'renta' && (
+                      <>
+                        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+                          {(['corta', 'larga'] as const).map(tipo => (
+                            <button key={tipo}
+                              onClick={() => {
+                                setCalcTipoRenta(tipo);
+                                const proj = editableProjects.find(x => x.name === calcProject);
+                                if (!proj) return;
+                                const segmento = segmentoDeProyecto(proj);
+                                const cfg = arriendoM2Segmentos.find(v => v.segmento === segmento);
+                                if (cfg) setCalcRentaM2(tipo === 'corta' ? cfg.corta : cfg.larga);
+                              }}
+                              style={{
+                                flex: 1, padding: '7px 10px', fontSize: 11.5, fontWeight: 600, borderRadius: 8, cursor: 'pointer',
+                                border: `1.5px solid ${calcTipoRenta === tipo ? T.teal : T.border}`,
+                                background: calcTipoRenta === tipo ? `${T.teal}18` : T.card,
+                                color: calcTipoRenta === tipo ? T.teal : T.textSec, transition: 'all 0.15s',
+                              }}>
+                              {tipo === 'corta' ? 'Renta corta (turística)' : 'Renta larga (residencial)'}
+                            </button>
+                          ))}
+                        </div>
+                        {sliderInput('Renta por m²/mes', calcRentaM2, setCalcRentaM2, 5, 35, 1, ' USD')}
+                        {sliderInput('Vacancia', calcVacancia, setCalcVacancia, 0, 30, 1, '%')}
+                        {/* A diferencia de Valorización anual (que sí cita una fuente externa),
+                            estos rangos son estimaciones internas cargadas por proyecto en el
+                            código — no vienen de un feed de mercado verificado. Se marca como
+                            tal para no dar una falsa sensación de dato confirmado. */}
+                        <div style={{ fontSize: 10.5, color: T.textSec, fontStyle: 'italic' as const, lineHeight: 1.4, marginTop: -6, marginBottom: 12 }}>
+                          ⚠ Dato provisional — estimación interna sin fuente de mercado verificada. Ajústalo con la información real del proyecto.
+                        </div>
+                      </>
+                    )}
                     <div style={{ marginBottom: 12 }}>
                       {sliderInput('Valorización anual', calcValorizacion, setCalcValorizacion, 0, 10, 0.1, '%')}
                       {macroFundamentals?.apreciacionFuente ? (
@@ -13559,20 +14262,41 @@ Responde SOLO con JSON sin bloques de código:
                         <div style={{ fontSize: 10.5, color: T.textSec, lineHeight: 1.4 }}>{proj.appreciationNote}</div>
                       )}
                     </div>
+                    <div style={{ marginBottom: 12 }}>
+                      {/* Plusvalía de un solo golpe entre separación y entrega — distinta de la
+                          valorización anual (que es el ritmo YA con el activo construido). Se
+                          suma una sola vez sobre el precio de compra y desde ahí arranca a
+                          componer la valorización anual — ver precioBaseValorizacion arriba. */}
+                      {sliderInput('Valorización pre-entrega (separación → entrega)', calcValorizacionPreEntrega, setCalcValorizacionPreEntrega, 0, 40, 1, '%')}
+                      <div style={{ fontSize: 10.5, color: T.textSec, lineHeight: 1.4 }}>
+                        Plusvalía de un solo golpe al recibir el apartamento vs. el precio de separación — no es acumulativa año a año como la valorización anual, que arranca a contar después de este salto.
+                      </div>
+                    </div>
                   </div>
 
                   {/* Financiación */}
                   <div style={cardStyle()}>
                     <div style={{ fontSize: 10, fontWeight: 800, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.08em', marginBottom: 14 }}>Financiación</div>
                     {sliderInput('Cuota inicial', calcCuotaInicial, setCalcCuotaInicial, 30, 100, 5, '%')}
+                    {/* Desglose completo — antes solo mostraba "Monto desembolsado" (la cuota
+                        inicial) y la cuota hipotecaria, sin decir el valor de la propiedad ni
+                        cuánto queda por financiar; había que inferirlo del % del slider. */}
                     <div style={{ marginTop: -8, marginBottom: 14, padding: '8px 12px', background: T.card, border: `1px solid ${T.borderLight}`, borderRadius: 8 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: 11, color: T.textSec }}>Monto desembolsado</span>
-                        <span style={{ fontSize: 14, fontWeight: 800, color: T.teal }}>{usd(Math.round(cuotaInicialdUSD))}</span>
+                        <span style={{ fontSize: 11, color: T.textSec }}>Valor de la propiedad</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{usd(Math.round(calcPrecio))}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 5, paddingTop: 5, borderTop: `1px solid ${T.borderLight}` }}>
+                        <span style={{ fontSize: 11, color: T.textSec }}>Cuota inicial ({calcCuotaInicial}%)</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{usd(Math.round(cuotaInicialdUSD))}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 5, paddingTop: 5, borderTop: `1px solid ${T.borderLight}` }}>
+                        <span style={{ fontSize: 11, color: T.textSec }}>Saldo a financiar</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{usd(Math.round(montoFinanciado))}</span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 5, paddingTop: 5, borderTop: `1px solid ${T.teal}20` }}>
                         <span style={{ fontSize: 11, color: T.textSec }}>Cuota mensual hipotecaria</span>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{usd(Math.round(cuotaMes))}</span>
+                        <span style={{ fontSize: 14, fontWeight: 800, color: T.teal }}>{usd(Math.round(cuotaMes))}</span>
                       </div>
                     </div>
                     {sliderInput('Tasa hipotecaria', calcTasaHip, setCalcTasaHip, 5, 12, 0.5, '%')}
@@ -13590,6 +14314,124 @@ Responde SOLO con JSON sin bloques de código:
                     </div>
                   </div>
 
+                  {/* Plan de Pago Diferido — Cuota Inicial. Antes vivía públicamente en la
+                      página del proyecto (visible a cualquier visitante); se movió aquí
+                      porque el plazo/las cuotas sin interés son una negociación caso a caso
+                      del equipo comercial. La parte de crédito hipotecario ya vive arriba, en
+                      la tarjeta "Financiación" — no se duplica. */}
+                  {(() => {
+                    const montoCuotaInicial = calcPrecio * (calcCuotaInicial / 100);
+                    const restante = Math.max(0, montoCuotaInicial - plazoDiferidoSeparacion);
+                    const cuotaMensualDiferida = plazoDiferidoMeses > 0 ? restante / plazoDiferidoMeses : 0;
+                    const mesesTabla = Array.from({ length: plazoDiferidoMeses }, (_, i) => {
+                      const mes = i + 1;
+                      const pagado = plazoDiferidoSeparacion + cuotaMensualDiferida * mes;
+                      return { mes, cuota: cuotaMensualDiferida, acumulado: pagado, restante: Math.max(0, montoCuotaInicial - pagado) };
+                    });
+                    return (
+                      <div style={cardStyle()}>
+                        <div style={{ fontSize: 10, fontWeight: 800, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.08em', marginBottom: 14 }}>Plan de Pago Diferido — Cuota Inicial</div>
+                        <div style={{ fontSize: 11, color: T.textSec, marginBottom: 14 }}>
+                          Uso interno — ya no está disponible en la página pública del proyecto.
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 12, marginBottom: 16 }}>
+                          <div>
+                            {/* Antes tenía su propio estado (plazoDiferidoPrecio) que solo se
+                                sincronizaba al elegir el proyecto — si después cambiabas el
+                                precio en la tarjeta "Activo" (ej. eligiendo una unidad real
+                                del inventario), este campo quedaba desactualizado y no
+                                coincidía con el valor real del activo. Ahora usa calcPrecio
+                                directamente: mismo campo, un solo valor de verdad. */}
+                            <div style={{ fontSize: 10, color: T.textSec, marginBottom: 6 }}>Valor propiedad (USD)</div>
+                            <input type="number" min={0} value={calcPrecio} onChange={e => setCalcPrecio(Number(e.target.value))} onFocus={e => e.target.select()} style={inputStyle({ fontSize: 13, fontWeight: 600 })} />
+                          </div>
+                          <div>
+                            {/* Mismo campo que "Cuota inicial" en la tarjeta Financiación
+                                (calcCuotaInicial) — antes era un % independiente que solo se
+                                sincronizaba al elegir el proyecto y quedaba desactualizado en
+                                cuanto ajustabas el % en la otra tarjeta. */}
+                            <div style={{ fontSize: 10, color: T.textSec, marginBottom: 6 }}>% Cuota inicial</div>
+                            <input type="number" min={5} max={100} value={calcCuotaInicial} onChange={e => setCalcCuotaInicial(Math.min(100, Math.max(5, Number(e.target.value))))} onFocus={e => e.target.select()} style={inputStyle({ fontSize: 13, fontWeight: 600 })} />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 10, color: T.textSec, marginBottom: 6 }}>Separación (USD)</div>
+                            <input type="number" min={0} value={plazoDiferidoSeparacion} onChange={e => setPlazoDiferidoSeparacion(Math.min(montoCuotaInicial, Number(e.target.value)))} onFocus={e => e.target.select()} style={inputStyle({ fontSize: 13, fontWeight: 600 })} />
+                          </div>
+                          <div>
+                            {/* Plazo libre en cuotas — antes solo 24 o 36 meses fijos. Los dos
+                                botones quedan como atajos rápidos, pero el número es editable
+                                directamente para cualquier plazo que negocie el equipo. */}
+                            <div style={{ fontSize: 10, color: T.textSec, marginBottom: 6 }}>Plazo (cuotas)</div>
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                              <input type="number" min={1} max={120} value={plazoDiferidoMeses}
+                                onChange={e => setPlazoDiferidoMeses(Math.max(1, Math.min(120, Number(e.target.value) || 1)))}
+                                onFocus={e => e.target.select()}
+                                style={{ ...inputStyle({ fontSize: 13, fontWeight: 700, textAlign: 'center' as const, padding: '8px 4px' }), width: 60 }} />
+                              <span style={{ fontSize: 11, color: T.textSec }}>meses</span>
+                              {[24, 36].map(m => (
+                                <button key={m} onClick={() => setPlazoDiferidoMeses(m)}
+                                  style={{ padding: '7px 10px', fontSize: 11, fontWeight: 700, borderRadius: 8, cursor: 'pointer', border: `1.5px solid ${plazoDiferidoMeses === m ? T.teal : T.border}`, background: plazoDiferidoMeses === m ? `${T.teal}18` : T.card, color: plazoDiferidoMeses === m ? T.teal : T.textSec }}>
+                                  {m}m
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 10, marginBottom: 16 }}>
+                          {[
+                            { l: 'Separación al contado', v: usd(plazoDiferidoSeparacion) },
+                            { l: `Saldo en ${plazoDiferidoMeses} cuotas`, v: usd(Math.round(restante)) },
+                            { l: 'Cuota mensual', v: usd(Math.round(cuotaMensualDiferida)), hl: true },
+                            { l: 'Total cuota inicial', v: usd(Math.round(montoCuotaInicial)) },
+                          ].map(c => (
+                            <div key={c.l} style={{ background: c.hl ? T.teal : T.bg, border: `1px solid ${T.border}`, borderRadius: 8, padding: '10px 12px' }}>
+                              <div style={{ fontSize: 9.5, color: c.hl ? '#C9DCEF' : T.textSec, marginBottom: 3, textTransform: 'uppercase' as const, letterSpacing: '0.04em' }}>{c.l}</div>
+                              <div style={{ fontSize: 14, fontWeight: 700, color: c.hl ? '#fff' : T.text }}>{c.v}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <button onClick={() => setPlazoDiferidoTablaAbierta(v => !v)}
+                          style={{ fontSize: 11, color: T.teal, background: 'none', border: `1px solid ${T.teal}`, borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontWeight: 600 }}>
+                          {plazoDiferidoTablaAbierta ? 'Ocultar tabla mes a mes' : 'Ver tabla mes a mes'}
+                        </button>
+
+                        {plazoDiferidoTablaAbierta && (
+                          <div style={{ marginTop: 14, overflowX: 'auto' as const }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
+                              <thead>
+                                <tr style={{ background: T.bg, borderBottom: `2px solid ${T.border}` }}>
+                                  {['Mes', 'Concepto', 'Pago', 'Acumulado', 'Saldo restante'].map(h => (
+                                    <th key={h} style={{ padding: '6px 10px', textAlign: h === 'Mes' || h === 'Concepto' ? 'left' as const : 'right' as const, color: T.textSec, fontWeight: 700 }}>{h}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <tr style={{ background: T.bg, borderBottom: `1px solid ${T.borderLight}` }}>
+                                  <td style={{ padding: '6px 10px', color: T.teal, fontWeight: 700 }}>0</td>
+                                  <td style={{ padding: '6px 10px', color: T.text, fontWeight: 600 }}>Separación (hoy)</td>
+                                  <td style={{ padding: '6px 10px', textAlign: 'right' as const, fontWeight: 600, color: T.palm }}>{usd(plazoDiferidoSeparacion)}</td>
+                                  <td style={{ padding: '6px 10px', textAlign: 'right' as const }}>{usd(plazoDiferidoSeparacion)}</td>
+                                  <td style={{ padding: '6px 10px', textAlign: 'right' as const, fontWeight: 600 }}>{usd(Math.round(montoCuotaInicial - plazoDiferidoSeparacion))}</td>
+                                </tr>
+                                {mesesTabla.map(r => (
+                                  <tr key={r.mes} style={{ borderBottom: `1px solid ${T.borderLight}` }}>
+                                    <td style={{ padding: '6px 10px', color: T.teal, fontWeight: 700 }}>{r.mes}</td>
+                                    <td style={{ padding: '6px 10px', color: T.textSec }}>Cuota mensual</td>
+                                    <td style={{ padding: '6px 10px', textAlign: 'right' as const, fontWeight: 600, color: T.palm }}>{usd(Math.round(r.cuota))}</td>
+                                    <td style={{ padding: '6px 10px', textAlign: 'right' as const }}>{usd(Math.round(r.acumulado))}</td>
+                                    <td style={{ padding: '6px 10px', textAlign: 'right' as const, fontWeight: 600, color: r.restante <= 0 ? T.palm : T.text }}>{r.restante <= 0 ? 'Completada' : usd(Math.round(r.restante))}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                 </div>
               )}
 
@@ -13603,13 +14445,13 @@ Responde SOLO con JSON sin bloques de código:
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                         <span style={{ fontSize: 11, color: T.textSec }}>$</span>
                         <input type="number" step="1000"
-                          value={calcValorFiscal > 0 ? calcValorFiscal : Math.round(calcPrecio * 0.70)}
+                          value={calcValorFiscal > 0 ? calcValorFiscal : Math.round(calcPrecio)}
                           onChange={e => setCalcValorFiscal(Number(e.target.value))}
                           onFocus={e => e.target.select()}
                           style={inputStyle({ fontSize: 12, padding: '4px 10px', width: 120, fontWeight: 600 })} />
                       </div>
                       <span style={{ fontSize: 10, color: T.textSec, fontStyle: 'italic' }}>
-                        (ref. {usd(Math.round(calcPrecio * 0.70))} · 70% comercial)
+                        (ref. {usd(Math.round(calcPrecio))} · 100% comercial)
                       </span>
                     </div>
                   </div>
@@ -13658,18 +14500,30 @@ Responde SOLO con JSON sin bloques de código:
                       <div style={{ marginTop: 6, fontSize: 10, color: T.textSec }}>{usd(Math.round(gastosSeguro))}/año</div>
                     </div>
                   </div>
-                  <div style={{ marginTop: 16, paddingTop: 12, borderTop: `1px solid ${T.borderLight}`, display: 'flex', justifyContent: 'flex-end', gap: 32 }}>
-                    <div style={{ textAlign: 'right' as const }}>
-                      <div style={{ fontSize: 9, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: 2 }}>Total mensual</div>
-                      <div style={{ fontSize: 16, fontWeight: 800, color: T.coral }}>{usd(Math.round(totalGastosMensual))}</div>
-                    </div>
-                    <div style={{ textAlign: 'right' as const }}>
-                      <div style={{ fontSize: 9, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: 2 }}>Total anual</div>
-                      <div style={{ fontSize: 16, fontWeight: 800, color: T.coral }}>{usd(Math.round(totalGastos))}</div>
-                    </div>
-                  </div>
+                  {/* Antes este total sumaba también el impuesto predial (que se configura y
+                      se muestra en la pestaña "Costos Legales", no acá) sin decirlo — alguien
+                      viendo $2,433/año en "Gastos Operativos" no tenía cómo saber que gran
+                      parte de esa cifra era en realidad el predial de otra pestaña. Este total
+                      ahora solo suma lo que esta pestaña configura (PM + Cuota Admin + Seguro);
+                      el total combinado con predial vive en Costos Legales, donde se edita. */}
+                  {(() => {
+                    const totalOperativoMensual = feePMMensual + calcCondominio + (gastosSeguro / 12);
+                    const totalOperativoAnual = gastosPM + gastosCondominio + gastosSeguro;
+                    return (
+                      <div style={{ marginTop: 16, paddingTop: 12, borderTop: `1px solid ${T.borderLight}`, display: 'flex', justifyContent: 'flex-end', gap: 32 }}>
+                        <div style={{ textAlign: 'right' as const }}>
+                          <div style={{ fontSize: 9, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: 2 }}>Total operativo mensual</div>
+                          <div style={{ fontSize: 16, fontWeight: 800, color: T.coral }}>{usd(Math.round(totalOperativoMensual))}</div>
+                        </div>
+                        <div style={{ textAlign: 'right' as const }}>
+                          <div style={{ fontSize: 9, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: 2 }}>Total operativo anual</div>
+                          <div style={{ fontSize: 16, fontWeight: 800, color: T.coral }}>{usd(Math.round(totalOperativoAnual))}</div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <div style={{ fontSize: 10, color: T.textSec, marginTop: 10, fontStyle: 'italic' }}>
-                    El impuesto predial pasó a la pestaña "Costos Legales", junto a la comisión de venta y el impuesto de transferencia.
+                    PM + Cuota Admin + Seguro — no incluye el impuesto predial, que se configura y se muestra en la pestaña "Costos Legales" (el total combinado con predial está ahí, y ya se usa en el Análisis Financiero de todas formas).
                   </div>
                 </div>
               )}
@@ -13681,15 +14535,100 @@ Responde SOLO con JSON sin bloques de código:
                   <div style={{ fontSize: 11, color: T.textSec, marginBottom: 16 }}>
                     Impuesto a la propiedad (recurrente, anual) y costos de cierre de una eventual venta (comisión de broker, impuesto de transferencia, legales).
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 20, marginBottom: 20 }}>
+                  <div style={{ marginBottom: 20 }}>
                     <div style={{ padding: '14px 16px', background: T.sand, borderRadius: 8 }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.07em', marginBottom: 8 }}>Impuesto Predial</div>
-                      <div style={{ fontSize: 9, color: T.textSec, marginBottom: 6 }}>% anual sobre valor fiscal</div>
-                      <input type="number" step="0.1" value={calcPredial}
-                        onChange={e => setCalcPredial(Number(e.target.value))}
-                        onFocus={e => e.target.select()}
-                        style={inputStyle({ fontSize: 14, padding: '6px 10px', width: '100%', fontWeight: 700 })} />
-                      <div style={{ marginTop: 6, fontSize: 10, color: T.textSec }}>{usd(Math.round(gastosPredial))}/año</div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.07em' }}>
+                          Impuesto Predial — tabla "Otras Propiedades"
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <button onClick={() => setPredialEditando(v => !v)}
+                            style={{ fontSize: 10, fontWeight: 600, color: T.teal, background: 'none', border: `1px solid ${T.teal}`, borderRadius: 6, padding: '3px 10px', cursor: 'pointer' }}>
+                            {predialEditando ? 'Listo' : '✎ Editar tramos'}
+                          </button>
+                          <div style={{ fontSize: 16, fontWeight: 800, color: T.teal }}>{usd(Math.round(gastosPredial))}<span style={{ fontSize: 10, fontWeight: 500, color: T.textSec }}>/año</span></div>
+                        </div>
+                      </div>
+                      {/* Automático: se calcula solo dependiendo del valor fiscal del activo
+                          (pestaña Gastos Operativos) y el tramo que le corresponde en la tabla
+                          de tarifas. La ley que fija estos umbrales/tasas cambia de vez en
+                          cuando, así que quedan editables (persistidos en localStorage, aplican
+                          a todo el portafolio) en vez de hardcodeados sin forma de ajustarlos. */}
+                      {predialEditando ? (
+                        <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+                          {predialTramos.map((t, i) => {
+                            const desdeTramo = i === 0 ? 0 : (predialTramos[i - 1].hasta ?? 0);
+                            return (
+                              <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 90px 70px', gap: 8, alignItems: 'center' }}>
+                                <div style={{ fontSize: 10.5, color: T.textSec }}>
+                                  {i === 0 ? `Desde ${usd(desdeTramo)} hasta` : `Desde ${usd(desdeTramo)} hasta`}
+                                </div>
+                                {t.hasta === null ? (
+                                  <div style={{ fontSize: 10.5, color: T.textSec, fontStyle: 'italic' as const }}>sin límite</div>
+                                ) : (
+                                  <input type="number" step="1000" value={t.hasta}
+                                    onChange={e => setPredialTramos(prev => prev.map((x, j) => j === i ? { ...x, hasta: Number(e.target.value) } : x))}
+                                    onFocus={e => e.target.select()}
+                                    style={inputStyle({ fontSize: 12, padding: '4px 8px', width: '100%', fontWeight: 600 })} />
+                                )}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                  <input type="number" step="0.1" value={(t.tasa * 100).toFixed(2).replace(/\.?0+$/, '') || '0'}
+                                    onChange={e => setPredialTramos(prev => prev.map((x, j) => j === i ? { ...x, tasa: Number(e.target.value) / 100 } : x))}
+                                    onFocus={e => e.target.select()}
+                                    style={inputStyle({ fontSize: 12, padding: '4px 6px', width: '100%', fontWeight: 600 })} />
+                                  <span style={{ fontSize: 10, color: T.textSec }}>%</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          <button onClick={() => setPredialTramos(PREDIAL_TRAMOS_DEFAULT.map(t => ({ ...t })))}
+                            style={{ alignSelf: 'flex-start', fontSize: 10, color: T.textSec, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0, marginTop: 2 }}>
+                            Restablecer a los valores oficiales actuales
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 4 }}>
+                          {predialCalc.detalle.map((t, i) => (
+                            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: t.base > 0 ? T.text : T.textSec, opacity: t.base > 0 ? 1 : 0.55 }}>
+                              <span>
+                                {t.hasta === Infinity ? `Más de ${usd(t.desde)}` : t.desde === 0 ? `Hasta ${usd(t.hasta)}` : `${usd(t.desde)} – ${usd(t.hasta)}`}
+                                {' '}({t.tasa === 0 ? 'exento' : `${(t.tasa * 100).toFixed(1)}% sobre excedente`})
+                              </span>
+                              <span style={{ fontWeight: 600 }}>{t.base > 0 ? `${usd(Math.round(t.base))} × ${(t.tasa * 100).toFixed(1)}% = ${usd(Math.round(t.impuesto))}` : '—'}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div style={{ marginTop: 8, fontSize: 9.5, color: T.textSec, fontStyle: 'italic' as const }}>
+                        Valor fiscal usado: {usd(Math.round(valorFiscal))} (ajustable en la pestaña "Gastos Operativos").
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Costo total combinado (Predial + PM + Cuota Admin + Seguro) — el único
+                      lugar donde se muestra la suma de todo, ya identificado por rubro, en vez
+                      de aparecer sin explicación dentro de "Gastos Operativos" como antes. Es
+                      el mismo totalGastos que ya alimenta el NOI/flujo de caja del Análisis
+                      Financiero — acá solo se hace explícito de dónde sale. */}
+                  <div style={{ padding: '12px 16px', background: T.bg, border: `1px solid ${T.border}`, borderRadius: 8, marginBottom: 20 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>Costo total anual de la propiedad</div>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: T.teal }}>{usd(Math.round(totalGastos))}<span style={{ fontSize: 10, fontWeight: 500, color: T.textSec }}>/año</span></div>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 3 }}>
+                      {[
+                        ['Impuesto Predial', gastosPredial],
+                        ['Property Management', gastosPM],
+                        ['Cuota Admin', gastosCondominio],
+                        ['Seguro Propiedad', gastosSeguro],
+                      ].map(([lbl, val]) => (
+                        <div key={lbl as string} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: T.textSec }}>
+                          <span>{lbl}</span><span>{usd(Math.round(val as number))}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 9.5, color: T.textSec, fontStyle: 'italic' as const, marginTop: 8 }}>
+                      PM y Cuota Admin se configuran en "Gastos Operativos"; Predial y Seguro, aquí y en esa pestaña respectivamente. Esta suma ya alimenta el NOI y el flujo de caja del Análisis Financiero.
                     </div>
                   </div>
 
@@ -13834,17 +14773,23 @@ Responde SOLO con JSON sin bloques de código:
                   {/* Year-by-year table — full width */}
                   <div style={{ ...cardStyle(), marginBottom: 16 }}>
                         <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 12 }}>Proyección Año por Año — Plazo Hipoteca ({calcPlazo} Años)</div>
+                        {/* Disfrute no genera renta — mostrar Renta/Ingreso/NOI/Flujo Neto ahí
+                            es mostrar columnas de $0 sin sentido. Para ese perfil la tabla
+                            queda reducida a lo que sí aplica: costos de la propiedad, cuota
+                            hipotecaria, saldo de deuda y valorización del activo. */}
                         <div style={{ overflowX: 'auto' }}>
                           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
                             <thead>
                               <tr style={{ borderBottom: `2px solid ${T.border}` }}>
                                 <th style={{ padding: '6px 10px', textAlign: 'right' as const }}>Año</th>
-                                <th style={{ padding: '6px 10px', textAlign: 'right' as const }}>Renta/Mes</th>
-                                <th style={{ padding: '6px 10px', textAlign: 'right' as const }}>Ingreso Anual</th>
+                                {calcPerfil === 'renta' && <>
+                                  <th style={{ padding: '6px 10px', textAlign: 'right' as const }}>Renta/Mes</th>
+                                  <th style={{ padding: '6px 10px', textAlign: 'right' as const }}>Ingreso Anual</th>
+                                </>}
                                 <th style={{ padding: '6px 10px', textAlign: 'right' as const }}>Gastos Anual</th>
-                                <th style={{ padding: '6px 10px', textAlign: 'right' as const }}>NOI</th>
+                                {calcPerfil === 'renta' && <th style={{ padding: '6px 10px', textAlign: 'right' as const }}>NOI</th>}
                                 <th style={{ padding: '6px 10px', textAlign: 'right' as const }}>Hipoteca</th>
-                                <th style={{ padding: '6px 10px', textAlign: 'right' as const }}>Flujo Neto</th>
+                                {calcPerfil === 'renta' && <th style={{ padding: '6px 10px', textAlign: 'right' as const }}>Flujo Neto</th>}
                                 <th style={{ padding: '6px 10px', textAlign: 'right' as const }}>Saldo Deuda</th>
                                 <th style={{ padding: '6px 10px', textAlign: 'right' as const }}>Valor Propiedad</th>
                               </tr>
@@ -13853,14 +14798,18 @@ Responde SOLO con JSON sin bloques de código:
                               {yearlyTable.map((r: any) => (
                                 <tr key={r.year} style={{ borderBottom: `1px solid ${T.borderLight}` }}>
                                   <td style={{ padding: '5px 10px', textAlign: 'right' as const, fontWeight: 700 }}>{r.year}</td>
-                                  <td style={{ padding: '5px 10px', textAlign: 'right' as const }}>{usd(Math.round(r.rentaMensual))}</td>
-                                  <td style={{ padding: '5px 10px', textAlign: 'right' as const, color: T.palm, fontWeight: 600 }}>{usd(Math.round(r.ingresoAnual))}</td>
+                                  {calcPerfil === 'renta' && <>
+                                    <td style={{ padding: '5px 10px', textAlign: 'right' as const }}>{usd(Math.round(r.rentaMensual))}</td>
+                                    <td style={{ padding: '5px 10px', textAlign: 'right' as const, color: T.palm, fontWeight: 600 }}>{usd(Math.round(r.ingresoAnual))}</td>
+                                  </>}
                                   <td style={{ padding: '5px 10px', textAlign: 'right' as const, color: T.coral }}>{usd(Math.round(r.gastosAnual))}</td>
-                                  <td style={{ padding: '5px 10px', textAlign: 'right' as const, fontWeight: 700, color: T.teal }}>{usd(Math.round(r.noi))}</td>
+                                  {calcPerfil === 'renta' && <td style={{ padding: '5px 10px', textAlign: 'right' as const, fontWeight: 700, color: T.teal }}>{usd(Math.round(r.noi))}</td>}
                                   <td style={{ padding: '5px 10px', textAlign: 'right' as const, color: T.sky }}>{usd(Math.round(r.cuotaHip))}</td>
-                                  <td style={{ padding: '5px 10px', textAlign: 'right' as const, fontWeight: 700, color: r.flujoPostHip >= 0 ? T.palm : T.coral }}>
-                                    {usd(Math.round(r.flujoPostHip))}
-                                  </td>
+                                  {calcPerfil === 'renta' && (
+                                    <td style={{ padding: '5px 10px', textAlign: 'right' as const, fontWeight: 700, color: r.flujoPostHip >= 0 ? T.palm : T.coral }}>
+                                      {usd(Math.round(r.flujoPostHip))}
+                                    </td>
+                                  )}
                                   <td style={{ padding: '5px 10px', textAlign: 'right' as const, color: T.textSec }}>{usd(Math.round(r.deuda))}</td>
                                   <td style={{ padding: '5px 10px', textAlign: 'right' as const }}>{usd(Math.round(r.valorActivo))}</td>
                                 </tr>
@@ -13869,7 +14818,9 @@ Responde SOLO con JSON sin bloques de código:
                           </table>
                         </div>
                         <div style={{ fontSize: 10, color: T.textSec, marginTop: 8, fontStyle: 'italic' }}>
-                          * Flujo neto = NOI anual − cuota hipotecaria anual. La tabla cubre los {calcPlazo} años del plazo de la hipoteca; al final el activo queda libre de deuda.
+                          {calcPerfil !== 'renta'
+                            ? `* Perfil ${calcPerfil === 'disfrute' ? 'Disfrute' : calcPerfil === 'patrimonial' ? 'Patrimonial' : 'sin definir'}: no modela ingreso por alquiler — solo costos de la propiedad, cuota hipotecaria y valorización. La tabla cubre los ` + calcPlazo + ' años del plazo de la hipoteca; al final el activo queda libre de deuda.'
+                            : '* Flujo neto = NOI anual − cuota hipotecaria anual. La tabla cubre los ' + calcPlazo + ' años del plazo de la hipoteca; al final el activo queda libre de deuda.'}
                         </div>
                       </div>
 
@@ -13897,7 +14848,7 @@ Responde SOLO con JSON sin bloques de código:
                             <div>
                               <div style={{ fontSize: 9, fontWeight: 800, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.09em', marginBottom: 12 }}>Enterprise Value → Equity</div>
                               {([
-                                { label: 'Enterprise Value', sub: `precio × (1 + ${calcValorizacion}%)^${calcVenderAnio}`, val: ventaValor, sign: '', color: T.text, bold: true, topLine: false },
+                                { label: 'Enterprise Value', sub: `precio × (1 + ${calcValorizacionPreEntrega}% entrega) × (1 + ${calcValorizacion}% anual)^${calcVenderAnio}`, val: ventaValor, sign: '', color: T.text, bold: true, topLine: false },
                                 { label: 'Deuda remanente', sub: `hipoteca año ${calcVenderAnio}`, val: deudaAlVender, sign: '−', color: T.coral, bold: false, topLine: false },
                                 { label: 'Equity Value', sub: 'EV menos deuda', val: equityValue, sign: '', color: T.teal, bold: true, topLine: true },
                               ] as {label:string;sub:string;val:number;sign:string;color:string;bold:boolean;topLine:boolean}[]).map(r => (
@@ -13964,92 +14915,137 @@ Responde SOLO con JSON sin bloques de código:
               )}
 
               {/* TAB: Comparativo vs. Colombia */}
-              {calcTab === 'comparativo' && (
+              {calcTab === 'comparativo' && (() => {
+                // Rango real histórico del CDT — validado con datos reales BanRep/DANE
+                // (2020–2024): 0.3% en 2022 (año de inflación sorpresa) a 3.9% en 2024 (año
+                // de desinflación con tasas todavía altas). No es una fórmula derivada del
+                // spread configurado — es lo que efectivamente ocurrió, se muestra como
+                // contexto de cuánto varía un "promedio de largo plazo" año a año.
+                const CDT_RANGO_MIN = 0.3, CDT_RANGO_MAX = 3.9;
+                const filas = [
+                  { nombre: 'Panamá Inmobiliario', sub: calcProject ? `${calcProject}${(calcPerfil === 'renta') ? ' · Renta' : ''}` : 'Selecciona un proyecto',
+                    nominal: patrimonioNetoGLP, inflAcum: inflAcumPanama, real: patrimonioRealGLP, realAnual: realAnualGLP, color: T.teal },
+                  { nombre: 'Colombia Inmobiliario', sub: `Valorización = IPC + renta bruta tope ${coRentaBrutaPct}%`,
+                    nominal: coNominalFinal, inflAcum: inflAcumColombia, real: coReal, realAnual: coRealAnual, color: '#3E7CB8' },
+                  { nombre: 'CDT Colombia', sub: `Promedio l.p. — rango real ${CDT_RANGO_MIN}%–${CDT_RANGO_MAX}% (2020–24)`,
+                    nominal: cdtFutureValue, inflAcum: inflAcumColombia, real: cdtReal, realAnual: cdtRealAnual, color: '#B45309' },
+                ];
+                // Puntos del gráfico: % real acumulado en 6 muestras del horizonte, escalados
+                // a la altura del SVG — el eje siempre parte de 0% y sube hasta el mayor
+                // valor final ×1.15 para dejar aire arriba de la línea más alta.
+                const maxRealPct = Math.max(...filas.map(f => f.realAnual > -100 ? (Math.pow(1 + f.realAnual / 100, calcPlazo) - 1) * 100 : 0), 10);
+                const chartW = 900, chartH = 300, padL = 46, padR = 30, padT = 20, padB = 50;
+                const plotW = chartW - padL - padR, plotH = chartH - padT - padB;
+                const xAt = (frac: number) => padL + frac * plotW;
+                const yAt = (pct: number) => padT + plotH - Math.max(0, Math.min(pct, maxRealPct)) / maxRealPct * plotH;
+                const sample = (rAnual: number, mult = 1) => [0, 0.2, 0.4, 0.6, 0.8, 1].map(f => {
+                  const t = f * calcPlazo;
+                  const pct = (Math.pow(1 + (rAnual * mult) / 100, t) - 1) * 100;
+                  return { x: xAt(f), y: yAt(pct) };
+                });
+                const toPoly = (pts: { x: number; y: number }[]) => pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+                const ptsPanama = sample(filas[0].realAnual);
+                const ptsColombia = sample(filas[1].realAnual);
+                const ptsCdtMid = sample(filas[2].realAnual);
+                const ptsCdtLow = sample(CDT_RANGO_MIN);
+                const ptsCdtHigh = sample(CDT_RANGO_MAX);
+                const bandPoly = [...ptsCdtHigh, ...[...ptsCdtLow].reverse()];
+
+                return (
                 <div style={{ ...cardStyle(), padding: 28 }}>
                   {/* Header */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 24, borderBottom: `1px solid ${T.border}`, paddingBottom: 14 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 20, borderBottom: `1px solid ${T.border}`, paddingBottom: 14 }}>
                     <div>
-                      <div style={{ fontSize: 9, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.12em', marginBottom: 4 }}>Análisis comparativo</div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: T.text, letterSpacing: '-0.01em' }}>Activo Físico GLP · Panamá&ensp;vs.&ensp;CDT Colombia</div>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.12em', marginBottom: 4 }}>Comparativo real</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: T.text, letterSpacing: '-0.01em' }}>Panamá&ensp;vs.&ensp;Colombia (finca raíz y CDT)</div>
                     </div>
-                    <div style={{ fontSize: 10, color: T.textSec, letterSpacing: '0.04em' }}>Horizonte {calcPlazo} años</div>
+                    <div style={{ fontSize: 10, color: T.textSec, letterSpacing: '0.04em' }}>Horizonte {calcPlazo} años · Capital {usd(Math.round(cuotaInicialdUSD))}</div>
                   </div>
 
-                  {/* Comparison table */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, marginBottom: 24 }}>
-
-                    {/* GLP column */}
-                    <div style={{ paddingRight: 28, borderRight: `1px solid ${T.borderLight}` }}>
-                      <div style={{ fontSize: 9, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.12em', marginBottom: 16 }}>Inversión GLP · Panamá</div>
-                      {([
-                        { label: 'Capital desembolsado (cuota inicial)', val: usd(Math.round(cuotaInicialdUSD)) },
-                        { label: 'ROI anual sobre equity', val: `${roiEquity.toFixed(2)}%` },
-                        { label: `Valor del activo al año ${calcPlazo}`, val: usd(Math.round(valorFuturo)) },
-                        { label: 'Deuda remanente al final', val: usd(Math.round(deudaFinal)) },
-                        { label: 'FCF acumulado (flujos reales)', val: usd(Math.round(fcfAcumulado)) },
-                      ]).map((r, i) => (
-                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', paddingBottom: 10, marginBottom: 10, borderBottom: `1px solid ${T.borderLight}` }}>
-                          <span style={{ fontSize: 11, color: T.textSec, maxWidth: '55%', lineHeight: 1.3 }}>{r.label}</span>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: T.text }}>{r.val}</span>
-                        </div>
-                      ))}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', paddingTop: 6 }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: T.text, textTransform: 'uppercase' as const, letterSpacing: '0.04em' }}>Patrimonio neto final</span>
-                        <span style={{ fontSize: 20, fontWeight: 800, color: T.text }}>{usd(Math.round(patrimonioNetoGLP))}</span>
-                      </div>
-                      <div style={{ textAlign: 'right' as const, marginTop: 4 }}>
-                        <span style={{ fontSize: 10, color: T.textSec, fontStyle: 'italic' }}>
-                          {gananciaNetaGLP >= 0 ? '+' : ''}{usd(Math.round(gananciaNetaGLP))} sobre capital inicial
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* CDT column */}
-                    <div style={{ paddingLeft: 28 }}>
-                      <div style={{ fontSize: 9, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.12em', marginBottom: 16 }}>CDT Tradicional · Colombia</div>
-                      {([
-                        { label: 'Capital equivalente (USD)', val: usd(Math.round(cuotaInicialdUSD)) },
-                        { label: 'Tasa nominal E.A.', val: `${cdtRate}% COP` },
-                        { label: 'Devaluación COP/USD histórica', val: `−${cdtDevaluation}% anual` },
-                        { label: 'Retorno real ajustado en USD', val: `${cdtRealRate}% anual` },
-                        { label: 'Apreciación del capital', val: 'Ninguna' },
-                      ]).map((r, i) => (
-                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', paddingBottom: 10, marginBottom: 10, borderBottom: `1px solid ${T.borderLight}` }}>
-                          <span style={{ fontSize: 11, color: T.textSec, maxWidth: '55%', lineHeight: 1.3 }}>{r.label}</span>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: T.text }}>{r.val}</span>
-                        </div>
-                      ))}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', paddingTop: 6 }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: T.text, textTransform: 'uppercase' as const, letterSpacing: '0.04em' }}>Valor liquidativo final</span>
-                        <span style={{ fontSize: 20, fontWeight: 800, color: T.text }}>{usd(Math.round(cdtFutureValue))}</span>
-                      </div>
-                      <div style={{ textAlign: 'right' as const, marginTop: 4 }}>
-                        <span style={{ fontSize: 10, color: T.textSec, fontStyle: 'italic' }}>
-                          +{usd(Math.round(cdtFutureValue - cuotaInicialdUSD))} sobre capital inicial
-                        </span>
-                      </div>
+                  {/* Terminal table */}
+                  <div style={{ overflowX: 'auto', marginBottom: 24, border: `1px solid ${T.border}`, borderRadius: 8 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                      <thead>
+                        <tr style={{ background: T.teal }}>
+                          {['Alternativa', 'Capital', `Nominal ${calcPlazo}a`, 'Inflación acum.', `Real ${calcPlazo}a`, 'Real anualizado'].map((h, i) => (
+                            <th key={h} style={{ padding: '11px 16px', textAlign: i === 0 ? 'left' as const : 'right' as const, fontSize: 9.5, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase' as const, color: '#fff' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filas.map((f, i) => (
+                          <tr key={f.nombre} style={{ borderBottom: i < filas.length - 1 ? `1px solid ${T.borderLight}` : 'none' }}>
+                            <td style={{ padding: '13px 16px' }}>
+                              <div style={{ fontWeight: 700, color: T.text }}>{f.nombre}</div>
+                              <div style={{ fontSize: 10.5, color: T.textSec, marginTop: 2 }}>{f.sub}</div>
+                            </td>
+                            <td style={{ padding: '13px 16px', textAlign: 'right' as const }}>{usd(Math.round(cuotaInicialdUSD))}</td>
+                            <td style={{ padding: '13px 16px', textAlign: 'right' as const }}>{usd(Math.round(f.nominal))}</td>
+                            <td style={{ padding: '13px 16px', textAlign: 'right' as const }}>−{(f.inflAcum * 100).toFixed(1)}%</td>
+                            <td style={{ padding: '13px 16px', textAlign: 'right' as const }}>{usd(Math.round(f.real))}</td>
+                            <td style={{ padding: '13px 16px', textAlign: 'right' as const, fontWeight: 800, fontSize: 14, color: f.realAnual >= 4 ? T.success : f.realAnual >= 2 ? T.warning : T.danger }}>
+                              {f.realAnual >= 0 ? '+' : ''}{f.realAnual.toFixed(1)}%
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div style={{ padding: '10px 16px', fontSize: 10.5, color: T.textSec, background: T.bg, borderTop: `1px solid ${T.border}` }}>
+                      Horizonte: {calcPlazo} años · Capital base: {usd(Math.round(cuotaInicialdUSD))} · Deflactado por inflación propia de cada país (Configuración → Financiero)
                     </div>
                   </div>
 
-                  {/* Differential strip */}
-                  <div style={{ padding: '14px 20px', background: T.sand, borderRadius: 8, border: `1px solid ${T.border}` }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                      <div>
-                        <div style={{ fontSize: 9, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: '0.1em', marginBottom: 3 }}>Diferencial patrimonial a {calcPlazo} años</div>
-                        <div style={{ fontSize: 10, color: T.textSec, lineHeight: 1.5, maxWidth: 500 }}>
-                          El CDT en COP expone el capital a la devaluación histórica del peso (~{cdtDevaluation}% anual). El activo en Panamá preserva el patrimonio en USD, genera renta en moneda fuerte y captura plusvalía inmobiliaria real.
-                        </div>
+                  {/* Conclusion chart */}
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 3 }}>Retorno real acumulado en el tiempo</div>
+                    <div style={{ fontSize: 11.5, color: T.textSec, marginBottom: 16 }}>Poder de compra ganado desde el capital inicial, año a año, a precios de hoy</div>
+                    <svg viewBox={`0 0 ${chartW} ${chartH}`} style={{ width: '100%', height: 'auto' }} role="img" aria-label="Comparación de retorno real acumulado entre las tres alternativas">
+                      <g stroke={T.borderLight} strokeWidth={1}>
+                        <line x1={padL} y1={padT} x2={padL} y2={chartH - padB} />
+                        <line x1={padL} y1={chartH - padB} x2={chartW - padR} y2={chartH - padB} />
+                        {[0.25, 0.5, 0.75].map(f => (
+                          <line key={f} x1={padL} y1={padT + plotH * (1 - f)} x2={chartW - padR} y2={padT + plotH * (1 - f)} strokeDasharray="2,4" />
+                        ))}
+                      </g>
+                      {[0, 0.25, 0.5, 0.75, 1].map(f => (
+                        <text key={f} x={padL - 6} y={padT + plotH * (1 - f) + 3} fontSize={10} fill={T.textSec} textAnchor="end">{Math.round(maxRealPct * f)}%</text>
+                      ))}
+                      <polygon points={toPoly(bandPoly)} fill={T.textSec} opacity={0.14} />
+                      <polyline points={toPoly(ptsPanama)} fill="none" stroke={filas[0].color} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+                      <polyline points={toPoly(ptsColombia)} fill="none" stroke={filas[1].color} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+                      <polyline points={toPoly(ptsCdtMid)} fill="none" stroke={filas[2].color} strokeWidth={2.5} strokeDasharray="6,4" strokeLinecap="round" strokeLinejoin="round" />
+                      {[
+                        { pts: ptsPanama, color: filas[0].color, val: filas[0].realAnual },
+                        { pts: ptsColombia, color: filas[1].color, val: filas[1].realAnual },
+                        { pts: ptsCdtMid, color: filas[2].color, val: filas[2].realAnual },
+                      ].map((s, i) => (
+                        <g key={i}>
+                          <circle cx={s.pts[5].x} cy={s.pts[5].y} r={5} fill={s.color} />
+                          <text x={s.pts[5].x + 10} y={s.pts[5].y + 4} fontSize={12} fontWeight={700} fill={s.color}>{s.val >= 0 ? '+' : ''}{s.val.toFixed(1)}%</text>
+                        </g>
+                      ))}
+                      <text x={padL} y={chartH - padB + 20} fontSize={10.5} fill={T.textSec}>{new Date().getFullYear()}</text>
+                      <text x={chartW - padR - 40} y={chartH - padB + 20} fontSize={10.5} fill={T.textSec} textAnchor="end">{new Date().getFullYear() + calcPlazo}</text>
+                    </svg>
+                    <div style={{ display: 'flex', gap: 24, marginTop: 16, flexWrap: 'wrap' as const, paddingTop: 14, borderTop: `1px solid ${T.borderLight}` }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: T.textSec }}>
+                        <span style={{ width: 16, height: 3, borderRadius: 2, background: filas[0].color, flexShrink: 0 }} />Panamá Inmobiliario <b style={{ color: T.text, marginLeft: 2 }}>{filas[0].realAnual.toFixed(1)}% real/año</b>
                       </div>
-                      <div style={{ textAlign: 'right' as const, flexShrink: 0, paddingLeft: 24 }}>
-                        <div style={{ fontSize: 9, color: T.textSec, letterSpacing: '0.06em', marginBottom: 3, textTransform: 'uppercase' as const }}>Ventaja GLP</div>
-                        <div style={{ fontSize: 24, fontWeight: 800, color: T.text, letterSpacing: '-0.02em' }}>
-                          {diferencialVsCDT >= 0 ? '+' : ''}{usd(Math.round(diferencialVsCDT))}
-                        </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: T.textSec }}>
+                        <span style={{ width: 16, height: 3, borderRadius: 2, background: filas[1].color, flexShrink: 0 }} />Colombia Inmobiliario <b style={{ color: T.text, marginLeft: 2 }}>{filas[1].realAnual.toFixed(1)}% real/año</b>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: T.textSec }}>
+                        <span style={{ width: 16, height: 0, borderTop: `2.5px dashed ${filas[2].color}`, flexShrink: 0 }} />CDT Colombia <b style={{ color: T.text, marginLeft: 2 }}>{filas[2].realAnual.toFixed(1)}% real/año</b> (rango sombreado {CDT_RANGO_MIN}–{CDT_RANGO_MAX}%)
                       </div>
                     </div>
+                  </div>
+
+                  <div style={{ fontSize: 10.5, color: T.textSec, marginTop: 16, lineHeight: 1.6 }}>
+                    Metodología: cada escenario se deflacta con la inflación proyectada de su propio país (Configuración → Financiero). CDT: tasa nominal = inflación Colombia del año + spread real configurable ({cdtSpreadReal}% actual), reinvertida compuesto — la banda sombreada refleja la volatilidad real observada 2020–2024 con datos BanRep/DANE. Inmobiliario Colombia: valorización = inflación del año + renta bruta con tope configurable ({coRentaBrutaPct}% actual). Panamá: renta incluida solo si el perfil activo es Renta y el proyecto tiene licencia turística vigente.
                   </div>
                 </div>
-              )}
+                );
+              })()}
 
             </div>
           </>
@@ -14284,7 +15280,7 @@ Responde SOLO con JSON sin bloques de código:
         areaMin: Number(String(r['Rango de Area (m2)'] || '0').split('-')[0].replace(/[^0-9]/g, '')) || 0,
         areaMax: Number(String(r['Rango de Area (m2)'] || '0').split('-').pop()?.replace(/[^0-9]/g, '')) || 0,
         bedrooms: String(r['Recamaras'] || r['recamaras'] || ''),
-        capRateMin: 5.5, capRateMax: 7.5, vacancyDef: 8,
+        capRateMin: 5.5, capRateMax: 7.5, vacancyDef: 10,
         rentSuggest: 1000, rentM2Min: 9, rentM2Max: 13,
         condominioMes: 250, appreciationDef: 4.0,
         appreciationNote: source === 'excel' ? 'Datos importados desde Excel. Actualice las notas de valorización.' : 'Datos leídos con IA desde una imagen. Verifique antes de aplicar.',
@@ -14718,6 +15714,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
       { id: 'portal', label: 'Portal Clientes', icon: 'lock' },
       { id: 'brokers', label: 'Brokers', icon: 'user' },
       { id: 'comisiones', label: 'Comisiones', icon: 'currency' },
+      { id: 'financiero', label: 'Financiero', icon: 'chart-bar' },
       { id: 'reglas', label: 'Reglas de Negocio', icon: 'chart-bar' },
       { id: 'integraciones', label: 'Integraciones', icon: 'plug' },
       { id: 'backups', label: 'Backups', icon: 'backup' },
@@ -15040,6 +16037,260 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
             <div style={{ background: totalPct === 5 ? `${T.success}10` : `${T.danger}10`, border: `1px solid ${totalPct === 5 ? T.success : T.danger}30`, borderRadius: 8, padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>Total distribución de comisión</span>
               <span style={{ fontSize: 20, fontWeight: 700, color: totalPct === 5 ? T.success : T.danger }}>{totalPct}%</span>
+            </div>
+          </div>
+        )}
+
+        {/* ── FINANCIERO: parámetros que alimentan la Calculadora ── */}
+        {configTab === 'financiero' && (
+          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 20 }}>
+            <div style={{ ...cardStyle() }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icon name="chart-bar" size={16} color={T.teal} /> Comparativo Real — Supuestos Panamá vs. Colombia
+              </div>
+              <div style={{ fontSize: 12, color: T.textSec, marginBottom: 16 }}>
+                Parámetros del comparativo real en la Calculadora (pestaña "Comparativo"). Validados con datos reales de BanRep/DANE — ver nota de cada campo.
+              </div>
+
+              {/* La pestaña "Comparativo vs. Colombia" está oculta por defecto en la
+                  Calculadora — solo aparece si se activa aquí. Evita mostrarle a un broker o
+                  a un cliente una comparación con supuestos macro (inflación, CDT) sin que un
+                  admin la haya revisado primero. */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, padding: '12px 16px', background: comparativoActivo ? T.sky : T.bg, border: `1px solid ${T.border}`, borderRadius: 10, marginBottom: 16 }}>
+                <div>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, color: T.text }}>Mostrar "Comparativo vs. Colombia" en la Calculadora</div>
+                  <div style={{ fontSize: 10.5, color: T.textSec, marginTop: 2 }}>Apagado por defecto. Solo un administrador la activa aquí — aplica para todo el equipo, no por sesión.</div>
+                </div>
+                <button
+                  role="switch" aria-checked={comparativoActivo}
+                  onClick={() => setComparativoActivo(v => !v)}
+                  style={{
+                    flexShrink: 0, width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
+                    background: comparativoActivo ? T.teal : T.border, position: 'relative', transition: 'background 0.15s',
+                  }}>
+                  <div style={{
+                    position: 'absolute', top: 2, left: comparativoActivo ? 22 : 2,
+                    width: 20, height: 20, borderRadius: '50%', background: '#fff',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.3)', transition: 'left 0.15s',
+                  }} />
+                </button>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
+                <div style={{ background: T.bg, border: `1px solid ${T.border}`, borderRadius: 10, padding: '14px 16px' }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: T.text, marginBottom: 4 }}>Spread real CDT Colombia</div>
+                  <div style={{ fontSize: 10.5, color: T.textSec, marginBottom: 10, lineHeight: 1.5 }}>
+                    Promedio de largo plazo — validado con datos BanRep/DANE 2020–2024, donde el retorno real observado varió entre 0.3% (2022, inflación sorpresa) y 3.9% (2024, desinflación con tasas altas). No es una cifra fija año a año.
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input type="number" min={0} max={10} step={0.1} value={cdtSpreadReal}
+                      onChange={e => setCdtSpreadReal(Number(e.target.value))}
+                      onFocus={e => e.target.select()}
+                      style={{ ...inputStyle({ fontSize: 20, fontWeight: 700, textAlign: 'center' as const, padding: '4px' }), width: 64 }} />
+                    <span style={{ fontSize: 18, fontWeight: 700, color: T.teal }}>%</span>
+                  </div>
+                </div>
+                <div style={{ background: T.bg, border: `1px solid ${T.border}`, borderRadius: 10, padding: '14px 16px' }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: T.text, marginBottom: 4 }}>Renta bruta tope · Inmobiliario Colombia</div>
+                  <div style={{ fontSize: 10.5, color: T.textSec, marginBottom: 10, lineHeight: 1.5 }}>
+                    Renta bruta anual nominal (no real) que se suma a la valorización por IPC del activo colombiano en el comparativo.
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input type="number" min={0} max={15} step={0.5} value={coRentaBrutaPct}
+                      onChange={e => setCoRentaBrutaPct(Number(e.target.value))}
+                      onFocus={e => e.target.select()}
+                      style={{ ...inputStyle({ fontSize: 20, fontWeight: 700, textAlign: 'center' as const, padding: '4px' }), width: 64 }} />
+                    <span style={{ fontSize: 18, fontWeight: 700, color: T.teal }}>%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ ...cardStyle() }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icon name="chart-bar" size={16} color={T.teal} /> Valorización Pre-Entrega por Segmento
+              </div>
+              <div style={{ fontSize: 12, color: T.textSec, marginBottom: 16 }}>
+                Plusvalía de un solo golpe entre separación y entrega — cada segmento se valoriza distinto (ciudad, golf, isla/marina, playa), así que se parametriza por segmento, no por activo individual. La Calculadora la toma automáticamente al elegir un proyecto.
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
+                {valorizacionSegmentos.map((v, idx) => (
+                  <div key={v.segmento} style={{ background: T.bg, border: `1px solid ${T.border}`, borderRadius: 10, padding: '14px 16px' }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: T.text, marginBottom: 8 }}>{v.label}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input type="number" min={0} max={100} step={1} value={v.pct}
+                        onChange={e => setValorizacionSegmentos(prev => prev.map((x, i) => i === idx ? { ...x, pct: Number(e.target.value) } : x))}
+                        onFocus={e => e.target.select()}
+                        style={{ ...inputStyle({ fontSize: 22, fontWeight: 700, textAlign: 'center', padding: '4px' }), width: 64 }} />
+                      <span style={{ fontSize: 20, fontWeight: 700, color: T.teal }}>%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => setValorizacionSegmentos(VALORIZACION_SEGMENTOS_DEFAULT.map(v => ({ ...v })))}
+                style={{ marginTop: 14, fontSize: 11, color: T.textSec, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+                Restablecer al 20% para los 4 segmentos
+              </button>
+            </div>
+
+            {/* Separación por Proyecto — se usa al desplegar la ficha técnica pública
+                (tarjeta del proyecto en la landing) y como default en el simulador de
+                cuota inicial de cada página de proyecto. */}
+            <div style={{ ...cardStyle() }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icon name="chart-bar" size={16} color={T.teal} /> Separación por Proyecto
+              </div>
+              <div style={{ fontSize: 12, color: T.textSec, marginBottom: 16 }}>
+                Valor de separación (USD) por proyecto específico. Un proyecto sin valor propio cae al default de su categoría, y un proyecto sin categoría configurada cae al default general. Se usa en la ficha técnica pública y en el simulador de cuota inicial de la web.
+              </div>
+
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.textSec, marginBottom: 8, textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Por proyecto</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10, marginBottom: 18 }}>
+                {Object.entries(separacionProyectos.porProyecto).map(([nombre, monto]) => (
+                  <div key={nombre} style={{ background: T.bg, border: `1px solid ${T.border}`, borderRadius: 8, padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: T.text, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }} title={nombre}>{nombre}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                      <span style={{ fontSize: 12, color: T.teal, fontWeight: 700 }}>$</span>
+                      <input type="number" min={0} value={monto}
+                        onChange={e => setSeparacionProyectos(prev => ({ ...prev, porProyecto: { ...prev.porProyecto, [nombre]: Number(e.target.value) } }))}
+                        onFocus={e => e.target.select()}
+                        style={{ ...inputStyle({ fontSize: 12, fontWeight: 700, textAlign: 'center' as const, padding: '4px' }), width: 70 }} />
+                      <button onClick={() => setSeparacionProyectos(prev => { const p = { ...prev.porProyecto }; delete p[nombre]; return { ...prev, porProyecto: p }; })}
+                        title="Quitar override — el proyecto vuelve al default de su categoría"
+                        style={{ background: 'none', border: 'none', color: T.textSec, cursor: 'pointer', fontSize: 13, padding: '0 2px', lineHeight: 1 }}>✕</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
+                <input id="nuevoProyectoSeparacion" placeholder="Nombre del proyecto…" style={inputStyle({ fontSize: 12, flex: 1 })} />
+                <button onClick={() => {
+                  const el = document.getElementById('nuevoProyectoSeparacion') as HTMLInputElement;
+                  const nombre = el?.value.trim();
+                  if (!nombre) return;
+                  setSeparacionProyectos(prev => ({ ...prev, porProyecto: { ...prev.porProyecto, [nombre]: prev.default } }));
+                  if (el) el.value = '';
+                }} style={btnSecondary({ padding: '8px 16px', fontSize: 12 })}>
+                  + Agregar proyecto
+                </button>
+              </div>
+
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.textSec, marginBottom: 8, textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Por categoría (fallback)</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10, marginBottom: 18 }}>
+                {(['Playa', 'Marina Panamá', 'Golf y Country Club', 'Ciudad'] as const).map(cat => (
+                  <div key={cat} style={{ background: T.bg, border: `1px solid ${T.border}`, borderRadius: 8, padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: T.text, fontWeight: 600 }}>{cat}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ fontSize: 12, color: T.teal, fontWeight: 700 }}>$</span>
+                      <input type="number" min={0} value={separacionProyectos.porCategoria[cat] ?? ''}
+                        placeholder="—"
+                        onChange={e => setSeparacionProyectos(prev => ({ ...prev, porCategoria: { ...prev.porCategoria, [cat]: Number(e.target.value) } }))}
+                        onFocus={e => e.target.select()}
+                        style={{ ...inputStyle({ fontSize: 12, fontWeight: 700, textAlign: 'center' as const, padding: '4px' }), width: 70 }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.textSec, marginBottom: 8, textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Default general</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 12, color: T.teal, fontWeight: 700 }}>$</span>
+                <input type="number" min={0} value={separacionProyectos.default}
+                  onChange={e => setSeparacionProyectos(prev => ({ ...prev, default: Number(e.target.value) }))}
+                  onFocus={e => e.target.select()}
+                  style={{ ...inputStyle({ fontSize: 13, fontWeight: 700, textAlign: 'center' as const, padding: '4px' }), width: 80 }} />
+              </div>
+            </div>
+
+            <div style={{ ...cardStyle() }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icon name="chart-bar" size={16} color={T.teal} /> Arriendo por m² — Renta Corta y Renta Larga por Segmento
+              </div>
+              <div style={{ fontSize: 12, color: T.textSec, marginBottom: 16 }}>
+                Valor de arriendo mensual por m² (USD), parametrizado por segmento de proyecto. La renta corta (turística/vacacional) y la renta larga (contrato residencial) tienen tarifas distintas — la Calculadora las toma automáticamente según el proyecto y el tipo de renta elegidos.
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
+                {arriendoM2Segmentos.map((v, idx) => (
+                  <div key={v.segmento} style={{ background: T.bg, border: `1px solid ${T.border}`, borderRadius: 10, padding: '14px 16px' }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: T.text, marginBottom: 10 }}>{v.label}</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <span style={{ fontSize: 10.5, color: T.textSec }}>Renta corta / m²</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: T.teal }}>$</span>
+                          <input type="number" min={0} step={0.5} value={v.corta}
+                            onChange={e => setArriendoM2Segmentos(prev => prev.map((x, i) => i === idx ? { ...x, corta: Number(e.target.value) } : x))}
+                            onFocus={e => e.target.select()}
+                            style={{ ...inputStyle({ fontSize: 14, fontWeight: 700, textAlign: 'center', padding: '4px' }), width: 60 }} />
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <span style={{ fontSize: 10.5, color: T.textSec }}>Renta larga / m²</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: T.teal }}>$</span>
+                          <input type="number" min={0} step={0.5} value={v.larga}
+                            onChange={e => setArriendoM2Segmentos(prev => prev.map((x, i) => i === idx ? { ...x, larga: Number(e.target.value) } : x))}
+                            onFocus={e => e.target.select()}
+                            style={{ ...inputStyle({ fontSize: 14, fontWeight: 700, textAlign: 'center', padding: '4px' }), width: 60 }} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => setArriendoM2Segmentos(ARRIENDO_M2_SEGMENTOS_DEFAULT.map(v => ({ ...v })))}
+                style={{ marginTop: 14, fontSize: 11, color: T.textSec, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+                Restablecer a valores por defecto
+              </button>
+            </div>
+
+            <div style={{ ...cardStyle() }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icon name="chart-bar" size={16} color={T.teal} /> Inflación Proyectada — Colombia y Panamá (2026–2045)
+              </div>
+              <div style={{ fontSize: 12, color: T.textSec, marginBottom: 16 }}>
+                Base: expectativas de analistas del Banco de la República (Colombia, jul-2026) y Consulta Artículo IV del FMI 2025 (Panamá), con supuestos estructurales de largo plazo donde no hay pronóstico oficial año a año. Editable si cambian las proyecciones oficiales.
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
+                  <thead>
+                    <tr style={{ borderBottom: `2px solid ${T.border}` }}>
+                      <th style={{ padding: '6px 10px', textAlign: 'left' as const }}>Año</th>
+                      <th style={{ padding: '6px 10px', textAlign: 'right' as const }}>Colombia</th>
+                      <th style={{ padding: '6px 10px', textAlign: 'right' as const }}>Panamá</th>
+                      <th style={{ padding: '6px 10px', textAlign: 'left' as const }}>Fuente Colombia</th>
+                      <th style={{ padding: '6px 10px', textAlign: 'left' as const }}>Fuente Panamá</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inflacionProyectada.map((row, idx) => (
+                      <tr key={row.anio} style={{ borderBottom: `1px solid ${T.borderLight}` }}>
+                        <td style={{ padding: '5px 10px', fontWeight: 700 }}>{row.anio}</td>
+                        <td style={{ padding: '5px 10px', textAlign: 'right' as const }}>
+                          <input type="number" step="0.1" value={(row.colombia * 100).toFixed(1)}
+                            onChange={e => setInflacionProyectada(prev => prev.map((x, i) => i === idx ? { ...x, colombia: Number(e.target.value) / 100 } : x))}
+                            onFocus={e => e.target.select()}
+                            style={{ ...inputStyle({ fontSize: 11.5, padding: '3px 6px', textAlign: 'right' as const }), width: 64 }} />
+                          <span style={{ marginLeft: 3, color: T.textSec }}>%</span>
+                        </td>
+                        <td style={{ padding: '5px 10px', textAlign: 'right' as const }}>
+                          <input type="number" step="0.1" value={(row.panama * 100).toFixed(1)}
+                            onChange={e => setInflacionProyectada(prev => prev.map((x, i) => i === idx ? { ...x, panama: Number(e.target.value) / 100 } : x))}
+                            onFocus={e => e.target.select()}
+                            style={{ ...inputStyle({ fontSize: 11.5, padding: '3px 6px', textAlign: 'right' as const }), width: 64 }} />
+                          <span style={{ marginLeft: 3, color: T.textSec }}>%</span>
+                        </td>
+                        <td style={{ padding: '5px 10px', color: T.textSec, fontSize: 10.5 }}>{row.fuenteColombia}</td>
+                        <td style={{ padding: '5px 10px', color: T.textSec, fontSize: 10.5 }}>{row.fuentePanama}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <button onClick={() => setInflacionProyectada(INFLACION_PROYECTADA_DEFAULT.map(v => ({ ...v })))}
+                style={{ marginTop: 14, fontSize: 11, color: T.textSec, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+                Restablecer a la proyección base (BanRep / FMI)
+              </button>
             </div>
           </div>
         )}
@@ -15906,7 +17157,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                                     <td style={{padding:'8px 12px',color:T.textSec,maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{proyectos.join(', ')}</td>
                                     <td style={{padding:'8px 12px',color:T.textSec}}>{p.canal}</td>
                                     <td style={{padding:'8px 12px',textAlign:'right',fontWeight:600,color:N}}>{p.presupuesto_usd?fmtUSD(Number(p.presupuesto_usd)):'-'}</td>
-                                    <td style={{padding:'8px 12px',textAlign:'right',color:'#94a3b8',fontSize:11}}>{p.fecha_registro?p.fecha_registro.slice(0,10):'-'}</td>
+                                    <td style={{padding:'8px 12px',textAlign:'right',color:'#94a3b8',fontSize:11}}>{fmtFechaHora(p.fecha_registro)}</td>
                                   </tr>
                                 );
                               })
@@ -16499,6 +17750,21 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
       });
     };
 
+    // ─ Envío real de una campaña "masiva" (no drip) vía /api/campaigns/send-now —
+    // reemplaza el antiguo "Lanzar" que solo cambiaba estado en localStorage sin
+    // enviar nada. Lanza una excepción si el backend rechaza el envío; el llamador
+    // decide qué mostrar (alert, dejar la campaña en borrador, etc.).
+    const sendCampaignNow = async (campaignId: number | string, campaignNombre: string, asunto: string, cuerpo: string, destinatarios: any[]) => {
+      const r = await fetch(`${API_ROOT}/api/campaigns/send-now`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-user': currentUser || 'desconocido' },
+        body: JSON.stringify({ campaignId, campaignNombre, asunto, cuerpo, destinatarios }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.success) throw new Error(data.error || `Error del servidor (${r.status})`);
+      return data as { enviados: number; fallidos: number; omitidos: number; resultados: any[] };
+    };
+
     // ─ Templates de email de lujo
     const TEMPLATES = [
       {
@@ -16535,7 +17801,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
 
     // ────────── shared helpers ──────────
     const inputS: React.CSSProperties = { width: '100%', padding: '9px 11px', border: `1px solid ${T.border}`, borderRadius: 2, fontSize: 13, color: NAVY, background: '#fff', outline: 'none', boxSizing: 'border-box' as const };
-    const labelS: React.CSSProperties = { fontSize: 10, fontWeight: 600, color: T.textSec, letterSpacing: '0.08em', textTransform: 'uppercase' as const, display: 'block', marginBottom: 6 };
+    const labelS: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: T.textSec, letterSpacing: '0.04em', textTransform: 'uppercase' as const, display: 'block', marginBottom: 6 };
     const CAMP_SECTION_TIPS: Record<string,{tip:string;benchmark?:string}> = {
       'Embudo de conversión consolidado': { tip:'Muestra el recorrido completo desde el envío hasta el cierre: enviados → abiertos → clicks → citas → cierres. Cada paso mide la efectividad de la etapa anterior.', benchmark:'Benchmark inmobiliario: Apertura 40% → CTR 15% → Cita 5% → Cierre 2%' },
       'Campañas — rendimiento comparado': { tip:'Compara cada campaña por tasa de apertura, conversión y ROI. Permite identificar qué tipo de campaña (reactivación, presentación, evento) genera mejores resultados.', benchmark:undefined },
@@ -16545,7 +17811,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
     };
     const sectionCard = (title: string, children: React.ReactNode, tip?: string, benchmark?: string) => (
       <div style={{ background: CREAM, border: `1px solid ${T.border}`, borderRadius: 4, overflow: 'hidden' }}>
-        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${T.border}`, fontSize: 11, fontWeight: 700, color: NAVY, letterSpacing: '0.08em', textTransform: 'uppercase' as const, display: 'flex', alignItems: 'center' }}>
+        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${T.border}`, fontSize: 13, fontWeight: 700, color: NAVY, letterSpacing: '0.04em', textTransform: 'uppercase' as const, display: 'flex', alignItems: 'center' }}>
           {title}{(tip || CAMP_SECTION_TIPS[title]) && <InfoTip text={tip || CAMP_SECTION_TIPS[title]?.tip} benchmark={benchmark || CAMP_SECTION_TIPS[title]?.benchmark}/>}
         </div>
         <div style={{ padding: '16px' }}>{children}</div>
@@ -16574,11 +17840,11 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
               { label: 'Citas generadas', val: totalCitas, color: NAVY, sub: `${totalClicks} clicks`, tip: 'Número de reuniones o visitas agendadas como resultado directo de las campañas. Es el puente entre el email y la venta. Los clicks miden el interés inicial.', benchmark: 'Ratio cita/enviado saludable: 2–5% · Ratio click/apertura (CTR): 10–20%' },
             ].map(k => (
               <div key={k.label} style={{ background: CREAM, border: `1px solid ${T.border}`, borderRadius: 4, padding: '14px 12px', textAlign: 'center' }}>
-                <div style={{ fontSize: 7, fontWeight: 700, color: T.textSec, letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: T.textSec, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {k.label}{k.tip && <InfoTip text={k.tip} benchmark={k.benchmark}/>}
                 </div>
-                <div style={{ fontSize: 22, fontWeight: 300, color: k.color, fontFamily: T.fontSerif, lineHeight: 1 }}>{k.val}</div>
-                <div style={{ fontSize: 8, color: T.textSec, marginTop: 6 }}>{k.sub}</div>
+                <div style={{ fontSize: 22, fontWeight: 300, color: k.color, fontFamily: T.fontSans, lineHeight: 1 }}>{k.val}</div>
+                <div style={{ fontSize: 12, color: T.textSec, marginTop: 6 }}>{k.sub}</div>
               </div>
             ))}
           </div>
@@ -16596,10 +17862,10 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                 ].map((row, i) => (
                   <div key={row.label} style={{ marginBottom: i < 4 ? 14 : 0 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-                      <span style={{ fontSize: 10, color: NAVY, fontWeight: i === 0 ? 400 : 400 }}>{row.label}</span>
+                      <span style={{ fontSize: 13, color: NAVY, fontWeight: i === 0 ? 400 : 400 }}>{row.label}</span>
                       <div style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
-                        <span style={{ fontSize: 8, color: T.textSec }}>{row.nota}</span>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: row.color, fontFamily: T.fontSerif }}>{row.val.toLocaleString()} <span style={{fontSize:9,fontWeight:400}}>({row.pct}%)</span></span>
+                        <span style={{ fontSize: 12, color: T.textSec }}>{row.nota}</span>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: row.color, fontFamily: T.fontSans }}>{row.val.toLocaleString()} <span style={{fontSize:12,fontWeight:400}}>({row.pct}%)</span></span>
                       </div>
                     </div>
                     <div style={{ background: '#E5E0D8', borderRadius: 1, height: 6, overflow: 'hidden' }}>
@@ -16617,12 +17883,12 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                   <div key={c.id} style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 2, padding: '10px 12px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                       <div>
-                        <div style={{ fontSize: 11, fontWeight: 500, color: NAVY }}>{c.nombre}</div>
-                        <div style={{ fontSize: 8, color: T.textSec, marginTop: 1 }}>{tipoLabel[c.tipo]} · {c.canal} · {objetivoLabel[c.objetivo]}</div>
+                        <div style={{ fontSize: 13, fontWeight: 500, color: NAVY }}>{c.nombre}</div>
+                        <div style={{ fontSize: 12, color: T.textSec, marginTop: 1 }}>{tipoLabel[c.tipo]} · {c.canal} · {objetivoLabel[c.objetivo]}</div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 9, fontWeight: 700, color: estadoColor[c.estado], background: estadoBg[c.estado], padding: '2px 8px', borderRadius: 2 }}>{c.estado.toUpperCase()}</div>
-                        {c.proximoEnvio && <div style={{ fontSize: 8, color: T.textSec, marginTop: 3 }}>Próximo: {c.proximoEnvio}</div>}
+                        <div style={{ fontSize: 12, fontWeight: 700, color: estadoColor[c.estado], background: estadoBg[c.estado], padding: '2px 8px', borderRadius: 2 }}>{c.estado.toUpperCase()}</div>
+                        {c.proximoEnvio && <div style={{ fontSize: 12, color: T.textSec, marginTop: 3 }}>Próximo: {c.proximoEnvio}</div>}
                       </div>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6 }}>
@@ -16633,22 +17899,22 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                         { l: 'Revenue', v: fmtUSD(c.revenue) },
                       ].map(s => (
                         <div key={s.l} style={{ textAlign: 'center' }}>
-                          <div style={{ fontSize: 7, color: T.textSec, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{s.l}</div>
-                          <div style={{ fontSize: 11, fontWeight: 500, color: NAVY, fontFamily: T.fontSerif }}>{s.v}</div>
+                          <div style={{ fontSize: 13, color: T.textSec, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{s.l}</div>
+                          <div style={{ fontSize: 13, fontWeight: 500, color: NAVY, fontFamily: T.fontSans }}>{s.v}</div>
                         </div>
                       ))}
                     </div>
                     {(c.alertas || []).length > 0 && (
                       <div style={{ marginTop: 8, padding: '5px 8px', background: '#FBF6EC', border: `1px solid ${GOLD}`, borderRadius: 2 }}>
                         {c.alertas.map((a: string, i: number) => (
-                          <div key={i} style={{ fontSize: 9, color: '#8B6914' }}>⚠ {a}</div>
+                          <div key={i} style={{ fontSize: 12, color: '#8B6914' }}>⚠ {a}</div>
                         ))}
                       </div>
                     )}
                   </div>
                 ))}
                 {campanas.filter(c => c.estado === 'activa' || c.estado === 'borrador').length === 0 && (
-                  <div style={{ textAlign: 'center', color: T.textSec, fontSize: 11, padding: '20px 0' }}>Sin campañas activas</div>
+                  <div style={{ textAlign: 'center', color: T.textSec, fontSize: 13, padding: '20px 0' }}>Sin campañas activas</div>
                 )}
               </div>
             ))}
@@ -16659,17 +17925,17 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
             {sectionCard('Alertas y recomendaciones inteligentes', (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {alertas.length === 0 && (
-                  <div style={{ color: GREEN, fontSize: 11, padding: '4px 0' }}>✓ Todas las campañas operan sin alertas críticas</div>
+                  <div style={{ color: GREEN, fontSize: 13, padding: '4px 0' }}>✓ Todas las campañas operan sin alertas críticas</div>
                 )}
                 {alertas.map((a, i) => (
                   <div key={i} style={{ padding: '8px 12px', background: '#FBF6EC', border: `1px solid ${GOLD}`, borderRadius: 2 }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, color: GOLD, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>{a.campana}</div>
-                    <div style={{ fontSize: 10, color: '#8B6914' }}>{a.msg}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: GOLD, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>{a.campana}</div>
+                    <div style={{ fontSize: 13, color: '#8B6914' }}>{a.msg}</div>
                   </div>
                 ))}
                 <div style={{ marginTop: 4, padding: '8px 12px', background: '#EBF5F0', border: `1px solid ${GREEN}`, borderRadius: 2 }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, color: GREEN, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>Recomendación IA</div>
-                  <div style={{ fontSize: 10, color: '#1a5c38' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: GREEN, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Recomendación IA</div>
+                  <div style={{ fontSize: 13, color: '#1a5c38' }}>
                     {totalEnviados > 0
                       ? tasaApertura < 25
                         ? `Tasa de apertura por debajo del 25%. Prueba asuntos más personalizados con {{nombre}} y envía los martes o jueves entre 9–11 AM.`
@@ -16680,8 +17946,8 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                   </div>
                 </div>
                 <div style={{ padding: '8px 12px', background: '#F0F4FB', border: '1px solid #C5D5E8', borderRadius: 2 }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, color: '#2C5282', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>Mejor horario de envío</div>
-                  <div style={{ fontSize: 10, color: '#2C5282' }}>Martes y jueves — 9:00 a 11:00 AM · Domingo — 7:00 PM (para leads con presupuesto &gt; $400K)</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#2C5282', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Mejor horario de envío</div>
+                  <div style={{ fontSize: 13, color: '#2C5282' }}>Martes y jueves — 9:00 a 11:00 AM · Domingo — 7:00 PM (para leads con presupuesto &gt; $400K)</div>
                 </div>
               </div>
             ))}
@@ -16691,12 +17957,12 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {campanas.filter(c=>c.enviados>0).sort((a,b)=>b.revenue-a.revenue).slice(0,3).map((c,i) => (
                   <div key={c.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0', borderBottom: i < 2 ? `1px solid ${T.border}` : 'none' }}>
-                    <div style={{ width: 22, height: 22, borderRadius: '50%', background: i===0?GOLD:i===1?'#C0C0C0':'#CD7F32', color:'#fff', fontSize: 9, fontWeight: 700, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{i+1}</div>
+                    <div style={{ width: 22, height: 22, borderRadius: '50%', background: i===0?GOLD:i===1?'#C0C0C0':'#CD7F32', color:'#fff', fontSize: 12, fontWeight: 700, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{i+1}</div>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 10, fontWeight: 500, color: NAVY }}>{c.nombre}</div>
-                      <div style={{ fontSize: 8, color: T.textSec }}>{pct(c.abiertos,c.enviados)}% apertura · {c.cierres} cierre(s)</div>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: NAVY }}>{c.nombre}</div>
+                      <div style={{ fontSize: 12, color: T.textSec }}>{pct(c.abiertos,c.enviados)}% apertura · {c.cierres} cierre(s)</div>
                     </div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: GOLD, fontFamily: T.fontSerif }}>{fmtUSD(c.revenue)}</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: GOLD, fontFamily: T.fontSans }}>{fmtUSD(c.revenue)}</div>
                   </div>
                 ))}
               </div>
@@ -16714,13 +17980,40 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <button onClick={() => setCampanaDetalle(null)} style={{ background:'none', border:'none', color:GOLD, cursor:'pointer', fontSize:11, fontWeight:600, letterSpacing:'0.06em' }}>← VOLVER</button>
+              <button onClick={() => setCampanaDetalle(null)} style={{ background:'none', border:'none', color:GOLD, cursor:'pointer', fontSize:13, fontWeight:600, letterSpacing:'0.06em' }}>← VOLVER</button>
               <div style={{ height: 14, width: 1, background: T.border }} />
-              <div style={{ fontSize: 18, fontWeight: 300, color: NAVY, fontFamily: T.fontSerif }}>{c.nombre}</div>
+              <div style={{ fontSize: 18, fontWeight: 300, color: NAVY, fontFamily: T.fontSans }}>{c.nombre}</div>
               <div style={{ marginLeft: 'auto', display:'flex', gap:8 }}>
-                {c.estado === 'activa' && <button onClick={() => { setCampanas(p=>p.map(x=>x.id===c.id?{...x,estado:'pausada'}:x)); setCampanaDetalle({...c,estado:'pausada'}); }} style={{ padding:'6px 14px', background:'none', border:`1px solid ${T.border}`, borderRadius:2, color:T.textSec, fontSize:9, fontWeight:700, letterSpacing:'0.08em', cursor:'pointer' }}>PAUSAR</button>}
-                {c.estado === 'pausada' && <button onClick={() => { setCampanas(p=>p.map(x=>x.id===c.id?{...x,estado:'activa'}:x)); setCampanaDetalle({...c,estado:'activa'}); }} style={{ padding:'6px 14px', background:GOLD, border:'none', borderRadius:2, color:'#fff', fontSize:9, fontWeight:700, letterSpacing:'0.08em', cursor:'pointer' }}>REANUDAR</button>}
-                {c.estado === 'borrador' && <button onClick={() => { setCampanas(p=>p.map(x=>x.id===c.id?{...x,estado:'activa',fechaInicio:new Date().toISOString().slice(0,10)}:x)); setCampanaDetalle({...c,estado:'activa'}); }} style={{ padding:'6px 14px', background:NAVY, border:'none', borderRadius:2, color:CREAM, fontSize:9, fontWeight:700, letterSpacing:'0.08em', cursor:'pointer' }}>LANZAR</button>}
+                {c.estado === 'activa' && <button onClick={() => { setCampanas(p=>p.map(x=>x.id===c.id?{...x,estado:'pausada'}:x)); setCampanaDetalle({...c,estado:'pausada'}); }} style={{ padding:'6px 14px', background:'none', border:`1px solid ${T.border}`, borderRadius:2, color:T.textSec, fontSize:12, fontWeight:700, letterSpacing:'0.04em', cursor:'pointer' }}>PAUSAR</button>}
+                {c.estado === 'pausada' && <button onClick={() => { setCampanas(p=>p.map(x=>x.id===c.id?{...x,estado:'activa'}:x)); setCampanaDetalle({...c,estado:'activa'}); }} style={{ padding:'6px 14px', background:GOLD, border:'none', borderRadius:2, color:'#fff', fontSize:12, fontWeight:700, letterSpacing:'0.04em', cursor:'pointer' }}>REANUDAR</button>}
+                {c.estado === 'borrador' && (
+                  <button onClick={async () => {
+                    if (sendingCampaignId) return;
+                    if (c.tipo === 'masiva') {
+                      const destinatarios = calcSegmento(c);
+                      if (destinatarios.length === 0) { alert('El segmento de esta campaña no tiene prospectos — revisa los filtros.'); return; }
+                      setSendingCampaignId(c.id);
+                      try {
+                        const { enviados, fallidos, omitidos } = await sendCampaignNow(c.id, c.nombre, c.asunto, c.cuerpo, destinatarios);
+                        const hoy = new Date().toISOString().slice(0,10);
+                        const updated = { ...c, estado:'activa', enviados, fechaInicio:hoy, alertas: fallidos>0?[`${fallidos} correo(s) fallaron al enviarse.`]:[] };
+                        setCampanas(p=>p.map(x=>x.id===c.id?updated:x));
+                        setCampanaDetalle(updated);
+                        alert(`Campaña lanzada — ${enviados} correo(s) enviado(s)${fallidos?`, ${fallidos} fallido(s)`:''}${omitidos?`, ${omitidos} sin correo registrado`:''}.`);
+                      } catch (e: any) {
+                        alert(`No se pudo lanzar la campaña: ${e.message}`);
+                      } finally {
+                        setSendingCampaignId(null);
+                      }
+                    } else {
+                      setCampanas(p=>p.map(x=>x.id===c.id?{...x,estado:'activa',fechaInicio:new Date().toISOString().slice(0,10)}:x));
+                      setCampanaDetalle({...c,estado:'activa'});
+                    }
+                  }} disabled={!!sendingCampaignId}
+                    style={{ padding:'6px 14px', background:NAVY, border:'none', borderRadius:2, color:CREAM, fontSize:12, fontWeight:700, letterSpacing:'0.04em', cursor:sendingCampaignId?'not-allowed':'pointer', opacity:sendingCampaignId?0.6:1 }}>
+                    {sendingCampaignId===c.id ? 'ENVIANDO…' : 'LANZAR'}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -16733,8 +18026,8 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                 { l:'Revenue', v:fmtUSD(c.revenue), color:GOLD },
               ].map(k=>(
                 <div key={k.l} style={{ background:CREAM, border:`1px solid ${T.border}`, borderRadius:4, padding:'14px 10px', textAlign:'center' }}>
-                  <div style={{ fontSize:7, fontWeight:700, color:T.textSec, letterSpacing:'0.14em', textTransform:'uppercase', marginBottom:6 }}>{k.l}</div>
-                  <div style={{ fontSize:20, fontWeight:300, color:k.color, fontFamily:T.fontSerif }}>{k.v}</div>
+                  <div style={{ fontSize:13, fontWeight:700, color:T.textSec, letterSpacing:'0.06em', textTransform:'uppercase', marginBottom:6 }}>{k.l}</div>
+                  <div style={{ fontSize:20, fontWeight:300, color:k.color, fontFamily:T.fontSans }}>{k.v}</div>
                 </div>
               ))}
             </div>
@@ -16751,8 +18044,8 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                   ].map(row=>(
                     <div key={row.label} style={{ marginBottom:10 }}>
                       <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
-                        <span style={{ fontSize:9, color:NAVY }}>{row.label}</span>
-                        <span style={{ fontSize:10, fontWeight:600, color:row.color, fontFamily:T.fontSerif }}>{row.val} <span style={{fontSize:8,color:T.textSec,fontWeight:400}}>({pct(row.val,row.ref)}%)</span></span>
+                        <span style={{ fontSize:12, color:NAVY }}>{row.label}</span>
+                        <span style={{ fontSize:13, fontWeight:600, color:row.color, fontFamily:T.fontSans }}>{row.val} <span style={{fontSize:12,color:T.textSec,fontWeight:400}}>({pct(row.val,row.ref)}%)</span></span>
                       </div>
                       <div style={{ background:'#E5E0D8', borderRadius:1, height:5 }}>
                         <div style={{ width:`${pct(row.val,row.ref)}%`, height:'100%', background:row.color }} />
@@ -16778,7 +18071,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                     ['ROI', c.costoTotal>0 ? `${Math.round(((c.revenue-c.costoTotal)/c.costoTotal)*100)}%` : '—'],
                   ].map(([k,v])=>(
                     <div key={k as string} style={{ display:'flex', justifyContent:'space-between', padding:'4px 0', borderBottom:`1px solid ${T.border}` }}>
-                      <span style={{ fontSize:11, color:T.textSec, textTransform:'uppercase', letterSpacing:'0.06em' }}>{k}</span>
+                      <span style={{ fontSize:13, color:T.textSec, textTransform:'uppercase', letterSpacing:'0.06em' }}>{k}</span>
                       <span style={{ fontSize:12, color:NAVY, fontWeight:500 }}>{v}</span>
                     </div>
                   ))}
@@ -16786,22 +18079,24 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
               ))}
             </div>
 
+            {c.estado !== 'borrador' && sectionCard('Historial de envíos — trazabilidad', <CampaignSendsLog campaignId={c.id} />)}
+
             {pasos.length > 0 && sectionCard(`Secuencia drip — ${pasos.length} pasos`, (
               <div style={{ display:'flex', flexDirection:'column', gap:0 }}>
                 {pasos.map((paso: any, i: number) => (
                   <div key={i} style={{ display:'flex', gap:12, paddingBottom: i<pasos.length-1?16:0, marginBottom: i<pasos.length-1?16:0, borderBottom: i<pasos.length-1?`1px solid ${T.border}`:'none' }}>
                     <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:0 }}>
-                      <div style={{ width:28, height:28, borderRadius:'50%', background:GOLD, color:'#fff', fontSize:10, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{i+1}</div>
+                      <div style={{ width:28, height:28, borderRadius:'50%', background:GOLD, color:'#fff', fontSize:13, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{i+1}</div>
                       {i<pasos.length-1 && <div style={{ width:1, flex:1, background:T.border, marginTop:4 }} />}
                     </div>
                     <div style={{ flex:1 }}>
-                      <div style={{ fontSize:8, fontWeight:700, color:T.textSec, textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:3 }}>{i===0?'Día 0 — Envío inmediato':`Día +${paso.dias}`}</div>
-                      <div style={{ fontSize:11, fontWeight:500, color:NAVY, marginBottom:4 }}>{paso.asunto || 'Sin asunto'}</div>
-                      {paso.cuerpo && <div style={{ fontSize:10, color:T.textSec, lineHeight:1.5, whiteSpace:'pre-wrap', maxHeight:60, overflow:'hidden' }}>{paso.cuerpo.slice(0,150)}{paso.cuerpo.length>150?'…':''}</div>}
+                      <div style={{ fontSize:12, fontWeight:700, color:T.textSec, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:3 }}>{i===0?'Día 0 — Envío inmediato':`Día +${paso.dias}`}</div>
+                      <div style={{ fontSize:13, fontWeight:500, color:NAVY, marginBottom:4 }}>{paso.asunto || 'Sin asunto'}</div>
+                      {paso.cuerpo && <div style={{ fontSize:13, color:T.textSec, lineHeight:1.5, whiteSpace:'pre-wrap', maxHeight:60, overflow:'hidden' }}>{paso.cuerpo.slice(0,150)}{paso.cuerpo.length>150?'…':''}</div>}
                       {paso.enviados > 0 && (
                         <div style={{ display:'flex', gap:14, marginTop:6 }}>
-                          <span style={{ fontSize:8, color:T.textSec }}>Enviados: <strong style={{color:NAVY}}>{paso.enviados}</strong></span>
-                          <span style={{ fontSize:8, color:T.textSec }}>Apertura: <strong style={{color:pct(paso.abiertos,paso.enviados)>=40?GREEN:GOLD}}>{pct(paso.abiertos,paso.enviados)}%</strong></span>
+                          <span style={{ fontSize:12, color:T.textSec }}>Enviados: <strong style={{color:NAVY}}>{paso.enviados}</strong></span>
+                          <span style={{ fontSize:12, color:T.textSec }}>Apertura: <strong style={{color:pct(paso.abiertos,paso.enviados)>=40?GREEN:GOLD}}>{pct(paso.abiertos,paso.enviados)}%</strong></span>
                         </div>
                       )}
                     </div>
@@ -16821,20 +18116,45 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
               <div key={c.id} style={{ background:CREAM, border:`1px solid ${hasAlerts?GOLD:T.border}`, borderRadius:4, padding:'16px 18px', cursor:'pointer' }} onClick={()=>setCampanaDetalle(c)}>
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
                   <div>
-                    <div style={{ fontSize:14, fontWeight:400, color:NAVY, fontFamily:T.fontSerif, marginBottom:2 }}>{c.nombre}</div>
-                    <div style={{ fontSize:8, color:T.textSec, letterSpacing:'0.08em', textTransform:'uppercase' }}>
+                    <div style={{ fontSize:14, fontWeight:400, color:NAVY, fontFamily:T.fontSans, marginBottom:2 }}>{c.nombre}</div>
+                    <div style={{ fontSize:12, color:T.textSec, letterSpacing:'0.04em', textTransform:'uppercase' }}>
                       {tipoLabel[c.tipo]} · {c.canal} · Objetivo: {objetivoLabel[c.objetivo]}
                       {c.segmentoEtapas?.length>0 && ` · ${c.segmentoEtapas.join(', ')}`}
                     </div>
                   </div>
                   <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                    {hasAlerts && <span style={{ fontSize:9, color:GOLD }}>⚠ {c.alertas.length} alerta(s)</span>}
-                    <div style={{ fontSize:9, fontWeight:700, color:estadoColor[c.estado], background:estadoBg[c.estado], padding:'3px 10px', borderRadius:2 }}>{c.estado.toUpperCase()}</div>
+                    {hasAlerts && <span style={{ fontSize:12, color:GOLD }}>⚠ {c.alertas.length} alerta(s)</span>}
+                    <div style={{ fontSize:12, fontWeight:700, color:estadoColor[c.estado], background:estadoBg[c.estado], padding:'3px 10px', borderRadius:2 }}>{c.estado.toUpperCase()}</div>
                     <div style={{ display:'flex', gap:6 }}>
-                      {c.estado==='activa' && <button onClick={e=>{e.stopPropagation();setCampanas(p=>p.map(x=>x.id===c.id?{...x,estado:'pausada'}:x));}} style={{ padding:'4px 10px', background:'none', border:`1px solid ${T.border}`, borderRadius:2, color:T.textSec, fontSize:8, fontWeight:700, cursor:'pointer' }}>PAUSAR</button>}
-                      {c.estado==='pausada' && <button onClick={e=>{e.stopPropagation();setCampanas(p=>p.map(x=>x.id===c.id?{...x,estado:'activa'}:x));}} style={{ padding:'4px 10px', background:GOLD, border:'none', borderRadius:2, color:'#fff', fontSize:8, fontWeight:700, cursor:'pointer' }}>REANUDAR</button>}
-                      {c.estado==='borrador' && <button onClick={e=>{e.stopPropagation();setCampanas(p=>p.map(x=>x.id===c.id?{...x,estado:'activa',fechaInicio:new Date().toISOString().slice(0,10)}:x));}} style={{ padding:'4px 10px', background:NAVY, border:'none', borderRadius:2, color:CREAM, fontSize:8, fontWeight:700, cursor:'pointer' }}>LANZAR</button>}
-                      <button onClick={e=>{e.stopPropagation();setCampanas(p=>p.filter(x=>x.id!==c.id));}} style={{ padding:'4px 8px', background:'none', border:`1px solid ${T.border}`, borderRadius:2, color:'#c0392b', fontSize:10, cursor:'pointer' }}>×</button>
+                      {c.estado==='activa' && <button onClick={e=>{e.stopPropagation();setCampanas(p=>p.map(x=>x.id===c.id?{...x,estado:'pausada'}:x));}} style={{ padding:'4px 10px', background:'none', border:`1px solid ${T.border}`, borderRadius:2, color:T.textSec, fontSize:12, fontWeight:700, cursor:'pointer' }}>PAUSAR</button>}
+                      {c.estado==='pausada' && <button onClick={e=>{e.stopPropagation();setCampanas(p=>p.map(x=>x.id===c.id?{...x,estado:'activa'}:x));}} style={{ padding:'4px 10px', background:GOLD, border:'none', borderRadius:2, color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer' }}>REANUDAR</button>}
+                      {c.estado==='borrador' && (
+                        <button onClick={async e => {
+                          e.stopPropagation();
+                          if (sendingCampaignId) return;
+                          if (c.tipo === 'masiva') {
+                            const destinatarios = calcSegmento(c);
+                            if (destinatarios.length === 0) { alert('El segmento de esta campaña no tiene prospectos — revisa los filtros.'); return; }
+                            setSendingCampaignId(c.id);
+                            try {
+                              const { enviados, fallidos, omitidos } = await sendCampaignNow(c.id, c.nombre, c.asunto, c.cuerpo, destinatarios);
+                              const hoy = new Date().toISOString().slice(0,10);
+                              setCampanas(p=>p.map(x=>x.id===c.id?{...x,estado:'activa',enviados,fechaInicio:hoy,alertas:fallidos>0?[`${fallidos} correo(s) fallaron al enviarse.`]:[]}:x));
+                              alert(`Campaña lanzada — ${enviados} correo(s) enviado(s)${fallidos?`, ${fallidos} fallido(s)`:''}${omitidos?`, ${omitidos} sin correo registrado`:''}.`);
+                            } catch (err: any) {
+                              alert(`No se pudo lanzar la campaña: ${err.message}`);
+                            } finally {
+                              setSendingCampaignId(null);
+                            }
+                          } else {
+                            setCampanas(p=>p.map(x=>x.id===c.id?{...x,estado:'activa',fechaInicio:new Date().toISOString().slice(0,10)}:x));
+                          }
+                        }} disabled={!!sendingCampaignId}
+                          style={{ padding:'4px 10px', background:NAVY, border:'none', borderRadius:2, color:CREAM, fontSize:12, fontWeight:700, cursor:sendingCampaignId?'not-allowed':'pointer', opacity:sendingCampaignId?0.6:1 }}>
+                          {sendingCampaignId===c.id ? 'ENVIANDO…' : 'LANZAR'}
+                        </button>
+                      )}
+                      <button onClick={e=>{e.stopPropagation();setCampanas(p=>p.filter(x=>x.id!==c.id));}} style={{ padding:'4px 8px', background:'none', border:`1px solid ${T.border}`, borderRadius:2, color:'#c0392b', fontSize:13, cursor:'pointer' }}>×</button>
                     </div>
                   </div>
                 </div>
@@ -16849,21 +18169,21 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                     { l:'ROI', v: c.costoTotal>0?`${Math.round(((c.revenue-c.costoTotal)/c.costoTotal)*100)}%`:'—' },
                   ].map(s=>(
                     <div key={s.l} style={{ background:'#fff', border:`1px solid ${T.border}`, borderRadius:2, padding:'6px 8px', textAlign:'center' }}>
-                      <div style={{ fontSize:7, color:T.textSec, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:3 }}>{s.l}</div>
-                      <div style={{ fontSize:12, fontWeight:400, color:NAVY, fontFamily:T.fontSerif }}>{s.v}</div>
+                      <div style={{ fontSize:13, color:T.textSec, letterSpacing:'0.04em', textTransform:'uppercase', marginBottom:3 }}>{s.l}</div>
+                      <div style={{ fontSize:12, fontWeight:400, color:NAVY, fontFamily:T.fontSans }}>{s.v}</div>
                     </div>
                   ))}
                 </div>
                 {c.tipo==='drip' && c.dripPasos?.length>0 && (
                   <div style={{ marginTop:10, display:'flex', gap:6, alignItems:'center' }}>
-                    <span style={{ fontSize:8, color:T.textSec, textTransform:'uppercase', letterSpacing:'0.08em' }}>Secuencia:</span>
+                    <span style={{ fontSize:12, color:T.textSec, textTransform:'uppercase', letterSpacing:'0.04em' }}>Secuencia:</span>
                     {c.dripPasos.map((paso: any, i: number) => (
                       <div key={i} style={{ display:'flex', alignItems:'center', gap:4 }}>
-                        <div style={{ width:18, height:18, borderRadius:'50%', background:paso.enviados>0?GOLD:'#E5E0D8', color:paso.enviados>0?'#fff':T.textSec, fontSize:8, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center' }}>{i+1}</div>
+                        <div style={{ width:18, height:18, borderRadius:'50%', background:paso.enviados>0?GOLD:'#E5E0D8', color:paso.enviados>0?'#fff':T.textSec, fontSize:12, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center' }}>{i+1}</div>
                         {i<c.dripPasos.length-1 && <div style={{ width:16, height:1, background:T.border }} />}
                       </div>
                     ))}
-                    {c.proximoEnvio && <span style={{ marginLeft:8, fontSize:8, color:GREEN }}>Próximo envío: {c.proximoEnvio}</span>}
+                    {c.proximoEnvio && <span style={{ marginLeft:8, fontSize:12, color:GREEN }}>Próximo envío: {c.proximoEnvio}</span>}
                   </div>
                 )}
               </div>
@@ -16871,7 +18191,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
           })}
           <div onClick={()=>{setCampanaDetalle(null);setCampanaTab('nueva');setCampanaWizardStep(1);}}
             style={{ border:`1.5px dashed ${T.border}`, borderRadius:4, padding:'32px', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', gap:12, color:T.textSec }}>
-            <span style={{ fontSize:18, fontWeight:300, fontFamily:T.fontSerif }}>+ Crear nueva campaña</span>
+            <span style={{ fontSize:18, fontWeight:300, fontFamily:T.fontSans }}>+ Crear nueva campaña</span>
           </div>
         </div>
       );
@@ -16888,10 +18208,10 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
           {wizardSteps.map((s, i) => (
             <React.Fragment key={s}>
               <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
-                <div style={{ width:28, height:28, borderRadius:'50%', background:campanaWizardStep>i+1?GREEN:campanaWizardStep===i+1?NAVY:'#E5E0D8', color:campanaWizardStep>=i+1?'#fff':T.textSec, fontSize:10, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer' }} onClick={()=>i<campanaWizardStep&&setCampanaWizardStep(i+1)}>
+                <div style={{ width:28, height:28, borderRadius:'50%', background:campanaWizardStep>i+1?GREEN:campanaWizardStep===i+1?NAVY:'#E5E0D8', color:campanaWizardStep>=i+1?'#fff':T.textSec, fontSize:13, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer' }} onClick={()=>i<campanaWizardStep&&setCampanaWizardStep(i+1)}>
                   {campanaWizardStep>i+1?'✓':i+1}
                 </div>
-                <div style={{ fontSize:8, color:campanaWizardStep===i+1?NAVY:T.textSec, fontWeight:campanaWizardStep===i+1?700:400, letterSpacing:'0.06em', whiteSpace:'nowrap' }}>{s}</div>
+                <div style={{ fontSize:12, color:campanaWizardStep===i+1?NAVY:T.textSec, fontWeight:campanaWizardStep===i+1?700:400, letterSpacing:'0.06em', whiteSpace:'nowrap' }}>{s}</div>
               </div>
               {i<wizardSteps.length-1 && <div style={{ flex:1, height:1, background:campanaWizardStep>i+1?GREEN:T.border, margin:'0 4px', marginBottom:16 }} />}
             </React.Fragment>
@@ -16913,7 +18233,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                   <div key={o.id} onClick={()=>setNuevaCampana((p:any)=>({...p,objetivo:o.id}))}
                     style={{ padding:'10px 12px', border:`1.5px solid ${nuevaCampana.objetivo===o.id?GOLD:T.border}`, borderRadius:2, cursor:'pointer', background:nuevaCampana.objetivo===o.id?'#FBF6EC':'#fff' }}>
                     <div style={{ fontSize:13, fontWeight:600, color:NAVY, marginBottom:4 }}>{o.label}</div>
-                    <div style={{ fontSize:11, color:T.textSec, lineHeight:1.6 }}>{o.desc}</div>
+                    <div style={{ fontSize:13, color:T.textSec, lineHeight:1.6 }}>{o.desc}</div>
                   </div>
                 ))}
               </div>
@@ -16933,8 +18253,8 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                     ].map(t=>(
                       <div key={t.id} onClick={()=>setNuevaCampana((p:any)=>({...p,tipo:t.id}))}
                         style={{ padding:'10px 10px', border:`1.5px solid ${nuevaCampana.tipo===t.id?NAVY:T.border}`, borderRadius:2, cursor:'pointer', background:nuevaCampana.tipo===t.id?'#F0F2F8':'#fff' }}>
-                        <div style={{ fontSize:10, fontWeight:700, color:NAVY, marginBottom:3 }}>{t.label}</div>
-                        <div style={{ fontSize:8, color:T.textSec, lineHeight:1.5 }}>{t.desc}</div>
+                        <div style={{ fontSize:13, fontWeight:700, color:NAVY, marginBottom:3 }}>{t.label}</div>
+                        <div style={{ fontSize:12, color:T.textSec, lineHeight:1.5 }}>{t.desc}</div>
                       </div>
                     ))}
                   </div>
@@ -16944,14 +18264,14 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                   <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:6 }}>
                     {['Email','WhatsApp','SMS','Multi-canal'].map(c=>(
                       <div key={c} onClick={()=>setNuevaCampana((p:any)=>({...p,canal:c}))}
-                        style={{ padding:'7px 10px', border:`1px solid ${nuevaCampana.canal===c?GOLD:T.border}`, borderRadius:2, cursor:'pointer', textAlign:'center', background:nuevaCampana.canal===c?'#FBF6EC':'#fff', fontSize:10, color:NAVY, fontWeight:nuevaCampana.canal===c?600:400 }}>
+                        style={{ padding:'7px 10px', border:`1px solid ${nuevaCampana.canal===c?GOLD:T.border}`, borderRadius:2, cursor:'pointer', textAlign:'center', background:nuevaCampana.canal===c?'#FBF6EC':'#fff', fontSize:13, color:NAVY, fontWeight:nuevaCampana.canal===c?600:400 }}>
                         {c}
                       </div>
                     ))}
                   </div>
                 </div>
                 <button onClick={()=>setCampanaWizardStep(2)} disabled={!nuevaCampana.nombre}
-                  style={{ marginTop:8, padding:'10px 0', background:nuevaCampana.nombre?NAVY:'#ccc', border:'none', borderRadius:2, color:CREAM, fontSize:10, fontWeight:700, letterSpacing:'0.1em', cursor:nuevaCampana.nombre?'pointer':'not-allowed' }}>
+                  style={{ marginTop:8, padding:'10px 0', background:nuevaCampana.nombre?NAVY:'#ccc', border:'none', borderRadius:2, color:CREAM, fontSize:13, fontWeight:700, letterSpacing:'0.05em', cursor:nuevaCampana.nombre?'pointer':'not-allowed' }}>
                   SIGUIENTE → SEGMENTACIÓN
                 </button>
               </div>
@@ -16970,10 +18290,10 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                     {['Contacto Inicial','Calificación','Presentación','Negociación','Cierre','Lead Frío','Post-venta'].map(e=>{
                       const sel = nuevaCampana.segmentoEtapas.includes(e);
                       return <div key={e} onClick={()=>setNuevaCampana((p:any)=>({...p, segmentoEtapas: sel?p.segmentoEtapas.filter((x:string)=>x!==e):[...p.segmentoEtapas,e]}))}
-                        style={{ padding:'4px 10px', border:`1px solid ${sel?GOLD:T.border}`, borderRadius:2, cursor:'pointer', fontSize:9, fontWeight:sel?700:400, color:sel?GOLD:T.textSec, background:sel?'#FBF6EC':'#fff' }}>{e}</div>;
+                        style={{ padding:'4px 10px', border:`1px solid ${sel?GOLD:T.border}`, borderRadius:2, cursor:'pointer', fontSize:12, fontWeight:sel?700:400, color:sel?GOLD:T.textSec, background:sel?'#FBF6EC':'#fff' }}>{e}</div>;
                     })}
                     <div onClick={()=>setNuevaCampana((p:any)=>({...p,segmentoEtapas:[]}))}
-                      style={{ padding:'4px 10px', border:`1px solid ${nuevaCampana.segmentoEtapas.length===0?GREEN:T.border}`, borderRadius:2, cursor:'pointer', fontSize:9, fontWeight:nuevaCampana.segmentoEtapas.length===0?700:400, color:nuevaCampana.segmentoEtapas.length===0?GREEN:T.textSec, background:nuevaCampana.segmentoEtapas.length===0?'#EBF5F0':'#fff' }}>Todas las etapas</div>
+                      style={{ padding:'4px 10px', border:`1px solid ${nuevaCampana.segmentoEtapas.length===0?GREEN:T.border}`, borderRadius:2, cursor:'pointer', fontSize:12, fontWeight:nuevaCampana.segmentoEtapas.length===0?700:400, color:nuevaCampana.segmentoEtapas.length===0?GREEN:T.textSec, background:nuevaCampana.segmentoEtapas.length===0?'#EBF5F0':'#fff' }}>Todas las etapas</div>
                   </div>
                 </div>
                 <div>
@@ -16994,7 +18314,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                     {catalogProjects.map(pr=>pr.name).map(pr=>{
                       const sel = nuevaCampana.segmentoProyectos.includes(pr);
                       return <div key={pr} onClick={()=>setNuevaCampana((p:any)=>({...p, segmentoProyectos: sel?p.segmentoProyectos.filter((x:string)=>x!==pr):[...p.segmentoProyectos,pr]}))}
-                        style={{ padding:'4px 10px', border:`1px solid ${sel?NAVY:T.border}`, borderRadius:2, cursor:'pointer', fontSize:9, fontWeight:sel?700:400, color:sel?NAVY:T.textSec, background:sel?'#F0F2F8':'#fff' }}>{pr}</div>;
+                        style={{ padding:'4px 10px', border:`1px solid ${sel?NAVY:T.border}`, borderRadius:2, cursor:'pointer', fontSize:12, fontWeight:sel?700:400, color:sel?NAVY:T.textSec, background:sel?'#F0F2F8':'#fff' }}>{pr}</div>;
                     })}
                   </div>
                 </div>
@@ -17003,7 +18323,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
             <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
               {sectionCard(`${segmentoCalc.length} prospectos calificarían`, (
                 <div>
-                  <div style={{ fontSize:36, fontWeight:300, color:segmentoCalc.length>0?GREEN:'#c0392b', fontFamily:T.fontSerif, textAlign:'center', marginBottom:8 }}>{segmentoCalc.length}</div>
+                  <div style={{ fontSize:36, fontWeight:300, color:segmentoCalc.length>0?GREEN:'#c0392b', fontFamily:T.fontSans, textAlign:'center', marginBottom:8 }}>{segmentoCalc.length}</div>
                   <div style={{ fontSize:12, color:T.textSec, textAlign:'center', marginBottom:16 }}>prospectos que cumplen todos los filtros</div>
                   <div style={{ display:'flex', flexDirection:'column', gap:4, maxHeight:200, overflowY:'auto' }}>
                     {segmentoCalc.slice(0,8).map((p:any)=>(
@@ -17012,14 +18332,14 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                       </div>
                     ))}
                     {segmentoCalc.length>8 && <div style={{ fontSize:12, color:T.textSec, textAlign:'center', padding:'4px 0' }}>+{segmentoCalc.length-8} más</div>}
-                    {segmentoCalc.length===0 && <div style={{ fontSize:10, color:T.textSec, textAlign:'center', padding:'12px 0' }}>Ajusta los filtros para incluir prospectos</div>}
+                    {segmentoCalc.length===0 && <div style={{ fontSize:13, color:T.textSec, textAlign:'center', padding:'12px 0' }}>Ajusta los filtros para incluir prospectos</div>}
                   </div>
                 </div>
               ))}
               <div style={{ display:'flex', gap:10 }}>
-                <button onClick={()=>setCampanaWizardStep(1)} style={{ flex:1, padding:'9px 0', background:'none', border:`1px solid ${T.border}`, borderRadius:2, color:T.textSec, fontSize:9, fontWeight:700, cursor:'pointer' }}>← ATRÁS</button>
+                <button onClick={()=>setCampanaWizardStep(1)} style={{ flex:1, padding:'9px 0', background:'none', border:`1px solid ${T.border}`, borderRadius:2, color:T.textSec, fontSize:12, fontWeight:700, cursor:'pointer' }}>← ATRÁS</button>
                 <button onClick={()=>setCampanaWizardStep(3)} disabled={segmentoCalc.length===0}
-                  style={{ flex:2, padding:'9px 0', background:segmentoCalc.length>0?NAVY:'#ccc', border:'none', borderRadius:2, color:CREAM, fontSize:9, fontWeight:700, letterSpacing:'0.08em', cursor:segmentoCalc.length>0?'pointer':'not-allowed' }}>
+                  style={{ flex:2, padding:'9px 0', background:segmentoCalc.length>0?NAVY:'#ccc', border:'none', borderRadius:2, color:CREAM, fontSize:12, fontWeight:700, letterSpacing:'0.04em', cursor:segmentoCalc.length>0?'pointer':'not-allowed' }}>
                   SIGUIENTE → CONTENIDO
                 </button>
               </div>
@@ -17038,7 +18358,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                     <div key={t.id} onClick={()=>setNuevaCampana((p:any)=>({...p, asunto:t.asunto, cuerpo:t.cuerpo, ...(nuevaCampana.tipo==='drip'?{dripPasos:p.dripPasos.map((d:any,i:number)=>i===0?{...d,asunto:t.asunto,cuerpo:t.cuerpo}:d)}:{})}))}
                       style={{ padding:'9px 12px', border:`1px solid ${T.border}`, borderRadius:2, cursor:'pointer', background:'#fff' }}>
                       <div style={{ fontSize:12, fontWeight:600, color:NAVY }}>{t.label}</div>
-                      <div style={{ fontSize:11, color:T.textSec, marginTop:2 }}>{t.asunto.slice(0,55)}…</div>
+                      <div style={{ fontSize:13, color:T.textSec, marginTop:2 }}>{t.asunto.slice(0,55)}…</div>
                     </div>
                   ))}
                 </div>
@@ -17049,12 +18369,12 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                     <div key={i} style={{ background: campanaEditPaso===i?'#FBF6EC':'#fff', border:`1.5px solid ${campanaEditPaso===i?GOLD:T.border}`, borderRadius:2, padding:'8px 10px', cursor:'pointer' }} onClick={()=>setCampanaEditPaso(campanaEditPaso===i?null:i)}>
                       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                          <div style={{ width:18,height:18,borderRadius:'50%',background:GOLD,color:'#fff',fontSize:8,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center' }}>{i+1}</div>
-                          <span style={{ fontSize:9,fontWeight:600,color:T.textSec,textTransform:'uppercase',letterSpacing:'0.08em' }}>{i===0?'Inmediato':`+${paso.dias} días`}</span>
+                          <div style={{ width:18,height:18,borderRadius:'50%',background:GOLD,color:'#fff',fontSize:12,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center' }}>{i+1}</div>
+                          <span style={{ fontSize:12,fontWeight:600,color:T.textSec,textTransform:'uppercase',letterSpacing:'0.04em' }}>{i===0?'Inmediato':`+${paso.dias} días`}</span>
                         </div>
-                        <span style={{ fontSize:8, color:GOLD, fontWeight:600 }}>{campanaEditPaso===i?'▲ CERRAR':'▼ EDITAR'}</span>
+                        <span style={{ fontSize:12, color:GOLD, fontWeight:600 }}>{campanaEditPaso===i?'▲ CERRAR':'▼ EDITAR'}</span>
                       </div>
-                      <div style={{ fontSize:9, color:paso.asunto?NAVY:T.textSec, marginTop:3 }}>{paso.asunto||'Sin asunto'}</div>
+                      <div style={{ fontSize:12, color:paso.asunto?NAVY:T.textSec, marginTop:3 }}>{paso.asunto||'Sin asunto'}</div>
                       {campanaEditPaso===i && (
                         <div style={{ marginTop:10, display:'flex', flexDirection:'column', gap:6 }}>
                           {i>0 && <div><label style={labelS}>Días desde el paso anterior</label><input type="number" style={inputS} value={paso.dias} min={1} onFocus={e=>e.target.select()} onChange={e=>setNuevaCampana((p:any)=>{const d=[...p.dripPasos];d[i]={...d[i],dias:Number(e.target.value)};return{...p,dripPasos:d};})} /></div>}
@@ -17065,7 +18385,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                     </div>
                   ))}
                   <button onClick={()=>setNuevaCampana((p:any)=>({...p,dripPasos:[...p.dripPasos,{dias:7,asunto:'',cuerpo:'',enviados:0,abiertos:0}]}))}
-                    style={{ padding:'6px 0',background:'none',border:`1px dashed ${T.border}`,borderRadius:2,color:T.textSec,fontSize:8,fontWeight:700,letterSpacing:'0.08em',cursor:'pointer' }}>
+                    style={{ padding:'6px 0',background:'none',border:`1px dashed ${T.border}`,borderRadius:2,color:T.textSec,fontSize:12,fontWeight:700,letterSpacing:'0.04em',cursor:'pointer' }}>
                     + AGREGAR PASO
                   </button>
                 </div>
@@ -17076,15 +18396,15 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                 <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                   <div><label style={labelS}>Asunto</label><input style={inputS} value={nuevaCampana.asunto} onChange={e=>setNuevaCampana((p:any)=>({...p,asunto:e.target.value,...(p.tipo==='drip'?{dripPasos:p.dripPasos.map((d:any,i:number)=>i===0?{...d,asunto:e.target.value}:d)}:{})}))} placeholder="Usa {{nombre}} para personalizar" /></div>
                   <div><label style={labelS}>Cuerpo del email</label><textarea style={{...inputS,minHeight:220,resize:'vertical',fontFamily:'inherit',lineHeight:1.6}} value={nuevaCampana.cuerpo} onChange={e=>setNuevaCampana((p:any)=>({...p,cuerpo:e.target.value,...(p.tipo==='drip'?{dripPasos:p.dripPasos.map((d:any,i:number)=>i===0?{...d,cuerpo:e.target.value}:d)}:{})}))} placeholder="Cuerpo del mensaje. Variables disponibles:&#10;{{nombre}}, {{apellido}}, {{proyecto}}, {{presupuesto}}, {{broker}}, {{fecha_evento}}, {{precio_especial}}" /></div>
-                  <div style={{ padding:'8px 10px', background:'#F0F4FB', border:'1px solid #C5D5E8', borderRadius:2, fontSize:8, color:'#2C5282', lineHeight:1.7 }}>
+                  <div style={{ padding:'8px 10px', background:'#F0F4FB', border:'1px solid #C5D5E8', borderRadius:2, fontSize:12, color:'#2C5282', lineHeight:1.7 }}>
                     <strong>Variables automáticas disponibles:</strong><br/>
                     {'{{nombre}}'} · {'{{apellido}}'} · {'{{broker}}'} · {'{{proyecto}}'} · {'{{presupuesto}}'} · {'{{fecha_evento}}'} · {'{{precio_especial}}'} · {'{{unidad}}'} · {'{{area}}'} · {'{{tasa}}'}
                   </div>
                 </div>
               ))}
               <div style={{ display:'flex', gap:10 }}>
-                <button onClick={()=>setCampanaWizardStep(2)} style={{ flex:1,padding:'9px 0',background:'none',border:`1px solid ${T.border}`,borderRadius:2,color:T.textSec,fontSize:9,fontWeight:700,cursor:'pointer' }}>← ATRÁS</button>
-                <button onClick={()=>setCampanaWizardStep(4)} style={{ flex:2,padding:'9px 0',background:NAVY,border:'none',borderRadius:2,color:CREAM,fontSize:9,fontWeight:700,letterSpacing:'0.08em',cursor:'pointer' }}>SIGUIENTE → REVISIÓN</button>
+                <button onClick={()=>setCampanaWizardStep(2)} style={{ flex:1,padding:'9px 0',background:'none',border:`1px solid ${T.border}`,borderRadius:2,color:T.textSec,fontSize:12,fontWeight:700,cursor:'pointer' }}>← ATRÁS</button>
+                <button onClick={()=>setCampanaWizardStep(4)} style={{ flex:2,padding:'9px 0',background:NAVY,border:'none',borderRadius:2,color:CREAM,fontSize:12,fontWeight:700,letterSpacing:'0.04em',cursor:'pointer' }}>SIGUIENTE → REVISIÓN</button>
               </div>
             </div>
           </div>
@@ -17109,14 +18429,14 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                   nuevaCampana.tipo==='drip'?['Pasos drip', nuevaCampana.dripPasos.length.toString()]:['Asunto', nuevaCampana.asunto||'—'],
                 ].map(([k,v])=>(
                   <div key={k} style={{ display:'flex', justifyContent:'space-between', padding:'7px 0', borderBottom:`1px solid ${T.border}` }}>
-                    <span style={{ fontSize:9,color:T.textSec,textTransform:'uppercase',letterSpacing:'0.08em' }}>{k}</span>
-                    <span style={{ fontSize:10,color:NAVY,fontWeight:500 }}>{v}</span>
+                    <span style={{ fontSize:12,color:T.textSec,textTransform:'uppercase',letterSpacing:'0.04em' }}>{k}</span>
+                    <span style={{ fontSize:13,color:NAVY,fontWeight:500 }}>{v}</span>
                   </div>
                 ))}
                 <div style={{ marginTop:12, padding:'10px', background:'#EBF5F0', border:`1px solid ${GREEN}`, borderRadius:2 }}>
-                  <div style={{ fontSize:9, fontWeight:700, color:GREEN, marginBottom:3 }}>ALCANCE ESTIMADO</div>
-                  <div style={{ fontSize:20, fontWeight:300, color:GREEN, fontFamily:T.fontSerif }}>{segmentoCalc.length} prospectos</div>
-                  {nuevaCampana.tipo==='drip' && <div style={{ fontSize:8,color:T.textSec,marginTop:3 }}>Secuencia de {nuevaCampana.dripPasos.length} emails en {nuevaCampana.dripPasos.reduce((s:number,p:any)=>s+p.dias,0)} días</div>}
+                  <div style={{ fontSize:12, fontWeight:700, color:GREEN, marginBottom:3 }}>ALCANCE ESTIMADO</div>
+                  <div style={{ fontSize:20, fontWeight:300, color:GREEN, fontFamily:T.fontSans }}>{segmentoCalc.length} prospectos</div>
+                  {nuevaCampana.tipo==='drip' && <div style={{ fontSize:12,color:T.textSec,marginTop:3 }}>Secuencia de {nuevaCampana.dripPasos.length} emails en {nuevaCampana.dripPasos.reduce((s:number,p:any)=>s+p.dias,0)} días</div>}
                 </div>
               </div>
             ))}
@@ -17125,20 +18445,20 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                 <div style={{ background:'#fff', border:`1px solid ${T.border}`, borderRadius:2, padding:'14px', minHeight:180 }}>
                   {nuevaCampana.asunto ? (
                     <>
-                      <div style={{ fontSize:8,color:T.textSec,marginBottom:6,letterSpacing:'0.08em',textTransform:'uppercase' }}>Para: {segmentoCalc[0]?`${segmentoCalc[0].nombre} ${segmentoCalc[0].apellido||''}`:'Prospecto ejemplo'}</div>
-                      <div style={{ fontSize:13,fontWeight:500,color:NAVY,marginBottom:10,fontFamily:T.fontSerif }}>{nuevaCampana.asunto.replace('{{nombre}}',segmentoCalc[0]?.nombre||'[Nombre]')}</div>
+                      <div style={{ fontSize:12,color:T.textSec,marginBottom:6,letterSpacing:'0.04em',textTransform:'uppercase' }}>Para: {segmentoCalc[0]?`${segmentoCalc[0].nombre} ${segmentoCalc[0].apellido||''}`:'Prospecto ejemplo'}</div>
+                      <div style={{ fontSize:13,fontWeight:500,color:NAVY,marginBottom:10,fontFamily:T.fontSans }}>{nuevaCampana.asunto.replace('{{nombre}}',segmentoCalc[0]?.nombre||'[Nombre]')}</div>
                       <div style={{ width:30,height:1,background:GOLD,marginBottom:10 }} />
-                      <div style={{ fontSize:10,color:T.text,lineHeight:1.7,whiteSpace:'pre-wrap',maxHeight:200,overflow:'hidden' }}>
+                      <div style={{ fontSize:13,color:T.text,lineHeight:1.7,whiteSpace:'pre-wrap',maxHeight:200,overflow:'hidden' }}>
                         {(nuevaCampana.cuerpo||'').replace(/{{nombre}}/g,segmentoCalc[0]?.nombre||'[Nombre]').replace(/{{broker}}/g,'Tu broker GLP').slice(0,400)}
                         {(nuevaCampana.cuerpo||'').length>400?'…':''}
                       </div>
                     </>
                   ) : (
-                    <div style={{ color:T.textSec,fontSize:10,textAlign:'center',marginTop:50 }}>Sin contenido — regresa al paso 3</div>
+                    <div style={{ color:T.textSec,fontSize:13,textAlign:'center',marginTop:50 }}>Sin contenido — regresa al paso 3</div>
                   )}
                 </div>
               ))}
-              <button onClick={()=>setCampanaWizardStep(3)} style={{ padding:'9px 0',background:'none',border:`1px solid ${T.border}`,borderRadius:2,color:T.textSec,fontSize:9,fontWeight:700,cursor:'pointer' }}>← EDITAR CONTENIDO</button>
+              <button onClick={()=>setCampanaWizardStep(3)} style={{ padding:'9px 0',background:'none',border:`1px solid ${T.border}`,borderRadius:2,color:T.textSec,fontSize:12,fontWeight:700,cursor:'pointer' }}>← EDITAR CONTENIDO</button>
               <button
                 onClick={()=>{
                   if(!nuevaCampana.nombre) return;
@@ -17148,22 +18468,43 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                   setCampanaWizardStep(1);
                   setCampanaTab('lista');
                 }}
-                style={{ padding:'12px 0',background:'#6B7280',border:'none',borderRadius:2,color:'#fff',fontSize:10,fontWeight:700,letterSpacing:'0.1em',cursor:'pointer' }}>
+                style={{ padding:'12px 0',background:'#6B7280',border:'none',borderRadius:2,color:'#fff',fontSize:13,fontWeight:700,letterSpacing:'0.05em',cursor:'pointer' }}>
                 GUARDAR COMO BORRADOR
               </button>
               <button
-                onClick={()=>{
-                  if(!nuevaCampana.nombre||segmentoCalc.length===0) return;
+                onClick={async ()=>{
+                  if(!nuevaCampana.nombre||segmentoCalc.length===0||sendingCampaignId) return;
                   const id = Date.now();
                   const hoy = new Date().toISOString().slice(0,10);
-                  setCampanas(prev=>[...prev, {...nuevaCampana, id, estado:'activa', enviados:0, abiertos:0, clicks:0, citas:0, cierres:0, revenue:0, fechaInicio:hoy, fechaFin:null, proximoEnvio:hoy, prospectosTotales:segmentoCalc.length, prospectosPaso:[], costoTotal:0, alertas:[] }]);
-                  setNuevaCampana({nombre:'',tipo:'drip',canal:'Email',objetivo:'nurturing',segmentoEtapas:[],segmentoPresupMin:0,segmentoPresupMax:9999999,segmentoProyectos:[],segmentoInactividad:0,segmentoScore:0,asunto:'',cuerpo:'',dripPasos:[{dias:0,asunto:'',cuerpo:'',enviados:0,abiertos:0},{dias:3,asunto:'',cuerpo:'',enviados:0,abiertos:0},{dias:7,asunto:'',cuerpo:'',enviados:0,abiertos:0}],costoTotal:0});
-                  setCampanaWizardStep(1);
-                  setCampanaTab('lista');
+                  const resetForm = () => {
+                    setNuevaCampana({nombre:'',tipo:'drip',canal:'Email',objetivo:'nurturing',segmentoEtapas:[],segmentoPresupMin:0,segmentoPresupMax:9999999,segmentoProyectos:[],segmentoInactividad:0,segmentoScore:0,asunto:'',cuerpo:'',dripPasos:[{dias:0,asunto:'',cuerpo:'',enviados:0,abiertos:0},{dias:3,asunto:'',cuerpo:'',enviados:0,abiertos:0},{dias:7,asunto:'',cuerpo:'',enviados:0,abiertos:0}],costoTotal:0});
+                    setCampanaWizardStep(1);
+                    setCampanaTab('lista');
+                  };
+                  if (nuevaCampana.tipo === 'masiva') {
+                    setSendingCampaignId(id);
+                    try {
+                      const { enviados, fallidos, omitidos } = await sendCampaignNow(id, nuevaCampana.nombre, nuevaCampana.asunto, nuevaCampana.cuerpo, segmentoCalc);
+                      setCampanas(prev=>[...prev, {...nuevaCampana, id, estado:'activa', enviados, abiertos:0, clicks:0, citas:0, cierres:0, revenue:0, fechaInicio:hoy, fechaFin:null, proximoEnvio:null, prospectosTotales:segmentoCalc.length, prospectosPaso:[], costoTotal:0, alertas: fallidos>0?[`${fallidos} correo(s) fallaron al enviarse.`]:[] }]);
+                      alert(`Campaña lanzada — ${enviados} correo(s) enviado(s)${fallidos?`, ${fallidos} fallido(s)`:''}${omitidos?`, ${omitidos} sin correo registrado`:''}.`);
+                      resetForm();
+                    } catch (e: any) {
+                      alert(`No se pudo lanzar la campaña: ${e.message}\n\nSe guardó como borrador — revisa la configuración de SMTP e inténtalo de nuevo desde la lista de campañas.`);
+                      setCampanas(prev=>[...prev, {...nuevaCampana, id, estado:'borrador', enviados:0, abiertos:0, clicks:0, citas:0, cierres:0, revenue:0, fechaInicio:null, fechaFin:null, proximoEnvio:null, prospectosTotales:segmentoCalc.length, prospectosPaso:[], costoTotal:0, alertas:[] }]);
+                      resetForm();
+                    } finally {
+                      setSendingCampaignId(null);
+                    }
+                  } else {
+                    // Secuencia drip: activa la secuencia — el envío automático de cada paso
+                    // (Día 0, +3, +7…) requiere un scheduler en el backend, aún no implementado.
+                    setCampanas(prev=>[...prev, {...nuevaCampana, id, estado:'activa', enviados:0, abiertos:0, clicks:0, citas:0, cierres:0, revenue:0, fechaInicio:hoy, fechaFin:null, proximoEnvio:hoy, prospectosTotales:segmentoCalc.length, prospectosPaso:[], costoTotal:0, alertas:[] }]);
+                    resetForm();
+                  }
                 }}
-                disabled={!nuevaCampana.nombre||segmentoCalc.length===0}
-                style={{ padding:'12px 0',background:nuevaCampana.nombre&&segmentoCalc.length>0?GOLD:'#ccc',border:'none',borderRadius:2,color:'#fff',fontSize:11,fontWeight:700,letterSpacing:'0.1em',cursor:nuevaCampana.nombre&&segmentoCalc.length>0?'pointer':'not-allowed' }}>
-                LANZAR CAMPAÑA AHORA →
+                disabled={!nuevaCampana.nombre||segmentoCalc.length===0||!!sendingCampaignId}
+                style={{ padding:'12px 0',background:nuevaCampana.nombre&&segmentoCalc.length>0&&!sendingCampaignId?GOLD:'#ccc',border:'none',borderRadius:2,color:'#fff',fontSize:13,fontWeight:700,letterSpacing:'0.05em',cursor:nuevaCampana.nombre&&segmentoCalc.length>0&&!sendingCampaignId?'pointer':'not-allowed' }}>
+                {sendingCampaignId ? 'ENVIANDO…' : 'LANZAR CAMPAÑA AHORA →'}
               </button>
             </div>
           </div>
@@ -17192,9 +18533,9 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
               { label:'Revenue / Enviado', val:totalEnviados>0?fmtUSD(Math.round(totalRevenue/totalEnviados)):'—', color:GREEN, sub:'valor por email' },
             ].map(k=>(
               <div key={k.label} style={{ background:CREAM,border:`1px solid ${T.border}`,borderRadius:4,padding:'14px 12px',textAlign:'center' }}>
-                <div style={{ fontSize:7,fontWeight:700,color:T.textSec,letterSpacing:'0.14em',textTransform:'uppercase',marginBottom:6 }}>{k.label}</div>
-                <div style={{ fontSize:20,fontWeight:300,color:k.color,fontFamily:T.fontSerif,lineHeight:1 }}>{k.val}</div>
-                <div style={{ fontSize:8,color:T.textSec,marginTop:5 }}>{k.sub}</div>
+                <div style={{ fontSize:13,fontWeight:700,color:T.textSec,letterSpacing:'0.06em',textTransform:'uppercase',marginBottom:6 }}>{k.label}</div>
+                <div style={{ fontSize:20,fontWeight:300,color:k.color,fontFamily:T.fontSans,lineHeight:1 }}>{k.val}</div>
+                <div style={{ fontSize:12,color:T.textSec,marginTop:5 }}>{k.sub}</div>
               </div>
             ))}
           </div>
@@ -17211,10 +18552,10 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                   { label:'Cierres de venta', val:totalCierres, color:NAVY, desc:`${pct(totalCierres,totalCitas2)}% conv. cita → cierre` },
                 ].map((row,i)=>(
                   <div key={row.label} style={{ display:'flex', gap:10, alignItems:'center', padding:'8px 0', borderBottom:i<4?`1px solid ${T.border}`:'none' }}>
-                    <div style={{ width:32,height:32,borderRadius:'50%',background:row.color,color:'#fff',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0 }}>{row.val}</div>
+                    <div style={{ width:32,height:32,borderRadius:'50%',background:row.color,color:'#fff',fontSize:13,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0 }}>{row.val}</div>
                     <div style={{ flex:1 }}>
-                      <div style={{ fontSize:10,color:NAVY,fontWeight:500 }}>{row.label}</div>
-                      <div style={{ fontSize:8,color:T.textSec }}>{row.desc}</div>
+                      <div style={{ fontSize:13,color:NAVY,fontWeight:500 }}>{row.label}</div>
+                      <div style={{ fontSize:12,color:T.textSec }}>{row.desc}</div>
                     </div>
                     <div style={{ width:80 }}>
                       <div style={{ background:'#E5E0D8',borderRadius:1,height:4 }}>
@@ -17229,11 +18570,11 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
             {/* Tabla por campaña */}
             {sectionCard('Rendimiento y ROI por campaña', (
               <div style={{ overflowX:'auto' }}>
-                <table style={{ width:'100%',borderCollapse:'collapse',fontSize:10 }}>
+                <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13 }}>
                   <thead>
                     <tr style={{ background:'#F0EDE6' }}>
                       {['Campaña','Tipo','Apertura','CTR','Cierres','Revenue','ROI'].map(h=>(
-                        <th key={h} style={{ padding:'6px 8px',textAlign:'left',fontSize:7,fontWeight:700,color:T.textSec,letterSpacing:'0.1em',textTransform:'uppercase',borderBottom:`1px solid ${T.border}` }}>{h}</th>
+                        <th key={h} style={{ padding:'6px 8px',textAlign:'left',fontSize:13,fontWeight:700,color:T.textSec,letterSpacing:'0.05em',textTransform:'uppercase',borderBottom:`1px solid ${T.border}` }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -17243,7 +18584,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                       return (
                         <tr key={c.id} style={{ background:i%2===0?'#fff':CREAM,borderBottom:`1px solid ${T.border}` }}>
                           <td style={{ padding:'7px 8px',color:NAVY,fontWeight:500,maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{c.nombre}</td>
-                          <td style={{ padding:'7px 8px',color:T.textSec,fontSize:8 }}>{tipoLabel[c.tipo]}</td>
+                          <td style={{ padding:'7px 8px',color:T.textSec,fontSize:12 }}>{tipoLabel[c.tipo]}</td>
                           <td style={{ padding:'7px 8px',color:pct(c.abiertos,c.enviados)>=40?GREEN:pct(c.abiertos,c.enviados)>=25?GOLD:'#c0392b',fontWeight:600 }}>{c.enviados>0?`${pct(c.abiertos,c.enviados)}%`:'—'}</td>
                           <td style={{ padding:'7px 8px',color:'#4A90D9' }}>{c.abiertos>0?`${pct(c.clicks,c.abiertos)}%`:'—'}</td>
                           <td style={{ padding:'7px 8px',color:NAVY }}>{c.cierres}</td>
@@ -17260,6 +18601,16 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
 
           {/* Benchmarks parametrizados por mercado */}
           {(() => {
+            // La definición de cada métrica no cambia entre mercados, solo el rango —
+            // un solo mapa de tips reutilizado por las 3 tablas de MERCADOS.
+            const BENCHMARK_TIPS: Record<string, string> = {
+              'Tasa de apertura': 'Porcentaje de correos enviados que el destinatario abrió. Mide qué tan efectivo es el asunto y qué tan confiable percibe al remitente.',
+              'CTR (clicks / abiertos)': 'De los correos abiertos, el porcentaje en el que el prospecto hizo click en algún enlace (proyecto, brochure, agenda de visita). Mide el interés real en el contenido.',
+              'Conv. lead → cita': 'Porcentaje de mensajes enviados que terminaron en una cita o visita agendada. Conecta el esfuerzo de campaña con una acción comercial concreta.',
+              'Conv. cita → cierre': 'De las citas agendadas, el porcentaje que terminó en un cierre de venta. Mide la efectividad del equipo comercial una vez el lead llega a la reunión.',
+              'Tasa de baja (unsubscribe)': 'Porcentaje de destinatarios que se dieron de baja tras un envío. Un valor alto indica sobreenvío, mala segmentación o contenido poco relevante.',
+              'Revenue por email enviado': 'Ingresos atribuidos a las campañas divididos entre el total de correos enviados. Resume en un solo número la calidad del segmento y el ticket promedio.',
+            };
             const MERCADOS: Record<string, { label: string; fuente: string; nota: string; items: { label: string; min: number; max: number; fmt: (v:number)=>string; val: number; desc: string }[] }> = {
               colombia: {
                 label: 'Colombia — Lujo Bogotá / Medellín',
@@ -17307,19 +18658,19 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
               <div>
                 {/* Selector de mercado */}
                 <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' as const, alignItems:'center' }}>
-                  <span style={{ fontSize:8,fontWeight:700,color:T.textSec,textTransform:'uppercase' as const,letterSpacing:'0.1em' }}>Mercado:</span>
+                  <span style={{ fontSize:12,fontWeight:700,color:T.textSec,textTransform:'uppercase' as const,letterSpacing:'0.05em' }}>Mercado:</span>
                   {([['colombia','🇨🇴 Colombia'],['panama','🇵🇦 Panamá'],['latam','🌎 LATAM']] as [string,string][]).map(([id,lbl])=>(
                     <button key={id} onClick={()=>setCampanasMercado(id as any)}
-                      style={{ padding:'4px 12px',background:campanasMercado===id?NAVY:'#fff',border:`1px solid ${campanasMercado===id?NAVY:T.border}`,borderRadius:2,color:campanasMercado===id?CREAM:T.textSec,fontSize:9,fontWeight:campanasMercado===id?700:400,cursor:'pointer',letterSpacing:'0.04em' }}>
+                      style={{ padding:'4px 12px',background:campanasMercado===id?NAVY:'#fff',border:`1px solid ${campanasMercado===id?NAVY:T.border}`,borderRadius:2,color:campanasMercado===id?CREAM:T.textSec,fontSize:12,fontWeight:campanasMercado===id?700:400,cursor:'pointer',letterSpacing:'0.04em' }}>
                       {lbl}
                     </button>
                   ))}
-                  <span style={{ marginLeft:'auto',fontSize:8,color:T.textSec,fontStyle:'italic' as const }}>{m.fuente}</span>
+                  <span style={{ marginLeft:'auto',fontSize:12,color:T.textSec,fontStyle:'italic' as const }}>{m.fuente}</span>
                 </div>
 
                 {/* Nota del mercado */}
                 <div style={{ padding:'8px 12px',background:'#F0F4FB',border:'1px solid #C5D5E8',borderRadius:2,marginBottom:16 }}>
-                  <div style={{ fontSize:9,color:'#2C5282',lineHeight:1.6 }}>{m.nota}</div>
+                  <div style={{ fontSize:12,color:'#2C5282',lineHeight:1.6 }}>{m.nota}</div>
                 </div>
 
                 {/* Tarjetas de benchmark */}
@@ -17334,16 +18685,18 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                     const statusMsg = noData ? 'Sin datos aún' : above ? '✓ Por encima del benchmark' : ok ? '✓ Dentro del rango óptimo' : '⚠ Por debajo — oportunidad de mejora';
                     return (
                       <div key={b.label} style={{ background:statusBg,border:`1.5px solid ${statusBorder}`,borderRadius:4,padding:'12px 14px' }}>
-                        <div style={{ fontSize:8,fontWeight:700,color:T.textSec,textTransform:'uppercase' as const,letterSpacing:'0.1em',marginBottom:8 }}>{b.label}</div>
+                        <div style={{ fontSize:12,fontWeight:700,color:T.textSec,textTransform:'uppercase' as const,letterSpacing:'0.05em',marginBottom:8,display:'flex',alignItems:'center',gap:2 }}>
+                          {b.label}{BENCHMARK_TIPS[b.label] && <InfoTip text={BENCHMARK_TIPS[b.label]} benchmark={`Benchmark ${m.label}: ${b.fmt(b.min)}–${b.fmt(b.max)}`} />}
+                        </div>
                         <div style={{ display:'flex',alignItems:'baseline',gap:8,marginBottom:6 }}>
-                          <div style={{ fontSize:22,fontWeight:300,color:statusColor,fontFamily:T.fontSerif }}>{b.fmt(b.val)}</div>
-                          <div style={{ fontSize:9,color:T.textSec }}>benchmark: {b.fmt(b.min)}–{b.fmt(b.max)}</div>
+                          <div style={{ fontSize:22,fontWeight:300,color:statusColor,fontFamily:T.fontSans }}>{b.fmt(b.val)}</div>
+                          <div style={{ fontSize:12,color:T.textSec }}>benchmark: {b.fmt(b.min)}–{b.fmt(b.max)}</div>
                         </div>
                         <div style={{ background:'#E5E0D8',borderRadius:1,height:4,marginBottom:6,overflow:'hidden' }}>
                           <div style={{ width:`${Math.min((b.val/b.max)*100,100)}%`,height:'100%',background:statusColor,transition:'width 0.5s ease' }} />
                         </div>
-                        <div style={{ fontSize:8,fontWeight:700,color:statusColor,marginBottom:4 }}>{statusMsg}</div>
-                        <div style={{ fontSize:8,color:T.textSec,lineHeight:1.5 }}>{b.desc}</div>
+                        <div style={{ fontSize:12,fontWeight:700,color:statusColor,marginBottom:4 }}>{statusMsg}</div>
+                        <div style={{ fontSize:12,color:T.textSec,lineHeight:1.5 }}>{b.desc}</div>
                       </div>
                     );
                   })}
@@ -17361,7 +18714,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginBottom:20 }}>
             <div>
               <h2 style={{ fontSize:24,fontWeight:800,color:NAVY,fontFamily:T.fontSans,margin:0,letterSpacing:'-0.01em' }}>Campañas de Marketing</h2>
-              <div style={{ fontSize:10,color:T.textSec,letterSpacing:'0.1em',textTransform:'uppercase',marginTop:6 }}>Gestión · Correos Automáticos · Retorno de Inversión · Referencias del Mercado</div>
+              <div style={{ fontSize:13,color:T.textSec,letterSpacing:'0.05em',textTransform:'uppercase',marginTop:6 }}>Gestión · Correos Automáticos · Retorno de Inversión · Referencias del Mercado</div>
             </div>
             <button onClick={()=>{setCampanaDetalle(null);setCampanaTab('nueva');setCampanaWizardStep(1);}}
               style={{ padding:'8px 18px',background:NAVY,border:'none',borderRadius:8,color:'#fff',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:T.fontSans }}>
@@ -17373,7 +18726,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
           <div style={{ display:'flex', borderBottom:`1px solid ${T.border}`, marginBottom:24 }}>
             {([['dashboard','Dashboard'],['lista','Campañas'],['nueva','Nueva Campaña'],['roi','Análisis ROI'],['testimonios','Testimonios']] as [string,string][]).map(([id,lbl])=>(
               <button key={id} onClick={()=>{setCampanaTab(id as any);if(id!=='lista')setCampanaDetalle(null);if(id==='nueva')setCampanaWizardStep(1);}}
-                style={{ padding:'9px 20px',background:'none',border:'none',borderBottom:campanaTab===id?`2px solid ${NAVY}`:'2px solid transparent',color:campanaTab===id?NAVY:T.textSec,fontSize:11,fontWeight:campanaTab===id?600:400,letterSpacing:'0.06em',cursor:'pointer',marginBottom:-1,fontFamily:T.fontSans }}>
+                style={{ padding:'11px 22px',background:'none',border:'none',borderBottom:campanaTab===id?`2.5px solid ${NAVY}`:'2.5px solid transparent',color:campanaTab===id?NAVY:T.textSec,fontSize:14,fontWeight:campanaTab===id?700:500,letterSpacing:'0.02em',cursor:'pointer',marginBottom:-1,fontFamily:T.fontSans }}>
                 {lbl}
               </button>
             ))}
@@ -17390,7 +18743,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                   <div>
                     <div style={{ fontSize: 16, fontWeight: 800, color: NAVY, fontFamily: T.fontSans }}>Testimonios de Clientes</div>
-                    <div style={{ fontSize: 11, color: T.textSec, marginTop: 4 }}>
+                    <div style={{ fontSize: 13, color: T.textSec, marginTop: 4 }}>
                       Solo los marcados "Publicado" aparecen en la sección de prueba social de la landing. El resto queda en borrador.
                     </div>
                   </div>
@@ -17404,12 +18757,12 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                   <div style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 8, padding: 20, marginBottom: 20 }}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                       <div>
-                        <label style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 0.5, display: 'block', marginBottom: 5 }}>Nombre</label>
+                        <label style={{ fontSize: 13, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 0.5, display: 'block', marginBottom: 5 }}>Nombre</label>
                         <input value={testimonialForm.nombre} onChange={e => setTestimonialForm(f => f && { ...f, nombre: e.target.value })}
                           style={{ width: '100%', padding: '8px 10px', border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 13, fontFamily: T.fontSans, boxSizing: 'border-box' as const }} />
                       </div>
                       <div>
-                        <label style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 0.5, display: 'block', marginBottom: 5 }}>Rol / Ciudad</label>
+                        <label style={{ fontSize: 13, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 0.5, display: 'block', marginBottom: 5 }}>Rol / Ciudad</label>
                         <div style={{ display: 'flex', gap: 8 }}>
                           <input value={testimonialForm.rol} onChange={e => setTestimonialForm(f => f && { ...f, rol: e.target.value })} placeholder="Inversionista"
                             style={{ flex: 1, padding: '8px 10px', border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 13, fontFamily: T.fontSans, boxSizing: 'border-box' as const }} />
@@ -17419,18 +18772,18 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                       </div>
                     </div>
                     <div style={{ marginBottom: 12 }}>
-                      <label style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 0.5, display: 'block', marginBottom: 5 }}>Foto (URL)</label>
+                      <label style={{ fontSize: 13, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 0.5, display: 'block', marginBottom: 5 }}>Foto (URL)</label>
                       <input value={testimonialForm.foto_url} onChange={e => setTestimonialForm(f => f && { ...f, foto_url: e.target.value })} placeholder="https://..."
                         style={{ width: '100%', padding: '8px 10px', border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 13, fontFamily: T.fontSans, boxSizing: 'border-box' as const }} />
                     </div>
                     <div style={{ marginBottom: 12 }}>
-                      <label style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 0.5, display: 'block', marginBottom: 5 }}>Testimonio</label>
+                      <label style={{ fontSize: 13, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 0.5, display: 'block', marginBottom: 5 }}>Testimonio</label>
                       <textarea value={testimonialForm.texto} onChange={e => setTestimonialForm(f => f && { ...f, texto: e.target.value })} rows={3}
                         style={{ width: '100%', padding: '8px 10px', border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 13, fontFamily: T.fontSans, boxSizing: 'border-box' as const, resize: 'vertical' as const }} />
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
-                        <label style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 0.5, marginRight: 8 }}>Calificación</label>
+                        <label style={{ fontSize: 13, fontWeight: 700, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 0.5, marginRight: 8 }}>Calificación</label>
                         <select value={testimonialForm.rating} onChange={e => setTestimonialForm(f => f && { ...f, rating: Number(e.target.value) })}
                           style={{ padding: '6px 10px', border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 13, fontFamily: T.fontSans }}>
                           {STAR_OPTS.map(n => <option key={n} value={n}>{'★'.repeat(n)}</option>)}
@@ -17468,23 +18821,23 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <span style={{ fontSize: 13, fontWeight: 700, color: NAVY }}>{t.nombre}</span>
-                            <span style={{ fontSize: 11, color: T.textSec }}>{[t.rol, t.ciudad].filter(Boolean).join(' · ')}</span>
-                            <span style={{ fontSize: 11, color: GOLD }}>{'★'.repeat(t.rating || 5)}</span>
+                            <span style={{ fontSize: 13, color: T.textSec }}>{[t.rol, t.ciudad].filter(Boolean).join(' · ')}</span>
+                            <span style={{ fontSize: 13, color: GOLD }}>{'★'.repeat(t.rating || 5)}</span>
                           </div>
                           <div style={{ fontSize: 12.5, color: T.text, marginTop: 4, lineHeight: 1.5, fontStyle: 'italic' as const }}>"{t.texto}"</div>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 6, alignItems: 'flex-end', flexShrink: 0 }}>
                           <button onClick={() => toggleTestimonialStatus(t)}
-                            style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, border: 'none', cursor: 'pointer', background: t.status === 'published' ? '#DCFCE7' : '#F3F4F6', color: t.status === 'published' ? '#166534' : '#6B7280' }}>
+                            style={{ fontSize: 13, fontWeight: 700, padding: '3px 10px', borderRadius: 20, border: 'none', cursor: 'pointer', background: t.status === 'published' ? '#DCFCE7' : '#F3F4F6', color: t.status === 'published' ? '#166534' : '#6B7280' }}>
                             {t.status === 'published' ? 'Publicado' : 'Borrador'}
                           </button>
                           <div style={{ display: 'flex', gap: 6 }}>
                             <button onClick={() => setTestimonialForm({ id: t.id, nombre: t.nombre, rol: t.rol || '', ciudad: t.ciudad || '', foto_url: t.foto_url || '', texto: t.texto, rating: t.rating || 5 })}
-                              style={{ background: 'none', border: 'none', color: NAVY, fontSize: 11, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+                              style={{ background: 'none', border: 'none', color: NAVY, fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
                               Editar
                             </button>
                             <button onClick={() => deleteTestimonial(t.id)}
-                              style={{ background: 'none', border: 'none', color: '#DC2626', fontSize: 11, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+                              style={{ background: 'none', border: 'none', color: '#DC2626', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
                               Eliminar
                             </button>
                           </div>
@@ -19340,6 +20693,10 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
   }
 
   const [legalSelected, setLegalSelected] = useState<number | null>(null);
+  // Vista de nivel módulo (no depende de qué cliente esté seleccionado): el Panel de
+  // Mando de siempre, o el chat con Mónica (agente legal) para preguntar por cualquier
+  // expediente sin tener que entrar cliente por cliente.
+  const [legalView, setLegalView] = useState<'panel' | 'chat'>('panel');
   // Pantalla inicial de Legal: KPIs con drilldown + pestañas por etapa real del proceso
   // (no por tipo de documento) — al hacer clic en un cliente de la tabla se abre el
   // expediente completo (el mismo panel de detalle que ya existía).
@@ -19376,7 +20733,6 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
   // Al cambiar de expediente, la fase que quedó abierta/colapsada manualmente ya no aplica
   // al nuevo cliente — vuelve a null para que se abra en SU fase actual, no en la del anterior.
   React.useEffect(() => { setLegalActivePhaseId(null); setLegalRightSection(null); }, [legalSelected]);
-  const [legalActiveDoc, setLegalActiveDoc] = useState<{ docKey: string; docLabel: string } | null>(null);
   // Fase expandida en el detalle del expediente — las 3 fases (Reserva/Promesa/Escritura)
   // funcionan como pestañas: se ven todas con su progreso, pero solo la activa despliega
   // sus documentos. null = todavía no se fijó manualmente, se abre en la fase actual del cliente.
@@ -20535,6 +21891,42 @@ Cargo: ________________________         C.C.: _______________________`,
       if (!legalTemplateModal) return null;
       const { docKey, docLabel } = legalTemplateModal;
       const text = LEGAL_TEMPLATES[docKey] || '';
+      // Todas las plantillas se guardan como texto plano (LEGAL_TEMPLATES) porque así son
+      // fáciles de mantener/editar en el código — pero antes solo se podían "usar" bajando
+      // un .txt, que ni se ve como un documento legal ni se puede firmar/imprimir tal cual.
+      // Estas 3 salidas parten del mismo texto y solo cambian el empaque de salida.
+      const printHtml = (text: string, docLabel: string) => `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${docLabel} — GLP</title><style>
+          *{margin:0;padding:0;box-sizing:border-box}
+          body{font-family:Georgia,'Times New Roman',serif;color:#111;background:#fff;padding:48px 56px;}
+          .eyebrow{font-size:9px;letter-spacing:2.5px;color:#B89047;text-transform:uppercase;margin-bottom:6px;font-family:Arial,sans-serif}
+          h1{font-size:15px;font-weight:700;letter-spacing:0.5px;margin-bottom:24px;border-bottom:2px solid #001A37;padding-bottom:10px}
+          pre{font-family:Georgia,'Times New Roman',serif;font-size:12.5px;line-height:1.9;white-space:pre-wrap;word-wrap:break-word}
+          @media print{body{padding:24px 32px}}
+        </style></head><body>
+          <div class="eyebrow">GLP Colombia · Plantilla Modelo</div>
+          <h1>${docLabel}</h1>
+          <pre>${text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>
+        </body></html>`;
+      const imprimirPDF = () => {
+        const win = window.open('', '_blank', 'width=850,height=1000');
+        if (!win) return;
+        win.document.write(printHtml(text, docLabel));
+        win.document.close();
+        setTimeout(() => win.print(), 400);
+      };
+      // "Word": no hay generador de .docx real en el proyecto (ver package.json — sin
+      // dependencia docx/mammoth) y agregar una librería nueva solo para esto es más riesgo
+      // del que vale. Word abre HTML sin problema si se le da extensión .doc con el MIME
+      // correcto — es el mismo truco que usan la mayoría de los sistemas que "exportan a
+      // Word" sin generar OOXML real, y el resultado abre y edita perfecto en Word/LibreOffice.
+      const descargarWord = () => {
+        const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">${printHtml(text, docLabel).replace('<!DOCTYPE html>', '')}`;
+        const blob = new Blob(['﻿', html], { type: 'application/msword' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `GLP_Plantilla_${docKey}.doc`; a.click();
+        URL.revokeObjectURL(url);
+      };
       const download = () => {
         const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
         const url = URL.createObjectURL(blob);
@@ -20547,17 +21939,29 @@ Cargo: ________________________         C.C.: _______________________`,
           onClick={e => { if (e.target === e.currentTarget) setLegalTemplateModal(null); }}>
           <div style={{ background: '#fff', width: 680, maxHeight: '88vh', display: 'flex', flexDirection: 'column' as const, boxShadow: '0 24px 64px rgba(15,37,66,0.22)' }}>
             {/* Header */}
-            <div style={{ padding: '24px 32px 20px', borderBottom: `1px solid #EEF1F5`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexShrink: 0 }}>
+            <div style={{ padding: '24px 32px 20px', borderBottom: `1px solid #EEF1F5`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexShrink: 0, gap: 12, flexWrap: 'wrap' as const }}>
               <div>
                 <div style={{ fontSize: 8, letterSpacing: '2.5px', textTransform: 'uppercase' as const, color: G2, marginBottom: 6 }}>Plantilla Modelo GLP</div>
                 <div style={{ fontFamily: SERIF, fontSize: 20, color: N2 }}>{docLabel}</div>
                 <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 4 }}>Completa los campos marcados con ___ antes de usar</div>
               </div>
-              <button onClick={download}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: T.teal, border: `1px solid ${T.teal}`, color: '#fff', fontSize: 9, letterSpacing: '1.5px', textTransform: 'uppercase' as const, cursor: 'pointer', flexShrink: 0 }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                Descargar
-              </button>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, flexShrink: 0 }}>
+                <button onClick={imprimirPDF}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: '#DC2626', border: `1px solid #DC2626`, color: '#fff', fontSize: 9, letterSpacing: '1px', textTransform: 'uppercase' as const, cursor: 'pointer' }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                  Imprimir / PDF
+                </button>
+                <button onClick={descargarWord}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: '#1D4ED8', border: `1px solid #1D4ED8`, color: '#fff', fontSize: 9, letterSpacing: '1px', textTransform: 'uppercase' as const, cursor: 'pointer' }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                  Word
+                </button>
+                <button onClick={download}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: T.teal, border: `1px solid ${T.teal}`, color: '#fff', fontSize: 9, letterSpacing: '1px', textTransform: 'uppercase' as const, cursor: 'pointer' }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  Texto
+                </button>
+              </div>
             </div>
             {/* Contenido */}
             <div style={{ overflowY: 'auto' as const, padding: '24px 32px', flex: 1 }}>
@@ -20607,9 +22011,12 @@ Cargo: ________________________         C.C.: _______________________`,
       );
     })();
 
+    // Antes 28×28 con svg de 11×11 — se veían diminutos junto al resto de controles de la
+    // fila (selects/inputs a 9-12px de fuente pero con áreas de clic normales). Se agranda
+    // a un tamaño que hace juego con el resto sin romper la densidad de la lista.
     const iconBtn = (title: string, onClick: () => void, children: React.ReactNode, active?: boolean) => (
       <button title={title} onClick={onClick}
-        style={{ width: 28, height: 28, border: `1px solid ${active ? N2 : '#EEF1F5'}`, background: active ? `${N2}10` : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: active ? N2 : '#9CA3AF', transition: 'all 0.15s', flexShrink: 0 }}>
+        style={{ width: 34, height: 34, border: `1px solid ${active ? N2 : '#E5E9EF'}`, borderRadius: 4, background: active ? `${N2}10` : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: active ? N2 : '#7B92A8', transition: 'all 0.15s', flexShrink: 0 }}>
         {children}
       </button>
     );
@@ -20743,7 +22150,16 @@ Cargo: ________________________         C.C.: _______________________`,
         {/* Antes el eyebrow repetía "Legal & Cierre" — el mismo texto que ya muestra la
             barra superior del CRM. Se quita esa línea duplicada y se deja el marcador
             circular con el título, mismo patrón que el resto de los módulos. */}
-        <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 22, color: N2, marginBottom: 22 }}>Panel de Mando</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
+          <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 22, color: N2 }}>Panel de Mando</div>
+          {/* Chat con Mónica (agente legal) — mismo patrón de renderAgentChatPanel que
+              Sara/Camilo/Sofía/Valeria, con contexto real de los expedientes legales. */}
+          <button onClick={() => setLegalView('chat')}
+            style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5, fontWeight: 700, letterSpacing: '0.3px', color: '#fff', background: N2, border: 'none', borderRadius: 4, padding: '9px 16px', cursor: 'pointer' }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            Preguntar a Mónica
+          </button>
+        </div>
 
         {/* KPIs con drilldown — cada uno mide algo distinto y no debería solaparse en
             significado con los demás; el tooltip (ⓘ) explica la definición exacta y en qué
@@ -20916,6 +22332,22 @@ Cargo: ________________________         C.C.: _______________________`,
     );
 
     if (legalSelected === null) {
+      if (legalView === 'chat') {
+        return (
+          <div style={{ padding: '28px 32px', height: '100%', display: 'flex', flexDirection: 'column' as const }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 22, color: N2 }}>Preguntar a Mónica</div>
+              <button onClick={() => setLegalView('panel')}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, letterSpacing: '0.5px', color: N2, background: '#fff', border: `1.5px solid ${N2}`, borderRadius: 4, padding: '8px 16px', cursor: 'pointer' }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+                Volver al Panel de Mando
+              </button>
+            </div>
+            <div style={{ fontSize: 12, color: '#7B92A8', marginBottom: 8 }}>Directora Legal — expedientes, documentos pendientes, fechas límite y responsables, con datos reales del módulo.</div>
+            {renderAgentChatPanel('LEGAL', N2, G2, '#EEF1F5', 'Pregúntale a Mónica sobre expedientes legales — ej. "¿qué clientes tienen documentos vencidos?" o "¿qué le falta a Juan Pablo Castro para escriturar?"')}
+          </div>
+        );
+      }
       return (
         <>
           {signModalJsx}
@@ -21071,21 +22503,29 @@ Cargo: ________________________         C.C.: _______________________`,
                         const today2 = new Date();
                         const isOverdue = meta.dueDate && new Date(meta.dueDate) < today2 && status !== 'firmado' && status !== 'archivado';
                         const daysWaiting = meta.signSentDate ? Math.round((today2.getTime() - new Date(meta.signSentDate).getTime()) / 86400000) : 0;
-                        const isActive = legalActiveDoc?.docKey === doc.key;
                         return (
                           <div key={doc.key}
-                            style={{ background: isActive ? '#F8F9FB' : '#fff', border: `1px solid ${isActive ? N2 : isOverdue ? '#FECACA' : '#EEF1F5'}`, transition: 'all 0.15s' }}>
+                            style={{ background: '#fff', border: `1px solid ${isOverdue ? '#FECACA' : '#EEF1F5'}`, transition: 'all 0.15s' }}>
 
-                            {/* ── Fila principal ── */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px' }}>
-                              <div style={{ width: 6, height: 6, borderRadius: '50%', background: cfg.color, flexShrink: 0 }} />
-
-                              {/* Nombre + info adjunto */}
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 12, color: N2, fontWeight: isActive ? 600 : 400 }}>{doc.label}</div>
+                            {/* ── Fila principal — rediseño simplificado. El intento anterior
+                                usaba flex:1 en el nombre para "reservar" el mismo ancho en
+                                cada fila y así alinear Responsable/Fecha — pero en un panel
+                                ancho eso deja una caja flex enorme y vacía, exactamente el
+                                desorden que se reportó. Se abandona ese truco: el nombre va
+                                en su PROPIA línea arriba, con ancho natural (nunca ocupa más
+                                espacio del que su texto necesita); Responsable/Fecha/Acciones/
+                                Estado van todos juntos en una fila aparte abajo, alineados a
+                                la izquierda de forma simple (flex normal, sin flex:1 en nada)
+                                — así arrancan siempre en el mismo píxel (el padding de la
+                                tarjeta) en TODAS las filas, sin depender del nombre para nada
+                                y sin ninguna caja que pueda inflarse. ── */}
+                            <div style={{ padding: '12px 16px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <div style={{ width: 6, height: 6, borderRadius: '50%', background: cfg.color, flexShrink: 0 }} />
+                                <div style={{ fontSize: 13, color: N2, fontWeight: 500 }}>{doc.label}</div>
                                 {meta.attachedName && (
-                                  <div style={{ fontSize: 9, color: '#7B92A8', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
-                                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                                  <div style={{ fontSize: 9, color: '#7B92A8', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                                     {meta.attachedUrl
                                       ? <a href={meta.attachedUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ color: '#7B92A8', textDecoration: 'none' }}>{meta.attachedName}</a>
                                       : <span style={{ color: '#7B92A8' }}>{meta.attachedName} <span style={{ color: '#CBD5E0', fontSize: 8 }}>(local)</span></span>}
@@ -21094,42 +22534,63 @@ Cargo: ________________________         C.C.: _______________________`,
                                 )}
                               </div>
 
-                              {/* Acciones */}
-                              <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
-                                {LEGAL_TEMPLATES[doc.key] && iconBtn('Plantilla', () => setLegalTemplateModal({ docKey: doc.key, docLabel: doc.label }), (
-                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-                                ))}
-                                {iconBtn('Adjuntar', () => { setLegalAttachModal({ prospectId: selected.id, docKey: doc.key, docLabel: doc.label }); setLegalAttachForm({ name: meta.attachedName || '', url: meta.attachedUrl || '', localUrl: '' }); }, (
-                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-                                ), !!meta.attachedName)}
-                                {doc.needsSign && iconBtn('Firmas', () => { setLegalSignModal({ prospectId: selected.id, docKey: doc.key, docLabel: doc.label }); setLegalSignForm((() => { const sb = meta.signSentBy || ''; const isKnown = (brokers as any[]).some((b: any) => b.nombre === sb); return { buyer: meta.signers?.find(s => s.role === 'Comprador')?.name || '', buyerEmail: meta.signers?.find(s => s.role === 'Comprador')?.email || '', seller: meta.signers?.find(s => s.role === 'Vendedor')?.name || '', sellerEmail: meta.signers?.find(s => s.role === 'Vendedor')?.email || '', notary: meta.signers?.find(s => s.role === 'Notario')?.name || '', notaryEmail: meta.signers?.find(s => s.role === 'Notario')?.email || '', link: meta.signLink || '', due: meta.dueDate || '', sentBy: sb, sentByCustom: sb !== '' && !isKnown }; })()); }, (
-                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                                ), hasSigned)}
-                                {iconBtn('Nota', () => { setLegalNotesModal({ prospectId: selected.id, docKey: doc.key, docLabel: doc.label }); setLegalNoteText(meta.notes || ''); }, (
-                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                                ), !!meta.notes)}
-                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' as const }}>
+                                <select
+                                  value={meta.responsable || ''}
+                                  onClick={e => e.stopPropagation()}
+                                  onChange={e => saveLegalDoc(selected.id, doc.key, { responsable: e.target.value }, e.target.value ? `Responsable asignado: ${e.target.value}` : 'Responsable removido')}
+                                  style={{ fontSize: 11, color: meta.responsable ? T.red : '#9CA3AF', border: `1px solid #E5E9EF`, borderRadius: 4, padding: '6px 8px', background: '#fff', width: 128, textAlign: 'left' as const }}>
+                                  <option value="">Sin responsable</option>
+                                  {(brokers as any[]).filter((b: any) => b.estado === 'activo').map((b: any) => <option key={b.id || b.nombre} value={b.nombre}>{b.nombre}</option>)}
+                                </select>
+                                <input
+                                  type="date"
+                                  value={meta.dueDate || ''}
+                                  onClick={e => e.stopPropagation()}
+                                  onChange={e => saveLegalDoc(selected.id, doc.key, { dueDate: e.target.value }, e.target.value ? `Fecha límite asignada: ${e.target.value}` : 'Fecha límite removida')}
+                                  style={{ fontSize: 11, color: N2, border: `1px solid #E5E9EF`, borderRadius: 4, padding: '6px 8px', background: '#fff', width: 118 }} />
 
-                              {/* Estado */}
-                              <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
-                                {(['pendiente','en_revision','firmado','archivado'] as LegalDocStatus[]).map(s => {
-                                  const c = STATUS_CFG[s];
-                                  const active = status === s;
-                                  return (
-                                    <button key={s} onClick={e => { e.stopPropagation(); saveLegalDoc(selected.id, doc.key, { status: s }, `Estado → ${STATUS_CFG[s].label}`); }}
-                                      style={{ fontSize: 8, padding: '3px 8px', border: `1px solid ${active ? c.color : '#EEF1F5'}`, background: active ? c.bg : 'transparent', color: active ? c.color : '#9CA3AF', cursor: 'pointer', letterSpacing: '0.3px', fontWeight: active ? 700 : 400, transition: 'all 0.15s' }}>
-                                      {c.label}
-                                    </button>
-                                  );
-                                })}
-                              </div>
+                                {/* Acciones — íconos más grandes (34×34, antes 28×28 con svg
+                                    de 11px) para que se vean como controles reales. "Firmas"
+                                    se movió al final: es el único ícono realmente frecuente
+                                    que no aparece en todos los documentos (doc.needsSign) —
+                                    dejándolo último, su ausencia no corre de lugar a los demás
+                                    íconos ni al bloque de Estado que sigue. El contenedor
+                                    reserva ancho fijo para 4 íconos (aunque Plantilla también
+                                    es condicional y a veces solo se vean 2-3) para que Estado
+                                    arranque siempre en el mismo píxel en toda la lista. */}
+                                <div style={{ display: 'flex', gap: 6, width: 160, flexShrink: 0 }}>
+                                  {LEGAL_TEMPLATES[doc.key] && iconBtn('Plantilla', () => setLegalTemplateModal({ docKey: doc.key, docLabel: doc.label }), (
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+                                  ))}
+                                  {iconBtn('Adjuntar', () => { setLegalAttachModal({ prospectId: selected.id, docKey: doc.key, docLabel: doc.label }); setLegalAttachForm({ name: meta.attachedName || '', url: meta.attachedUrl || '', localUrl: '' }); }, (
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                                  ), !!meta.attachedName)}
+                                  {iconBtn('Nota', () => { setLegalNotesModal({ prospectId: selected.id, docKey: doc.key, docLabel: doc.label }); setLegalNoteText(meta.notes || ''); }, (
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                                  ), !!meta.notes)}
+                                  {doc.needsSign && iconBtn('Firmas', () => { setLegalSignModal({ prospectId: selected.id, docKey: doc.key, docLabel: doc.label }); setLegalSignForm((() => { const sb = meta.signSentBy || ''; const isKnown = (brokers as any[]).some((b: any) => b.nombre === sb); return { buyer: meta.signers?.find(s => s.role === 'Comprador')?.name || '', buyerEmail: meta.signers?.find(s => s.role === 'Comprador')?.email || '', seller: meta.signers?.find(s => s.role === 'Vendedor')?.name || '', sellerEmail: meta.signers?.find(s => s.role === 'Vendedor')?.email || '', notary: meta.signers?.find(s => s.role === 'Notario')?.name || '', notaryEmail: meta.signers?.find(s => s.role === 'Notario')?.email || '', link: meta.signLink || '', due: meta.dueDate || '', sentBy: sb, sentByCustom: sb !== '' && !isKnown }; })()); }, (
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                  ), hasSigned)}
+                                </div>
 
-                              {/* Botón trazabilidad */}
-                              <button onClick={() => setLegalActiveDoc(isActive ? null : { docKey: doc.key, docLabel: doc.label })}
-                                title="Ver trazabilidad"
-                                style={{ width: 26, height: 26, border: `1px solid ${isActive ? N2 : '#EEF1F5'}`, background: isActive ? N2 : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: isActive ? '#fff' : '#9CA3AF', transition: 'all 0.15s' }}>
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                              </button>
+                                {/* Estado — se separa un poco más del bloque de íconos
+                                    (marginLeft extra) para que se lea como grupo aparte, y con
+                                    el ancho fijo de arriba, este bloque también arranca siempre
+                                    en el mismo píxel en cada fila. */}
+                                <div style={{ display: 'flex', gap: 4, marginLeft: 8 }}>
+                                  {(['pendiente','en_revision','firmado','archivado'] as LegalDocStatus[]).map(s => {
+                                    const c = STATUS_CFG[s];
+                                    const active = status === s;
+                                    return (
+                                      <button key={s} onClick={e => { e.stopPropagation(); saveLegalDoc(selected.id, doc.key, { status: s }, `Estado → ${STATUS_CFG[s].label}`); }}
+                                        style={{ fontSize: 9.5, padding: '7px 11px', borderRadius: 4, border: `1px solid ${active ? c.color : '#E5E9EF'}`, background: active ? c.bg : '#fff', color: active ? c.color : '#9CA3AF', cursor: 'pointer', letterSpacing: '0.3px', fontWeight: active ? 700 : 400, transition: 'all 0.15s' }}>
+                                        {c.label}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
                             </div>
 
                             {/* ── Trazabilidad inline (cuando hay firmantes) ── */}
@@ -21164,26 +22625,11 @@ Cargo: ________________________         C.C.: _______________________`,
                               </div>
                             )}
 
-                            {/* Responsable + fecha límite — editable en cualquier documento, no solo los que requieren firma */}
-                            <div style={{ borderTop: `1px solid #EEF1F5`, margin: '0 14px', padding: '6px 0', display: 'flex', alignItems: 'center', gap: 10 }}>
-                              <select
-                                value={meta.responsable || ''}
-                                onClick={e => e.stopPropagation()}
-                                onChange={e => saveLegalDoc(selected.id, doc.key, { responsable: e.target.value }, e.target.value ? `Responsable asignado: ${e.target.value}` : 'Responsable removido')}
-                                style={{ fontSize: 9, color: meta.responsable ? T.red : '#9CA3AF', border: `1px solid #EEF1F5`, padding: '3px 6px', background: '#fff' }}>
-                                <option value="">Sin responsable</option>
-                                {(brokers as any[]).filter((b: any) => b.estado === 'activo').map((b: any) => <option key={b.id || b.nombre} value={b.nombre}>{b.nombre}</option>)}
-                              </select>
-                              <input
-                                type="date"
-                                value={meta.dueDate || ''}
-                                onClick={e => e.stopPropagation()}
-                                onChange={e => saveLegalDoc(selected.id, doc.key, { dueDate: e.target.value }, e.target.value ? `Fecha límite asignada: ${e.target.value}` : 'Fecha límite removida')}
-                                style={{ fontSize: 9, color: N2, border: `1px solid #EEF1F5`, padding: '3px 6px', background: '#fff' }} />
-                            </div>
-
-                            {/* Notas inline */}
-                            {meta.notes && !hasSigned && (
+                            {/* Notas inline — antes solo se mostraba si el documento NO tenía
+                                firmantes (!hasSigned), así que una nota real en un documento
+                                con firmas quedaba guardada pero nunca visible en la fila. Se
+                                muestra siempre que exista, tenga o no firmantes. */}
+                            {meta.notes && (
                               <div style={{ borderTop: `1px solid #EEF1F5`, margin: '0 14px', padding: '6px 0 8px', fontSize: 9, color: '#9CA3AF', fontStyle: 'italic' }}>{meta.notes.slice(0, 80)}{meta.notes.length > 80 ? '…' : ''}</div>
                             )}
 
@@ -21249,11 +22695,14 @@ Cargo: ________________________         C.C.: _______________________`,
       // día para que la comparación sea por día calendario, no por instante.
       const hoyStr = new Date().toISOString().slice(0, 10);
       const hoyMidnight = new Date(hoyStr).getTime();
+      // monto > 0: una cuota placeholder en $0 (creada con "+ Cuota manual" y nunca
+      // completada — ver comentario en addCuota) no representa deuda real y no debería
+      // poder poner a un cliente en mora ni en atención por sí sola.
       const vencidas = c.cuotas.filter(q =>
-        q.estado === 'vencida' || (q.estado === 'pendiente' && q.fecha_vencimiento < hoyStr)
+        q.monto > 0 && (q.estado === 'vencida' || (q.estado === 'pendiente' && q.fecha_vencimiento < hoyStr))
       ).length;
       const proximas = c.cuotas.filter(q => {
-        if (q.estado !== 'pendiente') return false;
+        if (q.estado !== 'pendiente' || q.monto <= 0) return false;
         const diff = (new Date(q.fecha_vencimiento).getTime() - hoyMidnight) / 86400000;
         return diff <= 10 && diff >= 0;
       }).length;
@@ -21314,7 +22763,10 @@ Cargo: ________________________         C.C.: _______________________`,
     // no eran incongruentes, eran conceptos distintos sumados como si fueran iguales).
     const cuotasEnMora = (c: CarteraCliente) => {
       const hoyMid = new Date(hoyStrTab).getTime();
-      const vencidas = c.cuotas.filter(q => q.concepto === 'cuota_inicial' && (q.estado === 'vencida' || (q.estado === 'pendiente' && q.fecha_vencimiento < hoyStrTab)));
+      // monto > 0: mismo criterio que calcRiesgo — una cuota placeholder en $0 no es mora
+      // real (caso real: Gustavo Peña tenía 2 cuotas "manual" en $0 sin completar, que
+      // inflaban el conteo a "3 cuotas en mora" mostrando solo $4.321 de las 3).
+      const vencidas = c.cuotas.filter(q => q.monto > 0 && q.concepto === 'cuota_inicial' && (q.estado === 'vencida' || (q.estado === 'pendiente' && q.fecha_vencimiento < hoyStrTab)));
       const monto = vencidas.reduce((s, q) => s + q.monto, 0);
       const diasMax = vencidas.reduce((max, q) => Math.max(max, Math.floor((hoyMid - new Date(q.fecha_vencimiento).getTime()) / 86400000)), 0);
       return { count: vencidas.length, monto, diasMax };
@@ -21459,9 +22911,17 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
       }).catch(() => { /* el mensaje sigue disponible localmente aunque falle el guardado */ });
     };
 
+    // Antes esto guardaba de una una cuota placeholder ($0, vencimiento HOY) y quedaba a
+    // criterio del usuario acordarse de completarla — si no la completaba (o cerraba el
+    // modal sin guardar), quedaba huérfana en la BD, y en cuanto pasaba el día quedaba
+    // "vencida" con monto $0: contaminaba el conteo de cuotas en mora sin aportar deuda real
+    // (caso real: Adriana Bustamante y Gustavo Peña, ver limpieza de datos 2026-08-28). Ahora
+    // se abre el modal de edición inmediatamente después de crearla, para que el usuario la
+    // complete en el acto en vez de dejarla a medias.
     const addCuota = (carteraId: string) => {
+      const id = Date.now().toString();
       const nueva: CuotaCartera = {
-        id: Date.now().toString(), numero: 0,
+        id, numero: 0,
         concepto: 'cuota_inicial', monto: 0,
         fecha_vencimiento: new Date().toISOString().split('T')[0],
         estado: 'pendiente',
@@ -21469,6 +22929,7 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
       saveCarteras(carteras.map(c => c.id === carteraId
         ? { ...c, cuotas: [...c.cuotas, { ...nueva, numero: c.cuotas.length + 1 }] }
         : c));
+      setEditCuotaModal(id);
     };
 
     const updateCuota = (carteraId: string, cuotaId: string, patch: Partial<CuotaCartera>) => {
@@ -21502,7 +22963,7 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <div style={{ display: 'flex', gap: 28, borderBottom: `1px solid ${S.parch}`, alignItems: 'flex-end' }}>
-                {([['clientes','Clientes'],['reportes','Reportes']] as const).map(([v,l]) => (
+                {([['clientes','Clientes'],['reportes','Reportes'],['chat','Preguntar a Andrea']] as const).map(([v,l]) => (
                   <button key={v} onClick={() => setCarteraView(v as any)}
                     style={{ padding: '4px 2px 12px', fontSize: 11, fontWeight: 600, letterSpacing: 2.5, textTransform: 'uppercase', fontFamily: T.serif, border: 'none', borderBottom: carteraView === v ? `1px solid ${S.navy}` : '1px solid transparent', marginBottom: -1, cursor: 'pointer', background: 'transparent', color: carteraView === v ? S.navy : '#9CA3AF', transition: 'all 0.15s' }}>
                     {l}
@@ -21544,7 +23005,18 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
             const resumenActivo = (() => {
               switch (carteraFilter) {
                 case 'todos': return `USD ${(totalCartera/1000).toFixed(0)}K en cartera · USD ${(totalRecaudo/1000).toFixed(0)}K recaudado (${totalCartera > 0 ? Math.round(totalRecaudo/totalCartera*100) : 0}%) · ${carteras.length} clientes`;
-                case 'verde': return `${alDia} cliente${alDia !== 1 ? 's' : ''} al día · sin cuotas vencidas ni próximas a vencer`;
+                case 'verde': {
+                  // "Al día" técnicamente incluye a cualquier cliente sin cuotas vencidas ni
+                  // próximas — pero eso agrupa dos casos muy distintos: alguien que SÍ tiene
+                  // un plan de pagos y lo va cumpliendo, y alguien que aún NO TIENE plan de
+                  // pagos cargado (cuotas = [] — caso real: Andrés Felipe Martínez, María
+                  // Isabel Rodríguez). El segundo caso no es "al día", es "sin evaluar" —
+                  // mostrarlo igual que el primero (con 0% avance, USD 0 recaudado) se leía
+                  // como que no habían pagado nada de un plan real, cuando en realidad no
+                  // existe ningún plan que evaluar.
+                  const sinPlanCount = carteras.filter(c => calcRiesgo(c) === 'verde' && c.cuotas.length === 0).length;
+                  return `${alDia} cliente${alDia !== 1 ? 's' : ''} al día · sin cuotas vencidas ni próximas a vencer${sinPlanCount > 0 ? ` (${sinPlanCount} de ellos aún sin plan de pagos cargado)` : ''}`;
+                }
                 case 'amarillo': return `${porVencer} cliente${porVencer !== 1 ? 's' : ''} con cuotas que vencen en los próximos 10 días`;
                 case 'rojo': return `${enMora} cliente${enMora !== 1 ? 's' : ''} con cuotas vencidas`;
                 case 'compromisos': return `${compromisosActivos.length} compromiso${compromisosActivos.length !== 1 ? 's' : ''} de pago activo${compromisosActivos.length !== 1 ? 's' : ''} · USD ${totalComprometido.toLocaleString()} comprometido`;
@@ -21580,6 +23052,16 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
             );
           })()}
         </div>
+
+        {/* ── VISTA CHAT — Andrea, agente de Cartera y Cobranza. Mismo patrón que Sara/
+            Camilo/Sofía/Valeria/Mónica (renderAgentChatPanel), con contexto real de plan
+            de pagos, mora y riesgo por cliente. ── */}
+        {carteraView === 'chat' && (
+          <div style={{ padding: '28px 32px' }}>
+            <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 8 }}>Directora de Cartera y Cobranza — plan de pagos, mora, riesgo y próximos vencimientos, con datos reales del módulo.</div>
+            {renderAgentChatPanel('CARTERA', S.navy, S.gold, S.parch, 'Pregúntale a Andrea sobre cartera — ej. "¿qué clientes están en mora?" o "¿cuál es la próxima cuota de Diana Herrera?"')}
+          </div>
+        )}
 
         {/* ── VISTA REPORTES ── */}
         {carteraView === 'reportes' && (() => {
@@ -21620,6 +23102,12 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
           const rptRecaudado = filtradas.reduce((s, c) => s + recaudadoEnRango(c), 0);
           const rptPendiente = filtradas.reduce((s, c) => s + totalPendiente(c), 0);
           const rptMora = filtradas.filter(c => calcRiesgo(c) === 'rojo');
+          // "Por Recaudar" mezclaba dos cosas de naturaleza distinta: saldo pendiente que
+          // AÚN no vence (normal, esperado) y saldo pendiente que YA venció (mora real, hay
+          // que gestionarla). Un mismo número para ambas ocultaba cuánto de ese "por
+          // recaudar" es en realidad un problema. Se separan explícitamente.
+          const rptPendienteVencida = filtradas.reduce((s, c) => s + cuotasEnMora(c).monto + otrosVencidos(c).reduce((s2, o) => s2 + o.monto, 0), 0);
+          const rptPendienteNoVencida = rptPendiente - rptPendienteVencida;
           // Recaudado (todo el histórico, no solo el período) + Pendiente debería sumar el
           // Total contratado — si no cuadra, es porque uno o más clientes no tienen su plan
           // de pagos generado todavía (0 cuotas), así que su precio_total no está reflejado
@@ -21790,11 +23278,12 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                       .footer{margin-top:32px;padding-top:12px;border-top:1px solid #E5E0D8;font-size:9px;color:#9CA3AF;font-family:system-ui,sans-serif;display:flex;justify-content:space-between}
                       @media print{body{padding:16px}.no-print{display:none}}
                     </style></head><body>
-                      <div class="header"><div class="logo">GLP</div><div class="subtitle">Wealth Management · Reporte de Cartera</div><div style="font-size:11px;color:#6B7280;margin-top:8px;font-family:system-ui,sans-serif">Fecha: ${fecha} · Filtro: ${filtroLabel}</div></div>
+                      <div class="header"><div class="logo">GLP</div><div class="subtitle">Colombia · Reporte de Cartera</div><div style="font-size:11px;color:#6B7280;margin-top:8px;font-family:system-ui,sans-serif">Fecha: ${fecha} · Filtro: ${filtroLabel}</div></div>
                       <div class="kpis">
                         <div class="kpi" style="border-left-color:#B89047"><div class="kpi-label">Cartera del período</div><div class="kpi-val">USD ${((rptRecaudado + rptPendiente)/1000).toFixed(0)}K</div></div>
                         <div class="kpi" style="border-left-color:#10B981"><div class="kpi-label">Recaudado (período)</div><div class="kpi-val">USD ${(rptRecaudado/1000).toFixed(0)}K</div></div>
-                        <div class="kpi" style="border-left-color:#F59E0B"><div class="kpi-label">Por recaudar</div><div class="kpi-val">USD ${(rptPendiente/1000).toFixed(0)}K</div></div>
+                        <div class="kpi" style="border-left-color:#F59E0B"><div class="kpi-label">Por recaudar (no vencida)</div><div class="kpi-val">USD ${(rptPendienteNoVencida/1000).toFixed(0)}K</div></div>
+                        <div class="kpi" style="border-left-color:#EF4444"><div class="kpi-label">Por recaudar (vencida)</div><div class="kpi-val">USD ${(rptPendienteVencida/1000).toFixed(0)}K</div></div>
                         <div class="kpi" style="border-left-color:#EF4444"><div class="kpi-label">En mora</div><div class="kpi-val">${rptMora.length} clientes</div></div>
                       </div>
                       <h2>Clientes (${filtradas.length})</h2>
@@ -21832,12 +23321,13 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                       td{padding:6px 8px;border-bottom:1px solid #ddd}tr:nth-child(even)td{background:#f9f9f9}
                       .kpis{display:flex;gap:16px;margin-bottom:20px}.kpi{border:1px solid #ddd;padding:10px;flex:1;text-align:center}.kpi-l{font-size:8px;color:#999;text-transform:uppercase;letter-spacing:1px}.kpi-v{font-size:18px;font-weight:bold}
                     </style></head><body>
-                      <h1>GLP Wealth Management — Reporte de Cartera</h1>
+                      <h1>GLP Colombia — Reporte de Cartera</h1>
                       <p>${fecha}${filtroLabel ? ' · ' + filtroLabel : ''} · ${filtradas.length} cliente${filtradas.length !== 1 ? 's' : ''}</p>
                       <div class="kpis">
                         <div class="kpi"><div class="kpi-l">Cartera del período</div><div class="kpi-v">$${((rptRecaudado + rptPendiente)/1000).toFixed(0)}K</div></div>
                         <div class="kpi"><div class="kpi-l">Recaudado (período)</div><div class="kpi-v">$${(rptRecaudado/1000).toFixed(0)}K</div></div>
-                        <div class="kpi"><div class="kpi-l">Pendiente</div><div class="kpi-v">$${(rptPendiente/1000).toFixed(0)}K</div></div>
+                        <div class="kpi"><div class="kpi-l">Pendiente (no vencida)</div><div class="kpi-v">$${(rptPendienteNoVencida/1000).toFixed(0)}K</div></div>
+                        <div class="kpi"><div class="kpi-l">Pendiente (vencida)</div><div class="kpi-v">$${(rptPendienteVencida/1000).toFixed(0)}K</div></div>
                         <div class="kpi"><div class="kpi-l">En mora</div><div class="kpi-v">${rptMora.length}</div></div>
                       </div>
                       <table><thead><tr><th>Cliente</th><th>Proyecto</th><th>Total USD</th><th>Recaudado</th><th>%</th><th>Estado</th></tr></thead><tbody>${rows}</tbody></table>
@@ -21854,7 +23344,7 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
 
               {/* KPIs resumen — funcionan como filtro (clic aplica/quita el filtro de estado),
                   no son solo un título estático. */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: rptSinPlan > 0 ? 8 : 24 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 16, marginBottom: rptSinPlan > 0 ? 8 : 24 }}>
                 {[
                   // Antes esta tarjeta mostraba rptTotal (el precio total contratado de los
                   // clientes filtrados) bajo el nombre "Cartera Filtrada" — un monto fijo que
@@ -21864,7 +23354,11 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                   // usuario, ahora es literalmente esa suma por definición — coincide siempre.
                   { l: 'CARTERA DEL PERÍODO', v: `USD ${((rptRecaudado + rptPendiente)/1000).toFixed(0)}K`, c: S.gold, sub: null, riesgo: '' as const, filterable: false },
                   { l: 'RECAUDADO (PERÍODO)', v: `USD ${(rptRecaudado/1000).toFixed(0)}K`, c: '#10B981', sub: null, riesgo: '' as const, filterable: false },
-                  { l: 'POR RECAUDAR (ACTUAL)', v: `USD ${(rptPendiente/1000).toFixed(0)}K`, c: '#F59E0B', sub: 'saldo pendiente hoy, no cambia con el período', riesgo: '' as const, filterable: false },
+                  // "Por Recaudar" se separa en dos: lo que aún NO vence (normal) y lo que YA
+                  // venció (mora real, en dinero — antes solo existía el conteo de clientes en
+                  // la tarjeta de al lado, sin decir cuánto dinero es eso).
+                  { l: 'POR RECAUDAR — NO VENCIDA', v: `USD ${(rptPendienteNoVencida/1000).toFixed(0)}K`, c: '#F59E0B', sub: 'aún no llega su fecha de vencimiento', riesgo: '' as const, filterable: false },
+                  { l: 'POR RECAUDAR — VENCIDA', v: `USD ${(rptPendienteVencida/1000).toFixed(0)}K`, c: '#EF4444', sub: 'ya pasó la fecha de vencimiento (mora)', riesgo: '' as const, filterable: false },
                   { l: 'EN MORA (ACTUAL)', v: `${rptMora.length} clientes`, c: '#EF4444', sub: 'estado hoy, no cambia con el período', riesgo: 'rojo' as const, filterable: true },
                 ].map((k,i) => {
                   const active = carteraRptFiltro.riesgo === k.riesgo && k.riesgo !== '';
@@ -22075,6 +23569,155 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                   }
                 </div>
               </div>
+
+              {/* ── CARTERA POR EDADES (AGING) ──────────────────────────────
+                  Usa los mismos filtros de arriba (proyecto/estado/broker) — y si hay un
+                  período elegido, solo cuenta cuotas cuyo vencimiento cae en ese rango.
+                  Clasifica el saldo pendiente de cada cliente por antigüedad de la cuota
+                  vencida más vieja, con los buckets estándar de cobranza. */}
+              {(() => {
+                const hoyEdades = new Date().toISOString().slice(0, 10);
+                const diasVencido = (fecha: string) => Math.floor((new Date(hoyEdades).getTime() - new Date(fecha).getTime()) / 86400000);
+                const BUCKETS = [
+                  { id: 'corriente' as const, label: 'Corriente (no vencida)', color: '#10B981' },
+                  { id: 'b1' as const, label: '1-30 días', color: '#F59E0B' },
+                  { id: 'b2' as const, label: '31-60 días', color: '#F59E0B' },
+                  { id: 'b3' as const, label: '61-90 días', color: '#EA580C' },
+                  { id: 'b4' as const, label: '90+ días', color: '#DC2626' },
+                ];
+                type BucketId = typeof BUCKETS[number]['id'];
+                const edadesPorCliente = filtradas.map(c => {
+                  const cuotasRelevantes = c.cuotas.filter(q => q.estado !== 'pagada' && q.monto > 0 && (!rangoFechas || enRango(q.fecha_vencimiento)));
+                  const buckets: Record<BucketId, number> = { corriente: 0, b1: 0, b2: 0, b3: 0, b4: 0 };
+                  cuotasRelevantes.forEach(q => {
+                    if (q.fecha_vencimiento >= hoyEdades) { buckets.corriente += q.monto; return; }
+                    const dias = diasVencido(q.fecha_vencimiento);
+                    if (dias <= 30) buckets.b1 += q.monto;
+                    else if (dias <= 60) buckets.b2 += q.monto;
+                    else if (dias <= 90) buckets.b3 += q.monto;
+                    else buckets.b4 += q.monto;
+                  });
+                  const totalVencido = buckets.b1 + buckets.b2 + buckets.b3 + buckets.b4;
+                  const total = totalVencido + buckets.corriente;
+                  return { c, buckets, totalVencido, total };
+                }).filter(x => x.total > 0).sort((a, b) => b.totalVencido - a.totalVencido);
+
+                const totales: Record<BucketId, number> = { corriente: 0, b1: 0, b2: 0, b3: 0, b4: 0 };
+                edadesPorCliente.forEach(x => BUCKETS.forEach(b => { totales[b.id] += x.buckets[b.id]; }));
+
+                const filtroLabelEdades = [
+                  carteraRptFiltro.proyecto || 'Todos los proyectos',
+                  carteraRptFiltro.riesgo ? (carteraRptFiltro.riesgo === 'verde' ? 'Al día' : carteraRptFiltro.riesgo === 'amarillo' ? 'Atención' : 'En mora') : 'Todos los estados',
+                  carteraRptFiltro.broker || 'Todos los brokers',
+                  rangoFechas ? `Vencimiento ${rangoFechas.desde || '…'} → ${rangoFechas.hasta || '…'}` : 'Todo el tiempo',
+                ].join(' · ');
+
+                return (
+                  <div style={{ background: '#fff', border: `1px solid ${S.parch}`, padding: 20 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, flexWrap: 'wrap', gap: 12 }}>
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, color: S.navy, textTransform: 'uppercase' }}>Cartera por Edades (Antigüedad de Mora)</div>
+                        <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 3 }}>{filtroLabelEdades}</div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => {
+                          import('xlsx').then(XLSX => {
+                            const fecha = new Date().toLocaleDateString('es-CO');
+                            const ws = XLSX.utils.json_to_sheet(edadesPorCliente.map(x => ({
+                              'Cliente': x.c.prospectName, 'Proyecto': x.c.proyecto, 'Unidad': x.c.unidad,
+                              'Corriente (no vencida) USD': x.buckets.corriente,
+                              '1-30 días USD': x.buckets.b1, '31-60 días USD': x.buckets.b2,
+                              '61-90 días USD': x.buckets.b3, '90+ días USD': x.buckets.b4,
+                              'Total Vencido USD': x.totalVencido, 'Total USD': x.total,
+                            })));
+                            const wb = XLSX.utils.book_new();
+                            XLSX.utils.book_append_sheet(wb, ws, 'Cartera por Edades');
+                            XLSX.writeFile(wb, `GLP_Cartera_Edades_${fecha.replace(/\//g,'-')}.xlsx`);
+                          });
+                        }} style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#16A34A', color: '#fff', border: 'none', padding: '6px 12px', fontSize: 10, fontWeight: 700, cursor: 'pointer', letterSpacing: 0.8 }}>
+                          Excel
+                        </button>
+                        <button onClick={() => {
+                          const header = 'Cliente,Proyecto,Unidad,Corriente,1-30 dias,31-60 dias,61-90 dias,90+ dias,Total Vencido,Total\n';
+                          const rows = edadesPorCliente.map(x => `"${x.c.prospectName}","${x.c.proyecto}","${x.c.unidad || ''}",${x.buckets.corriente},${x.buckets.b1},${x.buckets.b2},${x.buckets.b3},${x.buckets.b4},${x.totalVencido},${x.total}`).join('\n');
+                          const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8' });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url; a.download = `cartera_edades_${today()}.csv`; a.click();
+                          URL.revokeObjectURL(url);
+                        }} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'transparent', color: S.navy, border: `1px solid ${S.navy}`, padding: '6px 12px', fontSize: 10, fontWeight: 700, cursor: 'pointer', letterSpacing: 0.8 }}>
+                          CSV
+                        </button>
+                        <button onClick={() => {
+                          const fecha = new Date().toLocaleDateString('es-CO');
+                          const rows = edadesPorCliente.map(x => `<tr><td>${x.c.prospectName}</td><td>${x.c.proyecto}</td><td style="text-align:right">$${x.buckets.corriente.toLocaleString()}</td><td style="text-align:right">$${x.buckets.b1.toLocaleString()}</td><td style="text-align:right">$${x.buckets.b2.toLocaleString()}</td><td style="text-align:right">$${x.buckets.b3.toLocaleString()}</td><td style="text-align:right;color:#DC2626;font-weight:700">$${x.buckets.b4.toLocaleString()}</td><td style="text-align:right;font-weight:700">$${x.totalVencido.toLocaleString()}</td></tr>`).join('');
+                          const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>GLP Cartera por Edades — ${fecha}</title><style>
+                            *{margin:0;padding:0;box-sizing:border-box}body{font-family:'Georgia',serif;color:#001A37;background:#fff;padding:32px}
+                            .header{border-bottom:3px solid #B89047;padding-bottom:16px;margin-bottom:24px}
+                            .logo{font-size:22px;font-weight:700;letter-spacing:3px;color:#001A37}
+                            .subtitle{font-size:9px;letter-spacing:3px;color:#B89047;text-transform:uppercase;margin-top:3px}
+                            table{width:100%;border-collapse:collapse;font-family:system-ui,sans-serif;font-size:11px}
+                            th{background:#001A37;color:#B89047;padding:8px 10px;text-align:left;font-size:8px;letter-spacing:1.5px;text-transform:uppercase;font-weight:700}
+                            td{padding:8px 10px;border-bottom:1px solid #F0EDE8;color:#374151}
+                            tr:nth-child(even) td{background:#F9F7F3}
+                            tfoot td{font-weight:700;border-top:2px solid #001A37;background:#F9F7F3}
+                            @media print{body{padding:16px}}
+                          </style></head><body>
+                            <div class="header"><div class="logo">GLP</div><div class="subtitle">Colombia · Cartera por Edades</div><div style="font-size:11px;color:#6B7280;margin-top:8px;font-family:system-ui,sans-serif">Fecha: ${fecha} · Filtro: ${filtroLabelEdades}</div></div>
+                            <table><thead><tr><th>Cliente</th><th>Proyecto</th><th>Corriente</th><th>1-30d</th><th>31-60d</th><th>61-90d</th><th>90+d</th><th>Total Vencido</th></tr></thead>
+                            <tbody>${rows}</tbody>
+                            <tfoot><tr><td colspan="2">TOTALES</td><td style="text-align:right">$${totales.corriente.toLocaleString()}</td><td style="text-align:right">$${totales.b1.toLocaleString()}</td><td style="text-align:right">$${totales.b2.toLocaleString()}</td><td style="text-align:right">$${totales.b3.toLocaleString()}</td><td style="text-align:right;color:#DC2626">$${totales.b4.toLocaleString()}</td><td style="text-align:right">$${(totales.b1+totales.b2+totales.b3+totales.b4).toLocaleString()}</td></tr></tfoot>
+                            </table>
+                          </body></html>`;
+                          const win = window.open('', '_blank', 'width=900,height=700');
+                          if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 500); }
+                        }} style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#DC2626', color: '#fff', border: 'none', padding: '6px 12px', fontSize: 10, fontWeight: 700, cursor: 'pointer', letterSpacing: 0.8 }}>
+                          Imprimir / PDF
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10, margin: '16px 0' }}>
+                      {BUCKETS.map(b => (
+                        <div key={b.id} style={{ padding: '10px 12px', background: S.bg, border: `1px solid ${S.parch}`, borderLeft: `3px solid ${b.color}` }}>
+                          <div style={{ fontSize: 9, color: '#9CA3AF', letterSpacing: 0.5, marginBottom: 4 }}>{b.label}</div>
+                          <div style={{ fontSize: 15, fontWeight: 700, color: S.navy, fontFamily: T.serif }}>USD {(totales[b.id]/1000).toFixed(1)}K</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {edadesPorCliente.length === 0 ? (
+                      <div style={{ color: '#9CA3AF', fontSize: 12, padding: '20px 0' }}>Sin saldos pendientes para los filtros seleccionados.</div>
+                    ) : (
+                      <div style={{ overflowX: 'auto' as const }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                          <thead>
+                            <tr style={{ borderBottom: `2px solid ${S.parch}` }}>
+                              {['Cliente','Proyecto','Corriente','1-30d','31-60d','61-90d','90+d','Total Vencido'].map(h => (
+                                <th key={h} style={{ padding: '6px 8px', textAlign: (h === 'Cliente' || h === 'Proyecto') ? 'left' as const : 'right' as const, fontSize: 9, letterSpacing: 1, color: '#9CA3AF', fontWeight: 700 }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {edadesPorCliente.map(x => (
+                              <tr key={x.c.id} style={{ borderBottom: `1px solid ${S.parch}` }}>
+                                <td style={{ padding: '8px', color: S.navy, fontWeight: 600 }}>{x.c.prospectName}</td>
+                                <td style={{ padding: '8px', color: '#6B7280' }}>{x.c.proyecto}</td>
+                                <td style={{ padding: '8px', textAlign: 'right', color: x.buckets.corriente > 0 ? '#374151' : '#D1D5DB' }}>{x.buckets.corriente > 0 ? `$${x.buckets.corriente.toLocaleString()}` : '—'}</td>
+                                <td style={{ padding: '8px', textAlign: 'right', color: x.buckets.b1 > 0 ? '#D97706' : '#D1D5DB' }}>{x.buckets.b1 > 0 ? `$${x.buckets.b1.toLocaleString()}` : '—'}</td>
+                                <td style={{ padding: '8px', textAlign: 'right', color: x.buckets.b2 > 0 ? '#D97706' : '#D1D5DB' }}>{x.buckets.b2 > 0 ? `$${x.buckets.b2.toLocaleString()}` : '—'}</td>
+                                <td style={{ padding: '8px', textAlign: 'right', color: x.buckets.b3 > 0 ? '#EA580C' : '#D1D5DB' }}>{x.buckets.b3 > 0 ? `$${x.buckets.b3.toLocaleString()}` : '—'}</td>
+                                <td style={{ padding: '8px', textAlign: 'right', color: x.buckets.b4 > 0 ? '#DC2626' : '#D1D5DB', fontWeight: x.buckets.b4 > 0 ? 700 : 400 }}>{x.buckets.b4 > 0 ? `$${x.buckets.b4.toLocaleString()}` : '—'}</td>
+                                <td style={{ padding: '8px', textAlign: 'right', color: S.navy, fontWeight: 700 }}>${x.totalVencido.toLocaleString()}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           );
         })()}
@@ -22262,7 +23905,11 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                           {carteraFilter === 'todos' && (
                             <>
                               <td style={{ padding: '10px 16px', textAlign: 'right' }}>
-                                <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, padding: '3px 7px', border: `1px solid ${RIESGO_COLOR[riesgo]}`, color: RIESGO_COLOR[riesgo], textTransform: 'uppercase' }}>{RIESGO_LABEL[riesgo]}</span>
+                                {c.cuotas.length === 0 ? (
+                                  <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, padding: '3px 7px', border: `1px solid #9CA3AF`, color: '#9CA3AF', textTransform: 'uppercase' as const }}>Sin plan</span>
+                                ) : (
+                                  <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, padding: '3px 7px', border: `1px solid ${RIESGO_COLOR[riesgo]}`, color: RIESGO_COLOR[riesgo], textTransform: 'uppercase' as const }}>{RIESGO_LABEL[riesgo]}</span>
+                                )}
                               </td>
                               {/* El detalle depende de la categoría de CADA fila — un cliente en
                                   mora necesita ver cuánto, desde cuándo (la primera cuota que se
@@ -22277,7 +23924,7 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                                         ? `USD ${mora.monto.toLocaleString()} en ${mora.count} cuota${mora.count !== 1 ? 's' : ''} · ${mora.diasMax}d${otros.length > 0 ? ` + ${otros.map(o => CONCEPTO_LABEL[o.concepto] || o.concepto).join('/')} USD ${otros.reduce((s,o)=>s+o.monto,0).toLocaleString()}` : ''}`
                                         : otros.length > 0 ? `${otros.map(o => `${CONCEPTO_LABEL[o.concepto] || o.concepto} vencida · USD ${o.monto.toLocaleString()} · ${o.dias}d`).join(' · ')}` : 'En mora')
                                     : riesgo === 'amarillo' ? motivoAtencion(c)
-                                    : prox ? `Próxima: ${prox.fecha_vencimiento} · USD ${prox.monto.toLocaleString()}` : 'Sin cuotas pendientes'}
+                                    : prox ? `Próxima: ${prox.fecha_vencimiento} · USD ${prox.monto.toLocaleString()}` : (c.cuotas.length === 0 ? 'Sin plan de pagos cargado' : 'Sin cuotas pendientes')}
                                 </div>
                                 <div style={{ fontSize: 9, color: '#9CA3AF', marginTop: 2 }}>
                                   Último pago: {ultimoPago(c) || '—'}
@@ -22290,7 +23937,11 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                             <td style={{ padding: '10px 16px', color: '#D97706', fontWeight: 600 }}>{motivoAtencion(c)}</td>
                           )}
                           {(carteraFilter === 'todos' || carteraFilter === 'verde' || carteraFilter === 'rojo') && (
-                            <td style={{ padding: '10px 16px', textAlign: 'right', color: '#059669', fontWeight: 700 }}>USD {recaudado.toLocaleString()}</td>
+                            // c.cuotas.length === 0: sin plan de pagos cargado — "USD 0" se leía
+                            // como que no ha pagado nada de un plan real, cuando no existe plan.
+                            <td style={{ padding: '10px 16px', textAlign: 'right', color: c.cuotas.length === 0 ? '#9CA3AF' : '#059669', fontWeight: c.cuotas.length === 0 ? 400 : 700, fontStyle: c.cuotas.length === 0 ? 'italic' as const : 'normal' as const }}>
+                              {c.cuotas.length === 0 ? 'Sin plan de pagos' : `USD ${recaudado.toLocaleString()}`}
+                            </td>
                           )}
                           {(carteraFilter === 'todos' || carteraFilter === 'verde' || carteraFilter === 'rojo') && (
                             <td style={{ padding: '10px 16px', textAlign: 'right', color: S.navy, fontWeight: 700 }}>USD {c.precio_total.toLocaleString()}</td>
@@ -22311,12 +23962,16 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                           )}
                           {(carteraFilter === 'todos' || carteraFilter === 'verde' || carteraFilter === 'amarillo') && (
                             <td style={{ padding: '10px 16px', textAlign: 'right', width: 140 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
-                                <div style={{ width: 60, height: 4, background: S.parch }}>
-                                  <div style={{ width: `${pct}%`, height: '100%', background: pct >= 75 ? '#059669' : pct >= 40 ? S.gold : S.navy }} />
+                              {c.cuotas.length === 0 ? (
+                                <span style={{ fontSize: 10, color: '#9CA3AF', fontStyle: 'italic' as const }}>Sin plan</span>
+                              ) : (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
+                                  <div style={{ width: 60, height: 4, background: S.parch }}>
+                                    <div style={{ width: `${pct}%`, height: '100%', background: pct >= 75 ? '#059669' : pct >= 40 ? S.gold : S.navy }} />
+                                  </div>
+                                  <span style={{ fontWeight: 700, color: S.navy, minWidth: 30 }}>{pct}%</span>
                                 </div>
-                                <span style={{ fontWeight: 700, color: S.navy, minWidth: 30 }}>{pct}%</span>
-                              </div>
+                              )}
                             </td>
                           )}
                           {(carteraFilter === 'verde' || carteraFilter === 'amarillo') && (
@@ -24215,7 +25870,9 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
       const montoFin = calcPrecio * (1 - calcCuotaInicial / 100);
       const cuotaMesP = calcMortgage(montoFin, calcTasaHip, calcPlazo);
       const cuotaInicialUSD = calcPrecio * (calcCuotaInicial / 100);
-      const rentaMens = calcRentaM2 * calcArea;
+      // Igual que en el panel central: renta/vacancia solo cuentan para perfiles Renta/Disfrute.
+      const esPerfilRentaP = calcPerfil === 'renta';
+      const rentaMens = esPerfilRentaP ? calcRentaM2 * calcArea : 0;
       const rentaEfec = rentaMens * (1 - calcVacancia / 100);
       const rentaBrutaAnual = rentaMens * 12;
       const yieldBruto = cuotaInicialUSD > 0 ? (rentaBrutaAnual / cuotaInicialUSD) * 100 : 0;
@@ -24326,6 +25983,80 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                 <span style={{ fontSize: 8, background: `${a.color}15`, color: a.color, padding: '2px 7px', borderRadius: 2, fontWeight: 600, letterSpacing: '0.07em' }}>{a.status}</span>
               </div>
             ))}
+
+            {/* Calidad de agentes (ver server/agentFeedback.js) — % real de lo que cada
+                agente generó que se aprobó tal cual, se aprobó editado, o se descartó.
+                Antes no existía ningún rastro de qué pasaba con lo que un agente producía
+                después de generarlo; esto lo hace visible sin interrumpir el flujo de
+                aprobación (Buzón, Panel de Camilo, etc.) que ya existía. */}
+            {panelSectionLabel('Calidad de agentes')}
+            {Object.keys(agentFeedbackMetrics).length === 0 ? (
+              <div style={{ fontSize: 10, color: T.textSec, padding: '8px 10px', background: '#fff', borderRadius: 4, border: `1px solid #E5E0D8` }}>
+                Aún no hay decisiones registradas (aprobar/descartar un borrador, insight o contenido generado por un agente empieza a alimentar esta métrica).
+              </div>
+            ) : (
+              Object.entries(agentFeedbackMetrics).map(([agentKey, m]) => (
+                <div key={agentKey} style={{ padding: '8px 10px', background: '#fff', borderRadius: 4, border: `1px solid #E5E0D8` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 300, color: T.text, fontFamily: T.fontSerif, textTransform: 'capitalize' as const }}>{agentKey.toLowerCase()}</span>
+                    <span style={{ fontSize: 8, color: T.textSec }}>{m.total} decisión{m.total === 1 ? '' : 'es'}</span>
+                  </div>
+                  <div style={{ display: 'flex', height: 6, borderRadius: 3, overflow: 'hidden' as const, background: '#EEE' }}>
+                    <div style={{ width: `${m.pctAprobadoTalCual}%`, background: '#0D9488' }} title={`Aprobado tal cual: ${m.pctAprobadoTalCual}%`} />
+                    <div style={{ width: `${m.pctEditado}%`, background: '#D97706' }} title={`Aprobado editado: ${m.pctEditado}%`} />
+                    <div style={{ width: `${m.pctDescartado}%`, background: '#DC2626' }} title={`Descartado: ${m.pctDescartado}%`} />
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, marginTop: 5, fontSize: 8, color: T.textSec }}>
+                    <span>🟢 {m.pctAprobadoTalCual}% tal cual</span>
+                    <span>🟠 {m.pctEditado}% editado</span>
+                    <span>🔴 {m.pctDescartado}% descartado</span>
+                  </div>
+                </div>
+              ))
+            )}
+
+            {/* Auditoría (ver server/agentAudit.js) — bitácora de las últimas respuestas de
+                los 7 agentes; al expandir una, muestra la traza completa de qué
+                herramientas usó, con qué argumentos y resultado, incluida cualquier
+                consulta cruzada a otro agente. */}
+            {panelSectionLabel('Auditoría — últimas respuestas')}
+            {agentRunsRecientes.length === 0 ? (
+              <div style={{ fontSize: 10, color: T.textSec, padding: '8px 10px', background: '#fff', borderRadius: 4, border: `1px solid #E5E0D8` }}>
+                Aún no hay respuestas registradas en la bitácora.
+              </div>
+            ) : (
+              agentRunsRecientes.map(r => (
+                <div key={r.id} style={{ background: '#fff', borderRadius: 4, border: `1px solid #E5E0D8`, overflow: 'hidden' as const }}>
+                  <div
+                    onClick={() => toggleRunExpandido(r.id)}
+                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', cursor: 'pointer' }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 1 }}>
+                      <span style={{ fontSize: 10, fontWeight: 500, color: T.text, textTransform: 'capitalize' as const }}>{r.agent_name.toLowerCase()} · {r.action}</span>
+                      <span style={{ fontSize: 8, color: T.textSec }}>{new Date(r.started_at).toLocaleString('es-CO')}{r.latencia_ms ? ` · ${Math.round(r.latencia_ms)}ms` : ''}{r.costo_estimado_usd ? ` · $${Number(r.costo_estimado_usd).toFixed(4)}` : ''}</span>
+                    </div>
+                    <span style={{ fontSize: 8, background: r.status === 'error' ? '#DC262615' : '#0D948815', color: r.status === 'error' ? '#DC2626' : '#0D9488', padding: '2px 7px', borderRadius: 2, fontWeight: 600 }}>{r.status}</span>
+                  </div>
+                  {runExpandido === r.id && (
+                    <div style={{ borderTop: `1px solid #E5E0D8`, padding: '8px 10px', background: '#FAFAF8', display: 'flex', flexDirection: 'column' as const, gap: 6 }}>
+                      {cargandoPasos ? (
+                        <span style={{ fontSize: 9, color: T.textSec }}>Cargando pasos…</span>
+                      ) : pasosRunExpandido.length === 0 ? (
+                        <span style={{ fontSize: 9, color: T.textSec }}>Esta respuesta no usó herramientas (o no quedó registrada).</span>
+                      ) : (
+                        pasosRunExpandido.map((p, i) => (
+                          <div key={i} style={{ fontSize: 9, color: T.text, borderLeft: `2px solid ${p.ok ? '#0D9488' : '#DC2626'}`, paddingLeft: 6 }}>
+                            <div style={{ fontWeight: 600 }}>ronda {p.ronda} · {p.tool_name} {p.ok ? '✓' : '✗'} · {p.duracion_ms}ms</div>
+                            <div style={{ color: T.textSec, wordBreak: 'break-word' as const }}>args: {JSON.stringify(p.args)}</div>
+                            <div style={{ color: T.textSec, wordBreak: 'break-word' as const }}>resultado: {JSON.stringify(p.resultado).slice(0, 300)}</div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
           </div>
         </>
       );
@@ -24608,8 +26339,7 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
       <div style={{ height: 50, flexShrink: 0, background: T.teal, display: 'flex', alignItems: 'center', padding: '0 18px', position: 'relative' as const, zIndex: 20, boxShadow: '0 2px 10px rgba(15,37,66,0.12)' }}
         onMouseLeave={() => setOpenNavGroup(null)}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 16, marginRight: 8, borderRight: '1px solid rgba(255,255,255,0.15)', flexShrink: 0 }}>
-          <img src="/img/logo-capital-brokers.png" alt="Capital Brokers" style={{ height: 30, objectFit: 'contain' as const }} />
-          <div style={{ width: 26, height: 26, flexShrink: 0, background: T.red, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 10, color: '#fff' }}>GLP</div>
+          <img src="/img/logo-capital-brokers.png" alt="Capital Brokers Properties" style={{ height: 32, objectFit: 'contain' as const }} />
         </div>
 
         {visibleNavSections.map(section => {
@@ -25116,8 +26846,7 @@ const CRMLogin: React.FC<CRMLoginProps> = ({ setCurrentUser }) => {
       }}>
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, marginBottom: 20 }}>
-            <img src="/img/logo-capital-brokers.png" alt="Capital Brokers" style={{ height: 40 }} />
-            <div style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 8, background: COBALT, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 14, color: '#fff', letterSpacing: '0.01em' }}>GLP</div>
+            <img src="/img/logo-capital-brokers.png" alt="Capital Brokers Properties" style={{ height: 52 }} />
           </div>
           <p style={{ fontSize: '0.68rem', color: T.textSec, margin: 0, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: T.fontSans }}>
             Sistema Operativo Inmobiliario
@@ -25267,11 +26996,13 @@ const CRMAcceso: React.FC<CRMAccesoProps> = ({ currentUser }) => {
     setPermsEditingUsername(null);
   };
 
+  // Un solo tono cobalto para todos los roles — la jerarquía se lee por
+  // intensidad (más oscuro = más senior), no por colores distintos.
   const ROL_COLOR: Record<string, string> = {
-    superadmin: '#B89047', presidencia: '#1D4ED8', gerencia: '#166534', broker: '#9A3412',
+    superadmin: T.teal, presidencia: '#1E3A5F', gerencia: '#3E7CB8', broker: '#6B98BC',
   };
   const ROL_BG: Record<string, string> = {
-    superadmin: '#FEF9EC', presidencia: '#EFF6FF', gerencia: '#F0FDF4', broker: '#FFF7ED',
+    superadmin: '#EAF0F6', presidencia: '#EEF3F8', gerencia: '#EAF2FA', broker: '#F0F5FA',
   };
 
   const handleAddUser = (e: React.FormEvent) => {
@@ -25393,7 +27124,7 @@ const CRMAcceso: React.FC<CRMAccesoProps> = ({ currentUser }) => {
         {/* Left: User list — tabla (Opción A), con fila expandible para editar,
             restablecer contraseña o afinar permisos por módulo. */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          <div style={cardStyle()}>
+          <div style={cardStyle({ borderRadius: 12 })}>
             <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 4 }}>👥 Usuarios del Sistema</div>
             <div style={{ fontSize: 11, color: T.textSec, marginBottom: 14 }}>{userList.length} cuenta{userList.length !== 1 ? 's' : ''} activa{userList.length !== 1 ? 's' : ''}</div>
 
@@ -25432,21 +27163,21 @@ const CRMAcceso: React.FC<CRMAccesoProps> = ({ currentUser }) => {
                         <>
                           <button onClick={() => { setResetPassUsername(isResetting ? null : u.username); setResetPassValue(''); setPermsEditingUsername(null); }}
                             title="Restablecer contraseña"
-                            style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${T.teal}`, background: 'transparent', color: T.teal, cursor: 'pointer', fontSize: 12 }}>
+                            style={{ width: 26, height: 26, borderRadius: 8, border: `1px solid ${T.teal}`, background: 'transparent', color: T.teal, cursor: 'pointer', fontSize: 12 }}>
                             🔑
                           </button>
                           <button onClick={() => { isPerms ? setPermsEditingUsername(null) : startEditPermissions(u); setResetPassUsername(null); }}
                             title="Permisos de módulos"
-                            style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${T.border}`, background: 'transparent', color: T.text, cursor: 'pointer', fontSize: 12 }}>
+                            style={{ width: 26, height: 26, borderRadius: 8, border: `1px solid ${T.border}`, background: 'transparent', color: T.text, cursor: 'pointer', fontSize: 12 }}>
                             ⚙️
                           </button>
                           <button onClick={() => startEditUser(u)} title="Editar"
-                            style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${T.border}`, background: 'transparent', color: T.text, cursor: 'pointer', fontSize: 12 }}>
+                            style={{ width: 26, height: 26, borderRadius: 8, border: `1px solid ${T.border}`, background: 'transparent', color: T.text, cursor: 'pointer', fontSize: 12 }}>
                             ✎
                           </button>
                           {u.username !== currentUser && (
                             <button onClick={() => handleDeleteUser(u.username)} title="Eliminar"
-                              style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #FCA5A5', background: 'transparent', color: '#B91C1C', cursor: 'pointer', fontSize: 12 }}>
+                              style={{ width: 26, height: 26, borderRadius: 8, border: '1px solid #FCA5A5', background: 'transparent', color: '#B91C1C', cursor: 'pointer', fontSize: 12 }}>
                               🗑
                             </button>
                           )}
@@ -25535,30 +27266,37 @@ const CRMAcceso: React.FC<CRMAccesoProps> = ({ currentUser }) => {
           </div>
 
           {/* Change Password */}
-          <div style={cardStyle()}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 14 }}>🔑 Cambiar Mi Contraseña</div>
-            {changePassError && <div style={{ background: '#FDE8E8', color: '#E02424', padding: '8px 12px', borderRadius: 6, fontSize: 12, marginBottom: 12, fontWeight: 600 }}>{changePassError}</div>}
-            {changePassSuccess && <div style={{ background: '#DEF7EC', color: '#03543F', padding: '8px 12px', borderRadius: 6, fontSize: 12, marginBottom: 12, fontWeight: 600 }}>{changePassSuccess}</div>}
+          <div style={cardStyle({ borderRadius: 12 })}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 9, background: T.teal, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, flexShrink: 0 }}>🔑</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: T.text }}>Cambiar Mi Contraseña</div>
+            </div>
+            {changePassError && <div style={{ background: '#FDE8E8', color: '#E02424', padding: '8px 12px', borderRadius: 8, fontSize: 12, marginBottom: 12, fontWeight: 600 }}>{changePassError}</div>}
+            {changePassSuccess && <div style={{ background: '#DEF7EC', color: '#03543F', padding: '8px 12px', borderRadius: 8, fontSize: 12, marginBottom: 12, fontWeight: 600 }}>{changePassSuccess}</div>}
             <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div><label style={labelStyle}>Contraseña Actual</label><input type="password" value={oldPass} onChange={e => setOldPass(e.target.value)} style={inputStyle()} placeholder="••••••••" required /></div>
-              <div><label style={labelStyle}>Nueva Contraseña</label><input type="password" value={newPass} onChange={e => setNewPass(e.target.value)} style={inputStyle()} placeholder="Mínimo 6 caracteres" required /></div>
-              <div><label style={labelStyle}>Confirmar Nueva Contraseña</label><input type="password" value={confirmPass} onChange={e => setConfirmPass(e.target.value)} style={inputStyle()} placeholder="••••••••" required /></div>
-              <button type="submit" style={btnPrimary({ width: '100%', marginTop: 4 })}>Actualizar Contraseña</button>
+              <div><label style={labelStyle}>Contraseña Actual</label><input type="password" value={oldPass} onChange={e => setOldPass(e.target.value)} style={inputStyle({ background: T.bg })} placeholder="••••••••" required /></div>
+              <div><label style={labelStyle}>Nueva Contraseña</label><input type="password" value={newPass} onChange={e => setNewPass(e.target.value)} style={inputStyle({ background: T.bg })} placeholder="Mínimo 6 caracteres" required /></div>
+              <div><label style={labelStyle}>Confirmar Nueva Contraseña</label><input type="password" value={confirmPass} onChange={e => setConfirmPass(e.target.value)} style={inputStyle({ background: T.bg })} placeholder="••••••••" required /></div>
+              <button type="submit" style={btnPrimary({ width: '100%', marginTop: 4, borderRadius: 8 })}>Actualizar Contraseña</button>
             </form>
           </div>
         </div>
 
-        {/* Right: Create user */}
+        {/* Right: Create user — mismo tratamiento redondeado/cobalto que CRMLogin
+            para que crear un usuario se sienta parte de la misma plataforma. */}
         <div>
-          <div style={cardStyle()}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 6 }}>➕ Nuevo Usuario</div>
+          <div style={cardStyle({ borderRadius: 12 })}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 9, background: T.teal, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, flexShrink: 0 }}>➕</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: T.text }}>Nuevo Usuario</div>
+            </div>
             <p style={{ fontSize: 12, color: T.textSec, marginBottom: 14, lineHeight: 1.5 }}>
               Crea un acceso con el rol y permisos apropiados para cada miembro del equipo.
             </p>
             {/* Role cards */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
               {(['presidencia','gerencia','broker'] as UserRole[]).map(r => (
-                <div key={r} onClick={() => setNewRol(r)} style={{ padding: '8px 12px', border: `1.5px solid ${newRol===r ? ROL_COLOR[r] : T.border}`, borderRadius: 4, cursor: 'pointer', background: newRol===r ? ROL_BG[r] : '#fff', transition: 'all 0.1s' }}>
+                <div key={r} onClick={() => setNewRol(r)} style={{ padding: '10px 14px', border: `1.5px solid ${newRol===r ? ROL_COLOR[r] : T.border}`, borderRadius: 10, cursor: 'pointer', background: newRol===r ? ROL_BG[r] : T.bg, transition: 'all 0.15s' }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: newRol===r ? ROL_COLOR[r] : T.text }}>{ROLE_LABELS[r]}</div>
                   <div style={{ fontSize: 10, color: T.textSec, marginTop: 1 }}>
                     {r==='presidencia' && 'Dashboard ejecutivo, reportes y portafolio. Sin datos de clientes.'}
@@ -25568,13 +27306,13 @@ const CRMAcceso: React.FC<CRMAccesoProps> = ({ currentUser }) => {
                 </div>
               ))}
             </div>
-            {newUserError && <div style={{ background: '#FDE8E8', color: '#E02424', padding: '8px 12px', borderRadius: 6, fontSize: 12, marginBottom: 12, fontWeight: 600 }}>{newUserError}</div>}
-            {newUserSuccess && <div style={{ background: '#DEF7EC', color: '#03543F', padding: '8px 12px', borderRadius: 6, fontSize: 12, marginBottom: 12, fontWeight: 600 }}>{newUserSuccess}</div>}
+            {newUserError && <div style={{ background: '#FDE8E8', color: '#E02424', padding: '8px 12px', borderRadius: 8, fontSize: 12, marginBottom: 12, fontWeight: 600 }}>{newUserError}</div>}
+            {newUserSuccess && <div style={{ background: '#DEF7EC', color: '#03543F', padding: '8px 12px', borderRadius: 8, fontSize: 12, marginBottom: 12, fontWeight: 600 }}>{newUserSuccess}</div>}
             <form onSubmit={handleAddUser} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div><label style={labelStyle}>Nombre Completo</label><input type="text" value={newName} onChange={e => setNewName(e.target.value)} style={inputStyle()} placeholder="Ej. Patricia Vargas" required /></div>
-              <div><label style={labelStyle}>Usuario de Login</label><input type="text" value={newUsername} onChange={e => setNewUsername(e.target.value)} style={inputStyle()} placeholder="Ej. pvargas" required /></div>
-              <div><label style={labelStyle}>Contraseña</label><input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} style={inputStyle()} placeholder="••••••••" required /></div>
-              <button type="submit" style={btnPrimary({ width: '100%' })}>Crear Usuario</button>
+              <div><label style={labelStyle}>Nombre Completo</label><input type="text" value={newName} onChange={e => setNewName(e.target.value)} style={inputStyle({ background: T.bg })} placeholder="Ej. Patricia Vargas" required /></div>
+              <div><label style={labelStyle}>Usuario de Login</label><input type="text" value={newUsername} onChange={e => setNewUsername(e.target.value)} style={inputStyle({ background: T.bg })} placeholder="Ej. pvargas" required /></div>
+              <div><label style={labelStyle}>Contraseña</label><input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} style={inputStyle({ background: T.bg })} placeholder="••••••••" required /></div>
+              <button type="submit" style={btnPrimary({ width: '100%', borderRadius: 8 })}>Crear Usuario</button>
             </form>
           </div>
         </div>

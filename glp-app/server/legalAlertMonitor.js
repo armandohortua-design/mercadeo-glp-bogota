@@ -65,7 +65,7 @@ async function notifyAdminLegalAlert({ tipo, prospectName, docLabel, dueDate, da
         <div style="font-family:sans-serif;max-width:640px;margin:0 auto">
           <div style="background:${CFG.color};color:#fff;padding:20px;text-align:center">
             <h2 style="margin:0;letter-spacing:1px">${CFG.emoji} ${CFG.label.toUpperCase()}</h2>
-            <p style="margin:4px 0;font-size:12px;opacity:.85">${new Date().toLocaleString('es-CO')} · GLP Wealth Management</p>
+            <p style="margin:4px 0;font-size:12px;opacity:.85">${new Date().toLocaleString('es-CO')} · Capital Brokers Properties</p>
           </div>
           <div style="padding:24px;background:#fff">
             <p style="color:#374151;line-height:1.6;font-size:15px">

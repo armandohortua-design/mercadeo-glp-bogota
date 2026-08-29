@@ -13,6 +13,109 @@ export const C = {
   fontSans: '"Inter", sans-serif',
 }
 
+// ─── Valor de Separación por Proyecto ───────────────────────────
+// ─── Brochures — TEMPORAL, ruta local ───────────────────────────
+// A pedido explícito del usuario: enlaza directo a la carpeta local de su equipo mientras
+// sube los PDFs a un hosting real (Drive/Dropbox/CDN). OJO — esto NO es un link funcional
+// para nadie más: file:// solo resuelve en la misma máquina que tiene esa carpeta, y la
+// mayoría de navegadores bloquean por seguridad la navegación a file:// iniciada desde una
+// página http(s)://, así que puede no funcionar ni siquiera en este equipo según el
+// navegador. Reemplazar por URLs reales (https://...) en cuanto los archivos estén subidos
+// — ver public/brochures/ si se decide alojarlos dentro del propio proyecto más adelante.
+const BROCHURE_BASE = 'file:///C:/Users/ahortua/OneDrive/Juan%20Jose/Mercadeo%20GLP%20en%20Bogota/Analisis%20de%20mercado/Portafolio%20GLP/Brochures';
+export const BROCHURES_LOCAL: Record<string, { label: string; url: string }[]> = {
+  'Aires del Mar': [
+    { label: 'Brochure general', url: `${BROCHURE_BASE}/Aires%20del%20Mar/Aires%20del%20Mar.pdf` },
+    { label: 'Brochure Playa Caracol', url: `${BROCHURE_BASE}/Aires%20del%20Mar/Playa%20Caracol%20Brochure%20Aires%20del%20Mar.pdf` },
+  ],
+  'Armonia': [
+    { label: 'Brochure general', url: `${BROCHURE_BASE}/Armonia/Armonia.pdf` },
+  ],
+  'Beachwalk': [
+    { label: 'Brochure general', url: `${BROCHURE_BASE}/BeachWalk%20Resort/BEACHWALK%20ESP.pdf` },
+  ],
+  'Bosco di Santa Maria': [
+    { label: 'Brochure general', url: `${BROCHURE_BASE}/Bosco%20di%20Santamaria/1.-%20Bosco%20brochure.pdf` },
+    { label: 'Villas', url: `${BROCHURE_BASE}/Bosco%20di%20Santamaria/2.-%20Villas.pdf` },
+    { label: 'Appartamenti', url: `${BROCHURE_BASE}/Bosco%20di%20Santamaria/3.-%20APPARTAMENTI.pdf` },
+    { label: 'Acquavita', url: `${BROCHURE_BASE}/Bosco%20di%20Santamaria/4.-%20ACQUAVITA.pdf` },
+    { label: 'Attico Panoramico', url: `${BROCHURE_BASE}/Bosco%20di%20Santamaria/5.-%20ATTICO%20PANORAMICO.pdf` },
+  ],
+  'Ipanema': [
+    { label: 'Brochure general', url: `${BROCHURE_BASE}/Ipanema/Ipanema.pdf` },
+  ],
+  'Oceana': [
+    { label: 'Brochure general', url: `${BROCHURE_BASE}/Oceana/Brochure%20Oceana.pdf` },
+  ],
+  'Olas del Mar': [
+    { label: 'Brochure general', url: `${BROCHURE_BASE}/Olas%20del%20Mar/Olas%20del%20mar.pdf` },
+  ],
+  'Surfside': [
+    { label: 'Brochure general', url: `${BROCHURE_BASE}/Surfside/Surfside.pdf` },
+  ],
+  'The Palms': [
+    { label: 'Brochure general (todas las fases)', url: `${BROCHURE_BASE}/The%20Palms/The%20Palms%20Beach%20Resort%20All%20Phases.pdf` },
+  ],
+  'The Tides': [
+    { label: 'Brochure general', url: `${BROCHURE_BASE}/The%20Tides/The%20Tides.pdf` },
+  ],
+  'Ventu': [
+    { label: 'Brochure general', url: `${BROCHURE_BASE}/Ventu/VENTU.pdf` },
+  ],
+  // Ocean Reef Park y Brisas del Mar: sin brochure encontrado en la carpeta local al
+  // momento de conectar esto (28-ago-2026) — la sección simplemente no se muestra para
+  // esos dos proyectos hasta que se agregue un archivo.
+};
+
+// Editable en el CRM (Configuración → Financiero → "Separación por Proyecto"). Este objeto
+// es solo el DEFAULT/fallback con el que arranca la página pública antes de que el fetch a
+// /api/settings/separacion_proyectos responda (o si el backend no está disponible) — la
+// fuente de verdad real es lo que el administrador configure ahí, no este archivo.
+export type SeparacionProyectosTabla = {
+  porProyecto: Record<string, number>;
+  porCategoria: Record<string, number>;
+  default: number;
+};
+export const SEPARACION_PROYECTOS_DEFAULT: SeparacionProyectosTabla = {
+  porProyecto: {
+    'Bosco di Santa Maria': 5000,
+    'Casa Bosco': 10000,
+    'Ipanema': 2500,
+    'Armonia': 2500,
+    'Ventu': 2500,
+    'Oceana': 5000,
+    'Panama Viejo': 1000,
+    'Vied': 2500,
+  },
+  // "Islas" del pedido original = zona Islas Ocean Reef / Punta Pacífica → categoría real
+  // 'Marina Panamá' (The Palms, Ocean Reef Park). "Playa" = categoría real 'Playa' (Aires del
+  // Mar, The Tides, Brisas del Mar, Olas del Mar, Surfside, Beachwalk) — todos sin override
+  // individual, así que caen en este default de categoría.
+  porCategoria: {
+    'Playa': 2000,
+    'Marina Panamá': 10000,
+  },
+  default: 2000,
+};
+// El catálogo público (projectsData.ts) y el catálogo interno del CRM (CRMDashboard.tsx)
+// escriben algunos nombres distinto (ej. "Armonia" vs "Armonía") — un match exacto de
+// string dejaba el override de ese proyecto sin usarse nunca, cayendo silenciosamente al
+// default de categoría. Se compara sin tildes/mayúsculas para que ambos catálogos calcen.
+const normalizarNombre = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+
+export const getSeparacionProyecto = (
+  project: { name: string; category?: string },
+  tabla: SeparacionProyectosTabla = SEPARACION_PROYECTOS_DEFAULT
+): number => {
+  if (tabla.porProyecto) {
+    const nombreBuscado = normalizarNombre(project.name);
+    const match = Object.entries(tabla.porProyecto).find(([nombre]) => normalizarNombre(nombre) === nombreBuscado);
+    if (match) return match[1];
+  }
+  if (tabla.porCategoria && project.category && tabla.porCategoria[project.category] != null) return tabla.porCategoria[project.category];
+  return tabla.default ?? 2000;
+};
+
 // ─── Project Data ──────────────────────────────────────────────
 export type Project = {
   name: string; 

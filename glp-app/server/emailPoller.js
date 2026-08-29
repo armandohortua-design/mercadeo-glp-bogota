@@ -259,6 +259,48 @@ async function notifyAdminNewDraft({ nombre, rawEmail, subject, draft }) {
   }
 }
 
+// B.3: Notificación al admin cuando un correo automático (bienvenida de chatbot, borrador
+// aprobado, etc.) rebota — antes esto se descartaba junto con el resto de remitentes
+// automatizados y el rebote quedaba completamente invisible.
+async function notifyAdminBounce({ failedRecipient, subject }) {
+  const adminEmail = process.env.ADMIN_EMAIL;
+  const smtpUser  = process.env.SMTP_USER;
+  const smtpPass  = process.env.SMTP_PASS;
+  if (!adminEmail || !smtpUser || !smtpPass) return;
+
+  try {
+    const nodemailer = require('nodemailer');
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: smtpUser, pass: smtpPass }
+    });
+
+    await transporter.sendMail({
+      from: `"GLP CRM — Alertas de Entrega" <${smtpUser}>`,
+      to: adminEmail,
+      subject: `⚠️ Un correo automático rebotó${failedRecipient ? ` — ${failedRecipient}` : ''}`,
+      html: `
+        <div style="font-family:sans-serif;max-width:640px;margin:0 auto">
+          <div style="background:#7f1d1d;color:#fff;padding:20px;text-align:center">
+            <h2 style="margin:0;letter-spacing:2px">REBOTE DE CORREO DETECTADO</h2>
+            <p style="margin:4px 0;font-size:12px;opacity:.85">${new Date().toLocaleString('es-CO')}</p>
+          </div>
+          <div style="padding:24px;background:#fff">
+            <p>Un correo automático del CRM (bienvenida de chatbot, borrador aprobado, etc.) no pudo entregarse.</p>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px">
+              <tr><td style="padding:8px;color:#6b7280;width:160px">Destinatario que falló</td><td style="padding:8px;font-weight:600">${failedRecipient || 'No se pudo identificar automáticamente — revisa la carpeta de correo directamente'}</td></tr>
+              <tr style="background:#f9fafb"><td style="padding:8px;color:#6b7280">Asunto del rebote</td><td style="padding:8px">${subject}</td></tr>
+            </table>
+            <p style="color:#9ca3af;font-size:11px">El CRM había registrado este envío como "Enviado" porque el servidor SMTP lo aceptó sin error — el rebote llegó después, por eso no se detecta en el momento del envío. Verifica el correo del prospecto en Bitácora/Prospectos y considera contactarlo por otro canal (WhatsApp, teléfono).</p>
+          </div>
+        </div>`
+    });
+    console.log(`[IMAP] 📧 Admin notificado del rebote${failedRecipient ? ` (${failedRecipient})` : ''}.`);
+  } catch (err) {
+    console.error('[IMAP] Error notificando rebote al admin:', err.message);
+  }
+}
+
 async function pollInbox() {
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
@@ -321,9 +363,29 @@ async function pollInbox() {
         }
 
         // Ignorar remitentes automatizados/transaccionales (calendly.com, no-reply@, etc.)
-        // — nunca deben crear un prospecto falso.
+        // — nunca deben crear un prospecto falso. PERO si es un bounce (mailer-daemon /
+        // postmaster) antes esto lo descartaba en silencio: el backend ya le había dicho al
+        // admin "correo enviado" (el SMTP lo aceptó sin error), y si luego rebotaba nadie se
+        // enteraba — el correo simplemente nunca llegaba y no había ninguna señal de eso en
+        // el CRM. Ahora se detecta el rebote, se extrae el destinatario real que falló, y se
+        // avisa al admin en vez de tirarlo.
         if (isAutomatedSender(rawEmail)) {
-          console.log(`[IMAP] ⏭ Remitente automatizado, ignorado: ${rawEmail}`);
+          const subjectForBounce = (msg.envelope?.subject || '').toLowerCase();
+          const looksLikeBounce = /mailer-daemon|postmaster/.test(rawEmail.toLowerCase())
+            && /delivery status|undeliver|failure|bounce|no se pudo entregar/.test(subjectForBounce);
+          if (looksLikeBounce) {
+            try {
+              const bodySource = msg.source ? msg.source.toString('utf8') : '';
+              const recipientMatch = bodySource.match(/(?:Final-Recipient|for)\s*:?\s*<?([a-zA-Z0-9._%+-]+@(?!gmail\.com)[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})>?/i);
+              const failedRecipient = recipientMatch ? recipientMatch[1] : null;
+              console.log(`[IMAP] 🚨 Rebote detectado${failedRecipient ? ` — destinatario que falló: ${failedRecipient}` : ' (destinatario no identificado en el cuerpo)'}`);
+              await notifyAdminBounce({ failedRecipient, subject: msg.envelope?.subject || 'Delivery Status Notification' });
+            } catch (bounceErr) {
+              console.warn('[IMAP] Error procesando rebote:', bounceErr.message);
+            }
+          } else {
+            console.log(`[IMAP] ⏭ Remitente automatizado, ignorado: ${rawEmail}`);
+          }
           await client.messageFlagsAdd({ uid: msg.uid }, ['\\Seen']);
           continue;
         }

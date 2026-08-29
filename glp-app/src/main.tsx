@@ -1,6 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { C, PROJECTS, PROJECT_IMG, Project } from './projectsData'
+import { C, PROJECTS, PROJECT_IMG, Project, SEPARACION_PROYECTOS_DEFAULT, SeparacionProyectosTabla, getSeparacionProyecto } from './projectsData'
 import { ProjectDetailView } from './projectDetail'
 import { API_ROOT } from './apiRoot'
 import { getImageFor, fetchLiveProjectImages } from './liveProjectImages'
@@ -231,28 +231,20 @@ const Navbar: React.FC = () => {
   return (
     <nav style={{
       position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000,
-      background: scrolled ? 'rgba(255, 255, 255, 0.85)' : 'transparent',
-      backdropFilter: 'blur(10px)',
-      boxShadow: scrolled ? '0 1px 15px rgba(0,0,0,0.05)' : 'none',
+      background: scrolled ? 'rgba(255, 255, 255, 0.85)' : C.teal,
+      backdropFilter: scrolled ? 'blur(10px)' : 'none',
+      boxShadow: scrolled ? '0 1px 15px rgba(0,0,0,0.05)' : '0 1px 15px rgba(0,0,0,0.15)',
       borderBottom: scrolled ? `1px solid ${C.sand}` : 'none',
       transition: 'all 0.4s ease',
       padding: scrolled ? '14px 0' : '24px 0',
     }}>
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        {/* Logo */}
+        {/* Logo — marca "GLP" (Grupo Los Pueblos) reemplazada por Capital Brokers
+            Properties. Solo texto en la landing (sin isotipo), a pedido del usuario. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }} onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-          <div style={{
-            width: 44, height: 44, borderRadius: 0,
-            background: scrolled ? C.red : 'rgba(255,255,255,0.15)',
-            border: `1.5px solid ${scrolled ? C.red : C.white}`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontWeight: 800, fontSize: '1.2rem', color: C.white,
-            backdropFilter: 'blur(8px)', transition: 'all 0.3s',
-            fontFamily: C.fontSerif,
-          }}>GLP</div>
           <div>
             <div style={{ fontWeight: 600, fontSize: '1.1rem', color: scrolled ? C.text : C.white, fontFamily: C.fontSerif, letterSpacing: '0.03em', lineHeight: 1.2, transition: 'color 0.3s' }}>
-              Grupo Los Pueblos
+              Capital Brokers Properties
             </div>
             <div style={{ fontSize: '0.65rem', color: scrolled ? C.textSec : 'rgba(255,255,255,0.7)', letterSpacing: '0.18em', fontFamily: C.fontSans, textTransform: 'uppercase', transition: 'color 0.3s', marginTop: 2 }}>
               Real Estate · Panamá
@@ -264,19 +256,29 @@ const Navbar: React.FC = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: 28 }} className="nav-links-desktop">
           {links.map(l => {
             const active = activeSection === l.target
+            // Sobre la foto (sin scroll) el rojo corporativo (#A6192E, oscuro) se pierde
+            // contra fondos igual de oscuros — se sube a un rojo más claro/saturado solo
+            // en ese estado, y se añade una placa oscura translúcida detrás para
+            // garantizar contraste sin depender del tono de la foto de fondo. Sobre
+            // blanco (scrolled) el rojo corporativo ya se lee bien tal cual.
+            const activeColor = scrolled ? C.red : '#FF6B5B'
             return (
               <a key={l.target} style={{
                 ...linkStyle,
-                color: active ? C.red : linkStyle.color,
-                borderBottomColor: active ? C.red : 'transparent',
+                color: active ? activeColor : linkStyle.color,
+                borderBottomColor: active ? activeColor : 'transparent',
+                background: active && !scrolled ? 'rgba(0,20,45,0.35)' : 'transparent',
+                padding: active && !scrolled ? '6px 10px' : linkStyle.padding,
+                borderRadius: active && !scrolled ? 4 : 0,
+                textShadow: active && !scrolled ? '0 1px 4px rgba(0,0,0,0.4)' : 'none',
               }} onClick={() => smoothScroll(l.target)}
                 onMouseEnter={e => {
-                  e.currentTarget.style.color = C.red;
-                  e.currentTarget.style.borderBottomColor = C.red;
+                  e.currentTarget.style.color = scrolled ? C.red : '#FF6B5B';
+                  e.currentTarget.style.borderBottomColor = scrolled ? C.red : '#FF6B5B';
                 }}
                 onMouseLeave={e => {
-                  e.currentTarget.style.color = active ? C.red : (scrolled ? C.text : C.white);
-                  e.currentTarget.style.borderBottomColor = active ? C.red : 'transparent';
+                  e.currentTarget.style.color = active ? activeColor : (scrolled ? C.text : C.white);
+                  e.currentTarget.style.borderBottomColor = active ? activeColor : 'transparent';
                 }}>
                 {l.label}
               </a>
@@ -356,7 +358,10 @@ const Hero: React.FC<{ onSearch: (f: { category: string; price: string; beds: st
   return (
     <section id="inicio" style={{
       minHeight: '100vh',
-      backgroundImage: `linear-gradient(rgba(0, 35, 73, 0.08), rgba(0, 35, 73, 0.28)), url(/img/beachfront_residence_families.png)`,
+      // Overlay más claro que antes (la foto se veía muy oscura) — se mantiene una
+      // franja más oscura solo en los primeros ~160px (zona del nav) para que el menú
+      // siga siendo legible sin depender del tono de la foto de fondo.
+      backgroundImage: `linear-gradient(180deg, rgba(0, 20, 45, 0.45) 0px, rgba(0, 35, 73, 0.12) 160px, rgba(0, 35, 73, 0.16) 100%), url(/img/beachfront_residence_families.png)`,
       backgroundSize: 'cover',
       backgroundPosition: 'center',
       display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
@@ -407,38 +412,46 @@ const Hero: React.FC<{ onSearch: (f: { category: string; price: string; beds: st
 
         {/* Buscador rápido — mismas 3 categorías que ya existían como filtros
             avanzados dentro de Proyectos, fijadas de una vez desde el hero para no
-            obligar a bajar y volver a elegir. */}
+            obligar a bajar y volver a elegir. El CTA "Buscar" vive en su propia franja
+            de ancho completo, siempre pegada a los campos — antes flexeaba junto a los
+            selects y, en cuanto no cabían los 4 en una fila, el botón caía a una línea
+            aparte con su propio margen y esquinas redondeadas, quedando como una pastilla
+            suelta flotando debajo del buscador en vez de leerse como parte del mismo. */}
         <div style={{
-          background: 'rgba(255,255,255,0.97)', borderRadius: 4, padding: 10,
-          display: 'flex', flexWrap: 'wrap' as const, gap: 0, alignItems: 'stretch',
           maxWidth: 880, width: '100%', margin: '36px auto 0',
+          borderRadius: 6, overflow: 'hidden',
           boxShadow: '0 20px 50px rgba(0,15,35,0.35)',
         }}>
-          {[
-            { label: 'Ubicación', value: searchCategory, set: setSearchCategory, options: [
-              ['todos', 'Todas las zonas'], ['Golf y Country Club', 'Golf y Country Club'],
-              ['Marina Panamá', 'Marina Panamá'], ['Ciudad', 'Ciudad'], ['Playa', 'Playa'],
-            ]},
-            { label: 'Presupuesto', value: searchPrice, set: setSearchPrice, options: [
-              ['todos', 'Cualquier precio'], ['200', 'Hasta $200,000'], ['350', 'Hasta $350,000'],
-              ['500', 'Hasta $500,000'], ['over500', 'Más de $500,000'],
-            ]},
-            { label: 'Habitaciones', value: searchBeds, set: setSearchBeds, options: [
-              ['todos', 'Cualquier número'], ['1', '1 Habitación'], ['2', '2 Habitaciones'], ['3', '3+ Habitaciones'],
-            ]},
-          ].map((f, i) => (
-            <div key={f.label} style={{ flex: '1 1 180px', display: 'flex', flexDirection: 'column' as const, padding: '9px 20px', borderRight: i < 2 ? `1px solid ${C.sand}` : 'none', textAlign: 'left' as const }}>
-              <label style={{ fontSize: '0.6rem', letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: C.coral, fontWeight: 700, marginBottom: 4, fontFamily: C.fontSans }}>{f.label}</label>
-              <select value={f.value} onChange={e => f.set(e.target.value)}
-                style={{ border: 'none', background: 'none', fontFamily: C.fontSans, fontSize: '0.8rem', color: C.teal, fontWeight: 600, outline: 'none', cursor: 'pointer', padding: 0 }}>
-                {f.options.map(([val, lbl]) => <option key={val} value={val}>{lbl}</option>)}
-              </select>
-            </div>
-          ))}
+          <div style={{
+            background: 'rgba(255,255,255,0.97)', padding: '10px 6px',
+            display: 'flex', flexWrap: 'wrap' as const, alignItems: 'stretch',
+          }}>
+            {[
+              { label: 'Ubicación', value: searchCategory, set: setSearchCategory, options: [
+                ['todos', 'Todas las zonas'], ['Golf y Country Club', 'Golf y Country Club'],
+                ['Marina Panamá', 'Marina Panamá'], ['Ciudad', 'Ciudad'], ['Playa', 'Playa'],
+              ]},
+              { label: 'Presupuesto', value: searchPrice, set: setSearchPrice, options: [
+                ['todos', 'Cualquier precio'], ['200', 'Hasta $200,000'], ['350', 'Hasta $350,000'],
+                ['500', 'Hasta $500,000'], ['over500', 'Más de $500,000'],
+              ]},
+              { label: 'Habitaciones', value: searchBeds, set: setSearchBeds, options: [
+                ['todos', 'Cualquier número'], ['1', '1 Habitación'], ['2', '2 Habitaciones'], ['3', '3+ Habitaciones'],
+              ]},
+            ].map((f, i) => (
+              <div key={f.label} style={{ flex: '1 1 180px', display: 'flex', flexDirection: 'column' as const, padding: '9px 20px', borderRight: i < 2 ? `1px solid ${C.sand}` : 'none', textAlign: 'left' as const }}>
+                <label style={{ fontSize: '0.6rem', letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: C.coral, fontWeight: 700, marginBottom: 4, fontFamily: C.fontSans }}>{f.label}</label>
+                <select value={f.value} onChange={e => f.set(e.target.value)}
+                  style={{ border: 'none', background: 'none', fontFamily: C.fontSans, fontSize: '0.8rem', color: C.teal, fontWeight: 600, outline: 'none', cursor: 'pointer', padding: 0 }}>
+                  {f.options.map(([val, lbl]) => <option key={val} value={val}>{lbl}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
           <button onClick={runSearch} style={{
-            background: C.red, color: C.white, border: 'none', padding: '0 32px',
-            fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const,
-            cursor: 'pointer', borderRadius: 3, margin: 4, flexShrink: 0, fontFamily: C.fontSans,
+            display: 'block', width: '100%', background: C.red, color: C.white, border: 'none',
+            padding: '15px 0', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.1em',
+            textTransform: 'uppercase' as const, cursor: 'pointer', fontFamily: C.fontSans,
           }}>
             Buscar
           </button>
@@ -490,7 +503,8 @@ const getZoneNotes = (project: any) => {
 const ProjectCard: React.FC<{
   project: Project;
   index: number;
-}> = ({ project, index }) => {
+  separacionTabla: SeparacionProyectosTabla;
+}> = ({ project, index, separacionTabla }) => {
   const [hovered, setHovered] = React.useState(false)
 
   const gradient = getGradient(project.type, index)
@@ -590,8 +604,8 @@ const ProjectCard: React.FC<{
             <div style={{ fontSize: '0.58rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: C.textSec, marginTop: 2, fontFamily: C.fontSans }}>Habitaciones</div>
           </div>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: C.teal, fontFamily: C.fontSans }}>{project.capRate}</div>
-            <div style={{ fontSize: '0.58rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: C.textSec, marginTop: 2, fontFamily: C.fontSans }}>Cap Rate</div>
+            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: C.teal, fontFamily: C.fontSans }}>${getSeparacionProyecto(project, separacionTabla).toLocaleString()}</div>
+            <div style={{ fontSize: '0.58rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: C.textSec, marginTop: 2, fontFamily: C.fontSans }}>Separación</div>
           </div>
         </div>
 
@@ -624,6 +638,16 @@ const ProjectsSection: React.FC<{
   // usuario puede seguir ajustándolos aquí normalmente, como antes.
   initialFilters?: { category?: string; price?: string; beds?: string } | null;
 }> = ({ projects, initialFilters }) => {
+  // Valor de Separación por Proyecto — configurable en el CRM (Configuración → Financiero).
+  // Arranca con el default local y se actualiza si el backend responde, para que un cambio
+  // del administrador se refleje en la ficha técnica pública sin tocar código.
+  const [separacionTabla, setSeparacionTabla] = React.useState<SeparacionProyectosTabla>(SEPARACION_PROYECTOS_DEFAULT);
+  React.useEffect(() => {
+    fetch(`${API_ROOT}/api/settings/separacion_proyectos`)
+      .then(r => r.json())
+      .then(data => { if (data && data.porProyecto) setSeparacionTabla(data); })
+      .catch(() => {});
+  }, []);
   const [filter, setFilter] = React.useState<string>('todos')
   const [selectedCategory, setSelectedCategory] = React.useState<string>(initialFilters?.category || 'todos')
   const [selectedPrice, setSelectedPrice] = React.useState<string>(initialFilters?.price || 'todos')
@@ -905,6 +929,7 @@ const ProjectsSection: React.FC<{
                         key={p.name}
                         project={p}
                         index={i}
+                        separacionTabla={separacionTabla}
                       />
                     );
                   })}
@@ -957,7 +982,6 @@ const WhyPanamaSection: React.FC = () => {
       title: 'Ventajas impositivas',
       items: [
         'Ingresos generados fuera de Panamá están exentos de impuestos (sistema tributario territorial).',
-        'Exoneración del impuesto de inmuebles (predial) sobre el valor de la construcción de propiedades nuevas, por un plazo que varía según el valor registrado del inmueble (hasta 20 años en propiedades de menor valor; plazos menores en propiedades de mayor valor). El terreno tributa aparte. Aplica según Ley 66 de 2017 — verifica el plazo vigente para cada proyecto con tu asesor legal.',
         'Mínimos costos fiscales en procesos de compraventa de propiedades.',
         'Beneficios en Zonas Francas y Áreas Económicas Especiales para empresas e inversores.',
         'Tratados de doble tributación con varios países, que reducen las cargas fiscales para inversionistas extranjeros.',
@@ -1692,7 +1716,7 @@ const Footer: React.FC = () => (
           Se recomienda consultar con asesores profesionales antes de tomar decisiones de inversión. GLP y sus aliados actúan como facilitadores de información, no como fiduciarios.
         </p>
         <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.6, fontWeight: 500, fontFamily: C.fontSans, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          © 2026 Grupo Los Pueblos (GLP). Todos los derechos reservados.
+          © 2026 Capital Brokers Properties. Todos los derechos reservados.
         </p>
       </div>
     </div>
@@ -1778,7 +1802,7 @@ const WhyGLPSection: React.FC = () => {
               Líderes en el Desarrollo Inmobiliario de Panamá
             </h2>
             <p style={{ fontSize: '1rem', color: C.textSec, lineHeight: 1.7, marginBottom: 20, fontFamily: C.fontSans }}>
-              Con más de <strong>40 años de trayectoria</strong>, Grupo Los Pueblos (GLP) se ha consolidado como la empresa promotora y desarrolladora inmobiliaria más importante y confiable de Panamá, transformando el paisaje urbano de la región con proyectos icónicos de clase mundial.
+              Con más de <strong>40 años de trayectoria</strong>, Capital Brokers Properties se ha consolidado como la empresa promotora y desarrolladora inmobiliaria más importante y confiable de Panamá, transformando el paisaje urbano de la región con proyectos icónicos de clase mundial.
             </p>
             <p style={{ fontSize: '0.95rem', color: C.textSec, lineHeight: 1.7, marginBottom: 28, fontFamily: C.fontSans }}>
               Nuestra trayectoria incluye el diseño, desarrollo y entrega de mega-proyectos emblemáticos que redefinieron el comercio y el estilo de vida, tales como <strong>Albrook Mall</strong> (el centro comercial más grande de América Latina), las exclusivas <strong>Ocean Reef Islands</strong> (las primeras islas artificiales de la región), <strong>Santa María Golf & Country Club</strong>, <strong>Federal Mall</strong> en David, y residencias de lujo y playa de altísimo valor.
@@ -1821,7 +1845,7 @@ const WhyGLPSection: React.FC = () => {
         {/* Por qué elegirnos */}
         <div style={{ marginBottom: 72 }}>
           <h3 style={{ fontSize: '1.5rem', fontWeight: 400, color: C.teal, fontFamily: C.fontSerif, textAlign: 'center', marginBottom: 32 }}>
-            Razones para invertir con Grupo Los Pueblos
+            Razones para invertir con Capital Brokers Properties
           </h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 24 }}>
             {reasons.map(r => (
@@ -2347,7 +2371,7 @@ const ContactSection: React.FC<{
 const ChatbotWidget: React.FC = () => {
   const [isOpen, setIsOpen] = React.useState(false);
   const [messages, setMessages] = React.useState<{id: number, text: string, sender: 'bot' | 'user'}[]>([
-    { id: 1, text: '¡Hola! Soy Sara, del equipo de atención al cliente de Grupo Los Pueblos. Cuéntame, ¿qué te trajo por aquí hoy?', sender: 'bot' }
+    { id: 1, text: '¡Hola! Soy Sara, del equipo de atención al cliente de Capital Brokers Properties. Cuéntame, ¿qué te trajo por aquí hoy?', sender: 'bot' }
   ]);
   const [inputValue, setInputValue] = React.useState('');
   const [isTyping, setIsTyping] = React.useState(false);
@@ -2377,7 +2401,10 @@ const ChatbotWidget: React.FC = () => {
 
     // ────────────────────────────────────────────────────────
     const lower = text.toLowerCase();
-    const emailMatch = text.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
+    // Tolera espacios sueltos alrededor de "@" (ej. "fulano @ gmail.com", común al escribir
+    // rápido desde el celular) — antes esos casos no matcheaban y el prospecto nunca se
+    // registraba pese a que el visitante sí dejó su correo.
+    const emailMatch = text.match(/[a-zA-Z0-9._%+\-]+\s*@\s*[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
     // Teléfono: mínimo 10 dígitos seguidos (evita capturar presupuestos como 250000)
     const phoneMatch = text.match(/[\+]?[\d][\d\s\-\(\)]{9,}/);
     const hasContactInfo = !!(emailMatch || phoneMatch);
@@ -2387,7 +2414,7 @@ const ChatbotWidget: React.FC = () => {
     // interés actualizados) — ya no hay auto-registro a los 3 turnos sin contacto.
     const shouldRegister = hasContactInfo || leadRegisteredRef.current;
     if (shouldRegister) {
-      const extractedEmail = emailMatch ? emailMatch[0].trim() : '';
+      const extractedEmail = emailMatch ? emailMatch[0].replace(/\s+/g, '').trim() : '';
       const extractedPhone = phoneMatch ? phoneMatch[0].replace(/\s+/g, '').trim() : '';
       leadRegisteredRef.current = true;
       fetch(`${API_ROOT}/api/contact`, {
@@ -2428,7 +2455,7 @@ const ChatbotWidget: React.FC = () => {
       // ────────────────────────────────────────────────────────
       setTimeout(() => {
         setIsTyping(false);
-        let botResponse = '¡Entiendo! Para brindarte la mejor asesoría con toda nuestra información, ¿podrías dejarme tu correo o número de WhatsApp y un broker especializado de Grupo Los Pueblos se comunicará contigo de inmediato?';
+        let botResponse = '¡Entiendo! Para brindarte la mejor asesoría con toda nuestra información, ¿podrías dejarme tu correo o número de WhatsApp y un broker especializado de Capital Brokers Properties se comunicará contigo de inmediato?';
         if (hasContactInfo) {
             botResponse = '¡Gracias por tus datos! Los hemos registrado exitosamente. Un asesor se comunicará contigo muy pronto. ¡Excelente día!';
         }
