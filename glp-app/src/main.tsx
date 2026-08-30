@@ -24,7 +24,7 @@ const trackFaqClick = (faqId: number | undefined) => {
 // contar "Más Consultadas" (antes tenían textos redactados por separado y nunca coincidían).
 
 /* """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-   GLP  Grupo Los Pueblos · Landing Page
+   Capital Brokers - Real Estate · Landing Page
    Tropical Calm palette · Spanish · All inline styles
    """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""" */
 
@@ -51,13 +51,13 @@ const FAQ_DATA_FALLBACK: FAQCategory[] = [
     title: 'Financiero y Retornos',
     icon: '\u{1F4CA}',
     items: [
-      { q: '¿Qué rentabilidad puedo esperar?', a: 'Los proyectos GLP ofrecen rentabilidades brutas entre 5.0 % y 12.0 % anual dependiendo del segmento. Los proyectos urbanos premium generan cap rates de 5.07.0 % con baja vacancia, mientras que los proyectos de playa con operación Airbnb pueden alcanzar hasta 12 %. Adicionalmente, la valorización histórica en zonas prime de Panamá oscila entre 3 % y 5.5 % anual, lo que eleva el retorno total de la inversión significativamente.' },
-      { q: '¿Cuánto cuesta una propiedad GLP?', a: 'El portafolio GLP ofrece opciones desde USD $120,000 en proyectos de renta urbana como Panamá Viejo Residences, hasta USD $1,500,000 en desarrollos ultra-lujo como Ocean Reef Park. El precio medio del portafolio se ubica alrededor de USD $350,000, con opciones de financiamiento que reducen la cuota inicial al 30 %. Cada proyecto está diseñado para un perfil de inversionista específico, desde el que busca flujo de caja hasta el que prioriza preservación patrimonial.' },
-      { q: '¿Puedo financiar la compra como extranjero?', a: 'Sí. Los bancos panameños como Banco General, BAC y Banistmo ofrecen hipotecas a extranjeros con tasas desde 5.5 % hasta 8.5 % anual en USD, con plazos de 15 a 30 años. Generalmente se requiere un enganche del 30 % del valor de la propiedad, comprobantes de ingresos y referencias bancarias. GLP facilita el proceso de precalificación bancaria y trabaja con brokers hipotecarios que agilizan la aprobación para inversionistas extranjeros.' },
-      { q: '¿Qué costos de cierre debo considerar?', a: 'Los costos de cierre en Panamá típicamente representan entre 3 % y 5 % del valor de la propiedad. Incluyen: impuesto de transferencia (2 %), gastos notariales (0.51 %), registro público (0.3 %), honorarios legales (1 %) y gastos bancarios si hay hipoteca. Estos costos son altamente competitivos a nivel internacional. GLP proporciona un desglose transparente de todos los costos antes de la firma.' },
-      { q: '¿Cuánto tarda en arrendarse una propiedad GLP?', a: 'La velocidad de arrendamiento varía por proyecto y ubicación. Las propiedades urbanas premium en Punta Pacífica y Santa María se arriendan en 0.5 a 2 meses gracias a la alta demanda de ejecutivos internacionales. Los proyectos de playa tienen ciclos de 2 a 3.5 meses. GLP cuenta con alianzas con operadores de property management que garantizan exposición en plataformas internacionales, mostraciones profesionales y contratos estandarizados.' },
-      { q: '¿Quién administra la propiedad?', a: 'GLP trabaja con operadores de property management certificados que se encargan de la administración integral: búsqueda de inquilinos, cobro de rentas, mantenimiento preventivo, atención de emergencias y reportes mensuales al propietario. El costo del servicio oscila entre 8 % y 12 % de la renta mensual, dependiendo del nivel de servicio. Usted recibe un dashboard digital con el estado de su inversión en tiempo real.' },
-      { q: '¿En qué moneda recibo la renta?', a: 'Todas las rentas se cobran, reciben y depositan en dólares estadounidenses (USD). Usted puede elegir recibir los pagos en una cuenta bancaria panameña o transferirlos a su cuenta local. Al estar en dólares, su ingreso no pierde valor por devaluaciones monetarias. GLP facilita la apertura de cuentas bancarias en Panamá para optimizar la recepción de rentas y reducir costos de transferencia internacional.' },
+      { q: '¿Qué rentabilidad puedo esperar?', a: 'Los proyectos de Capital Brokers ofrecen rentabilidades brutas entre 5.0 % y 12.0 % anual dependiendo del segmento. Los proyectos urbanos premium generan rentabilidades netas de 5.0-7.0 % con baja vacancia, mientras que los proyectos de playa con operación Airbnb pueden alcanzar hasta 12 %. Adicionalmente, la valorización histórica en zonas prime de Panamá oscila entre 3 % y 5.5 % anual, lo que eleva el retorno total de la inversión significativamente.' },
+      { q: '¿Cuánto cuesta una propiedad Capital Brokers?', a: 'El portafolio Capital Brokers ofrece opciones desde USD $120,000 en proyectos de renta urbana como Panamá Viejo Residences, hasta USD $1,500,000 en desarrollos ultra-lujo como Ocean Reef Park. El precio medio del portafolio se ubica alrededor de USD $350,000, con opciones de financiamiento que reducen la cuota inicial al 30 %. Cada proyecto está diseñado para un perfil de inversionista específico, desde el que busca flujo de caja hasta el que prioriza preservación patrimonial.' },
+      { q: '¿Puedo financiar la compra como extranjero?', a: 'Sí. Los bancos panameños como Banco General, BAC y Banistmo ofrecen hipotecas a extranjeros con tasas desde 5.5 % hasta 8.5 % anual en USD, con plazos de 15 a 30 años. Generalmente se requiere un enganche del 30 % del valor de la propiedad, comprobantes de ingresos y referencias bancarias. Capital Brokers facilita el proceso de precalificación bancaria y trabaja con brokers hipotecarios que agilizan la aprobación para inversionistas extranjeros.' },
+      { q: '¿Qué costos de cierre debo considerar?', a: 'Los costos de cierre en Panamá típicamente representan entre 3 % y 5 % del valor de la propiedad. Incluyen: impuesto de transferencia (2 %), gastos notariales (0.51 %), registro público (0.3 %), honorarios legales (1 %) y gastos bancarios si hay hipoteca. Estos costos son altamente competitivos a nivel internacional. Capital Brokers proporciona un desglose transparente de todos los costos antes de la firma.' },
+      { q: '¿Cuánto tarda en arrendarse una propiedad Capital Brokers?', a: 'La velocidad de arrendamiento varía por proyecto y ubicación. Las propiedades urbanas premium en Punta Pacífica y Santa María se arriendan en 0.5 a 2 meses gracias a la alta demanda de ejecutivos internacionales. Los proyectos de playa tienen ciclos de 2 a 3.5 meses. Capital Brokers cuenta con alianzas con operadores de property management que garantizan exposición en plataformas internacionales, mostraciones profesionales y contratos estandarizados.' },
+      { q: '¿Quién administra la propiedad?', a: 'Capital Brokers trabaja con operadores de property management certificados que se encargan de la administración integral: búsqueda de inquilinos, cobro de rentas, mantenimiento preventivo, atención de emergencias y reportes mensuales al propietario. El costo del servicio oscila entre 8 % y 12 % de la renta mensual, dependiendo del nivel de servicio. Usted recibe un dashboard digital con el estado de su inversión en tiempo real.' },
+      { q: '¿En qué moneda recibo la renta?', a: 'Todas las rentas se cobran, reciben y depositan en dólares estadounidenses (USD). Usted puede elegir recibir los pagos en una cuenta bancaria panameña o transferirlos a su cuenta local. Al estar en dólares, su ingreso no pierde valor por devaluaciones monetarias. Capital Brokers facilita la apertura de cuentas bancarias en Panamá para optimizar la recepción de rentas y reducir costos de transferencia internacional.' },
     ],
   },
   {
@@ -65,9 +65,9 @@ const FAQ_DATA_FALLBACK: FAQCategory[] = [
     icon: '\u{1F9FE}',
     items: [
       { q: '¿Cuánto es el impuesto predial en Panamá?', a: 'Las propiedades nuevas en Panamá gozan de una exoneración total del impuesto predial (Impuesto de Inmuebles) por un período de 10 a 20 años, dependiendo del tipo de proyecto. Para proyectos con beneficio de interés social o preferencial, la exoneración puede extenderse hasta 20 años. Después del período de exoneración, las tasas oscilan entre 0.5 % y 1 % del valor catastral, que suele ser significativamente menor que el valor de mercado.' },
-      { q: '¿Cuánto es el impuesto a la ganancia de capital?', a: 'En Panamá, la ganancia de capital en venta de bienes raíces tributa al 10 % sobre la ganancia neta, con una retención en fuente del 3 % sobre el precio de venta total al momento de la transacción. Esta estructura fiscal competitiva facilita la realización de utilidades de forma predecible. GLP recomienda mantener documentación detallada de mejoras y costos asociados para optimizar la base imponible al momento de la venta.' },
+      { q: '¿Cuánto es el impuesto a la ganancia de capital?', a: 'En Panamá, la ganancia de capital en venta de bienes raíces tributa al 10 % sobre la ganancia neta, con una retención en fuente del 3 % sobre el precio de venta total al momento de la transacción. Esta estructura fiscal competitiva facilita la realización de utilidades de forma predecible. Capital Brokers recomienda mantener documentación detallada de mejoras y costos asociados para optimizar la base imponible al momento de la venta.' },
       { q: '¿Hay retención en fuente sobre las rentas?', a: 'En Panamá, las rentas de alquiler para personas naturales no residentes están sujetas a una retención del 12.5 % sobre el ingreso bruto de arrendamiento. Sin embargo, existe la opción de elegir tributar como si fuera residente, aplicando una tasa progresiva sobre la renta neta (después de deducciones), lo cual puede resultar más favorable.' },
-      { q: '¿Necesito un contador en Panamá?', a: 'Si bien no es legalmente obligatorio, GLP recomienda enfáticamente contar con un contador panameño para optimizar su carga tributaria, presentar declaraciones locales si aplica, y mantener registros ordenados de ingresos y gastos. El costo de un servicio contable básico en Panamá oscila entre USD $150 y $300 mensuales. GLP tiene alianza con firmas contables que ofrecen tarifas preferenciales para inversionistas del portafolio.' },
+      { q: '¿Necesito un contador en Panamá?', a: 'Si bien no es legalmente obligatorio, Capital Brokers recomienda enfáticamente contar con un contador panameño para optimizar su carga tributaria, presentar declaraciones locales si aplica, y mantener registros ordenados de ingresos y gastos. El costo de un servicio contable básico en Panamá oscila entre USD $150 y $300 mensuales. Capital Brokers tiene alianza con firmas contables que ofrecen tarifas preferenciales para inversionistas del portafolio.' },
       { q: '¿Hay beneficios fiscales para inversionistas extranjeros?', a: 'Sí. Panamá ofrece múltiples incentivos: exoneración de impuesto predial por hasta 20 años en propiedades nuevas, régimen fiscal territorial (solo grava ingresos de fuente panameña), no hay impuesto sobre herencias ni donaciones, y las sociedades anónimas panameñas no pagan impuestos sobre ingresos de fuente extranjera. Adicionalmente, ciertos regímenes especiales como las Sedes de Empresas Multinacionales (SEM) ofrecen beneficios adicionales para quienes establecen operaciones en el país.' },
     ],
   },
@@ -77,10 +77,10 @@ const FAQ_DATA_FALLBACK: FAQCategory[] = [
     items: [
       { q: '¿Necesito visa para comprar propiedad en Panamá?', a: 'No. Los ciudadanos extranjeros no necesitan visa para ingresar a Panamá como turistas (hasta 180 días) ni para adquirir bienes raíces. La compra de propiedad se puede realizar con pasaporte vigente y no requiere estatus migratorio especial. Sin embargo, si desea establecer residencia permanente, la inversión inmobiliaria es precisamente una de las vías más directas para obtenerla.' },
       { q: '¿Qué es la residencia por inversión inmobiliaria?', a: 'El Permiso de Residencia por Inversión Calificada permite a extranjeros que inviertan un mínimo de USD $300,000 en bienes raíces en Panamá obtener residencia permanente. Este permiso se otorga a nombre propio y cubre dependientes (cónyuge e hijos menores). La residencia es permanente desde el primer día y no requiere presencia física continua. Después de 5 años de residencia, se puede aplicar a la ciudadanía panameña si se desea.' },
-      { q: '¿Cuánto cuesta tramitar la residencia?', a: 'Los costos del trámite de residencia por inversión oscilan entre USD $5,000 y $8,000, incluyendo: honorarios del abogado de inmigración (USD $3,000$5,000), tasas gubernamentales (USD $800$1,200), autenticaciones, apostillas y traducciones de documentos. El proceso toma entre 3 y 6 meses. GLP trabaja con Colombia Law Group, firma de inmigración y asesoría legal especializada, que ofrece tarifas preferenciales y acompañamiento integral a los inversionistas.' },
+      { q: '¿Cuánto cuesta tramitar la residencia?', a: 'Los costos del trámite de residencia por inversión oscilan entre USD $5,000 y $8,000, incluyendo: honorarios del abogado de inmigración (USD $3,000$5,000), tasas gubernamentales (USD $800$1,200), autenticaciones, apostillas y traducciones de documentos. El proceso toma entre 3 y 6 meses. Capital Brokers trabaja con Colombia Law Group, firma de inmigración y asesoría legal especializada, que ofrece tarifas preferenciales y acompañamiento integral a los inversionistas.' },
       { q: '¿Puedo trabajar en Panamá con la residencia por inversión?', a: 'La residencia por inversión calificada permite trabajar de forma independiente en Panamá (negocios propios, freelance, consultoría). Si desea trabajar como empleado de una empresa panameña, necesitará un permiso de trabajo adicional, que la empresa empleadora tramita. Muchos inversionistas extranjeros optan por mantener sus negocios en sus países de origen y usar la residencia panameña para beneficios fiscales, bancarios y de estilo de vida.' },
       { q: '¿Mis hijos pueden estudiar en Panamá?', a: 'Sí. Los hijos de residentes tienen acceso a todo el sistema educativo panameño, tanto público como privado. Panamá cuenta con colegios internacionales de alto nivel como el International School of Panama, King\'s College, y el Balboa Academy, con currículos IB, americano y británico. Las universidades incluyen sedes de Florida State University, INCAE y la Universidad de Louisville. La residencia facilita la matrícula y el acceso a becas.' },
-      { q: '¿El trámite de residencia puede hacerse de forma remota?', a: 'El proceso de residencia requiere al menos una visita presencial a Panamá para la entrevista migratoria y la toma de datos biométricos. Sin embargo, gran parte de la preparación documental (recopilación, apostillas, traducciones) puede realizarse desde su país de origen. Colombia Law Group, aliado legal y migratorio de GLP, coordina todo el proceso para que la visita presencial sea lo más breve posible, generalmente 35 días hábiles son suficientes.' },
+      { q: '¿El trámite de residencia puede hacerse de forma remota?', a: 'El proceso de residencia requiere al menos una visita presencial a Panamá para la entrevista migratoria y la toma de datos biométricos. Sin embargo, gran parte de la preparación documental (recopilación, apostillas, traducciones) puede realizarse desde su país de origen. Colombia Law Group, aliado legal y migratorio de Capital Brokers, coordina todo el proceso para que la visita presencial sea lo más breve posible, generalmente 35 días hábiles son suficientes.' },
       { q: '¿Cómo funciona el proceso de naturalización?', a: 'Después de 5 años de residencia permanente en Panamá, un extranjero puede iniciar el proceso de naturalización para obtener la ciudadanía panameña. Los requisitos incluyen examen básico de español, conocimientos de geografía y cultura panameña, y demostrar solvencia económica. La ciudadanía panameña otorga un pasaporte con acceso libre de visa a más de 140 países.' },
     ],
   },
@@ -239,12 +239,12 @@ const Navbar: React.FC = () => {
       padding: scrolled ? '14px 0' : '24px 0',
     }}>
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        {/* Logo — marca "GLP" (Grupo Los Pueblos) reemplazada por Capital Brokers
+        {/* Logo — marca "Capital Brokers" (Grupo Los Pueblos) reemplazada por Capital Brokers
             Properties. Solo texto en la landing (sin isotipo), a pedido del usuario. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }} onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
           <div>
             <div style={{ fontWeight: 600, fontSize: '1.1rem', color: scrolled ? C.text : C.white, fontFamily: C.fontSerif, letterSpacing: '0.03em', lineHeight: 1.2, transition: 'color 0.3s' }}>
-              Capital Brokers Properties
+              Capital Brokers - Real Estate
             </div>
             <div style={{ fontSize: '0.65rem', color: scrolled ? C.textSec : 'rgba(255,255,255,0.7)', letterSpacing: '0.18em', fontFamily: C.fontSans, textTransform: 'uppercase', transition: 'color 0.3s', marginTop: 2 }}>
               Real Estate · Panamá
@@ -469,7 +469,7 @@ const Hero: React.FC<{ onSearch: (f: { category: string; price: string; beds: st
         <AnimatedCounter end={7.8} suffix="%" label="Rentabilidad Bruta" decimals={1} />
         <AnimatedCounter end={20} suffix=" años" label="Sin Predial" />
         <AnimatedCounter end={300} suffix="K" prefix="$" label="Residencia" />
-        <AnimatedCounter end={40} suffix="+" label="Años GLP" />
+        <AnimatedCounter end={40} suffix="+" label="Años de Trayectoria" />
       </div>
 
       {/* Se quitó "Explorar Proyectos" — redundante con el botón "Buscar" del
@@ -673,7 +673,7 @@ const ProjectsSection: React.FC<{
   // portafolio, a diferencia de un filtro concreto como "3 habitaciones".
   const filters = [
     { key: 'todos', label: 'Todos', desc: 'Todo el portafolio, sin filtrar por perfil de inversión.' },
-    { key: 'renta', label: 'Renta', desc: 'Enfocado en retorno por arriendo — cap rate y ocupación como criterio principal.' },
+    { key: 'renta', label: 'Renta', desc: 'Enfocado en retorno por arriendo — rentabilidad por renta y ocupación como criterio principal.' },
     { key: 'disfrute', label: 'Disfrute', desc: 'Para uso personal y vacacional, con potencial de arriendo secundario.' },
     { key: 'patrimonial', label: 'Patrimonial', desc: 'Preservación y valorización de capital en dólares a largo plazo.' },
   ]
@@ -952,17 +952,19 @@ const WhyPanamaSection: React.FC = () => {
   const stats = [
     { num: '01', title: 'Dolarizado desde 1904', desc: 'Cero riesgo de devaluación. Sus rentas y patrimonio en la moneda más estable del mundo.' },
     { num: '02', title: '3% Retención de Impuesto', desc: 'Retención en la fuente del 3% sobre el precio de venta total al momento de desinvertir, un esquema simple y competitivo.' },
-    { num: '03', title: 'Hub Logístico: Canal', desc: 'USD $4B+ anuales del Canal impulsan la economía, empleo y demanda de vivienda premium.' },
+    { num: '03', title: 'Hub Logístico: Canal + Tocumen', desc: 'El Canal de Panamá aporta más de USD $4,000 millones anuales a la economía, y el Aeropuerto Internacional de Tocumen —el más grande de Centroamérica— conecta a más de 80 destinos en América, Europa y Asia.' },
     { num: '04', title: '7.8% Rentabilidad Promedio', desc: 'Atractivos niveles de retorno bruto por alquiler en dólares estadounidenses en segmentos residenciales premium.' },
     { num: '05', title: '+29% Inversión 2026', desc: 'Crecimiento proyectado en inversión inmobiliaria y construcción para el período 2025-2026.' },
     { num: '06', title: 'Inversión Internacional Líder', desc: 'Destino preferido de inversión para capitales y familias de toda la región gracias a su estabilidad jurídica y económica.' },
+    { num: '07', title: 'Crecimiento Sostenido del PIB', desc: 'La economía panameña promedió un crecimiento del 5.6% anual entre 2010 y 2026 (Banco Mundial), uno de los ritmos más altos de América Latina.' },
+    { num: '08', title: 'Inflación 3 Veces Menor que Colombia', desc: 'Panamá mantiene una inflación promedio de apenas 2.2% anual desde 2008 gracias a su economía dolarizada — frente al 6%+ que enfrenta hoy Colombia.' },
   ]
 
   const advantageGroups = [
     {
       title: 'Ventajas de Panamá como país',
       items: [
-        'Ubicación estratégica: conectividad global a través del Canal de Panamá y su aeropuerto internacional.',
+        'Conectividad global: el Canal de Panamá y el Aeropuerto Internacional de Tocumen —hub aéreo más grande de Centroamérica, con vuelos directos a más de 80 destinos— posicionan al país como el cruce logístico de las Américas.',
         'Economía estable y en crecimiento, con el dólar estadounidense como moneda oficial.',
         'Infraestructura de clase mundial: puertos, carreteras y telecomunicaciones avanzadas.',
         'Clima cálido todo el año y riqueza natural con playas, montañas y biodiversidad.',
@@ -1004,7 +1006,7 @@ const WhyPanamaSection: React.FC = () => {
             ¿Por qué Panamá?
           </h2>
           <p style={{ fontSize: '0.95rem', color: C.textSec, maxWidth: 600, margin: '0 auto', fontFamily: C.fontSans, letterSpacing: '0.02em' }}>
-            6 razones fundamentales por las que los inversionistas más sofisticados eligen Panamá.
+            8 razones fundamentales por las que los inversionistas más sofisticados eligen Panamá.
           </p>
         </div>
 
@@ -1034,7 +1036,7 @@ const WhyPanamaSection: React.FC = () => {
 
         {/* Ventajas: migratorias / impositivas — antes vivían en otro componente
             (InvestmentSection), separadas de estos stats por un bloque completo de
-            contenido de GLP en el medio. Mismo tema (país), un solo lugar. */}
+            contenido de Capital Brokers en el medio. Mismo tema (país), un solo lugar. */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24 }}>
           {advantageGroups.map(group => (
             <div key={group.title} style={{ background: C.bg, border: `1px solid ${C.sand}`, padding: '28px 24px' }}>
@@ -1713,10 +1715,10 @@ const Footer: React.FC = () => (
         <p style={{ margin: '0 0 12px', fontSize: '0.75rem', opacity: 0.5, maxWidth: 750, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.6, fontFamily: C.fontSans }}>
           Disclaimer: La información presentada en este sitio es de carácter informativo y no constituye una oferta de inversión ni asesoría financiera, legal o tributaria.
           Los rendimientos pasados no garantizan resultados futuros. Las proyecciones de rentabilidad son estimaciones basadas en datos de mercado y pueden variar.
-          Se recomienda consultar con asesores profesionales antes de tomar decisiones de inversión. GLP y sus aliados actúan como facilitadores de información, no como fiduciarios.
+          Se recomienda consultar con asesores profesionales antes de tomar decisiones de inversión. Capital Brokers y sus aliados actúan como facilitadores de información, no como fiduciarios.
         </p>
         <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.6, fontWeight: 500, fontFamily: C.fontSans, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          © 2026 Capital Brokers Properties. Todos los derechos reservados.
+          © 2026 Capital Brokers - Real Estate. Todos los derechos reservados.
         </p>
       </div>
     </div>
@@ -1796,13 +1798,13 @@ const WhyGLPSection: React.FC = () => {
               letterSpacing: '0.15em', textTransform: 'uppercase',
               fontFamily: C.fontSans
             }}>
-              ¿Por qué GLP?
+              ¿Por qué Grupo Los Pueblos?
             </span>
             <h2 style={{ fontSize: 'clamp(2rem, 4vw, 2.8rem)', fontWeight: 400, color: C.red, margin: '0 0 20px', lineHeight: 1.15, fontFamily: C.fontSerif }}>
               Líderes en el Desarrollo Inmobiliario de Panamá
             </h2>
             <p style={{ fontSize: '1rem', color: C.textSec, lineHeight: 1.7, marginBottom: 20, fontFamily: C.fontSans }}>
-              Con más de <strong>40 años de trayectoria</strong>, Capital Brokers Properties se ha consolidado como la empresa promotora y desarrolladora inmobiliaria más importante y confiable de Panamá, transformando el paisaje urbano de la región con proyectos icónicos de clase mundial.
+              Con más de <strong>40 años de trayectoria</strong>, Grupo Los Pueblos se ha consolidado como la empresa promotora y desarrolladora inmobiliaria más importante y confiable de Panamá, transformando el paisaje urbano de la región con proyectos icónicos de clase mundial.
             </p>
             <p style={{ fontSize: '0.95rem', color: C.textSec, lineHeight: 1.7, marginBottom: 28, fontFamily: C.fontSans }}>
               Nuestra trayectoria incluye el diseño, desarrollo y entrega de mega-proyectos emblemáticos que redefinieron el comercio y el estilo de vida, tales como <strong>Albrook Mall</strong> (el centro comercial más grande de América Latina), las exclusivas <strong>Ocean Reef Islands</strong> (las primeras islas artificiales de la región), <strong>Santa María Golf & Country Club</strong>, <strong>Federal Mall</strong> en David, y residencias de lujo y playa de altísimo valor.
@@ -1845,7 +1847,7 @@ const WhyGLPSection: React.FC = () => {
         {/* Por qué elegirnos */}
         <div style={{ marginBottom: 72 }}>
           <h3 style={{ fontSize: '1.5rem', fontWeight: 400, color: C.teal, fontFamily: C.fontSerif, textAlign: 'center', marginBottom: 32 }}>
-            Razones para invertir con Capital Brokers Properties
+            Razones para invertir con Grupo Los Pueblos
           </h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 24 }}>
             {reasons.map(r => (
@@ -1871,10 +1873,10 @@ const WhyGLPSection: React.FC = () => {
           }}>
             <div style={{ padding: '28px 26px', border: `1px solid ${C.sand}`, borderTop: `3px solid ${C.red}`, background: C.bg }}>
               <h4 style={{ margin: '0 0 12px', fontWeight: 600, fontSize: '0.8rem', fontFamily: C.fontSans, textTransform: 'uppercase', letterSpacing: '0.1em', color: C.red }}>
-                Capital Brokers
+                Capital Brokers - Real Estate
               </h4>
               <p style={{ margin: 0, color: C.textSec, fontSize: '0.88rem', lineHeight: 1.6, fontFamily: C.fontSans }}>
-                Firma global de banca de inversión y placement agent con presencia en Colombia, España, Panamá, Estados Unidos y EAU. Especialistas en estructuración financiera, levantamiento de capital, soluciones de capital de trabajo internacional (factoring) y estructuración de fondos de capital privado.
+                <strong>25 años</strong> asesorando el patrimonio de nuestros clientes son <strong>25 años</strong> respondiendo por cada decisión de inversión que recomendamos. Con presencia en Colombia, España, Panamá, Estados Unidos y EAU, ponemos esa misma disciplina y solidez al servicio del inversionista colombiano, como el puente directo hacia el portafolio inmobiliario de Grupo Los Pueblos en Panamá.
               </p>
             </div>
             <div style={{ padding: '28px 26px', border: `1px solid ${C.sand}`, borderTop: `3px solid ${C.red}`, background: C.bg }}>
@@ -2371,7 +2373,7 @@ const ContactSection: React.FC<{
 const ChatbotWidget: React.FC = () => {
   const [isOpen, setIsOpen] = React.useState(false);
   const [messages, setMessages] = React.useState<{id: number, text: string, sender: 'bot' | 'user'}[]>([
-    { id: 1, text: '¡Hola! Soy Sara, del equipo de atención al cliente de Capital Brokers Properties. Cuéntame, ¿qué te trajo por aquí hoy?', sender: 'bot' }
+    { id: 1, text: '¡Hola! Soy Sara, del equipo de atención al cliente de Capital Brokers - Real Estate. Cuéntame, ¿qué te trajo por aquí hoy?', sender: 'bot' }
   ]);
   const [inputValue, setInputValue] = React.useState('');
   const [isTyping, setIsTyping] = React.useState(false);
@@ -2423,7 +2425,7 @@ const ChatbotWidget: React.FC = () => {
           name: 'Visitante Web',
           email: extractedEmail,
           phone: extractedPhone,
-          project: 'Asesora Personalizada - GLP',
+          project: 'Asesora Personalizada - Capital Brokers',
           message: hasContactInfo ? `Datos de contacto: ${text}` : text,
           channel: 'Chatbot SARA',
           sessionId: sessionIdRef.current,
@@ -2455,7 +2457,7 @@ const ChatbotWidget: React.FC = () => {
       // ────────────────────────────────────────────────────────
       setTimeout(() => {
         setIsTyping(false);
-        let botResponse = '¡Entiendo! Para brindarte la mejor asesoría con toda nuestra información, ¿podrías dejarme tu correo o número de WhatsApp y un broker especializado de Capital Brokers Properties se comunicará contigo de inmediato?';
+        let botResponse = '¡Entiendo! Para brindarte la mejor asesoría con toda nuestra información, ¿podrías dejarme tu correo o número de WhatsApp y un broker especializado de Capital Brokers - Real Estate se comunicará contigo de inmediato?';
         if (hasContactInfo) {
             botResponse = '¡Gracias por tus datos! Los hemos registrado exitosamente. Un asesor se comunicará contigo muy pronto. ¡Excelente día!';
         }
@@ -2500,7 +2502,7 @@ const ChatbotWidget: React.FC = () => {
                 </div>
                 <div>
                   <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>Sara Valenzuela</div>
-                  <div style={{ fontSize: '0.7rem', opacity: 0.9 }}>Atención al Cliente · GLP</div>
+                  <div style={{ fontSize: '0.7rem', opacity: 0.9 }}>Atención al Cliente · Capital Brokers</div>
                 </div>
               </div>
               <button onClick={() => setIsOpen(false)} style={{
@@ -2662,7 +2664,7 @@ const LandingPage: React.FC = () => {
         initialFilters={heroFilters}
       />
       {/* Un solo bloque por tema: primero país (¿Por qué Panamá?), después empresa
-          (¿Por qué GLP? — fusiona lo que antes eran Trayectoria, Razones para invertir
+          (¿Por qué Capital Brokers? — fusiona lo que antes eran Trayectoria, Razones para invertir
           y Nosotros/aliados en tres momentos separados del scroll). */}
       <section id="why-panama" style={{ background: C.white, borderBottom: `1px solid ${C.sand}` }}>
         <WhyPanamaSection />

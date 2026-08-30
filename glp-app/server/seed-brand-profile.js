@@ -1,5 +1,5 @@
 /**
- * seed-brand-profile.js — Guarda el perfil de marca GLP en BD
+ * seed-brand-profile.js — Guarda el perfil de marca Capital Brokers - Real Estate en BD
  */
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const pool = require('./db');
@@ -26,8 +26,8 @@ const profile = {
     'Rebatir objeciones sin mencionarlas directamente',
   ],
   objeciones: [
-    '¿Es seguro llevar plata a otro país? → Panamá dolarizado, banca top-10 mundial, Ley de Exención Predial',
-    '¿Cómo lo manejo con la DIAN? → Activos en el exterior son legales y declarables; GLP asesora',
+    '¿Es seguro llevar plata a otro país? → Panamá dolarizado, banca top-10 mundial',
+    '¿Cómo lo manejo con la DIAN? → Activos en el exterior son legales y declarables; Capital Brokers asesora',
     '¿Y si el proyecto no se entrega? → Solo constructores con historial verificado y fiducia de garantía',
     '¿Puedo usarlo o es solo para arrendar? → Doble beneficio: uso propio + renta garantizada',
   ],
@@ -38,26 +38,25 @@ const profile = {
     'Infografías de rentabilidad y comparativas de mercado',
   ],
   diferenciadores: [
-    'Exención predial por 20 años en todos los proyectos nuevos',
     'Rentabilidad neta superior al 8% anual en USD',
     'Panamá dolarizado — sin riesgo cambiario',
-    'GLP solo trabaja proyectos con fiducia de garantía',
+    'Capital Brokers solo trabaja proyectos con fiducia de garantía',
     'Asesoría integral: desde selección hasta declaración en Colombia',
   ],
   hashtags_instagram: [
-    '#GLP', '#PanamaRealEstate', '#InversionInmobiliaria', '#DolarizaTuPatrimonio',
-    '#PanamáInversión', '#WealthManagement', '#InversionEnDolares', '#GlpWealthManagement',
+    '#CapitalBrokers', '#PanamaRealEstate', '#InversionInmobiliaria', '#DolarizaTuPatrimonio',
+    '#PanamáInversión', '#RealEstate', '#InversionEnDolares', '#CapitalBrokersRealEstate',
     '#OceanReefPark', '#VentuPanama', '#PuntaPacifica', '#CostaDelEste',
     '#LibertadFinanciera', '#InvierteEnPanama', '#PatrimonioEnDolares',
   ],
   hashtags_linkedin: [
-    '#InversionInmobiliaria', '#WealthManagement', '#PanamaRealEstate', '#GLP',
+    '#InversionInmobiliaria', '#RealEstate', '#PanamaRealEstate', '#CapitalBrokers',
     '#PatrimonioDolarizado', '#RealEstatePanama', '#InversionInternacional',
     '#FinanzasPersonales', '#Inmobiliaria', '#InversionInteligente',
   ],
   hashtags_whatsapp: [],
   cta_principal: 'Escríbenos PANAMÁ al DM y te enviamos el análisis completo de rentabilidad',
-  propuesta_valor: 'GLP Wealth Management conecta a inversionistas colombianos con los mejores proyectos inmobiliarios de Panamá: rentabilidad en dólares, exención predial por 20 años y acompañamiento integral desde la compra hasta la declaración tributaria en Colombia.',
+  propuesta_valor: 'Capital Brokers - Real Estate conecta a inversionistas colombianos con los mejores proyectos inmobiliarios de Panamá: rentabilidad en dólares y acompañamiento integral desde la compra hasta la declaración tributaria en Colombia.',
   notas_adicionales: '',
 };
 

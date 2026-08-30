@@ -216,7 +216,7 @@ export const PROJECTS: Project[] = [
       distribucionTitle: 'Un modelo hotelero, no solo un apartamento',
       distribucionIntro: 'Cada unidad se entrega lista para operar bajo Airbnb y Booking, con administración incluida desde el día uno.',
       modelos: ['Rooftop infinity pool', 'Co-working lounge', 'Smart home automation', 'Gimnasio', 'Lobby bar'],
-      distribucionFooter: 'Apartamentos de 1 y 2 recámaras entre 40 m² y 63 m², desde $136,000 USD — cap rate proyectado de 8% a 12% anual.'
+      distribucionFooter: 'Apartamentos de 1 y 2 recámaras entre 40 m² y 63 m², desde $136,000 USD — rentabilidad proyectada de 8% a 12% anual.'
     }
   },
   {
@@ -448,7 +448,7 @@ export const PROJECTS: Project[] = [
         'Comunidad cerrada y segura con amenidades de resort',
         'Respaldo de un proyecto integrado dentro de Playa Caracol'
       ],
-      distribucionFooter: 'Aires del Mar en Playa Caracol es la oportunidad perfecta para invertir o vivir en un espacio exclusivo junto al océano. Apartamentos de 2 y 3 recámaras desde 42 m², desde $143,000 USD — cap rate de 7.5% a 9% anual.'
+      distribucionFooter: 'Aires del Mar en Playa Caracol es la oportunidad perfecta para invertir o vivir en un espacio exclusivo junto al océano. Apartamentos de 2 y 3 recámaras desde 42 m², desde $143,000 USD — rentabilidad de 7.5% a 9% anual.'
     }
   },
   {
@@ -519,7 +519,7 @@ export const PROJECTS: Project[] = [
       distribucionTitle: 'Ambiente familiar frente al mar',
       distribucionIntro: 'Unidades espaciosas pensadas para estadías largas en familia, con áreas comunes diseñadas para la convivencia.',
       modelos: ['Club de playa Brisas', 'Jacuzzis comunitarios', 'Cancha de beach volley', 'Área de asados y hamacas'],
-      distribucionFooter: 'Apartamentos de 2 y 3 recámaras entre 93 m² y 108 m², desde $276,000 USD — cap rate de 5.8% a 7.2% anual.'
+      distribucionFooter: 'Apartamentos de 2 y 3 recámaras entre 93 m² y 108 m², desde $276,000 USD — rentabilidad de 5.8% a 7.2% anual.'
     }
   },
   {
@@ -558,7 +558,7 @@ export const PROJECTS: Project[] = [
         'Ambiente familiar y seguro, ideal para residencia permanente o segunda casa',
         'Revalorización asegurada por el crecimiento de la zona oeste y la cercanía a la capital'
       ],
-      distribucionFooter: 'Apartamentos de 2 y 3 recámaras desde 70 m², desde $267,000 USD — cap rate de 5.8% a 7.5% anual. Área social con piscina, solarium, juegos infantiles, pérgolas y BBQ.'
+      distribucionFooter: 'Apartamentos de 2 y 3 recámaras desde 70 m², desde $267,000 USD — rentabilidad de 5.8% a 7.5% anual. Área social con piscina, solarium, juegos infantiles, pérgolas y BBQ.'
     }
   },
   {
@@ -597,7 +597,7 @@ export const PROJECTS: Project[] = [
         'Oportunidad de compra en una comunidad vibrante en constante crecimiento',
         'Respaldo de un desarrollo planificado con gran proyección en el mercado costero'
       ],
-      distribucionFooter: 'Apartamentos de 2 y 3 recámaras entre 81 m² y 107 m², desde $314,000 USD — cap rate de 6% a 7.8% anual. Comprar en Surfside es invertir en calidad de vida, recreación y un estilo de vida soñado junto al mar.'
+      distribucionFooter: 'Apartamentos de 2 y 3 recámaras entre 81 m² y 107 m², desde $314,000 USD — rentabilidad de 6% a 7.8% anual. Comprar en Surfside es invertir en calidad de vida, recreación y un estilo de vida soñado junto al mar.'
     }
   },
   {
@@ -636,7 +636,7 @@ export const PROJECTS: Project[] = [
         'Entorno seguro dentro de un proyecto planificado con infraestructura completa',
         'Sustentabilidad y diseño biofílico que garantizan valor a largo plazo'
       ],
-      distribucionFooter: '34 residencias privadas desde 68 m², desde $297,000 USD — cap rate de 6.2% a 7.8% anual.'
+      distribucionFooter: '34 residencias privadas desde 68 m², desde $297,000 USD — rentabilidad de 6.2% a 7.8% anual.'
     }
   },
 ]

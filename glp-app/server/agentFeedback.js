@@ -101,7 +101,7 @@ async function notifyAdmin({ agent, pctAntes, pctAhora, total }) {
         <div style="font-family:sans-serif;max-width:640px;margin:0 auto">
           <div style="background:#DC2626;color:#fff;padding:20px;text-align:center">
             <h2 style="margin:0;letter-spacing:1px">⚠️ CALIDAD DE AGENTE EN CAÍDA</h2>
-            <p style="margin:4px 0;font-size:12px;opacity:.85">${new Date().toLocaleString('es-CO')} · Capital Brokers Properties</p>
+            <p style="margin:4px 0;font-size:12px;opacity:.85">${new Date().toLocaleString('es-CO')} · Capital Brokers - Real Estate</p>
           </div>
           <div style="padding:24px;background:#fff">
             <p style="color:#374151;line-height:1.6;font-size:15px">

@@ -8,7 +8,7 @@ import jsPDF from 'jspdf';
 
 // ── Exportar estudios de Camilo a PDF ────────────────────────────────────
 // Un solo helper reusado por Reporte Semanal, Radar de Competencia e Insights — encabezado
-// de marca GLP + paginación automática por texto envuelto, sin depender del diálogo de
+// de marca Capital Brokers + paginación automática por texto envuelto, sin depender del diálogo de
 // impresión del navegador (jsPDF descarga el archivo directo).
 function pdfNewDoc(title: string, subtitle: string) {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
@@ -20,7 +20,7 @@ function pdfNewDoc(title: string, subtitle: string) {
   doc.setTextColor(212, 175, 106);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
-  doc.text('GLP WEALTH MANAGEMENT · INTELIGENCIA DE MERCADO', marginX, 30);
+  doc.text('Capital Brokers WEALTH MANAGEMENT · INTELIGENCIA DE MERCADO', marginX, 30);
   doc.setTextColor(255, 255, 255);
   // Título en serif (equivalente jsPDF de la Cormorant Garamond/Georgia que usa
   // el resto de la plataforma para encabezados) — antes salía en helvetica, por
@@ -73,7 +73,7 @@ function pdfSave(doc: jsPDF, filename: string) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(150, 150, 150);
-    doc.text(`GLP Wealth Management — Confidencial · Página ${i} de ${pageCount}`, pageWidth / 2, pageHeight - 20, { align: 'center' });
+    doc.text(`Capital Brokers - Real Estate — Confidencial · Página ${i} de ${pageCount}`, pageWidth / 2, pageHeight - 20, { align: 'center' });
   }
   doc.save(filename);
 }
@@ -88,7 +88,7 @@ Object.entries(PROJECT_IMG).forEach(([name, img]) => { PROJECT_IMG_BY_NORMALIZED
 const getProjectImg = (name: string) => PROJECT_IMG_BY_NORMALIZED[normalizeProjName(name)];
 
 // ═══════════════════════════════════════════════════════════════
-// GLP CRM DASHBOARD — Complete Production CRM
+// Capital Brokers CRM DASHBOARD — Complete Production CRM
 // Ultra Corporate Design · Spanish Language · All Inline Styles
 // ═══════════════════════════════════════════════════════════════
 
@@ -104,7 +104,7 @@ const T = {
   tealDark: '#001A37', // Darker Navy
   sand: '#E5E7EB',     // Slate Border
   coral: '#B89047',    // Sotheby's Gold (Accent)
-  red: '#A6192E',      // Rojo corporativo GLP (tenant #1 — otros tenants tendrán su propia paleta) — tono más rojo/menos café
+  red: '#A6192E',      // Rojo corporativo Capital Brokers (tenant #1 — otros tenants tendrán su propia paleta) — tono más rojo/menos café
   palm: '#7D6330',     // Antique Bronze/Gold
   sky: '#001A37',      // Deep Navy
   text: '#111827',     // Near Black
@@ -407,7 +407,7 @@ const PROJECTS: ProjectData[] = [
     appreciationDef: 4.5, appreciationNote: 'Único proyecto hotelero optimizado para renta corta (Airbnb/Booking) en Bella Vista. Administración profesional incluida. 4–5% valorización anual.',
     amenities: ['Diseño Airbnb optimizado', 'Administración hotelera', 'Pool deck', 'Coworking', 'Check-in automático', 'Seguridad 24/7'],
     construction: 'En construcción (entrega Q2 2028)', priceM2Min: 2100, priceM2Max: 3200,
-    notaValorizacion: 'Modelo hotelero con administración incluida. Cap rate proyectado 8–12% con estrategia Airbnb/Booking.',
+    notaValorizacion: 'Modelo hotelero con administración incluida. Rentabilidad proyectada 8–12% con estrategia Airbnb/Booking.',
     perfilArrendatario: 'Nómada digital, turista corporativo, visitante de corta duración',
     zonaColegios: 'Instituto Alberto Einstein, Oxford International School (10 min)', zonaSupermercados: 'El Rey, Super 99 (5 min)', zonaEntretenimiento: 'Multiplaza Pacific, vida nocturna Bella Vista (5 min)', zonaSalud: 'Hospital San Fernando (10 min)',
   },
@@ -437,7 +437,7 @@ const PROJECTS: ProjectData[] = [
     construction: 'En construcción · F1 Q1 2028', priceM2Min: 2500, priceM2Max: 3800,
     // Datos de mercado confirmados por marketStudyDb (Q2 2026)
     velocidadColocacion: '1–2 meses', perfilArrendatario: 'Ejecutivo corporativo, inversor — demanda multinacional Costa del Este',
-    notaValorizacion: 'Costa del Este consolida demanda corporativa. Cap rate 6.0–7.5% confirmado por inteligencia de mercado Q2 2026.',
+    notaValorizacion: 'Costa del Este consolida demanda corporativa. Rentabilidad 6.0–7.5% confirmado por inteligencia de mercado Q2 2026.',
     fechaActualizacionMercado: '2026-06-27',
     zonaColegios: 'International School of Panama, Kings College (10 min)', zonaSupermercados: 'Riba Smith Costa del Este, El Rey (5 min)', zonaEntretenimiento: 'Multiplaza Panamá, Soho Mall (10 min)', zonaSalud: 'Hospital Punta Pacífica Johns Hopkins (15 min)',
   },
@@ -452,7 +452,7 @@ const PROJECTS: ProjectData[] = [
     amenities: ['Jardines botánicos', 'Piscina natural', 'Gimnasio', 'Senderos de meditación', 'Áreas sociales', 'Seguridad 24/7'],
     construction: 'En preventa (entrega 2030)', priceM2Min: 2800, priceM2Max: 4200,
     velocidadColocacion: '1–2 meses', perfilArrendatario: 'Familia ejecutiva — entorno natural diferencial, perfil patrimonial',
-    notaValorizacion: 'Entorno botánico único en Santa María. Cap rate 5.5–7.2% y vacancia 4–7% confirmados por inteligencia de mercado.',
+    notaValorizacion: 'Entorno botánico único en Santa María. Rentabilidad 5.5–7.2% y vacancia 4–7% confirmados por inteligencia de mercado.',
     fechaActualizacionMercado: '2026-06-27',
     zonaColegios: 'Kings College, Oxford School Panamá (5 min)', zonaSupermercados: 'Riba Smith Santa María (8 min)', zonaEntretenimiento: 'Club Santa María, Costa del Este (15 min)', zonaSalud: 'Hospital Punta Pacífica (20 min)',
   },
@@ -469,7 +469,7 @@ const PROJECTS: ProjectData[] = [
     construction: 'Entrega inmediata', priceM2Min: 5020, priceM2Max: 5860,
     // Datos confirmados por marketStudyDb (The Palms, Punta Pacifica)
     velocidadColocacion: '1–2 meses', perfilArrendatario: 'Ejecutivo joven, nómada digital — alta rotación baja vacancia',
-    notaValorizacion: 'Menor vacancia del portafolio (4–6%). Activo único en isla artificial con marina. Cap rate 5.5–7.0% confirmado.',
+    notaValorizacion: 'Menor vacancia del portafolio (4–6%). Activo único en isla artificial con marina. Rentabilidad 5.5–7.0% confirmado.',
     fechaActualizacionMercado: '2026-06-27',
     zonaColegios: 'The Oxford School (5 min)', zonaSupermercados: 'Multiplaza Panamá (5 min)', zonaEntretenimiento: 'Multiplaza, Yatch Club, restaurantes Punta Pacífica (5 min)', zonaSalud: 'Hospital Punta Pacífica Johns Hopkins (2 min)',
   },
@@ -500,7 +500,7 @@ const PROJECTS: ProjectData[] = [
     amenities: ['Vista al océano Pacífico', 'Piscinas', 'Parques infantiles', 'Jardines', 'Seguridad 24/7'],
     construction: 'Entrega inmediata / Q4 2026', priceM2Min: 2010, priceM2Max: 2915,
     velocidadColocacion: '2–3.5 meses', perfilArrendatario: 'Familia segunda residencia — precio accesible en zona playa',
-    notaValorizacion: 'Punto de entrada Playa Caracol. Cap rate 5.8–8.0% con estrategia mixta larga/corta duración.',
+    notaValorizacion: 'Punto de entrada Playa Caracol. Rentabilidad 5.8–8.0% con estrategia mixta larga/corta duración.',
     fechaActualizacionMercado: '2026-06-27',
     zonaPlaya: 'Playa Caracol 1.2 km (acceso comunitario)', zonaSupermercados: 'Centro comercial Coronado (20 min)', zonaEntretenimiento: 'Surf club Playa Caracol, restaurantes de playa (10 min)', zonaSalud: 'Centro médico Coronado (20 min)',
   },
@@ -515,7 +515,7 @@ const PROJECTS: ProjectData[] = [
     amenities: ['1.2 km playa privada', 'Surf club', '3 piscinas', 'Restaurante y beach bar', 'Senderos naturales', 'Gimnasio', 'Seguridad 24/7'],
     construction: 'Entrega inmediata', priceM2Min: 2810, priceM2Max: 3110,
     velocidadColocacion: '2–3 meses', perfilArrendatario: 'Familia segunda residencia, expat remoto — playa privada 1.2 km',
-    notaValorizacion: 'Única playa privada de 1.2 km en Playa Caracol. Cap rate 5.5–7.5%, vacancia 7–12%.',
+    notaValorizacion: 'Única playa privada de 1.2 km en Playa Caracol. Rentabilidad 5.5–7.5%, vacancia 7–12%.',
     fechaActualizacionMercado: '2026-06-27',
     zonaPlaya: 'Playa privada 1.2 km (frente al proyecto)', zonaSupermercados: 'Centro comercial Coronado (20 min)', zonaEntretenimiento: 'Surf club, beach bar, senderos naturales (en proyecto)', zonaSalud: 'Centro médico Coronado (20 min)',
   },
@@ -543,7 +543,7 @@ const PROJECTS: ProjectData[] = [
     amenities: ['Piscina con vista al mar', 'Zona de BBQ', 'Área social', 'Seguridad 24/7', 'Parque infantil'],
     construction: 'Entrega inmediata', priceM2Min: 2750, priceM2Max: 3875,
     velocidadColocacion: '2–3.5 meses', perfilArrendatario: 'Familia segunda residencia — precio accesible en zona playa',
-    notaValorizacion: 'Cap rate 5.8–8.0% con estrategia mixta. Vacancia 8–14% — mejorable con administración activa.',
+    notaValorizacion: 'Rentabilidad 5.8–8.0% con estrategia mixta. Vacancia 8–14% — mejorable con administración activa.',
     fechaActualizacionMercado: '2026-06-27',
     zonaPlaya: 'Playa Caracol (acceso comunitario)', zonaSupermercados: 'Centro comercial Coronado (20 min)', zonaEntretenimiento: 'Surf club, restaurantes de playa (10 min)', zonaSalud: 'Centro médico Coronado (20 min)',
   },
@@ -557,8 +557,8 @@ const PROJECTS: ProjectData[] = [
     appreciationDef: 4.0, appreciationNote: 'Frente al mar con componente aparthotel. Renta vacacional activa desde entrega inmediata. 4–5% anual.',
     amenities: ['Playa privada', 'Piscinas y jacuzzi', 'Restaurante y bar', 'Surf lounge', 'Gimnasio', 'Seguridad 24/7'],
     construction: 'Entrega inmediata', priceM2Min: 2930, priceM2Max: 3860,
-    velocidadColocacion: '2–3 meses', perfilArrendatario: 'Inversor mixto — estrategia mixta eleva cap rate al 9–12%',
-    notaValorizacion: 'Componente aparthotel potencia renta a corto plazo. Cap rate 5.5–7.5%, escalable con gestión activa.',
+    velocidadColocacion: '2–3 meses', perfilArrendatario: 'Inversor mixto — estrategia mixta eleva la rentabilidad al 9–12%',
+    notaValorizacion: 'Componente aparthotel potencia renta a corto plazo. Rentabilidad 5.5–7.5%, escalable con gestión activa.',
     fechaActualizacionMercado: '2026-06-27',
     zonaPlaya: 'Playa privada frente al proyecto', zonaSupermercados: 'Centro comercial Coronado (20 min)', zonaEntretenimiento: 'Surf lounge, beach bar, restaurante (en proyecto)', zonaSalud: 'Centro médico Coronado (20 min)',
   },
@@ -573,7 +573,7 @@ const PROJECTS: ProjectData[] = [
     amenities: ['Frente al océano Pacífico', 'Wellness spa', 'Piscina paisajística', 'Gimnasio exterior', 'Yoga deck', 'BBQ', 'Seguridad 24/7'],
     construction: 'En construcción (entrega Q1 2027)', priceM2Min: 3060, priceM2Max: 3980,
     velocidadColocacion: '2–3 meses', perfilArrendatario: 'Inversor mixto, familia wellness — estrategia mixta recomendada',
-    notaValorizacion: 'Diferencial wellness único en Playa Caracol. Cap rate 5.5–7.5%, escalable con estrategia mixta.',
+    notaValorizacion: 'Diferencial wellness único en Playa Caracol. Rentabilidad 5.5–7.5%, escalable con estrategia mixta.',
     fechaActualizacionMercado: '2026-06-27',
     zonaPlaya: 'Frente al océano Pacífico', zonaSupermercados: 'Centro comercial Coronado (20 min)', zonaEntretenimiento: 'Yoga deck, wellness spa, surf (en proyecto)', zonaSalud: 'Centro médico Coronado (20 min)',
   },
@@ -602,7 +602,7 @@ const INVESTOR_PROFILES = [
 ];
 
 // ── PROJECT IMAGES MAP ────────────────────────────────────────
-// Claves coinciden EXACTAMENTE con PROJECTS[].name (taxonomía oficial GLP)
+// Claves coinciden EXACTAMENTE con PROJECTS[].name (taxonomía oficial Capital Brokers)
 const PROJECT_IMAGES: Record<string, { main: string; gallery: string[] }> = {
   // Proyecto de Ciudad
   'Armonía': { main: 'https://glp.com.pa/wp-content/uploads/2026/05/armonia-1.webp', gallery: ['https://glp.com.pa/wp-content/uploads/2026/05/armonia-1.webp', 'https://glp.com.pa/wp-content/uploads/2025/07/apartamentos-de-lujo-en-panama-1.webp'] },
@@ -825,8 +825,8 @@ const DEFAULT_BRAND_PROFILE: GlpBrandProfile = {
     'Rebatir objeciones sin mencionarlas directamente',
   ],
   objeciones: [
-    '¿Es seguro llevar plata a otro país? → Panamá dolarizado, banca top-10 mundial, Ley de Exención Predial',
-    '¿Cómo lo manejo con la DIAN? → Activos en el exterior son legales y declarables; GLP asesora',
+    '¿Es seguro llevar plata a otro país? → Panamá dolarizado, banca top-10 mundial',
+    '¿Cómo lo manejo con la DIAN? → Activos en el exterior son legales y declarables; Capital Brokers asesora',
     '¿Y si el proyecto no se entrega? → Solo constructores con historial verificado y fiducia de garantía',
     '¿Puedo usarlo o es solo para arrendar? → Doble beneficio: uso propio + renta garantizada',
   ],
@@ -837,26 +837,25 @@ const DEFAULT_BRAND_PROFILE: GlpBrandProfile = {
     'Infografías de rentabilidad y comparativas de mercado',
   ],
   diferenciadores: [
-    'Exención predial por 20 años en todos los proyectos nuevos',
     'Rentabilidad neta superior al 8% anual en USD',
     'Panamá dolarizado — sin riesgo cambiario',
-    'GLP solo trabaja proyectos con fiducia de garantía',
+    'Capital Brokers solo trabaja proyectos con fiducia de garantía',
     'Asesoría integral: desde selección hasta declaración en Colombia',
   ],
   hashtags_instagram: [
-    '#GLP', '#PanamaRealEstate', '#InversionInmobiliaria', '#DolarizaTuPatrimonio',
-    '#PanamáInversión', '#WealthManagement', '#InversionEnDolares', '#GlpWealthManagement',
+    '#CapitalBrokers', '#PanamaRealEstate', '#InversionInmobiliaria', '#DolarizaTuPatrimonio',
+    '#PanamáInversión', '#RealEstate', '#InversionEnDolares', '#CapitalBrokersRealEstate',
     '#OceanReefPark', '#VentuPanama', '#PuntaPacifica', '#CostaDelEste',
     '#LibertadFinanciera', '#InvierteEnPanama', '#PatrimonioEnDolares',
   ],
   hashtags_linkedin: [
-    '#InversionInmobiliaria', '#WealthManagement', '#PanamaRealEstate', '#GLP',
+    '#InversionInmobiliaria', '#RealEstate', '#PanamaRealEstate', '#CapitalBrokers',
     '#PatrimonioDolarizado', '#RealEstatePanama', '#InversionInternacional',
     '#FinanzasPersonales', '#Inmobiliaria', '#InversionInteligente',
   ],
   hashtags_whatsapp: [],
   cta_principal: 'Escríbenos PANAMÁ al DM y te enviamos el análisis completo de rentabilidad',
-  propuesta_valor: 'GLP Wealth Management conecta a inversionistas colombianos con los mejores proyectos inmobiliarios de Panamá: rentabilidad en dólares, exención predial por 20 años y acompañamiento integral desde la compra hasta la declaración tributaria en Colombia.',
+  propuesta_valor: 'Capital Brokers - Real Estate conecta a inversionistas colombianos con los mejores proyectos inmobiliarios de Panamá: rentabilidad en dólares y acompañamiento integral desde la compra hasta la declaración tributaria en Colombia.',
   notas_adicionales: '',
 };
 
@@ -1004,9 +1003,9 @@ const generateSampleProspects = (): Prospect[] => {
         { fecha: '2026-07-05', accion: 'Negociación', detalle: 'Segunda ronda — solicita certificado de exención predial 20 años y carta del banco hipotecario.' },
       ],
       emailHistory: [
-        { id: 'e1a', date: '2026-05-12', subject: 'Cotización Surfside — Tower A, Piso 18', body: 'Estimado Carlos,\n\nAdjunto la cotización detallada de la unidad 18-A en Surfside, Hallandale Beach. Precio: USD 430,000. Incluye análisis de ROI proyectado al 7.2% anual y comparativo de rentas en la zona.\n\nQuedo atento a sus comentarios.\n\nSara · GLP Wealth Management', status: 'sent', direction: 'out' },
+        { id: 'e1a', date: '2026-05-12', subject: 'Cotización Surfside — Tower A, Piso 18', body: 'Estimado Carlos,\n\nAdjunto la cotización detallada de la unidad 18-A en Surfside, Hallandale Beach. Precio: USD 430,000. Incluye análisis de ROI proyectado al 7.2% anual y comparativo de rentas en la zona.\n\nQuedo atento a sus comentarios.\n\nSara · Capital Brokers - Real Estate', status: 'sent', direction: 'out' },
         { id: 'e1b', date: '2026-05-15', subject: 'Re: Cotización Surfside — preguntas adicionales', body: 'Sara, gracias por la información. Tengo algunas preguntas sobre el esquema fiscal para colombianos con activos en Miami. ¿Cómo manejan el reporte ante la DIAN?\n\nCarlos G.', status: 'incoming', direction: 'in' },
-        { id: 'e1c', date: '2026-06-03', subject: 'Plan de pagos personalizado — Surfside 18-A', body: 'Carlos,\n\nComo acordamos, aquí el plan de pagos estructurado:\n• Cuota inicial 30%: USD 129,000 (3 instalamentos)\n• Crédito hipotecario 70%: USD 301,000 — tasa estimada 6.8%\n\nEl equipo legal puede acompañarte en la declaración ante DIAN.\n\nSara · GLP Wealth Management', status: 'draft', direction: 'out' },
+        { id: 'e1c', date: '2026-06-03', subject: 'Plan de pagos personalizado — Surfside 18-A', body: 'Carlos,\n\nComo acordamos, aquí el plan de pagos estructurado:\n• Cuota inicial 30%: USD 129,000 (3 instalamentos)\n• Crédito hipotecario 70%: USD 301,000 — tasa estimada 6.8%\n\nEl equipo legal puede acompañarte en la declaración ante DIAN.\n\nSara · Capital Brokers - Real Estate', status: 'draft', direction: 'out' },
       ],
     },
     {
@@ -1015,15 +1014,15 @@ const generateSampleProspects = (): Prospect[] => {
       ocupacion: 'Médica Especialista', proyectos_interes: ['The Palms', 'Bosco di Santa María'],
       forma_contacto: 'Evento', broker_asignado: 'Santiago Mesa', estado: 'Presentación',
       presupuesto_usd: 320000, fecha_entrada: '2026-05-08', fecha_ultima_actividad: '2026-07-14',
-      notas: 'Conoció GLP en evento de medicina privada en Bogotá. Perfil LEGADO — quiere asegurar patrimonio para sus hijos. Muy interesada en The Palms.',
+      notas: 'Conoció Capital Brokers en evento de medicina privada en Bogotá. Perfil LEGADO — quiere asegurar patrimonio para sus hijos. Muy interesada en The Palms.',
       historial: [
-        { fecha: '2026-05-08', accion: 'Contacto Inicial', detalle: 'Registrada en evento GLP × Clínica del Country. Primera impresión muy positiva.' },
+        { fecha: '2026-05-08', accion: 'Contacto Inicial', detalle: 'Registrada en evento Capital Brokers × Clínica del Country. Primera impresión muy positiva.' },
         { fecha: '2026-05-20', accion: 'Calificación', detalle: 'Video call con Santiago. Confirma presupuesto USD 320K. Interés en unidades para arriendo turístico.' },
         { fecha: '2026-06-15', accion: 'Presentación', detalle: 'Presentación virtual de The Palms y Bosco di Santa María. Solicitó información sobre trust para trasmitir a hijos.' },
       ],
       emailHistory: [
-        { id: 'e2a', date: '2026-05-22', subject: 'Bienvenida a GLP — Información exclusiva The Palms', body: 'Estimada María Isabel,\n\nFue un placer conocerla en el evento. Le comparto el brochure exclusivo de The Palms, con rendimientos proyectados del programa de arriendo turístico administrado por GLP.\n\nSara · GLP Wealth Management', status: 'sent', direction: 'out' },
-        { id: 'e2b', date: '2026-06-20', subject: '¿Cuándo podemos avanzar?', body: 'María Isabel, ¿tuvo oportunidad de revisar la información de The Palms? Nos gustaría agendar una llamada con nuestro equipo legal para hablar del esquema de trust patrimonial.\n\nSara · GLP Wealth Management', status: 'draft', direction: 'out' },
+        { id: 'e2a', date: '2026-05-22', subject: 'Bienvenida a Capital Brokers — Información exclusiva The Palms', body: 'Estimada María Isabel,\n\nFue un placer conocerla en el evento. Le comparto el brochure exclusivo de The Palms, con rendimientos proyectados del programa de arriendo turístico administrado por Capital Brokers.\n\nSara · Capital Brokers - Real Estate', status: 'sent', direction: 'out' },
+        { id: 'e2b', date: '2026-06-20', subject: '¿Cuándo podemos avanzar?', body: 'María Isabel, ¿tuvo oportunidad de revisar la información de The Palms? Nos gustaría agendar una llamada con nuestro equipo legal para hablar del esquema de trust patrimonial.\n\nSara · Capital Brokers - Real Estate', status: 'draft', direction: 'out' },
       ],
     },
     {
@@ -1038,7 +1037,7 @@ const generateSampleProspects = (): Prospect[] => {
         { fecha: '2026-06-10', accion: 'Calificación', detalle: 'Llamada con Valentina. Presupuesto USD 250K. Visita a Panamá en septiembre como primera inversión internacional.' },
       ],
       emailHistory: [
-        { id: 'e3a', date: '2026-06-02', subject: 'Gracias por su interés en GLP — Proyectos Panamá', body: 'Andrés Felipe,\n\nGracias por contactarnos. Le adjunto los proyectos disponibles en Panamá con retornos entre 7-9% anual en dólares.\n\nSara · GLP Wealth Management', status: 'sent', direction: 'out' },
+        { id: 'e3a', date: '2026-06-02', subject: 'Gracias por su interés en Capital Brokers — Proyectos Panamá', body: 'Andrés Felipe,\n\nGracias por contactarnos. Le adjunto los proyectos disponibles en Panamá con retornos entre 7-9% anual en dólares.\n\nSara · Capital Brokers - Real Estate', status: 'sent', direction: 'out' },
       ],
     },
     {
@@ -1047,7 +1046,7 @@ const generateSampleProspects = (): Prospect[] => {
       ocupacion: 'Directora Financiera', proyectos_interes: ['Ocean Reef Park'],
       forma_contacto: 'Instagram', broker_asignado: 'Andrés Morales', estado: 'Contacto Inicial',
       presupuesto_usd: 180000, fecha_entrada: '2026-07-01', fecha_ultima_actividad: '2026-07-16',
-      notas: 'Lead Instagram. Primera vez que considera inversión en el exterior. Perfil ASPIRACIONAL — reaccionó a video de lifestyle en GLP.',
+      notas: 'Lead Instagram. Primera vez que considera inversión en el exterior. Perfil ASPIRACIONAL — reaccionó a video de lifestyle en Capital Brokers.',
       historial: [
         { fecha: '2026-07-01', accion: 'Contacto Inicial', detalle: 'DM en Instagram preguntando por precios en Ocean Reef Park. Respondida en menos de 1 hora.' },
       ],
@@ -1069,8 +1068,8 @@ const generateSampleProspects = (): Prospect[] => {
         { fecha: '2026-07-01', accion: 'Cierre', detalle: 'Revisión documental en proceso. Certificado de exención predial recibido.' },
       ],
       emailHistory: [
-        { id: 'e5a', date: '2026-04-05', subject: 'Propuesta formal — Surfside Penthouse 28A', body: 'Roberto,\n\nAdjunto la propuesta formal del Penthouse 28A: USD 720,000 con estructura de pago acordada. Incluye memoria descriptiva completa y certificados de amenidades exclusivas.\n\nSara · GLP Wealth Management', status: 'sent', direction: 'out' },
-        { id: 'e5b', date: '2026-05-30', subject: 'Confirmación de separación — Siguiente paso escritura', body: 'Roberto,\n\nConfirmamos recepción de la separación de USD 50,000. El equipo legal está coordinando la revisión notarial en Miami para Q3 2026. Le mantendremos informado.\n\nSara · GLP Wealth Management', status: 'sent', direction: 'out' },
+        { id: 'e5a', date: '2026-04-05', subject: 'Propuesta formal — Surfside Penthouse 28A', body: 'Roberto,\n\nAdjunto la propuesta formal del Penthouse 28A: USD 720,000 con estructura de pago acordada. Incluye memoria descriptiva completa y certificados de amenidades exclusivas.\n\nSara · Capital Brokers - Real Estate', status: 'sent', direction: 'out' },
+        { id: 'e5b', date: '2026-05-30', subject: 'Confirmación de separación — Siguiente paso escritura', body: 'Roberto,\n\nConfirmamos recepción de la separación de USD 50,000. El equipo legal está coordinando la revisión notarial en Miami para Q3 2026. Le mantendremos informado.\n\nSara · Capital Brokers - Real Estate', status: 'sent', direction: 'out' },
       ],
     },
     {
@@ -1089,8 +1088,8 @@ const generateSampleProspects = (): Prospect[] => {
         { fecha: '2026-03-01', accion: 'Post-venta', detalle: 'En seguimiento. Solicita actualizaciones quincenales del avance de obra.' },
       ],
       emailHistory: [
-        { id: 'e6a', date: '2026-03-10', subject: 'Actualización de obra — Panamá Viejo Residences', body: 'Diana,\n\nAvance de obra al 35%. Estructura de los pisos 1-8 completada. Estimado de entrega: Q2 2027. Adjunto reporte fotográfico.\n\nSara · GLP Wealth Management', status: 'sent', direction: 'out' },
-        { id: 'e6b', date: '2026-06-01', subject: 'Avance Q2 — Piso 12 en estructuración', body: 'Diana,\n\nEl piso 12 está en proceso de estructuración. Avance total del proyecto: 58%. Entrega estimada se mantiene Q2 2027. Su unidad 12B tiene vista confirmada al Casco Antiguo.\n\nSara · GLP Wealth Management', status: 'sent', direction: 'out' },
+        { id: 'e6a', date: '2026-03-10', subject: 'Actualización de obra — Panamá Viejo Residences', body: 'Diana,\n\nAvance de obra al 35%. Estructura de los pisos 1-8 completada. Estimado de entrega: Q2 2027. Adjunto reporte fotográfico.\n\nSara · Capital Brokers - Real Estate', status: 'sent', direction: 'out' },
+        { id: 'e6b', date: '2026-06-01', subject: 'Avance Q2 — Piso 12 en estructuración', body: 'Diana,\n\nEl piso 12 está en proceso de estructuración. Avance total del proyecto: 58%. Entrega estimada se mantiene Q2 2027. Su unidad 12B tiene vista confirmada al Casco Antiguo.\n\nSara · Capital Brokers - Real Estate', status: 'sent', direction: 'out' },
         { id: 'e6c', date: '2026-07-10', subject: 'Consulta sobre próxima cuota de administración', body: 'Sara, ¿cuándo inicia el cobro de cuota de administración del edificio? Necesito incluirlo en mi planificación fiscal.\n\nDiana H.', status: 'incoming', direction: 'in' },
       ],
     },
@@ -1105,11 +1104,11 @@ const generateSampleProspects = (): Prospect[] => {
         { fecha: '2026-03-20', accion: 'Contacto Inicial', detalle: 'Conectó vía LinkedIn con Rodrigo. Interés en portafolio diversificado.' },
         { fecha: '2026-04-05', accion: 'Calificación', detalle: 'Video call. Presupuesto USD 580K distribuido en 2 unidades. Holding familiar como vehículo de compra.' },
         { fecha: '2026-05-01', accion: 'Presentación', detalle: 'Presentación estructurada: Oceana Skyhome + unidad en The Palms. ROI combinado estimado 8.1% anual.' },
-        { fecha: '2026-06-10', accion: 'Negociación', detalle: 'Solicita descuento por compra de dos unidades. Oferta de GLP: 2.5% descuento en segunda unidad.' },
+        { fecha: '2026-06-10', accion: 'Negociación', detalle: 'Solicita descuento por compra de dos unidades. Oferta de Capital Brokers: 2.5% descuento en segunda unidad.' },
       ],
       emailHistory: [
-        { id: 'e7a', date: '2026-05-05', subject: 'Portafolio dual: Oceana + The Palms — Análisis financiero', body: 'Mauricio,\n\nAdjunto el análisis de inversión para las dos unidades: Oceana Skyhome (USD 320K) + The Palms Apt 8C (USD 260K). ROI combinado proyectado: 8.1% anual. Beneficio de descuento disponible para compra simultánea.\n\nSara · GLP Wealth Management', status: 'sent', direction: 'out' },
-        { id: 'e7b', date: '2026-06-15', subject: 'Propuesta de descuento — compra simultánea', body: 'Mauricio,\n\nComo acordamos, GLP ofrece 2.5% de descuento en la segunda unidad por compra simultánea: ahorro de USD 6,500. La oferta es válida hasta el 31 de julio.\n\nSara · GLP Wealth Management', status: 'draft', direction: 'out' },
+        { id: 'e7a', date: '2026-05-05', subject: 'Portafolio dual: Oceana + The Palms — Análisis financiero', body: 'Mauricio,\n\nAdjunto el análisis de inversión para las dos unidades: Oceana Skyhome (USD 320K) + The Palms Apt 8C (USD 260K). ROI combinado proyectado: 8.1% anual. Beneficio de descuento disponible para compra simultánea.\n\nSara · Capital Brokers - Real Estate', status: 'sent', direction: 'out' },
+        { id: 'e7b', date: '2026-06-15', subject: 'Propuesta de descuento — compra simultánea', body: 'Mauricio,\n\nComo acordamos, Capital Brokers ofrece 2.5% de descuento en la segunda unidad por compra simultánea: ahorro de USD 6,500. La oferta es válida hasta el 31 de julio.\n\nSara · Capital Brokers - Real Estate', status: 'draft', direction: 'out' },
       ],
     },
     {
@@ -1137,7 +1136,7 @@ const generateSampleProspects = (): Prospect[] => {
         { fecha: '2026-07-02', accion: 'Presentación', detalle: 'Presentación de Ventu y Ocean Front. Recibió modelo de flujo de caja a 5 años.' },
       ],
       emailHistory: [
-        { id: 'e9a', date: '2026-06-10', subject: 'Modelo de flujo de caja — Ventu Resort', body: 'Felipe,\n\nAdjunto el modelo financiero de Ventu: precio USD 185,000, tasa de ocupación histórica 74%, ingreso bruto anual estimado USD 18,200. Retorno neto proyectado 8.3% anual después de gastos de administración.\n\nSara · GLP Wealth Management', status: 'sent', direction: 'out' },
+        { id: 'e9a', date: '2026-06-10', subject: 'Modelo de flujo de caja — Ventu Resort', body: 'Felipe,\n\nAdjunto el modelo financiero de Ventu: precio USD 185,000, tasa de ocupación histórica 74%, ingreso bruto anual estimado USD 18,200. Retorno neto proyectado 8.3% anual después de gastos de administración.\n\nSara · Capital Brokers - Real Estate', status: 'sent', direction: 'out' },
       ],
     },
     {
@@ -1148,11 +1147,11 @@ const generateSampleProspects = (): Prospect[] => {
       presupuesto_usd: 280000, fecha_entrada: '2026-06-20', fecha_ultima_actividad: '2026-07-13',
       notas: 'Contacto en evento Asobancaria. Gerente de empresa familiar. Busca segunda residencia en Playa Caracol. Perfil ESTATUS.',
       historial: [
-        { fecha: '2026-06-20', accion: 'Contacto Inicial', detalle: 'Evento Asobancaria — stand GLP. Intercambio de tarjetas con Valentina.' },
+        { fecha: '2026-06-20', accion: 'Contacto Inicial', detalle: 'Evento Asobancaria — stand Capital Brokers. Intercambio de tarjetas con Valentina.' },
         { fecha: '2026-07-03', accion: 'Calificación', detalle: 'Video call. Busca unidad con acceso directo a playa para uso familiar y arriendo en temporadas.' },
       ],
       emailHistory: [
-        { id: 'e10a', date: '2026-06-25', subject: 'Proyectos Playa Caracol — Exclusiva GLP', body: 'Catalina,\n\nFue un placer conocerla en Asobancaria. Le comparto los dos proyectos disponibles en Playa Caracol con acceso directo a la playa.\n\nSara · GLP Wealth Management', status: 'sent', direction: 'out' },
+        { id: 'e10a', date: '2026-06-25', subject: 'Proyectos Playa Caracol — Exclusiva Capital Brokers', body: 'Catalina,\n\nFue un placer conocerla en Asobancaria. Le comparto los dos proyectos disponibles en Playa Caracol con acceso directo a la playa.\n\nSara · Capital Brokers - Real Estate', status: 'sent', direction: 'out' },
       ],
     },
     {
@@ -1175,14 +1174,14 @@ const generateSampleProspects = (): Prospect[] => {
       presupuesto_usd: 220000, fecha_entrada: '2026-04-02', fecha_ultima_actividad: '2026-07-07',
       notas: 'Economista con maestría en inversiones. Analiza muy bien los números. Tiene fondos en cuenta en Panamá. Perfil RACIONAL — pidió informe de riesgos del mercado inmobiliario panameño.',
       historial: [
-        { fecha: '2026-04-02', accion: 'Contacto Inicial', detalle: 'LinkedIn — artículo sobre inversión en Panamá la llevó al perfil de GLP.' },
+        { fecha: '2026-04-02', accion: 'Contacto Inicial', detalle: 'LinkedIn — artículo sobre inversión en Panamá la llevó al perfil de Capital Brokers.' },
         { fecha: '2026-04-15', accion: 'Calificación', detalle: 'Economista con fondos disponibles en Panamá. Presupuesto USD 220K.' },
         { fecha: '2026-05-05', accion: 'Presentación', detalle: 'Comparativo Playa Dorada vs Bayside Resort. Solicitó estudio de mercado 2025-2030.' },
         { fecha: '2026-06-20', accion: 'Negociación', detalle: 'Recibió informe de riesgos y proyección de valorización. Evalúa opciones de financiamiento local.' },
       ],
       emailHistory: [
-        { id: 'e12a', date: '2026-05-10', subject: 'Estudio de mercado inmobiliario Panamá 2025–2030', body: 'Natalia,\n\nAdjunto el estudio de mercado elaborado por nuestro equipo de análisis. Proyección de valorización Playa Dorada: +42% en 5 años. Bayside Resort: +38% con programa de arriendo activo.\n\nSara · GLP Wealth Management', status: 'sent', direction: 'out' },
-        { id: 'e12b', date: '2026-06-25', subject: 'Opciones de financiamiento en Panamá', body: 'Natalia,\n\nIdentificamos 3 bancos en Panamá con líneas para extranjeros a tasas de 5.9-6.5%. Podemos acompañar el proceso de precalificación. ¿Tiene disponibilidad esta semana?\n\nSara · GLP Wealth Management', status: 'draft', direction: 'out' },
+        { id: 'e12a', date: '2026-05-10', subject: 'Estudio de mercado inmobiliario Panamá 2025–2030', body: 'Natalia,\n\nAdjunto el estudio de mercado elaborado por nuestro equipo de análisis. Proyección de valorización Playa Dorada: +42% en 5 años. Bayside Resort: +38% con programa de arriendo activo.\n\nSara · Capital Brokers - Real Estate', status: 'sent', direction: 'out' },
+        { id: 'e12b', date: '2026-06-25', subject: 'Opciones de financiamiento en Panamá', body: 'Natalia,\n\nIdentificamos 3 bancos en Panamá con líneas para extranjeros a tasas de 5.9-6.5%. Podemos acompañar el proceso de precalificación. ¿Tiene disponibilidad esta semana?\n\nSara · Capital Brokers - Real Estate', status: 'draft', direction: 'out' },
       ],
     },
   ];
@@ -1271,7 +1270,7 @@ type EventData = {
 };
 
 const INITIAL_EVENTS: EventData[] = [
-  { id: 1, categoria: 'comercial', titulo: 'GLP Investment Evening #1', venue: 'Club El Nogal, Bogotá', fecha: '2026-05-10', proyectos_presentados: ['Ocean Reef Park', 'The Palms', 'Panamáa Viejo Residences', 'The Tides – Playa Caracol'], asistentes: ['Carlos Gutiérrez', 'María Isabel Rodríguez', 'Andrés Felipe Martínez'], prospect_ids: [], proyectos_interes: ['Ocean Reef Park', 'The Palms', 'Panamáa Viejo Residences'], presupuesto_asignado: 15000, presupuesto_ejecutado: 12800, items_costo: [{ concepto: 'Salón y montaje', valor: 4500 }, { concepto: 'Catering premium (60 pax)', valor: 3600 }, { concepto: 'Audiovisual y pantallas', valor: 1800 }, { concepto: 'Material impreso y brochures', valor: 1200 }, { concepto: 'Vinos y bebidas premium', valor: 1200 }, { concepto: 'Fotografía y video', valor: 500 }] },
+  { id: 1, categoria: 'comercial', titulo: 'Capital Brokers Investment Evening #1', venue: 'Club El Nogal, Bogotá', fecha: '2026-05-10', proyectos_presentados: ['Ocean Reef Park', 'The Palms', 'Panamáa Viejo Residences', 'The Tides – Playa Caracol'], asistentes: ['Carlos Gutiérrez', 'María Isabel Rodríguez', 'Andrés Felipe Martínez'], prospect_ids: [], proyectos_interes: ['Ocean Reef Park', 'The Palms', 'Panamáa Viejo Residences'], presupuesto_asignado: 15000, presupuesto_ejecutado: 12800, items_costo: [{ concepto: 'Salón y montaje', valor: 4500 }, { concepto: 'Catering premium (60 pax)', valor: 3600 }, { concepto: 'Audiovisual y pantallas', valor: 1800 }, { concepto: 'Material impreso y brochures', valor: 1200 }, { concepto: 'Vinos y bebidas premium', valor: 1200 }, { concepto: 'Fotografía y video', valor: 500 }] },
   { id: 2, categoria: 'comercial', titulo: 'Seminario Inversión Dolarizada', venue: 'Hotel JW Marriott Bogotá', fecha: '2026-07-15', proyectos_presentados: ['Oceana Residences & Skyhomes', 'Bosco di Santa María', 'Ipanema Panamá', 'Surfside'], asistentes: ['Laura Sánchez', 'Roberto Castaño'], prospect_ids: [], proyectos_interes: ['Oceana Residences & Skyhomes', 'Surfside'], presupuesto_asignado: 20000, presupuesto_ejecutado: 8500, items_costo: [{ concepto: 'Salón conferencias (100 pax)', valor: 5500 }, { concepto: 'Coffee break y almuerzo', valor: 4200 }, { concepto: 'Speaker internacional (viáticos)', valor: 3500 }, { concepto: 'Material técnico impreso', valor: 1500 }, { concepto: 'Publicidad digital pre-evento', valor: 2800 }, { concepto: 'Señalización y decoración', valor: 1000 }, { concepto: 'Registro y tecnología', valor: 1500 }] },
 ];
 
@@ -1292,34 +1291,33 @@ const INITIAL_FAQS: FAQ[] = [
   { id: 8, categoria: 'Estabilidad Macroeconómica', pregunta: '¿Panamá es un hub logístico relevante a nivel mundial?', respuesta: 'Panamá es el hub logístico más importante de las Américas. Además del Canal, cuenta con la Zona Libre de Colón (la segunda zona franca más grande del mundo), el Hub de las Américas (aeropuerto de Tocumen como centro de conexiones), y uno de los puertos de contenedores más activos de Latinoamérica. Esta infraestructura genera demanda permanente de vivienda para ejecutivos internacionales y trabajadores del sector.' },
 
   // Financiero y Retornos
-  { id: 9, categoria: 'Financiero y Retornos', pregunta: '¿Qué rentabilidad puedo esperar de una inversión inmobiliaria en Panamá?', respuesta: 'Las rentabilidades brutas del portafolio GLP oscilan entre 5% y 8.5% anual en USD, dependiendo del proyecto y tipo de inversión. Los proyectos urbanos como Panamáa Viejo Residences ofrecen cap rates de 6.5-8%, mientras que los premium como Ocean Reef Park ofrecen 5-6.5% compensados por mayor plusvalía. Comparado con un CDT en Colombia al 10.5% en COP, la inversión en Panamá ofrece estabilidad en dólares sin riesgo de devaluación.' },
-  { id: 10, categoria: 'Financiero y Retornos', pregunta: '¿Cuál es el ticket mínimo de inversión?', respuesta: 'El portafolio GLP tiene opciones desde USD 120,000 (Panamáa Viejo Residences) hasta USD 1,500,000+ (Ocean Reef Park). La mayoría de proyectos permiten cuotas iniciales desde el 30%, con financiamiento bancario panameño para el saldo. Para un inversionista colombiano promedio de alto patrimonio, el ticket de entrada más común está entre USD 180,000 y USD 350,000 con una cuota inicial del 50%.' },
+  { id: 9, categoria: 'Financiero y Retornos', pregunta: '¿Qué rentabilidad puedo esperar de una inversión inmobiliaria en Panamá?', respuesta: 'Las rentabilidades brutas del portafolio Capital Brokers oscilan entre 5% y 8.5% anual en USD, dependiendo del proyecto y tipo de inversión. Los proyectos urbanos como Panamá Viejo Residences ofrecen rentabilidades netas de 6.5-8%, mientras que los premium como Ocean Reef Park ofrecen 5-6.5% compensados por mayor plusvalía. Comparado con un CDT en Colombia al 10.5% en COP, la inversión en Panamá ofrece estabilidad en dólares sin riesgo de devaluación.' },
+  { id: 10, categoria: 'Financiero y Retornos', pregunta: '¿Cuál es el ticket mínimo de inversión?', respuesta: 'El portafolio Capital Brokers tiene opciones desde USD 120,000 (Panamáa Viejo Residences) hasta USD 1,500,000+ (Ocean Reef Park). La mayoría de proyectos permiten cuotas iniciales desde el 30%, con financiamiento bancario panameño para el saldo. Para un inversionista colombiano promedio de alto patrimonio, el ticket de entrada más común está entre USD 180,000 y USD 350,000 con una cuota inicial del 50%.' },
   { id: 11, categoria: 'Financiero y Retornos', pregunta: '¿Cómo funciona el financiamiento bancario en Panamá?', respuesta: 'Los bancos panameños financian extranjeros hasta el 70% del valor del inmueble. La tasa base es aproximadamente 7.5% anual, más una sobretasa de 1% para extranjeros, resultando en ~8.5% efectivo. Los plazos van de 5 a 30 años con amortización francesa. Se requiere: pasaporte vigente, estados financieros de 2 años, carta laboral o certificación de ingresos, y referencia bancaria. El proceso toma aproximadamente 30-45 días.' },
-  { id: 12, categoria: 'Financiero y Retornos', pregunta: '¿Qué gastos operativos tiene una propiedad en Panamá?', respuesta: 'Los gastos operativos típicos incluyen: fee de property management (USD 150/mes con GLP), administración delegada (10% de la renta bruta), condominio (varía por proyecto, USD 170-700/mes), seguro anual (~USD 1,200), y mantenimiento (1% del valor del activo anual). El impuesto predial está exonerado por 20 años en proyectos nuevos. No hay impuesto patrimonial ni impuesto a ganancias de capital para personas naturales no residentes.' },
-  { id: 13, categoria: 'Financiero y Retornos', pregunta: '¿Qué es la exención predial de 20 años?', respuesta: 'Panamá ofrece una exención total del impuesto de inmuebles (predial) durante 20 años para proyectos de construcción nueva. Esto aplica a todos los proyectos del portafolio GLP. En comparación, en Colombia el predial puede representar entre 0.3% y 1.2% del valor catastral anualmente. Esta exención mejora significativamente el NOI (Net Operating Income) y el cap rate neto del inversionista durante dos décadas completas.' },
-  { id: 14, categoria: 'Financiero y Retornos', pregunta: '¿Cuál es la valorización esperada de los proyectos GLP?', respuesta: 'La valorización promedio del portafolio GLP oscila entre 3% y 5.5% anual en USD. Los proyectos urbanos como Panamáa Viejo muestran 3-4% anual estable, mientras que los premium como Ocean Reef Islands han documentado 6-8% anual por la escasez absoluta de producto comparable. La zona de Playa Caracol muestra 4-6% anual para proyectos nuevos. Estas cifras se comparan favorablemente con la inflación del dólar (2-3% anual).' },
-  { id: 15, categoria: 'Financiero y Retornos', pregunta: '¿Puedo generar ingresos por Airbnb en Panamá?', respuesta: 'Sí. El proyecto Ventu de GLP está específicamente diseñado para rentas cortas tipo Airbnb/Booking.com, con cap rates estimados de 8-12% anual. Incluye administración hotelera delegada con check-in automático. Las tarifas promedio en Ciudad de Panamá son USD 120-180 por noche. La temporada alta (diciembre-abril) puede elevar las tarifas un 30-50%. Se estima una vacancia del 20% anual promedio en el modelo de rentas cortas.' },
-  { id: 16, categoria: 'Financiero y Retornos', pregunta: '¿Cómo se compara invertir en Panamá versus invertir en un CDT colombiano?', respuesta: 'Un CDT colombiano ofrece ~10.5% nominal en COP, pero al ajustar por devaluación del peso (históricamente 5-8% anual contra el USD) y retención en la fuente, el retorno real en dólares puede ser negativo. Una inversión GLP genera 5-8% en USD puro más valorización de 3-5.5% anual, sin riesgo cambiario. A 10 años, la inversión en Panamá genera patrimonio en moneda dura con diversificación geográfica.' },
+  { id: 12, categoria: 'Financiero y Retornos', pregunta: '¿Qué gastos operativos tiene una propiedad en Panamá?', respuesta: 'Los gastos operativos típicos incluyen: fee de property management (USD 150/mes con Capital Brokers), administración delegada (10% de la renta bruta), condominio (varía por proyecto, USD 170-700/mes), seguro anual (~USD 1,200), mantenimiento (1% del valor del activo anual), y el impuesto predial correspondiente (ver detalle en la calculadora financiera). No hay impuesto patrimonial ni impuesto a ganancias de capital para personas naturales no residentes.' },
+  { id: 14, categoria: 'Financiero y Retornos', pregunta: '¿Cuál es la valorización esperada de los proyectos Capital Brokers?', respuesta: 'La valorización promedio del portafolio Capital Brokers oscila entre 3% y 5.5% anual en USD. Los proyectos urbanos como Panamáa Viejo muestran 3-4% anual estable, mientras que los premium como Ocean Reef Islands han documentado 6-8% anual por la escasez absoluta de producto comparable. La zona de Playa Caracol muestra 4-6% anual para proyectos nuevos. Estas cifras se comparan favorablemente con la inflación del dólar (2-3% anual).' },
+  { id: 15, categoria: 'Financiero y Retornos', pregunta: '¿Puedo generar ingresos por Airbnb en Panamá?', respuesta: 'Sí. El proyecto Ventu de Capital Brokers está específicamente diseñado para rentas cortas tipo Airbnb/Booking.com, con rentabilidades netas estimadas de 8-12% anual. Incluye administración hotelera delegada con check-in automático. Las tarifas promedio en Ciudad de Panamá son USD 120-180 por noche. La temporada alta (diciembre-abril) puede elevar las tarifas un 30-50%. Se estima una vacancia del 20% anual promedio en el modelo de rentas cortas.' },
+  { id: 16, categoria: 'Financiero y Retornos', pregunta: '¿Cómo se compara invertir en Panamá versus invertir en un CDT colombiano?', respuesta: 'Un CDT colombiano ofrece ~10.5% nominal en COP, pero al ajustar por devaluación del peso (históricamente 5-8% anual contra el USD) y retención en la fuente, el retorno real en dólares puede ser negativo. Una inversión Capital Brokers genera 5-8% en USD puro más valorización de 3-5.5% anual, sin riesgo cambiario. A 10 años, la inversión en Panamá genera patrimonio en moneda dura con diversificación geográfica.' },
 
   // Fiscal
-  { id: 17, categoria: 'Fiscal', pregunta: '¿Debo declarar mi inversión en Panamá ante la DIAN?', respuesta: 'Sí. Todo residente fiscal colombiano debe declarar activos en el exterior superiores a 3,580 UVT (aproximadamente COP 170 millones en 2026). Esto incluye inmuebles en Panamá. La declaración se realiza en el Formulario 160 (Declaración de Activos en el Exterior) y en la declaración de renta anual. Colombia Law Group acompaña a cada inversionista GLP en este proceso para garantizar cumplimiento total con la DIAN.' },
+  { id: 17, categoria: 'Fiscal', pregunta: '¿Debo declarar mi inversión en Panamá ante la DIAN?', respuesta: 'Sí. Todo residente fiscal colombiano debe declarar activos en el exterior superiores a 3,580 UVT (aproximadamente COP 170 millones en 2026). Esto incluye inmuebles en Panamá. La declaración se realiza en el Formulario 160 (Declaración de Activos en el Exterior) y en la declaración de renta anual. Colombia Law Group acompaña a cada inversionista Capital Brokers en este proceso para garantizar cumplimiento total con la DIAN.' },
   { id: 18, categoria: 'Fiscal', pregunta: '¿Hay doble tributación entre Colombia y Panamá?', respuesta: 'Colombia y Panamá NO tienen un Convenio para Evitar la Doble Imposición (CDI) vigente. Sin embargo, Panamá opera bajo un sistema territorial: solo grava ingresos generados dentro de su territorio. Esto significa que las rentas de alquiler en Panamá se gravan localmente (0% para personas naturales no residentes en la mayoría de casos), y en Colombia se declaran como rentas de fuente extranjera con crédito tributario si aplica.' },
   { id: 19, categoria: 'Fiscal', pregunta: '¿Cómo transfiero mis dólares legalmente a Panamá?', respuesta: 'La transferencia se realiza a través del mercado cambiario formal colombiano. Se debe diligenciar la Declaración de Cambio (Formulario 4) ante el intermediario del mercado cambiario (banco). Para montos superiores a USD 10,000, se requiere registro ante el Banco de la República. La Resolución DIAN 204/2025 establece los lineamientos actualizados. Colombia Law Group gestiona todo el proceso documental con el inversionista para que sea fluido y sin fricciones bancarias.' },
   { id: 20, categoria: 'Fiscal', pregunta: '¿Panamá cobra impuesto a las ganancias de capital?', respuesta: 'Para la venta de inmuebles, Panamá aplica un impuesto del 2% sobre el valor de venta (no sobre la ganancia). Alternativamente, el vendedor puede optar por tributar al 10% sobre la ganancia neta si le resulta más favorable. No existe impuesto patrimonial ni impuesto a la herencia en Panamá. La estructura a través de una Sociedad Anónima panameña o Fundación de Interés Privado puede optimizar aún más la carga fiscal y facilitar la sucesión.' },
-  { id: 21, categoria: 'Fiscal', pregunta: '¿Qué estructura jurídica recomienda GLP para la inversión?', respuesta: 'GLP, en conjunto con Colombia Law Group, recomienda evaluar tres estructuras: (1) Persona natural directa — más simple, ideal para primer ticket; (2) Sociedad Anónima panameña — facilita sucesión y permite privacidad; (3) Fundación de Interés Privado — óptima para planificación patrimonial y sucesoral de familias HNWI. La elección depende del patrimonio total, los objetivos sucesorales y la situación tributaria específica del inversionista.' },
+  { id: 21, categoria: 'Fiscal', pregunta: '¿Qué estructura jurídica recomienda Capital Brokers para la inversión?', respuesta: 'Capital Brokers, en conjunto con Colombia Law Group, recomienda evaluar tres estructuras: (1) Persona natural directa — más simple, ideal para primer ticket; (2) Sociedad Anónima panameña — facilita sucesión y permite privacidad; (3) Fundación de Interés Privado — óptima para planificación patrimonial y sucesoral de familias HNWI. La elección depende del patrimonio total, los objetivos sucesorales y la situación tributaria específica del inversionista.' },
   { id: 22, categoria: 'Fiscal', pregunta: '¿Puedo deducir gastos de la inversión panameña en mi declaración colombiana?', respuesta: 'Las rentas de fuente extranjera se declaran en Colombia con posibilidad de aplicar crédito tributario por impuestos pagados en el exterior (Art. 254 E.T.). Los gastos directamente relacionados con la generación de la renta (administración, seguros, mantenimiento) son deducibles bajo las reglas generales. Colombia Law Group prepara la documentación soporte para maximizar las deducciones permitidas y optimizar la carga tributaria global del inversionista.' },
   { id: 23, categoria: 'Fiscal', pregunta: '¿Qué sucede si no declaro mi inversión en Panamá?', respuesta: 'La omisión de activos en el exterior ante la DIAN puede generar sanciones por inexactitud (100-160% del mayor valor del impuesto), sanciones por omisión de la declaración de activos (5% del valor de los activos no declarados por año), e incluso consecuencias penales por evasión fiscal. Con el intercambio automático de información (CRS/FATCA) entre Panamá y Colombia, la DIAN tiene acceso a información financiera de cuentas colombianas en Panamá. La transparencia total es la única estrategia viable.' },
-  { id: 24, categoria: 'Fiscal', pregunta: '¿GLP me ayuda con todo el proceso fiscal?', respuesta: 'Sí. La alianza tripartita GLP incluye a Colombia Law Group como socio fiscal y legal. Ellos acompañan al inversionista desde la primera transferencia hasta la declaración de renta anual. El servicio incluye: estructuración de la inversión, proceso de declaración de cambio, declaración de activos en el exterior, declaración de renta con rentas de fuente extranjera, y asesoría en planificación patrimonial y sucesoral. El costo del servicio legal-fiscal se acuerda directamente con Colombia Law Group.' },
+  { id: 24, categoria: 'Fiscal', pregunta: '¿Capital Brokers me ayuda con todo el proceso fiscal?', respuesta: 'Sí. La alianza tripartita Capital Brokers incluye a Colombia Law Group como socio fiscal y legal. Ellos acompañan al inversionista desde la primera transferencia hasta la declaración de renta anual. El servicio incluye: estructuración de la inversión, proceso de declaración de cambio, declaración de activos en el exterior, declaración de renta con rentas de fuente extranjera, y asesoría en planificación patrimonial y sucesoral. El costo del servicio legal-fiscal se acuerda directamente con Colombia Law Group.' },
 
   // Migratorio
-  { id: 25, categoria: 'Migratorio', pregunta: '¿Puedo obtener residencia panameña al invertir en propiedad?', respuesta: 'Sí. Panamá ofrece la Visa de Inversionista Calificado para extranjeros que inviertan un mínimo de USD 300,000 en bienes raíces. Esta visa otorga residencia permanente para el titular y dependientes (cónyuge e hijos menores). El proceso toma aproximadamente 30-60 días una vez presentada la documentación completa. GLP facilita el contacto con abogados migratorios panameños especializados en el trámite.' },
+  { id: 25, categoria: 'Migratorio', pregunta: '¿Puedo obtener residencia panameña al invertir en propiedad?', respuesta: 'Sí. Panamá ofrece la Visa de Inversionista Calificado para extranjeros que inviertan un mínimo de USD 300,000 en bienes raíces. Esta visa otorga residencia permanente para el titular y dependientes (cónyuge e hijos menores). El proceso toma aproximadamente 30-60 días una vez presentada la documentación completa. Capital Brokers facilita el contacto con abogados migratorios panameños especializados en el trámite.' },
   { id: 26, categoria: 'Migratorio', pregunta: '¿La residencia panameña me obliga a vivir en Panamá?', respuesta: 'No. La residencia panameña no requiere presencia física permanente. Sin embargo, para mantener el estatus activo, se recomienda visitar Panamá al menos una vez cada dos años. La residencia panameña no afecta la residencia fiscal colombiana siempre que se mantengan los criterios de permanencia (más de 183 días en Colombia). Es un segundo pasaporte de conveniencia que facilita trámites bancarios, inmobiliarios y empresariales en Panamá.' },
   { id: 27, categoria: 'Migratorio', pregunta: '¿Cuáles son los beneficios de la residencia panameña?', respuesta: 'La residencia panameña ofrece: apertura de cuentas bancarias locales con mayor facilidad, acceso a financiamiento hipotecario en condiciones preferenciales, cédula panameña que facilita trámites, posibilidad de establecer empresas en Panamá, acceso al sistema de salud panameño, beneficios migratorios para viajes a terceros países, y eventualmente la posibilidad de obtener la ciudadanía panameña después de 5 años de residencia.' },
   { id: 28, categoria: 'Migratorio', pregunta: '¿Qué documentos necesito para la visa de inversionista?', respuesta: 'Los documentos principales son: pasaporte vigente con mínimo 6 meses de validez, antecedentes penales apostillados del país de origen, certificado de salud, referencias bancarias personales (2), carta de motivación, comprobante de la inversión inmobiliaria (escritura o promesa de compraventa por mínimo USD 300,000), y poder notarial para el abogado tramitador. Todos los documentos deben estar apostillados y, si aplica, traducidos al español por un traductor oficial.' },
   { id: 29, categoria: 'Migratorio', pregunta: '¿Puedo incluir a mi familia en la visa de inversionista?', respuesta: 'Sí. La Visa de Inversionista Calificado permite incluir dependientes: cónyuge, hijos menores de 18 años, e hijos hasta 25 años que demuestren dependencia económica y estar estudiando. Cada dependiente requiere su propia documentación (pasaporte, antecedentes, certificado de salud). El costo adicional por dependiente es relativamente menor comparado con el titular. La familia completa obtiene residencia permanente en Panamá.' },
   { id: 30, categoria: 'Migratorio', pregunta: '¿Puedo trabajar en Panamá con la visa de inversionista?', respuesta: 'La Visa de Inversionista Calificado permite actividades empresariales propias pero NO permite empleo dependiente con un empleador panameño. Si el inversionista desea trabajar como empleado, necesitaría un permiso de trabajo adicional. Sin embargo, puede establecer empresas propias, recibir ingresos de alquiler, y realizar actividades de inversión sin restricciones. Muchos inversionistas colombianos utilizan Panamá como base para operaciones empresariales regionales.' },
   { id: 31, categoria: 'Migratorio', pregunta: '¿Existe el Programa de Pensionado en Panamá?', respuesta: 'Sí. El Programa de Pensionado Especial de Panamá es uno de los más atractivos del mundo. Requiere demostrar una pensión mensual mínima de USD 1,000 (o USD 750 si se compra propiedad por USD 100,000+). Beneficios: descuentos del 25% en servicios públicos, 25% en pasajes aéreos, 50% en entretenimiento, 25% en restaurantes, y 15% en préstamos hospitalarios. Es ideal para colombianos jubilados que buscan calidad de vida en dólares con un costo inferior al de ciudades como Bogotá o Miami.' },
-  { id: 32, categoria: 'Migratorio', pregunta: '¿GLP me ayuda con todo el proceso migratorio?', respuesta: 'GLP conecta al inversionista con abogados migratorios panameños de confianza que gestionan todo el trámite de principio a fin. El proceso incluye: evaluación de elegibilidad, preparación de documentación, presentación ante el Servicio Nacional de Migración, seguimiento del trámite, y entrega de la cédula panameña. GLP no cobra por la referencia — el costo del servicio se acuerda directamente entre el inversionista y el abogado. El proceso típico toma 30-60 días.' },
+  { id: 32, categoria: 'Migratorio', pregunta: '¿Capital Brokers me ayuda con todo el proceso migratorio?', respuesta: 'Capital Brokers conecta al inversionista con abogados migratorios panameños de confianza que gestionan todo el trámite de principio a fin. El proceso incluye: evaluación de elegibilidad, preparación de documentación, presentación ante el Servicio Nacional de Migración, seguimiento del trámite, y entrega de la cédula panameña. Capital Brokers no cobra por la referencia — el costo del servicio se acuerda directamente entre el inversionista y el abogado. El proceso típico toma 30-60 días.' },
 ];
 
 // ── MODULE DEFINITIONS ────────────────────────────────────────
@@ -1337,7 +1335,7 @@ const NAV_SECTIONS = [
   {
     label: 'Portafolio',
     items: [
-      { id: 'portafolio',  label: 'Portafolio GLP' },
+      { id: 'portafolio',  label: 'Portafolio Capital Brokers' },
       { id: 'calculadora', label: 'Calculadora' },
     ],
   },
@@ -2381,12 +2379,12 @@ export default function CRMDashboard() {
           if (p.nombre.includes('Carlos')) {
             history = [
               { id: 'inc_c1', date: new Date().toISOString().split('T')[0], subject: 'Información sobre Ocean Reef', body: 'Deseo cotizar una unidad en Ocean Reef Park para inversión.', status: 'incoming', direction: 'in' },
-              { id: 'dr_c1', date: new Date().toISOString().split('T')[0], subject: 'Cotización Personalizada y Ficha Técnica - Ocean Reef Park Unidad 3BR', body: 'Estimado Carlos,\n\nCon base en tu interés en una unidad de 3 habitaciones con acceso directo a la marina en Ocean Reef Park, he preparado esta cotización preliminar por USD $1,500,000 con un plan de pago del 30% inicial y 70% contra entrega.\n\nQuedo atenta.\n\nSARA (Asistente de Ventas GLP)', status: 'draft', direction: 'out' }
+              { id: 'dr_c1', date: new Date().toISOString().split('T')[0], subject: 'Cotización Personalizada y Ficha Técnica - Ocean Reef Park Unidad 3BR', body: 'Estimado Carlos,\n\nCon base en tu interés en una unidad de 3 habitaciones con acceso directo a la marina en Ocean Reef Park, he preparado esta cotización preliminar por USD $1,500,000 con un plan de pago del 30% inicial y 70% contra entrega.\n\nQuedo atenta.\n\nSARA (Asistente de Ventas Capital Brokers)', status: 'draft', direction: 'out' }
             ];
           } else if (p.nombre.includes('Laura')) {
             history = [
               { id: 'inc_l1', date: new Date().toISOString().split('T')[0], subject: 'Retorno de inversión en Playa Caracol (FAQ)', body: 'Hola, me gustaría entender cómo funciona el retorno vacacional.', status: 'incoming', direction: 'in' },
-              { id: 'dr_l1', date: new Date().toISOString().split('T')[0], subject: 'Información y Retorno de Inversión - The Tides Playa Caracol', body: 'Estimada Laura,\n\nAdjunto a este correo encontrarás la simulación financiera para The Tides (USD $320,000) con potencial de renta vacacional. El retorno neto estimado es del 6.8% anual.\n\nSARA (Servicio al Cliente GLP)', status: 'draft', direction: 'out' }
+              { id: 'dr_l1', date: new Date().toISOString().split('T')[0], subject: 'Información y Retorno de Inversión - The Tides Playa Caracol', body: 'Estimada Laura,\n\nAdjunto a este correo encontrarás la simulación financiera para The Tides (USD $320,000) con potencial de renta vacacional. El retorno neto estimado es del 6.8% anual.\n\nSARA (Servicio al Cliente Capital Brokers)', status: 'draft', direction: 'out' }
             ];
           } else {
              // 30% chance of random incoming faq for testing
@@ -2583,27 +2581,27 @@ export default function CRMDashboard() {
       estado: 'activa', enviados: 0, abiertos: 0, clicks: 0, citas: 0, cierres: 0, revenue: 0,
       fechaInicio: addDiasISO(-7), fechaFin: addDiasISO(23), proximoEnvio: addDiasISO(3),
       prospectosTotales: 0, prospectosPaso: [],
-      asunto: '{{nombre}}, hay algo nuevo en GLP que queremos compartirte', cuerpo: '',
+      asunto: '{{nombre}}, hay algo nuevo en Capital Brokers que queremos compartirte', cuerpo: '',
       dripPasos: [
-        { dias: 0, asunto: '{{nombre}}, hace tiempo no hablamos — y tenemos novedades', cuerpo: 'Estimado {{nombre}},\n\nHace un tiempo tuvimos el gusto de conocernos y conversar sobre tu búsqueda de propiedad en Panamá. Sabemos que los tiempos y prioridades cambian, y lo entendemos perfectamente.\n\nEl mercado inmobiliario panameño ha evolucionado notablemente en los últimos meses: nuevas etapas disponibles en Armonía, Oceana y The Palms, precios de lanzamiento y condiciones de financiación más favorables.\n\n¿Tienes 15 minutos esta semana para ponernos al día?\n\nCon gusto,\n{{broker}}\nGLP — Propiedades de Lujo', enviados: 0, abiertos: 0 },
-        { dias: 5, asunto: '{{nombre}}, ¿conoces Armonía y Ventu en Bella Vista?', cuerpo: 'Estimado {{nombre}},\n\nQuisimos compartirte dos proyectos en Bella Vista — una de las zonas con mayor demanda de renta en Ciudad de Panamá:\n\n✶ Armonía — desde $181,000 USD · Entrega inmediata disponible · Cap rate 6.0–7.5%\n✶ Ventu — modelo hotelero optimizado para Airbnb · Cap rate proyectado 8–12%\n\nAmbos a 5 minutos de Multiplaza Pacific.\n\n¿Agendamos una visita esta semana?\n\n{{broker}}\nGLP — Propiedades de Lujo', enviados: 0, abiertos: 0 },
-        { dias: 12, asunto: 'Últimas unidades disponibles — oferta especial para ti', cuerpo: 'Estimado {{nombre}},\n\nQueremos ser directos: hay disponibilidad limitada en algunos de nuestros proyectos más solicitados y hemos podido gestionar condiciones especiales para prospectos selectos.\n\nSi tienes interés en retomar la conversación, esta es la semana indicada.\n\nRespóndenos este correo o escíbenos por WhatsApp y coordinamos en menos de 24 horas.\n\n{{broker}}\nGLP — Propiedades de Lujo', enviados: 0, abiertos: 0 },
+        { dias: 0, asunto: '{{nombre}}, hace tiempo no hablamos — y tenemos novedades', cuerpo: 'Estimado {{nombre}},\n\nHace un tiempo tuvimos el gusto de conocernos y conversar sobre tu búsqueda de propiedad en Panamá. Sabemos que los tiempos y prioridades cambian, y lo entendemos perfectamente.\n\nEl mercado inmobiliario panameño ha evolucionado notablemente en los últimos meses: nuevas etapas disponibles en Armonía, Oceana y The Palms, precios de lanzamiento y condiciones de financiación más favorables.\n\n¿Tienes 15 minutos esta semana para ponernos al día?\n\nCon gusto,\n{{broker}}\nCapital Brokers — Propiedades de Lujo', enviados: 0, abiertos: 0 },
+        { dias: 5, asunto: '{{nombre}}, ¿conoces Armonía y Ventu en Bella Vista?', cuerpo: 'Estimado {{nombre}},\n\nQuisimos compartirte dos proyectos en Bella Vista — una de las zonas con mayor demanda de renta en Ciudad de Panamá:\n\n✶ Armonía — desde $181,000 USD · Entrega inmediata disponible · Rentabilidad 6.0–7.5%\n✶ Ventu — modelo hotelero optimizado para Airbnb · Rentabilidad proyectada 8–12%\n\nAmbos a 5 minutos de Multiplaza Pacific.\n\n¿Agendamos una visita esta semana?\n\n{{broker}}\nCapital Brokers — Propiedades de Lujo', enviados: 0, abiertos: 0 },
+        { dias: 12, asunto: 'Últimas unidades disponibles — oferta especial para ti', cuerpo: 'Estimado {{nombre}},\n\nQueremos ser directos: hay disponibilidad limitada en algunos de nuestros proyectos más solicitados y hemos podido gestionar condiciones especiales para prospectos selectos.\n\nSi tienes interés en retomar la conversación, esta es la semana indicada.\n\nRespóndenos este correo o escíbenos por WhatsApp y coordinamos en menos de 24 horas.\n\n{{broker}}\nCapital Brokers — Propiedades de Lujo', enviados: 0, abiertos: 0 },
       ],
       costoTotal: 0, alertas: [],
     },
     {
-      id: 2, nombre: 'Bienvenida Contacto Inicial — Drip GLP', tipo: 'drip', canal: 'Email',
+      id: 2, nombre: 'Bienvenida Contacto Inicial — Drip Capital Brokers', tipo: 'drip', canal: 'Email',
       objetivo: 'nurturing', segmentoEtapas: ['Contacto Inicial'], segmentoPresupMin: 0, segmentoPresupMax: 9999999,
       segmentoProyectos: [], segmentoInactividad: 0, segmentoScore: 0,
       estado: 'activa', enviados: 0, abiertos: 0, clicks: 0, citas: 0, cierres: 0, revenue: 0,
       fechaInicio: addDiasISO(-14), fechaFin: null, proximoEnvio: addDiasISO(1),
       prospectosTotales: 0, prospectosPaso: [],
-      asunto: '{{nombre}}, bienvenido a GLP — El portafolio de lujo de Panamá', cuerpo: '',
+      asunto: '{{nombre}}, bienvenido a Capital Brokers — El portafolio de lujo de Panamá', cuerpo: '',
       dripPasos: [
-        { dias: 0, asunto: '{{nombre}}, bienvenido a GLP — El portafolio de lujo de Panamá', cuerpo: 'Estimado {{nombre}},\n\nEs un placer darte la bienvenida a GLP. Somos la firma especializada en propiedades residenciales de lujo en Panamá, con proyectos en Ciudad de Panamá, Ocean Reef Islands y Playa Caracol.\n\nNuestro portafolio incluye opciones desde $136,000 hasta $2,100,000 USD — para inversionistas de renta, compradores patrimoniales y quienes buscan su segunda residencia frente al Pacífico.\n\nEn los próximos días te compartiremos información que te permitirá conocernos mejor. Mientras tanto, ¿hay algún proyecto o zona que te haya llamado la atención?\n\nCon gusto,\n{{broker}}\nGLP — Propiedades de Lujo', enviados: 0, abiertos: 0 },
-        { dias: 3, asunto: '{{nombre}}, ¿buscas renta, valorización o segunda residencia?', cuerpo: 'Estimado {{nombre}},\n\nCada comprador tiene un objetivo diferente, y en GLP nos especializamos en encontrar el activo exacto para cada perfil:\n\n🏙️ Para renta: Armonía (6.0–7.5%), Ventu hotelero (8–12%), Surfside (5.8–7.5%)\n🏔️ Para valorización patrimonial: Oceana en Santa María, Bosco, The Palms en Ocean Reef\n🌊 Para segunda residencia: Aires del Mar, The Tides y Brisas del Mar en Playa Caracol\n\n¿Cuál de estos perfiles se acerca más a lo que buscas?\n\n{{broker}}\nGLP — Propiedades de Lujo', enviados: 0, abiertos: 0 },
-        { dias: 7, asunto: 'El mercado inmobiliario de lujo en Panamá — lo que debes saber', cuerpo: 'Estimado {{nombre}},\n\nPanamá tiene una de las economías más estables de América Latina: dolarización, libre repatriación de capitales y sin impuesto de ganancia de capital para extranjeros.\n\nEn los últimos 12 meses:\n• Valorización promedio en Ciudad de Panamá: 4–6% anual\n• Vacancia en proyectos premium: 4–8%\n• Cap rates más altos que Miami o Bogotá para el mismo nivel de calidad\n\nSi te interesa profundizar, podemos preparar un análisis personalizado para tu presupuesto.\n\n{{broker}}\nGLP — Propiedades de Lujo', enviados: 0, abiertos: 0 },
-        { dias: 14, asunto: '{{nombre}}, ¿agendamos una visita o videollamada esta semana?', cuerpo: 'Estimado {{nombre}},\n\nHemos disfrutado compartirte información sobre el mercado y nuestro portafolio. Ahora nos encantaría dar el siguiente paso: conocerte mejor y entender exactamente qué estás buscando.\n\nPodemos coordinar:\n• Una visita privada a nuestras salas de ventas en Ciudad de Panamá\n• Una videollamada de 30 minutos con nuestro equipo de asesores\n• Un análisis personalizado de rentabilidad para tu caso específico\n\n¿Qué opción te acomoda más?\n\n{{broker}}\nGLP — Propiedades de Lujo', enviados: 0, abiertos: 0 },
+        { dias: 0, asunto: '{{nombre}}, bienvenido a Capital Brokers — El portafolio de lujo de Panamá', cuerpo: 'Estimado {{nombre}},\n\nEs un placer darte la bienvenida a Capital Brokers. Somos la firma especializada en propiedades residenciales de lujo en Panamá, con proyectos en Ciudad de Panamá, Ocean Reef Islands y Playa Caracol.\n\nNuestro portafolio incluye opciones desde $136,000 hasta $2,100,000 USD — para inversionistas de renta, compradores patrimoniales y quienes buscan su segunda residencia frente al Pacífico.\n\nEn los próximos días te compartiremos información que te permitirá conocernos mejor. Mientras tanto, ¿hay algún proyecto o zona que te haya llamado la atención?\n\nCon gusto,\n{{broker}}\nCapital Brokers — Propiedades de Lujo', enviados: 0, abiertos: 0 },
+        { dias: 3, asunto: '{{nombre}}, ¿buscas renta, valorización o segunda residencia?', cuerpo: 'Estimado {{nombre}},\n\nCada comprador tiene un objetivo diferente, y en Capital Brokers nos especializamos en encontrar el activo exacto para cada perfil:\n\n🏙️ Para renta: Armonía (6.0–7.5%), Ventu hotelero (8–12%), Surfside (5.8–7.5%)\n🏔️ Para valorización patrimonial: Oceana en Santa María, Bosco, The Palms en Ocean Reef\n🌊 Para segunda residencia: Aires del Mar, The Tides y Brisas del Mar en Playa Caracol\n\n¿Cuál de estos perfiles se acerca más a lo que buscas?\n\n{{broker}}\nCapital Brokers — Propiedades de Lujo', enviados: 0, abiertos: 0 },
+        { dias: 7, asunto: 'El mercado inmobiliario de lujo en Panamá — lo que debes saber', cuerpo: 'Estimado {{nombre}},\n\nPanamá tiene una de las economías más estables de América Latina: dolarización, libre repatriación de capitales y sin impuesto de ganancia de capital para extranjeros.\n\nEn los últimos 12 meses:\n• Valorización promedio en Ciudad de Panamá: 4–6% anual\n• Vacancia en proyectos premium: 4–8%\n• Rentabilidades más altos que Miami o Bogotá para el mismo nivel de calidad\n\nSi te interesa profundizar, podemos preparar un análisis personalizado para tu presupuesto.\n\n{{broker}}\nCapital Brokers — Propiedades de Lujo', enviados: 0, abiertos: 0 },
+        { dias: 14, asunto: '{{nombre}}, ¿agendamos una visita o videollamada esta semana?', cuerpo: 'Estimado {{nombre}},\n\nHemos disfrutado compartirte información sobre el mercado y nuestro portafolio. Ahora nos encantaría dar el siguiente paso: conocerte mejor y entender exactamente qué estás buscando.\n\nPodemos coordinar:\n• Una visita privada a nuestras salas de ventas en Ciudad de Panamá\n• Una videollamada de 30 minutos con nuestro equipo de asesores\n• Un análisis personalizado de rentabilidad para tu caso específico\n\n¿Qué opción te acomoda más?\n\n{{broker}}\nCapital Brokers — Propiedades de Lujo', enviados: 0, abiertos: 0 },
       ],
       costoTotal: 0, alertas: [],
     },
@@ -2616,9 +2614,9 @@ export default function CRMDashboard() {
       prospectosTotales: 0, prospectosPaso: [],
       asunto: '{{nombre}}, Santa María es el activo patrimonial más sólido de Panamá', cuerpo: '',
       dripPasos: [
-        { dias: 0, asunto: '{{nombre}}, Santa María es el activo patrimonial más sólido de Panamá', cuerpo: 'Estimado {{nombre}},\n\nSanta María Golf & Country Club es hoy el corredor residencial de más alta valorización en Ciudad de Panamá — con el único campo de golf Jack Nicklaus del país.\n\nEn este entorno exclusivo tenemos dos proyectos:\n\n✶ Oceana — desde $446,000 USD · 100–270 m² · Entrega Q4 2027\n✶ Bosco di Santa Maria — desde $474,000 USD · Jardines botánicos únicos · Entrega 2030\n\nAmbos ofrecen valorización proyectada del 5–7% anual.\n\n{{broker}}\nGLP — Propiedades de Lujo', enviados: 0, abiertos: 0 },
-        { dias: 5, asunto: 'Visita privada a Oceana — solo para clientes seleccionados', cuerpo: 'Estimado {{nombre}},\n\nNos gustaría invitarte a una visita privada al proyecto Oceana en Santa María esta semana. Podrás ver los avances de obra, conocer el modelo del apartamento y conversar con el equipo de diseño.\n\nTenemos disponibilidad martes y jueves en la tarde. ¿Cuál te funciona mejor?\n\n{{broker}}\nGLP — Propiedades de Lujo', enviados: 0, abiertos: 0 },
-        { dias: 12, asunto: 'Propuesta de unidad reservada para {{nombre}} en Oceana', cuerpo: 'Estimado {{nombre}},\n\nBasados en lo que conocemos de tu perfil, hemos identificado la unidad que mejor se ajusta a tus objetivos en Oceana:\n\n📐 Área: 130 m² con terraza panorámica\n💰 Precio: $580,000 USD\n🏦 Cuota inicial: 20% en cuotas durante la obra\n📈 Valorización proyectada: 5–6% anual\n💵 Renta mensual estimada: $2,800–$3,200 USD\n\nEsta unidad tiene derecho de primera selección hasta el viernes.\n\n{{broker}}\nGLP — Propiedades de Lujo', enviados: 0, abiertos: 0 },
+        { dias: 0, asunto: '{{nombre}}, Santa María es el activo patrimonial más sólido de Panamá', cuerpo: 'Estimado {{nombre}},\n\nSanta María Golf & Country Club es hoy el corredor residencial de más alta valorización en Ciudad de Panamá — con el único campo de golf Jack Nicklaus del país.\n\nEn este entorno exclusivo tenemos dos proyectos:\n\n✶ Oceana — desde $446,000 USD · 100–270 m² · Entrega Q4 2027\n✶ Bosco di Santa Maria — desde $474,000 USD · Jardines botánicos únicos · Entrega 2030\n\nAmbos ofrecen valorización proyectada del 5–7% anual.\n\n{{broker}}\nCapital Brokers — Propiedades de Lujo', enviados: 0, abiertos: 0 },
+        { dias: 5, asunto: 'Visita privada a Oceana — solo para clientes seleccionados', cuerpo: 'Estimado {{nombre}},\n\nNos gustaría invitarte a una visita privada al proyecto Oceana en Santa María esta semana. Podrás ver los avances de obra, conocer el modelo del apartamento y conversar con el equipo de diseño.\n\nTenemos disponibilidad martes y jueves en la tarde. ¿Cuál te funciona mejor?\n\n{{broker}}\nCapital Brokers — Propiedades de Lujo', enviados: 0, abiertos: 0 },
+        { dias: 12, asunto: 'Propuesta de unidad reservada para {{nombre}} en Oceana', cuerpo: 'Estimado {{nombre}},\n\nBasados en lo que conocemos de tu perfil, hemos identificado la unidad que mejor se ajusta a tus objetivos en Oceana:\n\n📐 Área: 130 m² con terraza panorámica\n💰 Precio: $580,000 USD\n🏦 Cuota inicial: 20% en cuotas durante la obra\n📈 Valorización proyectada: 5–6% anual\n💵 Renta mensual estimada: $2,800–$3,200 USD\n\nEsta unidad tiene derecho de primera selección hasta el viernes.\n\n{{broker}}\nCapital Brokers — Propiedades de Lujo', enviados: 0, abiertos: 0 },
       ],
       costoTotal: 0, alertas: [],
     },
@@ -2629,7 +2627,7 @@ export default function CRMDashboard() {
       estado: 'borrador', enviados: 0, abiertos: 0, clicks: 0, citas: 0, cierres: 0, revenue: 0,
       fechaInicio: null, fechaFin: null, proximoEnvio: null,
       prospectosTotales: 0, prospectosPaso: [],
-      asunto: 'Invitación privada — Presentación exclusiva Ocean Reef Islands', cuerpo: 'Estimado {{nombre}},\n\nTenemos el honor de invitarte a una presentación privada de Ocean Reef Islands — el desarrollo residencial más exclusivo de Panamá, en una isla artificial en Punta Pacífica con acceso directo al Hospital Johns Hopkins.\n\nEl evento incluye:\n• Recorrido en lancha privada por la isla\n• Visita a unidades de The Palms (entrega inmediata) desde $1,200,000 USD\n• Presentación de Ocean Reef Park y The Palms\n• Cóctel de bienvenida y conversación con el equipo de arquitectos\n\nLos cupos son estrictamente limitados. Por favor confirma tu interés respondiendo este mensaje.\n\n{{broker}}\nGLP — Propiedades de Lujo',
+      asunto: 'Invitación privada — Presentación exclusiva Ocean Reef Islands', cuerpo: 'Estimado {{nombre}},\n\nTenemos el honor de invitarte a una presentación privada de Ocean Reef Islands — el desarrollo residencial más exclusivo de Panamá, en una isla artificial en Punta Pacífica con acceso directo al Hospital Johns Hopkins.\n\nEl evento incluye:\n• Recorrido en lancha privada por la isla\n• Visita a unidades de The Palms (entrega inmediata) desde $1,200,000 USD\n• Presentación de Ocean Reef Park y The Palms\n• Cóctel de bienvenida y conversación con el equipo de arquitectos\n\nLos cupos son estrictamente limitados. Por favor confirma tu interés respondiendo este mensaje.\n\n{{broker}}\nCapital Brokers — Propiedades de Lujo',
       dripPasos: [],
       costoTotal: 0, alertas: [],
     },
@@ -2939,7 +2937,7 @@ export default function CRMDashboard() {
   const [calcValorizacionPreEntrega, setCalcValorizacionPreEntrega] = useState(20);
   // Fundamentales macro del país del tenant (inflación + apreciación inmobiliaria real,
   // vía /api/macro-fundamentals) — la Calculadora ya no fija la valorización por proyecto,
-  // sino por el país donde opera el tenant (GLP en Panamá, pero el software es multi-país).
+  // sino por el país donde opera el tenant (Capital Brokers en Panamá, pero el software es multi-país).
   const [macroFundamentals, setMacroFundamentals] = useState<{
     country: string; inflacionAnual: number | null; inflacionFuente: string | null;
     apreciacionMin: number | null; apreciacionMax: number | null; apreciacionFuente: string | null;
@@ -3003,12 +3001,12 @@ export default function CRMDashboard() {
       const demo: SofiaProfile[] = [
         { prospectId:1, prospectName:'Carlos Gutiérrez', ocupacion:'CEO Fintech', presupuesto:450000, arquetipo:'racional', confianza:91, fecha:'2026-05-10', senales:['Decisión basada en métricas','Perfil analítico-profesional','Ciclo de evaluación activo'], recomendacion_sara:'Enviar comparativo ROI detallado y certificados de valorización histórica. Tono profesional, sin emociones.', recomendacion_valeria:'Crear contenido con métricas: ocupación, retorno anual, comparativo vs CDT. Usar LinkedIn como canal principal.' },
         { prospectId:2, prospectName:'María Isabel Rodríguez', ocupacion:'Médica Especialista', presupuesto:320000, arquetipo:'legado', confianza:88, fecha:'2026-06-01', senales:['Menciona familia, herencia o legado','Foco en preservación de valor','Perfil analítico-patrimonial'], recomendacion_sara:'Enfocar comunicación en transmisión de patrimonio a hijos. Mencionar trust y planificación sucesorial.', recomendacion_valeria:'Narrativa de legado familiar. Mostrar casos de propietarios que compraron para sus hijos. Email marketing con historias reales.' },
-        { prospectId:5, prospectName:'Roberto Castaño', ocupacion:'Inversionista', presupuesto:750000, arquetipo:'estatus', confianza:94, fecha:'2026-02-20', senales:['Busca exclusividad — no ancla en precio','Captado en evento exclusivo','Alta probabilidad de cierre a corto plazo'], recomendacion_sara:'Comunicación discreta y exclusiva. No mencionar precios en primer contacto. Destacar quiénes son los otros propietarios.', recomendacion_valeria:'Contenido visual premium: fotos de eventos, propietarios en GLP, lifestyle de élite. Instagram y WhatsApp privado.' },
+        { prospectId:5, prospectName:'Roberto Castaño', ocupacion:'Inversionista', presupuesto:750000, arquetipo:'estatus', confianza:94, fecha:'2026-02-20', senales:['Busca exclusividad — no ancla en precio','Captado en evento exclusivo','Alta probabilidad de cierre a corto plazo'], recomendacion_sara:'Comunicación discreta y exclusiva. No mencionar precios en primer contacto. Destacar quiénes son los otros propietarios.', recomendacion_valeria:'Contenido visual premium: fotos de eventos, propietarios en Capital Brokers, lifestyle de élite. Instagram y WhatsApp privado.' },
         { prospectId:6, prospectName:'Diana Herrera', ocupacion:'Abogada Tributarista', presupuesto:140000, arquetipo:'racional', confianza:89, fecha:'2025-12-05', senales:['Decisión basada en métricas','Foco en preservación de valor','Ciclo de evaluación activo'], recomendacion_sara:'Lenguaje legal y financiero. Documentar todo por escrito. Nunca hacer promesas verbales.', recomendacion_valeria:'Infografías de rendimiento y comparativos legales. Contenido sobre seguridad jurídica de la inversión.' },
         { prospectId:7, prospectName:'Mauricio Ospina', ocupacion:'Director Financiero', presupuesto:580000, arquetipo:'legado', confianza:86, fecha:'2026-04-10', senales:['Menciona familia, herencia o legado','Perfil analítico-patrimonial','Ingresó por referencia de confianza'], recomendacion_sara:'Hablar de diversificación patrimonial intergeneracional. Proponer estructura de holding para la compra.', recomendacion_valeria:'Contenido sobre protección de patrimonio familiar en dólares. Webinar sobre planificación patrimonial internacional.' },
         { prospectId:12, prospectName:'Natalia Jaramillo', ocupacion:'Economista', presupuesto:220000, arquetipo:'racional', confianza:92, fecha:'2026-04-20', senales:['Decisión basada en métricas','Orientado a retorno de inversión','Ciclo de evaluación activo'], recomendacion_sara:'Enviar estudio de mercado completo. Responder cada pregunta con datos verificables. Agendar llamada técnica.', recomendacion_valeria:'LinkedIn con análisis de mercado inmobiliario panameño. Gráficas de valorización histórica y proyectada.' },
         { prospectId:3, prospectName:'Andrés Felipe Martínez', ocupacion:'Empresario Textil', presupuesto:250000, arquetipo:'aspiracional', confianza:83, fecha:'2026-06-12', senales:['Motivación aspiracional detectada','Canal de captación social media','Etapa inspiracional — ciclo largo'], recomendacion_sara:'Conectar el sueño de vida en Panamá con la inversión. Compartir experiencias de propietarios actuales.', recomendacion_valeria:'Videos de lifestyle: amanecer en Playa Caracol, piscinas infinitas, gastronomía. TikTok e Instagram Reels.' },
-        { prospectId:4, prospectName:'Laura Sánchez', ocupacion:'Directora Financiera', presupuesto:180000, arquetipo:'aspiracional', confianza:79, fecha:'2026-07-02', senales:['Motivación aspiracional detectada','Canal de captación social media','Etapa inspiracional — ciclo largo'], recomendacion_sara:'Inspirar con posibilidades. No presionar con precios. Invitar a evento o tour virtual.', recomendacion_valeria:'Contenido aspiracional con música y emotividad. Videos cortos de experiencias en GLP.' },
+        { prospectId:4, prospectName:'Laura Sánchez', ocupacion:'Directora Financiera', presupuesto:180000, arquetipo:'aspiracional', confianza:79, fecha:'2026-07-02', senales:['Motivación aspiracional detectada','Canal de captación social media','Etapa inspiracional — ciclo largo'], recomendacion_sara:'Inspirar con posibilidades. No presionar con precios. Invitar a evento o tour virtual.', recomendacion_valeria:'Contenido aspiracional con música y emotividad. Videos cortos de experiencias en Capital Brokers.' },
       ];
       localStorage.setItem('glp_sofia_profiles', JSON.stringify(demo));
       return demo;
@@ -3435,7 +3433,7 @@ export default function CRMDashboard() {
         logA('SARA', `💬 Brief recibido de Camilo — generando template de FAQ...`);
         try {
           const saraAccion = (ins as any).acciones_sara || `Generar respuesta informativa sobre: ${ins.titulo}`;
-          const saraPrompt = `Eres Sara, Customer Success Agent de GLP (inmobiliaria de lujo en Panamá).
+          const saraPrompt = `Eres Sara, Directora de Experiencia de Cliente de Capital Brokers (inmobiliaria de lujo en Panamá).
 Camilo (científico de datos) te envía este insight de mercado y te pide una acción concreta.
 
 INSIGHT: "${ins.titulo}"
@@ -3443,7 +3441,7 @@ DATO: ${ins.datos}
 ACCIÓN REQUERIDA: ${saraAccion}
 
 Genera una respuesta FAQ breve y profesional (3-5 oraciones) que Sara pueda enviar a prospectos colombianos interesados. Tono: cálido, experto, sin tecnicismos excesivos. Incluye un CTA al final.`;
-          const faqResp = await triggerOpenAI(saraPrompt, 'Eres Sara, agente de Customer Success de GLP Panama.', undefined, 'SARA', 'faq_desde_insight');
+          const faqResp = await triggerOpenAI(saraPrompt, 'Eres Sara, Directora de Experiencia de Cliente de Capital Brokers - Real Estate.', undefined, 'SARA', 'faq_desde_insight');
           setSaraReportText(prev =>
             `[🤖 AGÉNTICO — Camilo → Sara · ${today()}]\n${ins.titulo}\n\n${faqResp.trim()}\n\n${'─'.repeat(50)}\n\n` + prev
           );
@@ -3577,7 +3575,7 @@ Genera una respuesta FAQ breve y profesional (3-5 oraciones) que Sara pueda envi
         y += 4;
       }
     }
-    pdfSave(doc, `Reporte-Mercado-GLP-${marketReport.fecha}.pdf`);
+    pdfSave(doc, `Reporte-Mercado-Capital Brokers-${marketReport.fecha}.pdf`);
   };
 
   const downloadRadarPDF = () => {
@@ -3591,7 +3589,7 @@ Genera una respuesta FAQ breve y profesional (3-5 oraciones) que Sara pueda envi
       if (r.precio_ref) y = pdfParagraph(doc, marginX, pageWidth, y, `Precio de referencia: ${r.precio_ref}`, { bold: true, color: [59, 130, 246] });
       y = pdfParagraph(doc, marginX, pageWidth, y, r.descripcion);
       y += 4;
-      y = pdfParagraph(doc, marginX, pageWidth, y, 'Argumentos GLP vs esta opción:', { bold: true, size: 9.5 });
+      y = pdfParagraph(doc, marginX, pageWidth, y, 'Argumentos Capital Brokers vs esta opción:', { bold: true, size: 9.5 });
       r.argumentos.forEach(arg => { y = pdfParagraph(doc, marginX, pageWidth, y, `• ${arg}`); });
       if (r.fuentes && r.fuentes.length > 0) {
         y += 2;
@@ -3599,7 +3597,7 @@ Genera una respuesta FAQ breve y profesional (3-5 oraciones) que Sara pueda envi
       }
       y += 10;
     });
-    pdfSave(doc, `Radar-Competencia-GLP-${radarScope}-${today()}.pdf`);
+    pdfSave(doc, `Radar-Competencia-Capital Brokers-${radarScope}-${today()}.pdf`);
   };
 
   const downloadInsightsPDF = () => {
@@ -3616,7 +3614,7 @@ Genera una respuesta FAQ breve y profesional (3-5 oraciones) que Sara pueda envi
       }
       y += 10;
     });
-    pdfSave(doc, `Camilo-Insights-GLP-${today()}.pdf`);
+    pdfSave(doc, `Camilo-Insights-Capital Brokers-${today()}.pdf`);
   };
 
   const generateRadar = async () => {
@@ -3661,7 +3659,7 @@ Genera una respuesta FAQ breve y profesional (3-5 oraciones) que Sara pueda envi
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({
           to: 'armandohortua@gmail.com',
-          subject: `📊 Reporte Semanal de Mercado GLP — ${marketReport.fecha}`,
+          subject: `📊 Reporte Semanal de Mercado Capital Brokers — ${marketReport.fecha}`,
           body: marketReport.texto,
         })
       });
@@ -3994,7 +3992,7 @@ Genera una respuesta FAQ breve y profesional (3-5 oraciones) que Sara pueda envi
       logMsg('Camilo iniciando research de mercado e inteligencia competitiva...');
 
       const kpiCtx = `
-KPIs actuales del dashboard GLP:
+KPIs actuales del dashboard Capital Brokers:
 - Prospectos activos: ${prospects.length}
 - En Negociación/Cierre: ${prospects.filter(p => ['Negociación','Cierre'].includes(p.estado)).length}
 - Presupuesto promedio: $${prospects.length > 0 ? Math.round(prospects.reduce((s,p) => s + (p.presupuesto_usd||0), 0) / prospects.length).toLocaleString() : 0} USD
@@ -4002,7 +4000,7 @@ KPIs actuales del dashboard GLP:
 - Alertas activas SARA: ${prospectAlerts.length}`;
 
       const brandCtxSummary = `
-Audiencia GLP: ${brandProfile.audiencias.slice(0,2).join(' | ')}
+Audiencia Capital Brokers: ${brandProfile.audiencias.slice(0,2).join(' | ')}
 Objeciones frecuentes: ${brandProfile.objeciones.slice(0,3).map(o=>o.split('→')[0].trim()).join(' / ')}
 Diferenciadores: ${brandProfile.diferenciadores.slice(0,3).join(' · ')}`;
 
@@ -4085,7 +4083,7 @@ Diferenciadores: ${brandProfile.diferenciadores.slice(0,3).join(' · ')}`;
 
         // Actualizar reporte SARA con el contexto de Camilo
         setSaraReportText(
-          `REPORTE DE INTELIGENCIA — GLP PANAMÁ · ${today()}\nGenerado por: Camilo (Research & Data Intelligence)\n\n` +
+          `REPORTE DE INTELIGENCIA — Capital Brokers PANAMÁ · ${today()}\nGenerado por: Camilo (VP de Investigación y Mercados)\n\n` +
           `RESUMEN EJECUTIVO:\n${parsed.resumen_ejecutivo}\n\n` +
           `SEÑALES DE RIESGO/CRISIS:\n${parsed.señales_crisis}\n\n` +
           `OPORTUNIDADES INMEDIATAS:\n${parsed.oportunidades_inmediatas}\n\n` +
@@ -4302,7 +4300,7 @@ Diferenciadores: ${brandProfile.diferenciadores.slice(0,3).join(' · ')}`;
       `- id:${p.id} | ${p.nombre} ${p.apellido} | ocupación: ${p.ocupacion || 'sin dato'} | presupuesto: $${(p.presupuesto_usd || 0).toLocaleString()} | canal: ${p.forma_contacto || 'sin dato'} | notas: ${(p.notas || 'sin notas').slice(0, 200)}`
     ).join('\n');
 
-    const prompt = `Eres Sofía, PhD en Psicología del Consumidor de Lujo para la promotora inmobiliaria GLP Panamá. Analiza estos ${activePs.length} prospectos y clasifica a cada uno en UN arquetipo dominante: "estatus" (busca exclusividad y pertenencia), "legado" (preservación patrimonial intergeneracional), "racional" (decide por datos/ROI) o "aspiracional" (motivado por estilo de vida/sueño).
+    const prompt = `Eres Sofía, PhD en Psicología del Consumidor de Lujo para la promotora inmobiliaria Capital Brokers Panamá. Analiza estos ${activePs.length} prospectos y clasifica a cada uno en UN arquetipo dominante: "estatus" (busca exclusividad y pertenencia), "legado" (preservación patrimonial intergeneracional), "racional" (decide por datos/ROI) o "aspiracional" (motivado por estilo de vida/sueño).
 
 Prospectos:
 ${prospectsResumen}
@@ -4377,7 +4375,7 @@ Devuelve UN ARREGLO JSON EXACTAMENTE con este formato, sin bloques de código ma
 
     // Contexto de marca dinámico — viene del perfil editable por el admin
     const BRAND_CTX = `
-PROPUESTA DE VALOR GLP:
+PROPUESTA DE VALOR Capital Brokers:
 ${brandProfile.propuesta_valor}
 
 AUDIENCIAS OBJETIVO:
@@ -4389,7 +4387,7 @@ ${brandProfile.tonos.map(t => `- ${t}`).join('\n')}
 OBJETIVOS DEL CONTENIDO:
 ${brandProfile.objetivos.map(o => `- ${o}`).join('\n')}
 
-DIFERENCIADORES CLAVE GLP:
+DIFERENCIADORES CLAVE Capital Brokers:
 ${brandProfile.diferenciadores.map(d => `- ${d}`).join('\n')}
 
 OBJECIONES A REBATIR (sin mencionarlas directamente, disueltas en el contenido):
@@ -4438,9 +4436,9 @@ OBJETIVO: Que el video genere guardados y compartidos, no solo likes.
 
 Estructura del guion (video 30-45 segundos):
 GANCHO (0-3s): Frase disruptiva que detenga el scroll. Debe hablar de dinero, Colombia o un miedo común.
-  - Ejemplos de ganchos que funcionan: "Lo que no te dijeron de sacar plata de Colombia", "8.5% de rentabilidad anual en dólares y no es crypto", "El impuesto predial que pagas vs el que NO pagas en Panamá"
+  - Ejemplos de ganchos que funcionan: "Lo que no te dijeron de sacar plata de Colombia", "8.5% de rentabilidad anual en dólares y no es crypto"
 DESARROLLO (3-35s): 3 datos concretos presentados visualmente (texto en pantalla + voz en off)
-  - Dato 1: estadístico o comparativo (ej: "Mientras en Colombia el predial sube cada año, en Panamá es $0 por 20 años")
+  - Dato 1: estadístico o comparativo (ej: rentabilidad neta en USD vs. inversión local)
   - Dato 2: del portafolio real (nombre de proyecto, precio de entrada, ubicación)
   - Dato 3: beneficio aspiracional (uso propio + renta, dolarización, calidad de vida)
 CTA (35-45s): Acción específica y fácil. Nunca "visita nuestra web". Sí: "Escríbenos PANAMÁ al DM y te mandamos el análisis completo".
@@ -4466,7 +4464,7 @@ SUBTÍTULOS COMPLETOS: [transcripción completa del audio]
 HASHTAGS: [8-10 hashtags estratégicos]`,
 
       'Post Estático Instagram': `
-AUDIENCIA: Colombianos 35-55 que siguen a GLP o llegaron por anuncio.
+AUDIENCIA: Colombianos 35-55 que siguen a Capital Brokers o llegaron por anuncio.
 OBJETIVO: Guardar el post (señal de alta intención) + DM o link en bio.
 
 Estructura del caption:
@@ -4479,7 +4477,7 @@ HASHTAGS: 20-25 hashtags en comentario aparte, mezcla de alto y bajo volumen.
 INDICACIONES DE IMAGEN (para el diseñador/fotógrafo):
 - Descripción de la imagen o render ideal para este post
 - Elementos de texto a superponer en la imagen (si aplica)
-- Paleta de color sugerida (acorde a la marca GLP: navy, dorado, blanco)
+- Paleta de color sugerida (acorde a la marca Capital Brokers: navy, dorado, blanco)
 
 Formato de respuesta en el campo "contenido":
 CAPTION:
@@ -4500,7 +4498,7 @@ INDICACIONES PARA LA IMAGEN:
 [descripción detallada]`,
 
       'Instagram Story': `
-AUDIENCIA: Seguidores actuales de GLP en Instagram (ya nos conocen).
+AUDIENCIA: Seguidores actuales de Capital Brokers en Instagram (ya nos conocen).
 OBJETIVO: Mantener top-of-mind, generar respuestas/DMs, llevar al link de bio.
 
 Diseña una secuencia de 4-5 stories:
@@ -4522,7 +4520,7 @@ Máx 100 palabras. Sin saludos corporativos. Sin "estimado cliente".`,
 
       'Guion Video': `
 Guion completo para video 60-90 segundos (YouTube, LinkedIn o presentación).
-Estructura: Gancho (10s) → Problema que resuelve GLP (20s) → Solución/Portafolio (40s) → CTA (10s).
+Estructura: Gancho (10s) → Problema que resuelve Capital Brokers (20s) → Solución/Portafolio (40s) → CTA (10s).
 Incluir: indicaciones de plano, texto en pantalla, voz en off completa.`,
     };
 
@@ -4537,7 +4535,7 @@ Incluir: indicaciones de plano, texto en pantalla, voz en off completa.`,
 
     try {
       logMsg('Conectando con OpenAI — construyendo copy con contexto real y estrategia de marca...');
-      const prompt = `Eres Valeria, Copywriter estrella y Estratega de Contenidos de GLP Wealth Management, firma de inversión inmobiliaria de lujo en Panamá.
+      const prompt = `Eres Valeria, Redactora Publicitaria Estrella y Estratega de Contenidos de Capital Brokers - Real Estate, firma de inversión inmobiliaria de lujo en Panamá.
 
 ${BRAND_CTX}
 
@@ -4545,7 +4543,7 @@ CANAL A REDACTAR: ${canal}
 INSTRUCCIONES ESPECÍFICAS DEL CANAL:
 ${instruccionCanal}
 
-PORTAFOLIO GLP ACTUAL (usa estos datos reales, no inventes precios):
+PORTAFOLIO Capital Brokers ACTUAL (usa estos datos reales, no inventes precios):
 ${catalogoReal}
 
 CONTEXTO DE PROSPECTOS ACTIVOS (para personalización):
@@ -4602,12 +4600,12 @@ Responde SOLO con JSON sin bloques de código markdown:
         date: today(),
         type: canal,
         canal,
-        asunto: `GLP Panamá — Oportunidad en ${PROJECTS[0]?.name || 'nuestros proyectos'}`,
+        asunto: `Capital Brokers — Oportunidad en ${PROJECTS[0]?.name || 'nuestros proyectos'}`,
         content: `${canal === 'LinkedIn Post' ? '🏙️' : '✉️'} [Borrador sin IA — editar]\n\n${canal === 'LinkedIn Post'
-          ? `¿Sabías que invertir en ${PROJECTS[0]?.name || 'Panamá'} te da exención predial por 20 años en USD?\n\nMientras las tasas en Latinoamérica fluctúan, tu capital trabaja seguro, rentable y libre de impuestos prediales.\n\nPortafolio GLP: desde $${PROJECTS[0]?.minPrice?.toLocaleString() || '150,000'} USD.\n\n#GLP #PanamaRealEstate #InversionInmobiliaria`
-          : `Estimado/a [NOMBRE],\n\nQueremos compartirle una oportunidad concreta en ${PROJECTS[0]?.name || 'nuestros proyectos'}: rentabilidad superior al 8% anual en USD, con exención predial por 20 años.\n\nAgendemos una llamada de 20 minutos.\n\nValeria · GLP Wealth Management`
+          ? `¿Sabías que invertir en ${PROJECTS[0]?.name || 'Panamá'} te da rentabilidad en USD?\n\nMientras las tasas en Latinoamérica fluctúan, tu capital trabaja seguro y rentable, dolarizado.\n\nPortafolio Capital Brokers: desde $${PROJECTS[0]?.minPrice?.toLocaleString() || '150,000'} USD.\n\n#CapitalBrokers #PanamaRealEstate #InversionInmobiliaria`
+          : `Estimado/a [NOMBRE],\n\nQueremos compartirle una oportunidad concreta en ${PROJECTS[0]?.name || 'nuestros proyectos'}: rentabilidad superior al 8% anual en USD.\n\nAgendemos una llamada de 20 minutos.\n\nValeria · Capital Brokers - Real Estate`
         }`,
-        tags: ['GLP', 'Panama', 'InversionInmobiliaria'],
+        tags: ['CapitalBrokers', 'Panama', 'InversionInmobiliaria'],
         contexto: 'Generado sin IA — API no disponible',
         status: 'pending',
         notas_admin: '',
@@ -4633,7 +4631,7 @@ Responde SOLO con JSON sin bloques de código markdown:
     ).join('\n');
 
     try {
-      const prompt = `Eres Isabella, Brand Ambassador de GLP Wealth Management. Valeria (tu compañera copywriter) acaba de producir el siguiente contenido de marketing:
+      const prompt = `Eres Isabella, Embajadora de Marca de Capital Brokers - Real Estate. Valeria (tu compañera redactora) acaba de producir el siguiente contenido de marketing:
 
 CANAL ORIGINAL: ${valeriaDraft.canal || valeriaDraft.type}
 TÍTULO: ${valeriaDraft.asunto}
@@ -4659,7 +4657,7 @@ Tu misión: Convierte este contenido de Valeria en un Reel de 45 segundos que Is
 Responde SOLO con JSON sin bloques de código:
 {"titulo": "título del reel", "duracion": "45s", "contenido": "guion completo con secciones GANCHO/DESARROLLO/CTA, texto en pantalla por sección, planos sugeridos y activos de video a usar", "notas_produccion": "notas para el equipo de producción", "assets_requeridos": ["asset 1", "asset 2"]}`;
 
-      const res = await triggerOpenAI(prompt, 'Eres Isabella, presentadora de GLP. Adaptas copies de marketing a guiones de video ejecutables.', undefined, 'ISABELLA', 'adaptar_guion');
+      const res = await triggerOpenAI(prompt, 'Eres Isabella, presentadora de Capital Brokers. Adaptas copies de marketing a guiones de video ejecutables.', undefined, 'ISABELLA', 'adaptar_guion');
       const parsed = JSON.parse(res.replace(/```json/g,'').replace(/```/g,'').trim());
 
       const newScript: AgentDraft = {
@@ -4704,7 +4702,7 @@ Responde SOLO con JSON sin bloques de código:
     };
 
     const tipoVideo = tipoVideoOverride || 'Reel 45s';
-    logMsg(`Isabella preparando producción de ${tipoVideo} con perfil de marca GLP...`);
+    logMsg(`Isabella preparando producción de ${tipoVideo} con perfil de marca Capital Brokers...`);
 
     // Contexto de marca compartido con Valeria
     const catalogoReal = PROJECTS.map(p =>
@@ -4715,7 +4713,7 @@ Responde SOLO con JSON sin bloques de código:
 
     // Contexto del perfil de marca (mismo que Valeria)
     const brandCtx = `
-PROPUESTA DE VALOR GLP: ${brandProfile.propuesta_valor}
+PROPUESTA DE VALOR Capital Brokers: ${brandProfile.propuesta_valor}
 AUDIENCIA: ${brandProfile.audiencias.slice(0, 3).join(' | ')}
 TONO: ${brandProfile.tonos.slice(0, 2).join(' | ')}
 DIFERENCIADORES: ${brandProfile.diferenciadores.join(' · ')}
@@ -4730,7 +4728,7 @@ Reel de Instagram/TikTok de 45 segundos.
 Estructura obligatoria:
 SECCIÓN 1 — GANCHO (0-5s): Una frase que detenga el scroll. Texto en pantalla grande. Isabella de pie, cámara directa.
 SECCIÓN 2 — TENSIÓN (5-15s): Dato que genera intriga o contraste. Ej: comparativa Colombia vs Panamá. B-roll recomendado.
-SECCIÓN 3 — SOLUCIÓN (15-35s): Isabella explica el diferenciador GLP con datos reales. Texto en pantalla por dato.
+SECCIÓN 3 — SOLUCIÓN (15-35s): Isabella explica el diferenciador Capital Brokers con datos reales. Texto en pantalla por dato.
 SECCIÓN 4 — CTA (35-45s): Acción específica (DM, link, comentar palabra clave). Isabella de frente, energía alta.
 
 Para cada sección incluir:
@@ -4759,7 +4757,7 @@ IMPORTANTE: El cliente debe ser un colombiano anónimo ("un cliente de Bogotá",
 Incluir: guion de Isabella + preguntas sugeridas para el entrevistado + b-roll para cada segmento.`,
 
       'Historia de Proyecto 120s': `
-Mini-documental de 2 minutos sobre un proyecto específico del portafolio GLP.
+Mini-documental de 2 minutos sobre un proyecto específico del portafolio Capital Brokers.
 Estructura cinematográfica: Establecimiento → Conflicto/Necesidad → Solución (el proyecto) → Transformación → CTA.
 Isabella como narradora principal. Incluir escenas sugeridas en ubicación real del proyecto.`,
 
@@ -4774,12 +4772,12 @@ Incluir también: 1 Reel principal (con guion), 2 Stories, 1 carrusel educativo,
 
     try {
       logMsg('Conectando con OpenAI — generando guion de producción profesional...');
-      const prompt = `Eres Isabella, Brand Ambassador y Presentadora Principal de GLP Wealth Management. Eres la cara visible de la firma — elegante, experta, cercana. Hablas de inversión inmobiliaria en Panamá de manera que un colombiano de 45 años con patrimonio entiende y confía en ti.
+      const prompt = `Eres Isabella, Embajadora de Marca y Presentadora Principal de Capital Brokers - Real Estate. Eres la cara visible de la firma — elegante, experta, cercana. Hablas de inversión inmobiliaria en Panamá de manera que un colombiano de 45 años con patrimonio entiende y confía en ti.
 
-PERFIL DE MARCA GLP:
+PERFIL DE MARCA Capital Brokers:
 ${brandCtx}
 
-PORTAFOLIO REAL GLP (usa estos datos — no inventes precios ni proyectos):
+PORTAFOLIO REAL Capital Brokers (usa estos datos — no inventes precios ni proyectos):
 ${catalogoReal}
 
 CONTEXTO OPERATIVO (SARA):
@@ -4799,7 +4797,7 @@ REGLAS ABSOLUTAS:
 Responde SOLO con JSON sin bloques de código:
 {"titulo": "título del video", "duracion": "duración total", "contenido": "el guion completo con todas las secciones estructuradas", "notas_produccion": "notas técnicas para el equipo de producción (equipamiento, locación sugerida, vestuario Isabella, etc.)", "assets_requeridos": ["lista de activos visuales necesarios del banco de contenido"]}`;
 
-      const res = await triggerOpenAI(prompt, 'Eres Isabella, presentadora y brand ambassador de GLP Wealth Management. Tu guion debe ser ejecutable en producción real.', undefined, 'ISABELLA', 'generar_guion');
+      const res = await triggerOpenAI(prompt, 'Eres Isabella, presentadora y embajadora de marca de Capital Brokers - Real Estate. Tu guion debe ser ejecutable en producción real.', undefined, 'ISABELLA', 'generar_guion');
       const cleanRes = res.replace(/```json/g, '').replace(/```/g, '').trim();
       const parsed = JSON.parse(cleanRes);
 
@@ -4838,7 +4836,7 @@ Responde SOLO con JSON sin bloques de código:
         asunto: parsed.titulo,
         content: `DURACIÓN: ${parsed.duracion}\n\n${contenidoTexto}\n\n${'─'.repeat(40)}\n📋 NOTAS DE PRODUCCIÓN:\n${parsed.notas_produccion}\n\n🎬 ASSETS REQUERIDOS:\n${(parsed.assets_requeridos || []).map((a: string) => `• ${a}`).join('\n')}`,
         tags: ['Isabella', 'Video', tipoVideo.replace(' ', ''), 'Producción'],
-        contexto: `Generado con perfil de marca GLP · ${brandProfile.audiencias[0]?.slice(0, 40) || 'Audiencia colombiana'}`,
+        contexto: `Generado con perfil de marca Capital Brokers · ${brandProfile.audiencias[0]?.slice(0, 40) || 'Audiencia colombiana'}`,
         status: 'pending',
         notas_admin: '',
         origen_agentivo: insightOrigin
@@ -4873,8 +4871,8 @@ Responde SOLO con JSON sin bloques de código:
       // Fallback
       const isabellaFallback = {
         id: 'is_' + Date.now(), date: today(), type: tipoVideo, canal: tipoVideo,
-        asunto: `Reel GLP — ${PROJECTS[0]?.name || 'Inversión en Panamá'}`,
-        content: `SECCIÓN 1 — GANCHO (0-5s)\nAUDIO: "¿Sabías que en Panamá llevas 20 años sin pagar impuesto predial?"\nTEXTO PANTALLA: $0 PREDIAL · 20 AÑOS\nPLANO: Plano medio Isabella, cámara directa, fondo neutro o proyecto\n\nSECCIÓN 2 — DATO (5-25s)\nAUDIO: "Mientras en Colombia el predial sube cada año, en ${PROJECTS[0]?.name || 'nuestros proyectos'} desde $${PROJECTS[0]?.minPrice?.toLocaleString() || '150,000'} USD, tu rentabilidad en dólares supera el 8% anual sin ese costo."\nTEXTO PANTALLA: +8% USD · SIN PREDIAL\nPLANO: B-roll del proyecto o render\n\nSECCIÓN 3 — CTA (25-45s)\nAUDIO: "${brandProfile.cta_principal}"\nTEXTO PANTALLA: ESCRÍBENOS "PANAMÁ"\nPLANO: Isabella de frente, sonríe, gesto hacia cámara`,
+        asunto: `Reel Capital Brokers — ${PROJECTS[0]?.name || 'Inversión en Panamá'}`,
+        content: `SECCIÓN 1 — GANCHO (0-5s)\nAUDIO: "¿Sabías que puedes invertir en Panamá y ganar en dólares?"\nTEXTO PANTALLA: RENTABILIDAD EN USD\nPLANO: Plano medio Isabella, cámara directa, fondo neutro o proyecto\n\nSECCIÓN 2 — DATO (5-25s)\nAUDIO: "En ${PROJECTS[0]?.name || 'nuestros proyectos'} desde $${PROJECTS[0]?.minPrice?.toLocaleString() || '150,000'} USD, tu rentabilidad en dólares supera el 8% anual."\nTEXTO PANTALLA: +8% USD ANUAL\nPLANO: B-roll del proyecto o render\n\nSECCIÓN 3 — CTA (25-45s)\nAUDIO: "${brandProfile.cta_principal}"\nTEXTO PANTALLA: ESCRÍBENOS "PANAMÁ"\nPLANO: Isabella de frente, sonríe, gesto hacia cámara`,
         tags: ['Isabella', 'Video', 'Fallback'],
         contexto: 'Generado sin IA — editar antes de producción',
         status: 'pending' as const, notas_admin: ''
@@ -5367,6 +5365,38 @@ Responde SOLO con JSON sin bloques de código:
   // plano (markdown básico de GPT) — antes se mostraban los asteriscos literales sin
   // procesar. Convierte **texto** a negrilla real y alinea los números de lista en una
   // columna fija en vez de dejarlos pegados al texto.
+  // Botones estandarizados de los paneles de agente (aprobado por Armando sobre mockup,
+  // 2026-08-29): antes cada uno de los 7 agentes tenía su propia versión de "Volver" y
+  // "Preguntar a [Agente]" — sólido/texto plano/mayúscula/con-o-sin ícono, cada uno en un
+  // lugar distinto. Un solo componente para cada uno garantiza que no vuelvan a divergir.
+  const IconChevronLeft = () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13, flexShrink: 0 }}>
+      <path d="M15 18l-6-6 6-6" />
+    </svg>
+  );
+  const IconChatBubble = () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14, flexShrink: 0 }}>
+      <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" />
+    </svg>
+  );
+  const renderVolverBtn = (onClick: () => void, label: string = 'Volver') => (
+    <button onClick={onClick} style={{
+      display: 'flex', alignItems: 'center', gap: 6, background: 'transparent',
+      border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 14px', fontSize: 12,
+      fontWeight: 600, color: '#6B7280', cursor: 'pointer', fontFamily: T.fontSans, whiteSpace: 'nowrap' as const,
+    }}>
+      <IconChevronLeft />{label}
+    </button>
+  );
+  const renderPreguntarBtn = (onClick: () => void, nombre: string) => (
+    <button onClick={onClick} style={{
+      display: 'flex', alignItems: 'center', gap: 8, background: '#3E7CB8', border: 'none',
+      borderRadius: 8, padding: '9px 16px', fontSize: 12.5, fontWeight: 700, color: '#fff',
+      cursor: 'pointer', fontFamily: T.fontSans, whiteSpace: 'nowrap' as const, boxShadow: '0 1px 2px rgba(62,124,184,.35)',
+    }}>
+      <IconChatBubble />Preguntar a {nombre}
+    </button>
+  );
   // Razonamiento multi-paso (ver server/planificarSiNecesario en index.js): cuando la
   // pregunta necesitó varios pasos encadenados, el backend devuelve el plan que siguió —
   // se muestra como una hoja de ruta arriba de la respuesta, no solo el resultado final,
@@ -5849,7 +5879,7 @@ Responde SOLO con JSON sin bloques de código:
   );
 
   // ══════════════════════════════════════════════════════════════
-  // MODULE 1: PORTAFOLIO GLP
+  // MODULE 1: PORTAFOLIO Capital Brokers
   // ══════════════════════════════════════════════════════════════
   const renderPortafolio = () => {
     const sortedProjects = [...editableProjects].sort((a, b) => a.name.localeCompare(b.name));
@@ -5865,7 +5895,7 @@ Responde SOLO con JSON sin bloques de código:
 
     return (
       <div>
-        {sectionTitle('Portafolio GLP · Inventario')}
+        {sectionTitle('Portafolio Capital Brokers · Inventario')}
         <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
           {[['all', 'Todos'], ['Golf y Country Club', 'Golf y Country Club'], ['Marina Panamá', 'Marina Panamá'], ['Ciudad', 'Ciudad'], ['Playa', 'Playa']].map(([id, label]) => (
             <button key={id} onClick={() => setPortFilter(id)} style={{
@@ -5991,7 +6021,7 @@ Responde SOLO con JSON sin bloques de código:
                   {expanded && (
                     <div style={{ marginTop: 16, borderTop: `1px solid ${T.borderLight}`, paddingTop: 16 }} onClick={e => e.stopPropagation()}>
                       {/* DETALLES DEL PROYECTO — antes solo vivían en el panel derecho
-                          (Zona/Tipo/Entrega/Precio m²/Condominio/Cap Rate), lo que dejaba
+                          (Zona/Tipo/Entrega/Precio m²/Condominio), lo que dejaba
                           esa info fuera de vista salvo que el panel estuviera abierto.
                           Ahora bajan al cuerpo central, junto al resto de la ficha. */}
                       <div style={{ marginBottom: 20 }}>
@@ -6006,7 +6036,6 @@ Responde SOLO con JSON sin bloques de código:
                             ['Habitaciones', rango?.bedrooms ?? null, false],
                             ['Baños', rango?.banos ?? null, false],
                             ['Condominio', rango?.condominioMin != null && rango?.condominioMax != null ? (rango.condominioMin === rango.condominioMax ? `${usd(rango.condominioMin)}/mes` : `${usd(rango.condominioMin)}–${usd(rango.condominioMax)}/mes`) : null, false],
-                            ['Cap Rate (estimado de mercado)', `${p.capRateMin}–${p.capRateMax}%`, true],
                           ].map(([label, val, siempreDisponible]) => (
                             <div key={label as string}>
                               <div style={{ fontSize: 9, color: T.textSec, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 3 }}>{label}</div>
@@ -6286,8 +6315,8 @@ Responde SOLO con JSON sin bloques de código:
                               { label: 'Condominio/mes', field: 'condominioMes', type: 'number' },
                               { label: 'Vacancia (%)', field: 'vacancyDef', type: 'number' },
                               { label: 'Valorización (% anual)', field: 'appreciationDef', type: 'number' },
-                              { label: 'Cap rate mín (%)', field: 'capRateMin', type: 'number' },
-                              { label: 'Cap rate máx (%)', field: 'capRateMax', type: 'number' },
+                              { label: 'Rentabilidad mín (%)', field: 'capRateMin', type: 'number' },
+                              { label: 'Rentabilidad máx (%)', field: 'capRateMax', type: 'number' },
                             ] as { label: string; field: keyof ProjectData; type: string }[]).map(({ label, field, type }) => (
                               <div key={field as string}>
                                 <div style={{ fontSize: 10, color: T.textSec, marginBottom: 3, fontWeight: 600 }}>{label}</div>
@@ -6634,7 +6663,7 @@ Responde SOLO con JSON sin bloques de código:
                     <td>${s.category || 'Sin categorizar'}</td><td>${s.reason}</td>
                     <td class="num">${usd(s.value)}</td>
                   </tr>`).join('');
-                win.document.write(`<!doctype html><html><head><title>Ventas Caídas — GLP</title><style>
+                win.document.write(`<!doctype html><html><head><title>Ventas Caídas — Capital Brokers</title><style>
                   body{font-family:'Inter',sans-serif;color:#1C1917;padding:40px;}
                   h1{font-family:Georgia,serif;font-weight:400;font-size:22px;margin-bottom:2px;color:${T.teal};}
                   .sub{font-size:11px;color:#78716C;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:24px;}
@@ -6646,7 +6675,7 @@ Responde SOLO con JSON sin bloques de código:
                   @media print{ body{padding:20px;} }
                 </style></head><body>
                   <h1>Ventas Caídas</h1>
-                  <div class="sub">Capital Brokers Properties · ${today()}</div>
+                  <div class="sub">Capital Brokers - Real Estate · ${today()}</div>
                   <table><thead><tr><th>Cliente</th><th>Proyecto</th><th>Broker</th><th>Fecha</th><th>Motivo</th><th>Razón específica</th><th class="num">Valor USD</th></tr></thead>
                   <tbody>${rowsHtml}</tbody></table>
                   <div class="total">Total: ${usd(lostSales.reduce((s, x) => s + x.value, 0))} · ${lostSales.length} objeciones</div>
@@ -6986,10 +7015,8 @@ Responde SOLO con JSON sin bloques de código:
       <div style={{ width: '100%' }}>
         {previousModule && (
           <div style={{ marginBottom: 14 }}>
-            <button onClick={() => { const dest = previousModule; setPreviousModule(null); setActiveDrilldown(null); setActiveModule(dest); }}
-              style={{ background: 'transparent', border: 'none', padding: 0, fontSize: 11, fontWeight: 400, color: '#6B7280', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, textTransform: 'uppercase' as const, letterSpacing: '1.5px', fontFamily: 'Inter, sans-serif' }}>
-              ← Volver a {({'kpis':'Dashboard','dashboard':'Dashboard','eventos':'Agenda de Brokers','gerencial':'Análisis Gerencial','reportes':'Reportes','agentes':'Agentes IA','brokers':'Brokers'} as Record<string,string>)[previousModule] || previousModule.charAt(0).toUpperCase()+previousModule.slice(1)}
-            </button>
+            {renderVolverBtn(() => { const dest = previousModule; setPreviousModule(null); setActiveDrilldown(null); setActiveModule(dest); },
+              `Volver a ${({'kpis':'Dashboard','dashboard':'Dashboard','eventos':'Agenda de Brokers','gerencial':'Análisis Gerencial','reportes':'Reportes','agentes':'Agentes IA','brokers':'Brokers'} as Record<string,string>)[previousModule] || previousModule.charAt(0).toUpperCase()+previousModule.slice(1)}`)}
           </div>
         )}
         {sectionTitle('Dashboard KPIs · Control Comercial')}
@@ -7176,7 +7203,7 @@ Responde SOLO con JSON sin bloques de código:
                   {activeDrilldown.type === 'camilo_prospects' && 'Inteligencia IA'}
                   {activeDrilldown.type === 'sara_history' && 'Seguimiento IA'}
                   {activeDrilldown.type === 'next_event' && 'Agenda comercial'}
-                  {activeDrilldown.type === 'top_proyectos' && 'Portafolio GLP'}
+                  {activeDrilldown.type === 'top_proyectos' && 'Portafolio Capital Brokers'}
                 </div>
                 <h3 style={{ margin: 0, fontSize: 19, fontWeight: 700, color: '#111827', fontFamily: T.fontSans, letterSpacing: '-0.01em' }}>
                   {activeDrilldown.type === 'ticket' && 'Detalle de Ticket Promedio'}
@@ -7668,7 +7695,7 @@ Responde SOLO con JSON sin bloques de código:
 
       const contextSuffix = contextLabel ? ` · ${contextLabel}` : '';
       if (brokerEntityFilter === 'all') {
-        title = `Reporte Consolidado de Comisiones GLP${contextSuffix}`;
+        title = `Reporte Consolidado de Comisiones Capital Brokers${contextSuffix}`;
         headers = ['Deal / Propiedad', 'Broker', 'Valor Venta', 'Comisión Total (5%)', 'Col. Tax Law (1%)', 'Valverde (1%)', 'Capital Brokers (1%)', 'Red de Brokers (2%)'];
         rows = filteredDeals.map(d => [
           d.deal,
@@ -7861,7 +7888,7 @@ Responde SOLO con JSON sin bloques de código:
         // Masthead
         html += `<div class="masthead">
           <div>
-            <div class="brand">Capital Brokers Properties</div>
+            <div class="brand">Capital Brokers - Real Estate</div>
             <div class="brand-sub">Panama · Real Estate &amp; Investment</div>
           </div>
           <div class="doc-label">
@@ -7919,8 +7946,8 @@ Responde SOLO con JSON sin bloques de código:
 
         // Footer
         html += `<div class="footer">
-          <div class="footer-brand">Capital Brokers Properties · Panama</div>
-          <div class="footer-note">Este documento es de carácter confidencial. Emitido por la plataforma GLP CRM. Todos los montos expresados en dólares americanos (USD).</div>
+          <div class="footer-brand">Capital Brokers - Real Estate · Panama</div>
+          <div class="footer-note">Este documento es de carácter confidencial. Emitido por la plataforma Capital Brokers CRM. Todos los montos expresados en dólares americanos (USD).</div>
         </div>`;
 
         html += `<script>window.onload = function() { window.print(); }</script>`;
@@ -8072,7 +8099,13 @@ Responde SOLO con JSON sin bloques de código:
                       </td>
                       <td style={{ padding: '12px 14px', textAlign: 'right' as const, fontWeight: 700, color: T.teal }}>{usd(comEarned)}</td>
                       <td style={{ padding: '12px 14px' }}>
-                        {badge(b.estado === 'activo' ? '● Activo' : '○ Inactivo', b.estado === 'activo' ? 'rgba(72,187,120,0.15)' : 'rgba(160,174,192,0.15)', b.estado === 'activo' ? T.success : T.textSec)}
+                        {/* Antes el relleno de fondo verde claro se veía como un halo/sombra
+                            detrás del texto — se quita el relleno, el punto de color ya
+                            comunica el estado sin necesidad de teñir toda la pastilla. */}
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, color: T.text }}>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: b.estado === 'activo' ? T.success : T.textSec, flexShrink: 0 }} />
+                          {b.estado === 'activo' ? 'Activo' : 'Inactivo'}
+                        </span>
                       </td>
                     </tr>
                   );
@@ -8354,14 +8387,12 @@ Responde SOLO con JSON sin bloques de código:
 
       return (
         <div>
-          <button onClick={() => { setProspectDetail(null); setProspectEdit(null); setActiveDrilldown(null); if (previousModule) { setActiveModule(previousModule); setPreviousModule(null); } }} style={btnSecondary({ marginBottom: 16, display: 'inline-flex', alignItems: 'center', gap: 6 })}>
-            {renderButtonIcon('arrow-left')}
-            <span>
-              {previousModule
+          <div style={{ marginBottom: 16 }}>
+            {renderVolverBtn(() => { setProspectDetail(null); setProspectEdit(null); setActiveDrilldown(null); if (previousModule) { setActiveModule(previousModule); setPreviousModule(null); } },
+              previousModule
                 ? `Volver a ${({ 'kpis': 'Dashboard', 'dashboard': 'Dashboard', 'eventos': 'Agenda de Brokers', 'gerencial': 'Análisis Gerencial', 'reportes': 'Reportes', 'agentes': 'Agentes IA', 'brokers': 'Brokers' } as Record<string, string>)[previousModule] || previousModule.charAt(0).toUpperCase() + previousModule.slice(1)}`
-                : 'Volver a lista/embudo'}
-            </span>
-          </button>
+                : 'Volver a lista/embudo')}
+          </div>
 
           {/* ALERTA SARA — fondo blanco, solo el punto y la leyenda llevan el color
               del nivel; el resto del texto es navy, como el patrón general del CRM. */}
@@ -8623,7 +8654,7 @@ Responde SOLO con JSON sin bloques de código:
                   <div style={{ fontSize: 11, fontWeight: 700, color: T.textSec, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Contacto Rápido</div>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <a
-                      href={`https://wa.me/${(dp.telefono || '').replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${dp.nombre}, te escribo de GLP Wealth Management. ¿Tienes un momento para conversar sobre tu inversión?`)}`}
+                      href={`https://wa.me/${(dp.telefono || '').replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${dp.nombre}, te escribo de Capital Brokers - Real Estate. ¿Tienes un momento para conversar sobre tu inversión?`)}`}
                       target="_blank" rel="noreferrer"
                       title="Abrir WhatsApp"
                       onClick={() => registrarActividad(dp.id, 'WhatsApp enviado', `Mensaje WhatsApp a ${dp.telefono}`)}
@@ -8634,7 +8665,7 @@ Responde SOLO con JSON sin bloques de código:
                       WhatsApp
                     </a>
                     <a
-                      href={`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(dp.correo)}&su=${encodeURIComponent(`GLP Wealth Management — ${(dp.proyectos_interes||[])[0] || 'Propuesta de inversión'}`)}`}
+                      href={`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(dp.correo)}&su=${encodeURIComponent(`Capital Brokers - Real Estate — ${(dp.proyectos_interes||[])[0] || 'Propuesta de inversión'}`)}`}
                       target="_blank" rel="noreferrer"
                       title="Enviar email desde Gmail"
                       onClick={() => registrarActividad(dp.id, 'Email enviado', `Correo a ${dp.correo}`)}
@@ -8784,7 +8815,7 @@ Responde SOLO con JSON sin bloques de código:
                           <div key={`wa-${w.id}`} style={{ padding: 12, borderRadius: 8, background: w.direction === 'in' ? '#F0FDF4' : '#F8FAFC', border: `1px solid ${w.direction === 'in' ? T.success : T.borderLight}` }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                               <div style={{ fontSize: 11, fontWeight: 700, color: T.textSec }}>
-                                📱 {w.direction === 'in' ? 'WhatsApp — Recibido de ' + dp.telefono : 'WhatsApp — Sara (CS GLP)'} · {w.date}
+                                📱 {w.direction === 'in' ? 'WhatsApp — Recibido de ' + dp.telefono : 'WhatsApp — Sara (Capital Brokers)'} · {w.date}
                               </div>
                             </div>
                             <div style={{ fontSize: 13, color: T.text, whiteSpace: 'pre-wrap', lineHeight: 1.5, background: 'rgba(255,255,255,0.5)', padding: 8, borderRadius: 4 }}>
@@ -8800,7 +8831,7 @@ Responde SOLO con JSON sin bloques de código:
                             <div>
                               <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>✉ {email.subject}</div>
                               <div style={{ fontSize: 11, color: T.textSec }}>
-                                {email.direction === 'in' ? 'Recibido de: ' + dp.correo : 'De: Sara (CS GLP)'} · {email.date}
+                                {email.direction === 'in' ? 'Recibido de: ' + dp.correo : 'De: Sara (Capital Brokers)'} · {email.date}
                               </div>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -8883,10 +8914,8 @@ Responde SOLO con JSON sin bloques de código:
       <div>
         {previousModule && (
           <div style={{ marginBottom: 14 }}>
-            <button onClick={() => { const dest = previousModule; setPreviousModule(null); setActiveModule(dest); }}
-              style={{ background: 'transparent', border: 'none', padding: 0, fontSize: 11, fontWeight: 400, color: '#6B7280', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, textTransform: 'uppercase' as const, letterSpacing: '1.5px', fontFamily: 'Inter, sans-serif' }}>
-              ← Volver a {({'kpis':'Dashboard','dashboard':'Dashboard','eventos':'Agenda de Brokers','gerencial':'Análisis Gerencial','reportes':'Reportes','agentes':'Agentes IA','brokers':'Brokers'} as Record<string,string>)[previousModule] || previousModule.charAt(0).toUpperCase()+previousModule.slice(1)}
-            </button>
+            {renderVolverBtn(() => { const dest = previousModule; setPreviousModule(null); setActiveModule(dest); },
+              `Volver a ${({'kpis':'Dashboard','dashboard':'Dashboard','eventos':'Agenda de Brokers','gerencial':'Análisis Gerencial','reportes':'Reportes','agentes':'Agentes IA','brokers':'Brokers'} as Record<string,string>)[previousModule] || previousModule.charAt(0).toUpperCase()+previousModule.slice(1)}`)}
           </div>
         )}
         {sectionTitle('Prospectos · Sistema Operativo Inmobiliario')}
@@ -9293,18 +9322,16 @@ Responde SOLO con JSON sin bloques de código:
     const moduleLabels: Record<string, string> = {
       kpis: 'Dashboard', dashboard: 'Dashboard', prospectos: 'Prospectos',
       reportes: 'Reportes', gerencial: 'Análisis Gerencial', agentes: 'Agentes IA',
-      brokers: 'Brokers', campanas: 'Campañas', portafolio: 'Portafolio GLP',
+      brokers: 'Brokers', campanas: 'Campañas', portafolio: 'Portafolio Capital Brokers',
     };
 
     return (
       <div style={{ fontFamily: sStyle.fontFamily, color: sStyle.text, paddingBottom: 40 }}>
         {previousModule && (
-          <button
-            onClick={() => { const dest = previousModule; setPreviousModule(null); setActiveModule(dest); }}
-            style={{ marginBottom: 16, background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: sStyle.textMuted, display: 'flex', alignItems: 'center', gap: 4, padding: 0, fontFamily: sStyle.fontFamily, textTransform: 'uppercase' as const, letterSpacing: '1.5px' }}
-          >
-            ← Volver a {moduleLabels[previousModule] || previousModule.charAt(0).toUpperCase() + previousModule.slice(1)}
-          </button>
+          <div style={{ marginBottom: 16 }}>
+            {renderVolverBtn(() => { const dest = previousModule; setPreviousModule(null); setActiveModule(dest); },
+              `Volver a ${moduleLabels[previousModule] || previousModule.charAt(0).toUpperCase() + previousModule.slice(1)}`)}
+          </div>
         )}
         <div style={{ borderBottom: `1px solid ${sStyle.border}`, paddingBottom: 20, marginBottom: 30 }}>
           {/* Fila superior: título + controles */}
@@ -9941,7 +9968,7 @@ Responde SOLO con JSON sin bloques de código:
                           const win = window.open('', '_blank');
                           if (!win) return;
                           const rowsHtml = ev.items_costo.map(i => `<tr><td>${i.concepto}</td><td style="text-align:right">${usd(i.valor)}</td></tr>`).join('');
-                          win.document.write(`<!doctype html><html><head><title>${ev.titulo} — GLP</title><style>
+                          win.document.write(`<!doctype html><html><head><title>${ev.titulo} — Capital Brokers</title><style>
                             body{font-family:'Inter',sans-serif;color:#1C1917;padding:40px;}
                             h1{font-family:Georgia,serif;font-weight:400;font-size:22px;margin-bottom:2px;color:${T.teal};}
                             .sub{font-size:11px;color:#78716C;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:24px;}
@@ -9952,7 +9979,7 @@ Responde SOLO con JSON sin bloques de código:
                             @media print{ body{padding:20px;} }
                           </style></head><body>
                             <h1>${ev.titulo}</h1>
-                            <div class="sub">${ev.venue} · ${ev.fecha} · Capital Brokers Properties</div>
+                            <div class="sub">${ev.venue} · ${ev.fecha} · Capital Brokers - Real Estate</div>
                             <table><thead><tr><th>Concepto</th><th style="text-align:right">Valor USD</th></tr></thead><tbody>${rowsHtml}</tbody></table>
                             <div class="totals">
                               <div>Presupuesto asignado: <b>${usd(ev.presupuesto_asignado)}</b></div>
@@ -9970,20 +9997,14 @@ Responde SOLO con JSON sin bloques de código:
                     </div>
                     {/* Botón cerrar / regresar */}
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 20 }}>
-                      <button type="button" onClick={() => {
+                      {renderVolverBtn(() => {
                         setExpandedEvent(null);
                         setEditEventId(null);
                         if (previousModule === 'eventos_calendario') {
                           setPreviousModule(null);
                           setEventosVista('calendario');
                         }
-                      }}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', border: `1px solid ${sStyle.border}`, borderRadius: 6, padding: '7px 16px', fontSize: 12, fontWeight: 600, color: sStyle.textMuted, cursor: 'pointer' }}
-                        onMouseEnter={e => { e.currentTarget.style.background = '#f3f4f6'; e.currentTarget.style.color = sStyle.text; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = sStyle.textMuted; }}
-                      >
-                        ← {previousModule === 'eventos_calendario' ? 'Volver al calendario' : 'Volver al presupuesto general'}
-                      </button>
+                      }, previousModule === 'eventos_calendario' ? 'Volver al calendario' : 'Volver al presupuesto general')}
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40, marginBottom: 40 }}>
                       
@@ -10156,7 +10177,7 @@ Responde SOLO con JSON sin bloques de código:
                 <li>Capacidad Financiera (Patrimonio Neto): <b>40%</b></li>
                 <li>Intención/Historial de Inversión en Dólares: <b>30%</b></li>
                 <li>Ocupación/Cargo (CEO, Especialista, C-Level): <b>20%</b></li>
-                <li>Nivel de Interés en Ubicaciones GLP: <b>10%</b></li>
+                <li>Nivel de Interés en Ubicaciones Capital Brokers: <b>10%</b></li>
               </ul>
             </div>
           );
@@ -10175,7 +10196,7 @@ Responde SOLO con JSON sin bloques de código:
             <ul style={styleList}>
               <li>⚠️ <b>Juan Carlos Restrepo</b> (Ocean Reef) solicita aclarar tiempos de entrega de la marina.</li>
               <li>⚠️ <b>Laura Sánchez</b> pregunta por convenios de doble tributación (explicación general).</li>
-              <li>⚠️ Consulta recurrente sobre exención predial de 20 años en Arraiján.</li>
+              <li>⚠️ Consulta recurrente sobre gastos de escrituración en Arraiján.</li>
             </ul>
           );
         } else {
@@ -10199,7 +10220,7 @@ Responde SOLO con JSON sin bloques de código:
         } else if (label.includes('plantillas')) {
           return (
             <ul style={styleList}>
-              <li>Folleto de bienvenida y exenciones fiscales GLP</li>
+              <li>Folleto de bienvenida y exenciones fiscales Capital Brokers</li>
               <li>Seguimiento de simulación de flujos de caja y ROI a 15 años</li>
               <li>Invitación formal a Eventos de Inversión Dolarizada</li>
             </ul>
@@ -10227,7 +10248,7 @@ Responde SOLO con JSON sin bloques de código:
             <ul style={styleList}>
               <li>Guión de Video: <i>¿Por qué Panamá sigue siendo el refugio seguro de LatAm?</i></li>
               <li>Guión de Video: <i>Cómo obtener residencia permanente comprando propiedades</i></li>
-              <li>Guión de Video: <i>Diferencia entre Cap Rate Bruto y Neto en playas</i></li>
+              <li>Guión de Video: <i>Diferencia entre rentabilidad bruta y neta en playas</i></li>
             </ul>
           );
         } else {
@@ -10436,7 +10457,7 @@ Responde SOLO con JSON sin bloques de código:
         inputs: ['CAMILO', 'SOFÍA'],
         outputs: ['Contenido editorial', 'Campañas'],
         desc: [
-          'Redacta copys con contexto real del portafolio GLP, datos de prospectos e insights de mercado de Camilo.',
+          'Redacta copys con contexto real del portafolio Capital Brokers, datos de prospectos e insights de mercado de Camilo.',
           'Recibe briefs psicográficos de Sofía para adaptar el tono, los sesgos cognitivos y el lenguaje por segmento.',
           'Gestiona el calendario editorial: LinkedIn, email newsletters, anuncios Meta y presentaciones de proyecto.',
         ],
@@ -10456,7 +10477,7 @@ Responde SOLO con JSON sin bloques de código:
         ],
       },
       {
-        name: 'ISABELLA', emoji: '🎙️', role: 'Embajadora de Marca GLP',
+        name: 'ISABELLA', emoji: '🎙️', role: 'Embajadora de Marca Capital Brokers',
         photo: '/img/agents/isabella.png',
         color: '#F59E0B',
         tags: ['Video', 'Guiones', 'Producción'],
@@ -10477,7 +10498,7 @@ Responde SOLO con JSON sin bloques de código:
         statusColor: agentIsabellaActive ? T.coral : T.palm,
         logs: isabellaScripts.length > 0
           ? isabellaScripts.slice(0, 4).map(s => ({ time: s.date, msg: `${s.canal || s.type}: "${s.asunto || s.content.slice(0, 50)}..." — ${s.status === 'active' ? '🎬 En producción' : s.status === 'approved' ? '✅ Aprobado' : '📝 Pendiente'}` }))
-          : [{ time: '--:--', msg: 'Sin guiones aún. Usa "Crear Guion" para generar producción de video con el perfil de marca GLP.' }],
+          : [{ time: '--:--', msg: 'Sin guiones aún. Usa "Crear Guion" para generar producción de video con el perfil de marca Capital Brokers.' }],
         // "Crear Guion" (ejecuta IA) se movió al panel de detalle — ver header de la
         // sección ISABELLA más abajo. La tarjeta del grid ya no dispara acciones.
         actions: [
@@ -10524,14 +10545,13 @@ Responde SOLO con JSON sin bloques de código:
           // de "Inteligencia" (tarjetas de trabajo accionables). El nombre anterior sonaba
           // a otra bandeja de trabajo, cuando en realidad es la versión para compartir.
           { key:'reporte', label:'Resumen Ejecutivo', badge:0 },
-          { key:'chat', label:'Preguntar a Camilo', badge:0 },
         ] as const;
 
         return (
           <div style={{ background: C_CREAM, minHeight:'100%' }}>
 
             {/* ── HEADER — blanco/cobalto/Inter, igual que el resto de la plataforma. Sin
-                referencia a "GLP Wealth Management": el logo ya vive en la barra superior
+                referencia a "Capital Brokers - Real Estate": el logo ya vive en la barra superior
                 y esta línea era pura decoración redundante. ── */}
             <div style={{ background: '#fff', borderTop:`3px solid ${C_GOLD}`, borderBottom: `1px solid ${C_PARCH}`, padding:'28px 40px 0' }}>
               <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-between', gap:16, paddingBottom:22 }}>
@@ -10543,11 +10563,9 @@ Responde SOLO con JSON sin bloques de código:
                     VP de Investigación y Mercados
                   </div>
                 </div>
-                <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:4 }}>
-                  <button onClick={() => setAgentHistoryDetail(null)}
-                    style={{ background:'transparent', border:`1px solid ${C_PARCH}`, borderRadius:8, padding:'8px 16px', color:'#6B7280', fontSize:12, fontWeight:600, fontFamily:T.fontSans, cursor:'pointer' }}>
-                    ← Volver
-                  </button>
+                <div style={{ display:'flex', gap:10, alignItems:'center', marginBottom:4 }}>
+                  {renderVolverBtn(() => setAgentHistoryDetail(null))}
+                  {renderPreguntarBtn(() => setCamiloTab('chat'), 'Camilo')}
                 </div>
               </div>
 
@@ -10669,8 +10687,8 @@ Responde SOLO con JSON sin bloques de código:
                                 btn.disabled = true;
                                 try {
                                   const saraAccion = (ins as any).acciones_sara || `Generar respuesta informativa sobre: ${ins.titulo}`;
-                                  const prompt = `Eres Sara, Customer Success Agent de GLP (inmobiliaria de lujo en Panamá).\nCamilo (científico de datos) te envía este insight de mercado y te pide una acción concreta.\n\nINSIGHT: "${ins.titulo}"\nDATO: ${ins.datos}\nACCIÓN REQUERIDA: ${saraAccion}\n\nGenera una respuesta FAQ breve y profesional (3-5 oraciones) que Sara pueda enviar a prospectos colombianos interesados. Tono: cálido, experto, sin tecnicismos excesivos. Incluye un CTA al final.`;
-                                  const faqResp = await triggerOpenAI(prompt, 'Eres Sara, agente de Customer Success de GLP Panama.', undefined, 'SARA', 'faq_desde_insight');
+                                  const prompt = `Eres Sara, Directora de Experiencia de Cliente de Capital Brokers (inmobiliaria de lujo en Panamá).\nCamilo (científico de datos) te envía este insight de mercado y te pide una acción concreta.\n\nINSIGHT: "${ins.titulo}"\nDATO: ${ins.datos}\nACCIÓN REQUERIDA: ${saraAccion}\n\nGenera una respuesta FAQ breve y profesional (3-5 oraciones) que Sara pueda enviar a prospectos colombianos interesados. Tono: cálido, experto, sin tecnicismos excesivos. Incluye un CTA al final.`;
+                                  const faqResp = await triggerOpenAI(prompt, 'Eres Sara, Directora de Experiencia de Cliente de Capital Brokers - Real Estate.', undefined, 'SARA', 'faq_desde_insight');
                                   const draftRes = await fetch(`${API_ROOT}/api/drafts`, {
                                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({
@@ -10788,7 +10806,7 @@ Responde SOLO con JSON sin bloques de código:
                       <div style={{ fontWeight:700, fontSize:14, color:T.text, marginBottom:4 }}>{r.titulo}</div>
                       {r.precio_ref && <div style={{ fontSize:11, color:'#3B82F6', fontWeight:600, marginBottom:6 }}>💰 {r.precio_ref}</div>}
                       <div style={{ fontSize:12, color:T.textSec, marginBottom:10 }}>{r.descripcion}</div>
-                      <div style={{ fontSize:11, fontWeight:700, color:T.text, marginBottom:6 }}>Argumentos GLP vs esta opción:</div>
+                      <div style={{ fontSize:11, fontWeight:700, color:T.text, marginBottom:6 }}>Argumentos Capital Brokers vs esta opción:</div>
                       {r.argumentos.map((arg,j)=>(
                         <div key={j} style={{ fontSize:11, color:T.text, padding:'4px 0', borderBottom:`1px solid ${T.borderLight}`, display:'flex', gap:6 }}>
                           <span style={{ color:'#10B981', fontWeight:700 }}>✓</span>{arg}
@@ -11001,18 +11019,7 @@ Responde SOLO con JSON sin bloques de código:
                     {saraPanelTab === 'chat' ? 'Chat interactivo · respuestas con datos reales de tu cartera de prospectos' : 'Correos entrantes · Cotizaciones pendientes · Alertas de prospectos'}
                   </div>
                 </div>
-                <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                  {/* Alterna entre la bandeja de 3 columnas y el chat a pantalla completa —
-                      un chat comprimido en una cuarta columna angosta no tendría espacio
-                      para las citas de fuente. */}
-                  <div style={{ display:'flex', background:S_PARCH, borderRadius:8, padding:2 }}>
-                    {([['correos','Bandeja'],['chat','Chat']] as const).map(([id,label]) => (
-                      <button key={id} onClick={() => setSaraPanelTab(id)}
-                        style={{ padding:'6px 14px', borderRadius:6, border:'none', cursor:'pointer', fontSize:12, fontWeight:600, background: saraPanelTab===id ? S_GOLD : 'transparent', color: saraPanelTab===id ? '#fff' : '#6B7280', fontFamily: T.fontSans }}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
+                <div style={{ display:'flex', gap:10, alignItems:'center' }}>
                   {/* El conteo de pendientes ya vive en la barra de herramientas de la lista
                       ("N mensajes · N pendientes") y en el contador de la carpeta del
                       sidebar — este badge repetía el mismo número una tercera vez. */}
@@ -11029,10 +11036,15 @@ Responde SOLO con JSON sin bloques de código:
                       {agentSaraActive ? 'Generando…' : 'Generar Seguimientos'}
                     </button>
                   )}
-                  <button onClick={() => { setAgentHistoryDetail(null); setAgentHistoryTab('pending'); }}
-                    style={{ background:'transparent', border:`1px solid ${S_PARCH}`, borderRadius:8, padding:'7px 14px', color:'#6B7280', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily: T.fontSans }}>
-                    ← Volver
-                  </button>
+                  {renderVolverBtn(() => { setAgentHistoryDetail(null); setAgentHistoryTab('pending'); })}
+                  {/* Botón estandarizado (ver mockup aprobado 2026-08-29): en 'chat' se
+                      convierte en el regreso a la bandeja — Sara es el único agente con una
+                      segunda vista real (bandeja de correos) además del chat, así que en vez
+                      del segmentado Bandeja/Chat de antes, el botón cobalto alterna entre
+                      ambas manteniendo el mismo estándar visual que los otros 6 agentes. */}
+                  {saraPanelTab === 'correos'
+                    ? renderPreguntarBtn(() => setSaraPanelTab('chat'), 'Sara')
+                    : renderVolverBtn(() => setSaraPanelTab('correos'), 'Ver Bandeja')}
                 </div>
               </div>
 
@@ -11541,14 +11553,12 @@ Responde SOLO con JSON sin bloques de código:
                       {CANALES_VALERIA.map(c => <option key={c} value={c}>{CANAL_ICONS[c]} {c}</option>)}
                     </select>
                     <button onClick={() => handleValeria(false, false, undefined, valeriaSelectedCanal)} disabled={valeriaGenerating}
-                      style={{ background: valeriaGenerating ? '#9CA3AF' : V_GOLD, color: '#fff', border:'none', borderRadius:8, padding:'8px 16px', fontSize:12.5, fontWeight:600, fontFamily:T.fontSans, cursor: valeriaGenerating ? 'default':'pointer' }}>
+                      style={{ background: valeriaGenerating ? '#6B7280' : V_GOLD, color: '#fff', border:'none', borderRadius:8, padding:'8px 16px', fontSize:12.5, fontWeight:600, fontFamily:T.fontSans, cursor: valeriaGenerating ? 'default':'pointer' }}>
                       {valeriaGenerating ? 'Generando...' : 'Generar con IA'}
                     </button>
                   </>}
-                  <button onClick={() => { setAgentHistoryDetail(null); setAgentHistoryTab('pending'); }}
-                    style={{ background:'transparent', border:`1px solid ${V_PARCH}`, borderRadius:8, padding:'8px 16px', color:'#6B7280', fontSize:12, fontWeight:600, fontFamily:T.fontSans, cursor:'pointer' }}>
-                    ← Volver
-                  </button>
+                  {renderVolverBtn(() => { setAgentHistoryDetail(null); setAgentHistoryTab('pending'); })}
+                  {renderPreguntarBtn(() => setValeriaTab('chat'), 'Valeria')}
                 </div>
               </div>
 
@@ -11558,7 +11568,6 @@ Responde SOLO con JSON sin bloques de código:
                   { key:'bitacora',  label:'Bitácora' },
                   { key:'contenido', label:'Borradores Pendientes' },
                   { key:'perfil',    label:'Perfil de Marca' },
-                  { key:'chat',      label:'Preguntar a Valeria' },
                 ] as const).map(t => (
                   <button key={t.key} onClick={() => setValeriaTab(t.key)} style={{
                     padding:'12px 18px', fontSize:12, fontWeight:600, fontFamily:T.fontSans, cursor:'pointer', border:'none', background:'transparent',
@@ -11589,7 +11598,7 @@ Responde SOLO con JSON sin bloques de código:
                   <div style={{ background:'#fff', borderLeft:`4px solid ${cfg.color}`, padding:'14px 18px', marginBottom:20, display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12 }}>
                     <div>
                       <div style={{ fontSize:7, letterSpacing:3, color:cfg.color, fontWeight:800, textTransform:'uppercase' as const, marginBottom:5 }}>Contexto de Sofía · Perfil Conductual</div>
-                      <div style={{ fontSize:13, fontFamily:T.fontSerif, fontWeight:600, color:V_NAVY, marginBottom:3 }}>{sofiaToValeriaContext.prospectName}</div>
+                      <div style={{ fontSize:13, fontFamily:T.fontSans, fontWeight:600, color:V_NAVY, marginBottom:3 }}>{sofiaToValeriaContext.prospectName}</div>
                       <div style={{ fontSize:9, color:'#6B7280', marginBottom:8 }}>{sofiaToValeriaContext.ocupacion} · USD {(sofiaToValeriaContext.presupuesto||0).toLocaleString()}</div>
                       <div style={{ display:'flex', gap:6, flexWrap:'wrap' as const, marginBottom:8 }}>
                         <span style={{ fontSize:8, fontWeight:800, color:'#fff', background:cfg.color, padding:'2px 10px', letterSpacing:1.5 }}>{sofiaToValeriaContext.arquetipo.toUpperCase()}</span>
@@ -11601,7 +11610,7 @@ Responde SOLO con JSON sin bloques de código:
                       </div>
                     </div>
                     <button onClick={() => setSofiaToValeriaContext(null)}
-                      style={{ background:'none', border:'none', color:'#9CA3AF', fontSize:16, cursor:'pointer', flexShrink:0, padding:'0 4px', lineHeight:1 }}>×</button>
+                      style={{ background:'none', border:'none', color:'#6B7280', fontSize:16, cursor:'pointer', flexShrink:0, padding:'0 4px', lineHeight:1 }}>×</button>
                   </div>
                 );
               })()}
@@ -11641,17 +11650,16 @@ Responde SOLO con JSON sin bloques de código:
                   objeciones: [
                     '¿Es seguro llevar plata a otro país? → Panamá dolarizado, banca top-10 mundial',
                     '¿Cómo lo manejo con la DIAN? → Activos en el exterior son legales y declarables',
-                    '¿Y si el proyecto no se entrega? → Fiducia de garantía en todos los proyectos GLP',
+                    '¿Y si el proyecto no se entrega? → Fiducia de garantía en todos los proyectos de Capital Brokers',
                     '¿Puedo usarlo o es solo para arrendar? → Doble beneficio: uso propio + renta',
                     '¿No es muy caro para mí? → Desde $150K USD con financiamiento disponible',
                     '¿El peso colombiano me afecta? → Todo en dólares, sin riesgo cambiario',
                     '¿Quién me garantiza la renta? → Operadoras con track record verificado',
                   ],
                   diferenciadores: [
-                    'Exención predial por 20 años en todos los proyectos nuevos',
                     'Rentabilidad neta superior al 8% anual en USD',
                     'Panamá dolarizado — sin riesgo cambiario',
-                    'GLP solo trabaja proyectos con fiducia de garantía',
+                    'Capital Brokers solo trabaja proyectos con fiducia de garantía',
                     'Asesoría integral: desde selección hasta declaración en Colombia',
                     'Acceso a preventas exclusivas antes de apertura al público',
                     'Red de brokers certificados en Bogotá, Medellín y Cali',
@@ -11666,15 +11674,15 @@ Responde SOLO con JSON sin bloques de código:
                     'Datos y gráficos de valorización histórica',
                   ],
                   hashtags_instagram: [
-                    '#GLP', '#PanamaRealEstate', '#InversionInmobiliaria', '#DolarizaTuPatrimonio',
-                    '#PanamáInversión', '#WealthManagement', '#InversionEnDolares', '#GlpWealthManagement',
+                    '#CapitalBrokers', '#PanamaRealEstate', '#InversionInmobiliaria', '#DolarizaTuPatrimonio',
+                    '#PanamáInversión', '#RealEstate', '#InversionEnDolares', '#CapitalBrokersRealEstate',
                     '#OceanReefPark', '#VentuPanama', '#PuntaPacifica', '#CostaDelEste',
                     '#LibertadFinanciera', '#InvierteEnPanama', '#PatrimonioEnDolares',
                     '#InmobiliariaLujo', '#InversionColombia', '#DolarizaciónPatrimonio',
                     '#PanamaCityLife', '#RealEstateLujo', '#InversionistaColombia',
                   ],
                   hashtags_linkedin: [
-                    '#InversionInmobiliaria', '#WealthManagement', '#PanamaRealEstate', '#GLP',
+                    '#InversionInmobiliaria', '#RealEstate', '#PanamaRealEstate', '#CapitalBrokers',
                     '#PatrimonioDolarizado', '#RealEstatePanama', '#InversionInternacional',
                     '#FinanzasPersonales', '#Inmobiliaria', '#InversionInteligente',
                     '#LiderazgoFinanciero', '#EmpresariosColombia', '#PatrimonioFamiliar',
@@ -11743,7 +11751,7 @@ Responde SOLO con JSON sin bloques de código:
                         <ProfileChips field="objeciones" label="Objeciones a Disolver" icon="🛡️" />
                       </div>
                       <div>
-                        <ProfileChips field="diferenciadores" label="Diferenciadores GLP" icon="⭐" />
+                        <ProfileChips field="diferenciadores" label="Diferenciadores Capital Brokers" icon="⭐" />
                         <ProfileChips field="activos_visuales" label="Activos Visuales Disponibles" icon="📷" />
                         <ProfileChips field="hashtags_instagram" label="Hashtags Instagram" icon="📸" />
                         <ProfileChips field="hashtags_linkedin" label="Hashtags LinkedIn" icon="💼" />
@@ -11788,24 +11796,24 @@ Responde SOLO con JSON sin bloques de código:
               {valeriaTab === 'bitacora' && (
                 <div>
                   {valeriaDrafts.length === 0 ? (
-                    <div style={{ padding:40, textAlign:'center', border:`1px dashed #D6CEBC`, background:'#fff' }}>
-                      <div style={{ fontSize:11, color:'#9CA3AF' }}>Sin actividad registrada aún.</div>
+                    <div style={{ padding:40, textAlign:'center', border:`1px dashed #E5E7EB`, background:'#fff' }}>
+                      <div style={{ fontSize:11, color:'#6B7280' }}>Sin actividad registrada aún.</div>
                     </div>
                   ) : (
                     [...valeriaDrafts].sort((a,b) => (b.date||'').localeCompare(a.date||'')).map((item, idx) => {
                       const statusLabel = item.status==='active'?'Publicado':item.status==='approved'?'Aprobado':'Borrador';
                       const isCrisis = (item.type || '').includes('Crisis') || (item.canal || '').includes('Crisis');
                       return (
-                        <div key={item.id} style={{ background:'#fff', borderTop: idx===0 ? 'none' : '1px solid #F0EDE8', padding:'14px 18px', display:'flex', justifyContent:'space-between', alignItems:'center', gap:16 }}>
+                        <div key={item.id} style={{ background:'#fff', borderTop: idx===0 ? 'none' : '1px solid #F3F4F6', padding:'14px 18px', display:'flex', justifyContent:'space-between', alignItems:'center', gap:16 }}>
                           <div>
-                            <div style={{ fontSize:12, fontFamily:T.fontSerif, color:V_NAVY }}>{item.asunto || item.type}</div>
-                            <div style={{ fontSize:9, color:'#9CA3AF', marginTop:2, letterSpacing:1, textTransform:'uppercase' as const }}>
+                            <div style={{ fontSize:12, fontFamily:T.fontSans, color:V_NAVY }}>{item.asunto || item.type}</div>
+                            <div style={{ fontSize:9, color:'#6B7280', marginTop:2, letterSpacing:1, textTransform:'uppercase' as const }}>
                               {item.canal || item.type}{isCrisis ? ' · Crisis' : item.origen_agentivo ? ' · Campaña agéntica' : ''}
                             </div>
                           </div>
                           <div style={{ textAlign:'right' as const, flexShrink:0 }}>
                             <span style={{ fontSize:8, letterSpacing:2, color: isCrisis ? '#DC2626' : V_GOLD, fontWeight:700, textTransform:'uppercase' as const }}>{statusLabel}</span>
-                            <div style={{ fontSize:9, color:'#9CA3AF', marginTop:2 }}>{item.date}</div>
+                            <div style={{ fontSize:9, color:'#6B7280', marginTop:2 }}>{item.date}</div>
                           </div>
                         </div>
                       );
@@ -11824,11 +11832,11 @@ Responde SOLO con JSON sin bloques de código:
                   { label:'Aprobados', value:vApproved, accent:V_NAVY },
                   { label:'Publicados', value:vPublished, accent:'#10B981' },
                 ].map(s => (
-                  <div key={s.label} style={{ background:'#fff', border:`1px solid #D6CEBC`, padding:'16px 20px', display:'flex', alignItems:'center', gap:14 }}>
+                  <div key={s.label} style={{ background:'#fff', border:`1px solid #E5E7EB`, borderRadius:10, boxShadow:'0 1px 2px rgba(15,23,42,.04)', padding:'16px 20px', display:'flex', alignItems:'center', gap:14 }}>
                     <div style={{ width:3, alignSelf:'stretch', background:s.accent, flexShrink:0 }} />
                     <div>
                       <div style={{ fontSize:26, fontWeight:800, fontFamily:T.fontSans, fontVariantNumeric:'tabular-nums', color:s.accent, lineHeight:1 }}>{s.value}</div>
-                      <div style={{ fontSize:9, letterSpacing:2, color:'#9CA3AF', textTransform:'uppercase', marginTop:3 }}>{s.label}</div>
+                      <div style={{ fontSize:9, letterSpacing:2, color:'#6B7280', textTransform:'uppercase', marginTop:3 }}>{s.label}</div>
                     </div>
                   </div>
                 ))}
@@ -11842,16 +11850,16 @@ Responde SOLO con JSON sin bloques de código:
                   const label = tab==='pending'?'Borradores':tab==='approved'?'Aprobados':'Publicados';
                   return (
                     <button key={tab} onClick={() => setAgentHistoryTab(tab)} style={{
-                      padding:'7px 16px', fontSize:9, fontWeight:700, letterSpacing:2, textTransform:'uppercase', cursor:'pointer',
-                      background: isActive ? V_NAVY : 'transparent',
-                      color: isActive ? V_GOLD_L : '#6B7280',
-                      border:`1px solid ${isActive ? V_NAVY : '#D6CEBC'}`,
-                      borderRadius:2,
+                      padding:'7px 16px', fontSize:11, fontWeight:600, cursor:'pointer', fontFamily:T.fontSans,
+                      background: isActive ? V_GOLD : '#fff',
+                      color: isActive ? '#fff' : '#6B7280',
+                      border:`1px solid ${isActive ? V_GOLD : '#E5E7EB'}`,
+                      borderRadius:8,
                     }}>{label} ({count})</button>
                   );
                 })}
                 <select value={valeriaFilterCanal} onChange={e => setValeriaFilterCanal(e.target.value)}
-                  style={{ marginLeft:'auto', background:'#fff', border:'1px solid #D6CEBC', borderRadius:2, padding:'6px 10px', fontSize:10, color:'#374151', outline:'none' }}>
+                  style={{ marginLeft:'auto', background:'#fff', border:'1px solid #E5E7EB', borderRadius:8, padding:'7px 12px', fontSize:12, fontFamily:T.fontSans, color:'#374151', outline:'none' }}>
                   <option value="todos">Todos los canales</option>
                   {CANALES_VALERIA.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
@@ -11860,9 +11868,9 @@ Responde SOLO con JSON sin bloques de código:
               {/* Lista */}
               <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
                 {vFiltered.length === 0 ? (
-                  <div style={{ padding:40, textAlign:'center', border:`1px dashed #D6CEBC`, background:'#fff' }}>
-                    <div style={{ fontFamily:T.fontSerif, fontSize:18, color:V_NAVY, marginBottom:6 }}>Sin contenido aquí</div>
-                    <div style={{ fontSize:11, color:'#9CA3AF' }}>Selecciona un canal y pulsa "Generar con IA" para crear contenido</div>
+                  <div style={{ padding:40, textAlign:'center', border:`1px dashed #E5E7EB`, borderRadius:10, background:'#fff' }}>
+                    <div style={{ fontFamily:T.fontSans, fontWeight:700, fontSize:16, color:V_NAVY, marginBottom:6 }}>Sin contenido aquí</div>
+                    <div style={{ fontSize:11, color:'#6B7280' }}>Selecciona un canal y pulsa "Generar con IA" para crear contenido</div>
                   </div>
                 ) : (() => {
                   const isCrisisItem = (i: typeof vFiltered[0]) => (i.type || '').toLowerCase().includes('crisis') || (i.canal || '').toLowerCase().includes('crisis');
@@ -11874,7 +11882,7 @@ Responde SOLO con JSON sin bloques de código:
                   const statusColor = item.status==='active'?'#10B981':item.status==='approved'?V_NAVY:V_GOLD;
                   const statusLabel = item.status==='active'?'Publicado':item.status==='approved'?'Aprobado':'Borrador';
                   return (
-                    <div key={item.id} style={{ background:'#fff', border:`1px solid #D6CEBC`, borderLeft:`3px solid ${statusColor}` }}>
+                    <div key={item.id} style={{ background:'#fff', border:`1px solid #E5E7EB`, borderLeft:`3px solid ${statusColor}`, borderRadius:10, boxShadow:'0 1px 2px rgba(15,23,42,.04)', overflow:'hidden' }}>
                     {isCrisis && (
                       <div style={{ background:V_NAVY, padding:'6px 18px', display:'flex', alignItems:'center', gap:8 }}>
                         <span style={{ fontSize:10 }}>🚨</span>
@@ -11883,13 +11891,13 @@ Responde SOLO con JSON sin bloques de código:
                       </div>
                     )}
                       {/* Card header */}
-                      <div style={{ padding:'14px 18px 12px', borderBottom:'1px solid #F0EDE8', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12 }}>
+                      <div style={{ padding:'14px 18px 12px', borderBottom:'1px solid #F3F4F6', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12 }}>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
                             <span style={{ fontSize:14 }}>{CANAL_ICONS[item.canal || item.type] || '📄'}</span>
-                            <span style={{ fontSize:13, fontWeight:600, color:V_NAVY, fontFamily:T.fontSerif }}>{item.asunto || item.type}</span>
+                            <span style={{ fontSize:13, fontWeight:600, color:V_NAVY, fontFamily:T.fontSans }}>{item.asunto || item.type}</span>
                           </div>
-                          <div style={{ fontSize:9, letterSpacing:2, color:'#9CA3AF', textTransform:'uppercase' }}>{item.canal || item.type} · {item.date}</div>
+                          <div style={{ fontSize:9, letterSpacing:2, color:'#6B7280', textTransform:'uppercase' }}>{item.canal || item.type} · {item.date}</div>
                           {item.contexto && <div style={{ fontSize:10, color:'#6B7280', marginTop:4, fontStyle:'italic' }}>{item.contexto}</div>}
                           {item.tags && item.tags.length > 0 && (
                             <div style={{ display:'flex', gap:4, marginTop:6, flexWrap:'wrap' }}>
@@ -11922,48 +11930,48 @@ Responde SOLO con JSON sin bloques de código:
                       <div style={{ padding:'14px 18px' }}>
                         <textarea value={item.content}
                           onChange={e => setValeriaDrafts(prev => prev.map(x => x.id === item.id ? { ...x, content: e.target.value } : x))}
-                          style={{ width:'100%', boxSizing:'border-box', fontSize:12, minHeight:100, border:'1px solid #E9E4DA', padding:'10px 12px', fontFamily:T.fontSans, lineHeight:1.7, color:'#374151', outline:'none', resize:'vertical' as const, marginBottom:8 }}
+                          style={{ width:'100%', boxSizing:'border-box', fontSize:12, minHeight:100, border:'1px solid #E5E7EB', padding:'10px 12px', fontFamily:T.fontSans, lineHeight:1.7, color:'#374151', outline:'none', resize:'vertical' as const, marginBottom:8 }}
                         />
                         <input placeholder="Notas del administrador..."
                           value={item.notas_admin || ''}
                           onChange={e => setValeriaDrafts(prev => prev.map(x => x.id === item.id ? { ...x, notas_admin: e.target.value } : x))}
-                          style={{ width:'100%', boxSizing:'border-box', fontSize:11, border:'1px solid #E9E4DA', padding:'7px 10px', color:'#374151', outline:'none', marginBottom:12, fontStyle: !item.notas_admin ? 'italic' : 'normal' }}
+                          style={{ width:'100%', boxSizing:'border-box', fontSize:11, border:'1px solid #E5E7EB', padding:'7px 10px', color:'#374151', outline:'none', marginBottom:12, fontStyle: !item.notas_admin ? 'italic' : 'normal' }}
                         />
 
                         <div style={{ display:'flex', gap:8, justifyContent:'flex-end', flexWrap:'wrap', alignItems:'center' }}>
                           {item.aprobado_por && (
-                            <span style={{ fontSize:9, color:'#9CA3AF', marginRight:'auto' }}>
+                            <span style={{ fontSize:9, color:'#6B7280', marginRight:'auto' }}>
                               Aprobado por {item.aprobado_por} · {item.fecha_aprobacion}
                             </span>
                           )}
                           <button onClick={() => { setValeriaDrafts(prev => prev.filter(x => x.id !== item.id)); dbDel(`${API}/valeria/drafts/${item.id}`); }}
-                            style={{ background:'transparent', border:'1px solid #FECACA', color:'#DC2626', padding:'6px 12px', fontSize:9, fontWeight:700, letterSpacing:1, textTransform:'uppercase', cursor:'pointer' }}>
+                            style={{ background:'transparent', border:'1px solid #FECACA', borderRadius:8, color:'#DC2626', padding:'7px 14px', fontSize:12, fontWeight:600, fontFamily:T.fontSans, cursor:'pointer' }}>
                             Eliminar
                           </button>
                           {item.status === 'pending' && (
                             <button onClick={() => { setValeriaDrafts(prev => prev.map(x => x.id === item.id
                               ? { ...x, status:'approved', aprobado_por:'Admin', fecha_aprobacion:today() } : x)); dbPatch(`${API}/valeria/drafts/${item.id}`, { status:'approved', aprobado_por:'Admin', fecha_aprobacion:today() }); }}
-                              style={{ background:V_NAVY, color:'#fff', border:'none', padding:'6px 16px', fontSize:9, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', cursor:'pointer' }}>
+                              style={{ background:V_NAVY, color:'#fff', border:'none', borderRadius:8, padding:'7px 16px', fontSize:12, fontWeight:700, fontFamily:T.fontSans, cursor:'pointer' }}>
                               Aprobar
                             </button>
                           )}
                           {item.status === 'approved' && (
                             <button onClick={() => { setValeriaDrafts(prev => prev.map(x => x.id === item.id ? { ...x, status:'pending' } : x)); dbPatch(`${API}/valeria/drafts/${item.id}`, { status:'pending' }); }}
-                              style={{ background:'transparent', border:`1px solid #D6CEBC`, color:'#6B7280', padding:'6px 12px', fontSize:9, fontWeight:700, letterSpacing:1, textTransform:'uppercase', cursor:'pointer' }}>
+                              style={{ background:'transparent', border:`1px solid #E5E7EB`, borderRadius:8, color:'#6B7280', padding:'7px 14px', fontSize:12, fontWeight:600, fontFamily:T.fontSans, cursor:'pointer' }}>
                               Devolver
                             </button>
                           )}
                           {(item.status === 'approved' || item.status === 'pending') && (
                             <button onClick={() => { setValeriaDrafts(prev => prev.map(x => x.id === item.id
                               ? { ...x, status:'active', aprobado_por: x.aprobado_por||'Admin', fecha_aprobacion: x.fecha_aprobacion||today() } : x)); dbPatch(`${API}/valeria/drafts/${item.id}`, { status:'active' }); }}
-                              style={{ background:'#10B981', color:'#fff', border:'none', padding:'6px 16px', fontSize:9, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', cursor:'pointer' }}>
+                              style={{ background:'#0D9488', color:'#fff', border:'none', borderRadius:8, padding:'7px 16px', fontSize:12, fontWeight:700, fontFamily:T.fontSans, cursor:'pointer' }}>
                               Publicar
                             </button>
                           )}
                           {(item.status === 'approved' || item.status === 'active') && !['Coordinación','Guion Video'].includes(item.canal||'') && (
                             <button onClick={() => { handleIsabellaFromValeria(item); setAgentHistoryDetail('ISABELLA'); }}
                               disabled={agentIsabellaActive}
-                              style={{ background: agentIsabellaActive ? '#9CA3AF' : V_GOLD, color: V_NAVY, border:'none', padding:'6px 16px', fontSize:9, fontWeight:800, letterSpacing:1.5, textTransform:'uppercase', cursor: agentIsabellaActive ? 'default':'pointer' }}>
+                              style={{ background: agentIsabellaActive ? '#9CA3AF' : V_GOLD, color: '#fff', border:'none', borderRadius:8, padding:'7px 16px', fontSize:12, fontWeight:700, fontFamily:T.fontSans, cursor: agentIsabellaActive ? 'default':'pointer' }}>
                               Crear Video · Isabella
                             </button>
                           )}
@@ -11983,16 +11991,17 @@ Responde SOLO con JSON sin bloques de código:
                       <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' }}>
                         {SUBTABS.map(s => (
                           <button key={s.key} onClick={() => setValeriaContentSubTab(s.key)} style={{
-                            padding:'6px 14px', fontSize:9, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase' as const, cursor:'pointer',
-                            background: valeriaContentSubTab === s.key ? V_NAVY : 'transparent',
-                            color: valeriaContentSubTab === s.key ? V_GOLD_L : '#6B7280',
-                            border:`1px solid ${valeriaContentSubTab === s.key ? V_NAVY : '#D6CEBC'}`,
+                            padding:'6px 14px', fontSize:11, fontWeight:600, fontFamily:T.fontSans, cursor:'pointer',
+                            background: valeriaContentSubTab === s.key ? V_GOLD : '#fff',
+                            color: valeriaContentSubTab === s.key ? '#fff' : '#6B7280',
+                            border:`1px solid ${valeriaContentSubTab === s.key ? V_GOLD : '#E5E7EB'}`,
+                            borderRadius:8,
                           }}>{s.label} ({s.items.length})</button>
                         ))}
                       </div>
                       {activeSub.items.length === 0 ? (
-                        <div style={{ padding:32, textAlign:'center', border:'1px dashed #D6CEBC', background:'#fff' }}>
-                          <div style={{ fontSize:11, color:'#9CA3AF' }}>Sin contenido en esta sección</div>
+                        <div style={{ padding:32, textAlign:'center', border:'1px dashed #E5E7EB', borderRadius:10, background:'#fff' }}>
+                          <div style={{ fontSize:11, color:'#6B7280' }}>Sin contenido en esta sección</div>
                         </div>
                       ) : (
                         <div style={{ display:'flex', flexDirection:'column' as const, gap:8 }}>
@@ -12022,7 +12031,7 @@ Responde SOLO con JSON sin bloques de código:
         <div style={{ background: I_CREAM, minHeight:'100%' }}>
 
           {/* Header — blanco/cobalto/Inter, sin el eyebrow "Isabella · Embajadora de
-              Marca GLP" (redundante con el título de la página). */}
+              Marca Capital Brokers" (redundante con el título de la página). */}
           <div style={{ background: '#fff', borderTop: `3px solid ${I_GOLD}`, borderBottom: `1px solid ${I_PARCH}`, padding:'24px 32px 0' }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:16, flexWrap:'wrap', paddingBottom:18 }}>
               <div>
@@ -12037,10 +12046,8 @@ Responde SOLO con JSON sin bloques de código:
                   style={{ background: agentIsabellaActive ? '#9CA3AF' : I_GOLD, color: '#fff', border:'none', borderRadius:8, padding:'8px 16px', fontSize:12.5, fontWeight:600, fontFamily:T.fontSans, cursor: agentIsabellaActive ? 'default' : 'pointer' }}>
                   {agentIsabellaActive ? 'Generando...' : 'Crear Guion'}
                 </button>
-                <button onClick={() => { setAgentHistoryDetail(null); setAgentHistoryTab('pending'); }}
-                  style={{ background:'transparent', border:`1px solid ${I_PARCH}`, borderRadius:8, padding:'7px 14px', color:'#6B7280', fontSize:12, fontWeight:600, fontFamily:T.fontSans, cursor:'pointer' }}>
-                  ← Volver
-                </button>
+                {renderVolverBtn(() => { setAgentHistoryDetail(null); setAgentHistoryTab('pending'); })}
+                {renderPreguntarBtn(() => setAgentHistoryTab('chat'), 'Isabella')}
               </div>
             </div>
 
@@ -12051,7 +12058,6 @@ Responde SOLO con JSON sin bloques de código:
                 { key:'approved', label:`Aprobados (${iApproved})` },
                 { key:'active',   label:`Publicados (${iActive})` },
                 { key:'bitacora', label:'Bitácora' },
-                { key:'chat',     label:'Preguntar a Isabella' },
               ] as const).map(t => (
                 <button key={t.key} onClick={() => setAgentHistoryTab(t.key)} style={{
                   padding:'12px 18px', fontSize:12, fontWeight:600, fontFamily:T.fontSans, cursor:'pointer', border:'none', background:'transparent', marginBottom:-1,
@@ -12296,7 +12302,7 @@ Responde SOLO con JSON sin bloques de código:
             { text: 'Maximizar retorno sobre inversión', delta: { racional: 3 }, signal: 'Orientado a retorno de inversión' },
             { text: 'Acceder al estilo de vida que siempre soñó', delta: { aspiracional: 3 }, signal: 'Motivación aspiracional detectada' },
           ] },
-        { sofia: '¿Cómo tomó contacto con GLP?',
+        { sofia: '¿Cómo tomó contacto con Capital Brokers?',
           options: [
             { text: 'Evento exclusivo o propietario actual', delta: { estatus: 2 }, signal: 'Captado en evento exclusivo' },
             { text: 'Referido de familia o amigo de confianza', delta: { legado: 1, racional: 1 }, signal: 'Ingresó por referencia de confianza' },
@@ -12312,7 +12318,7 @@ Responde SOLO con JSON sin bloques de código:
           ] },
         { sofia: '¿Qué tipo de contenido lo mueve más?',
           options: [
-            { text: 'Fotos de eventos y propietarios en GLP', delta: { estatus: 2 }, signal: 'Responde a prueba social de élite' },
+            { text: 'Fotos de eventos y propietarios en Capital Brokers', delta: { estatus: 2 }, signal: 'Responde a prueba social de élite' },
             { text: 'Análisis de valorización a 10+ años', delta: { legado: 2, racional: 1 }, signal: 'Perfil analítico-patrimonial' },
             { text: 'Métricas: ocupación, tasas, comparativos de mercado', delta: { racional: 3 }, signal: 'Perfil analítico-profesional' },
             { text: 'Videos de lifestyle y experiencia de vivir ahí', delta: { aspiracional: 3 }, signal: 'Responde a storytelling visual' },
@@ -12330,7 +12336,7 @@ Responde SOLO con JSON sin bloques de código:
         estatus: { sara: 'Destacar exclusividad y pertenencia a comunidad UHNWI. No mencionar precio primero. Invitar a evento privado de propietarios.', valeria: 'Prueba social de élite, escasez real de unidades, copy en primera persona del plural ("quienes ya son parte de..."). Evitar lenguaje promocional.' },
         legado: { sara: 'Enfatizar valorización histórica, estabilidad del mercado panameño y beneficios de transmisión patrimonial. Ofrecer asesoría de fideicomiso.', valeria: 'Ángulo intergeneracional: "El activo que tus hijos heredarán". ROI a 10+ años, comparativo con instrumentos de preservación patrimonial.' },
         racional: { sara: 'Enviar comparativo con métricas: precio/m², valorización anual histórica, costo de oportunidad vs. alternativas. Responder con datos, no con emociones.', valeria: 'Copy orientado a datos: tablas de valorización, índices de ocupación, beneficios fiscales cuantificados. Tono directo sin adjetivos emocionales.' },
-        aspiracional: { sara: 'Construir el sueño antes del cierre: lifestyle content, testimoniales de propietarios jóvenes, plan de pago accesible. Crear urgencia suave.', valeria: 'Storytelling visual: "Así se ve tu vida en GLP". Reels de lifestyle, FOMO con escasez de unidades en ese rango de precio.' },
+        aspiracional: { sara: 'Construir el sueño antes del cierre: lifestyle content, testimoniales de propietarios jóvenes, plan de pago accesible. Crear urgencia suave.', valeria: 'Storytelling visual: "Así se ve tu vida en Capital Brokers". Reels de lifestyle, FOMO con escasez de unidades en ese rango de precio.' },
       };
 
       const openSofiaChat = () => setSofiaChatState({ open: true, step: 0, name: '', ocupacion: '', presupuesto: 300000,
@@ -12397,15 +12403,20 @@ Responde SOLO con JSON sin bloques de código:
           {/* Header — blanco/cobalto/Inter, sin eyebrow "Agente IA · Perfiladora
               Conductual" (redundante con el nombre y el rol de abajo). */}
           <div style={{ background: '#fff', borderTop: `3px solid ${C_GOLD}`, borderBottom: `1px solid ${C_PARCH}`, padding: '24px 32px 0' }}>
-            <button onClick={() => setAgentHistoryDetail(null)} style={{ background: 'transparent', border: `1px solid ${C_PARCH}`, borderRadius: 8, color: '#6B7280', fontSize: 12, fontWeight: 600, fontFamily: T.fontSans, cursor: 'pointer', padding: '8px 16px', marginBottom: 16 }}>← Volver</button>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingBottom: 18 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingBottom: 18, gap: 16, flexWrap: 'wrap' as const }}>
               <div>
                 <div style={{ fontSize: 24, fontFamily: T.fontSans, fontWeight: 800, color: C_NAVY, letterSpacing: '-0.01em' }}>SOFÍA</div>
                 <div style={{ fontSize: 11, color: '#6B7280', marginTop: 4 }}>PhD · Psicología del Consumidor de Lujo · Neuromarketing HNWI</div>
               </div>
-              <div style={{ textAlign: 'right' as const }}>
-                <div style={{ fontSize: 22, fontFamily: T.fontSans, fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: C_GOLD }}>{liveProfiles.length}</div>
-                <div style={{ fontSize: 9, letterSpacing: 1, color: '#9CA3AF', textTransform: 'uppercase' as const }}>Perfiles activos</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div style={{ textAlign: 'right' as const }}>
+                  <div style={{ fontSize: 22, fontFamily: T.fontSans, fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: C_GOLD }}>{liveProfiles.length}</div>
+                  <div style={{ fontSize: 9, letterSpacing: 1, color: '#9CA3AF', textTransform: 'uppercase' as const }}>Perfiles activos</div>
+                </div>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  {renderVolverBtn(() => setAgentHistoryDetail(null))}
+                  {renderPreguntarBtn(() => setSofiaTab('chat'), 'Sofía')}
+                </div>
               </div>
             </div>
 
@@ -12415,7 +12426,6 @@ Responde SOLO con JSON sin bloques de código:
                 { key:'bitacora', label:'Bitácora' },
                 { key:'perfilacion', label:'Perfilación' },
                 { key:'perfiles', label:'Ver Perfiles' },
-                { key:'chat', label:'Preguntar a Sofía' },
               ] as const).map(t => (
                 <button key={t.key} onClick={() => setSofiaTab(t.key)} style={{
                   padding:'12px 18px', fontSize:12, fontWeight:600, fontFamily:T.fontSans, cursor:'pointer', border:'none', background:'transparent',
@@ -12716,10 +12726,7 @@ Responde SOLO con JSON sin bloques de código:
       return (
         <div style={{ background: W_CREAM, minHeight: '100%', margin: '-24px', padding: 24 }}>
           <div style={{ background: W_NAVY, padding: '20px 28px', marginBottom: 20 }}>
-            <button onClick={() => setAgentHistoryDetail(null)}
-              style={{ background:'none', border:'none', color:'rgba(255,255,255,0.4)', fontSize:10, cursor:'pointer', padding:0, marginBottom:14, letterSpacing:1.5, textTransform:'uppercase' as const }}>
-              ← Volver a Agentes
-            </button>
+            <div style={{ marginBottom: 14 }}>{renderVolverBtn(() => setAgentHistoryDetail(null), 'Volver a Agentes')}</div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12 }}>
               <div>
                 <div style={{ fontSize:9, letterSpacing:4, color:W_GOLD, fontWeight:700, textTransform:'uppercase' as const, marginBottom:5 }}>Flujo entre Agentes</div>
@@ -12924,10 +12931,7 @@ Responde SOLO con JSON sin bloques de código:
         <div style={{ background: O_CREAM, minHeight: '100%', margin: '-24px', padding: 24 }}>
           {/* ── Header navy, igual patrón que el resto de paneles de agentes ── */}
           <div style={{ background: O_NAVY, padding: '20px 28px', marginBottom: 20 }}>
-            <button onClick={() => setAgentHistoryDetail(null)}
-              style={{ background:'none', border:'none', color:'rgba(255,255,255,0.4)', fontSize:10, cursor:'pointer', padding:0, marginBottom:14, letterSpacing:1.5, textTransform:'uppercase' as const }}>
-              ← Volver
-            </button>
+            <div style={{ marginBottom: 14 }}>{renderVolverBtn(() => setAgentHistoryDetail(null))}</div>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', gap:12 }}>
               <div>
                 <div style={{ fontSize:9, letterSpacing:4, color:O_GOLD, fontWeight:700, textTransform:'uppercase' as const, marginBottom:5 }}>Sara · Directora de Experiencia de Cliente</div>
@@ -13068,10 +13072,7 @@ Responde SOLO con JSON sin bloques de código:
       return (
         <div style={{ background: X_CREAM, minHeight: '100%', margin: '-24px', padding: 24 }}>
           <div style={{ background: X_NAVY, padding: '20px 28px', marginBottom: 20 }}>
-            <button onClick={() => setAgentHistoryDetail(null)}
-              style={{ background:'none', border:'none', color:'rgba(255,255,255,0.4)', fontSize:10, cursor:'pointer', padding:0, marginBottom:14, letterSpacing:1.5, textTransform:'uppercase' as const }}>
-              ← Volver
-            </button>
+            <div style={{ marginBottom: 14 }}>{renderVolverBtn(() => setAgentHistoryDetail(null))}</div>
             <div style={{ display:'flex', justifyContent: 'space-between', alignItems:'flex-end', flexWrap: 'wrap', gap: 12 }}>
               <div>
                 <div style={{ fontSize:9, letterSpacing:4, color:X_GOLD, fontWeight:700, textTransform:'uppercase' as const, marginBottom:5 }}>Respuesta a Crisis</div>
@@ -13210,7 +13211,7 @@ Responde SOLO con JSON sin bloques de código:
           <div style={{ padding: '32px 40px 28px' }}>
             <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 24 }}>
               <div>
-                {/* Antes decía "GLP Wealth Management · Plataforma de Inteligencia" —
+                {/* Antes decía "Capital Brokers - Real Estate · Plataforma de Inteligencia" —
                     redundante, el logo ya vive en la barra superior. */}
                 <h2 style={{ margin: 0, fontSize: 28, fontFamily: T.fontSans, fontWeight: 800, color: NAVY, letterSpacing: '-0.01em', lineHeight: 1.1 }}>
                   Comando de Inteligencia Agéntica
@@ -13897,7 +13898,7 @@ Responde SOLO con JSON sin bloques de código:
     const inflAcumPanama = factorAcumulado(tasasPanama) - 1;
     const inflAcumColombia = factorAcumulado(tasasColombia) - 1;
 
-    // GLP (Panamá) — patrimonio neto nominal al final del plazo, igual que antes.
+    // Capital Brokers (Panamá) — patrimonio neto nominal al final del plazo, igual que antes.
     const fcfAcumulado = yearlyTable.reduce((s, r) => s + r.flujoPostHip, 0);
     const deudaFinal = yearlyTable[yearlyTable.length - 1]?.deuda ?? 0;
     const patrimonioNetoGLP = valorFuturo - deudaFinal + fcfAcumulado;
@@ -14718,7 +14719,7 @@ Responde SOLO con JSON sin bloques de código:
                   <div style={{ ...cardStyle(), marginBottom: 16 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 4, letterSpacing: '-0.01em' }}>Sensibilidad · Costos Operativos</div>
                     <div style={{ fontSize: 11, color: T.textSec, marginBottom: 16 }}>
-                      Variación ±15% sobre costos base de {usd(totalGastos)}/año — impacto en Cap Rate Neto y Cash-on-Cash.
+                      Variación ±15% sobre costos base de {usd(totalGastos)}/año — impacto en Rentabilidad Neta y Cash-on-Cash.
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, background: T.border, borderRadius: 10, overflow: 'hidden' }}>
                       {([
@@ -14746,7 +14747,7 @@ Responde SOLO con JSON sin bloques de código:
                               </div>
                               <div style={{ borderTop: `1px solid ${T.borderLight}`, paddingTop: 10, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                                 <div>
-                                  <div style={{ fontSize: 9, color: T.textSec, letterSpacing: '0.05em', marginBottom: 2 }}>Cap Rate</div>
+                                  <div style={{ fontSize: 9, color: T.textSec, letterSpacing: '0.05em', marginBottom: 2 }}>Rentabilidad Neta</div>
                                   <div style={{ fontSize: 14, fontWeight: 800, color: s.accent }}>{crNeto.toFixed(2)}%</div>
                                 </div>
                                 <div>
@@ -15235,7 +15236,7 @@ Responde SOLO con JSON sin bloques de código:
       { value: 'minPrice',    label: 'Rango Precio' },
       { value: 'bedrooms',    label: 'Rec.' },
       { value: 'entrega',     label: 'Entrega' },
-      { value: 'capRateMin',  label: 'Cap Rate' },
+      { value: 'capRateMin',  label: 'Rentabilidad' },
     ];
     const base = catalogFilter === 'all' ? catalogProjects : catalogProjects.filter(p => p.category === catalogFilter);
     const filtered = [...base].sort((a, b) => {
@@ -15501,7 +15502,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr style={{ background: T.teal, color: '#fff' }}>
-                  {['Imagen', 'Proyecto', 'Categoría', 'Tipo', 'Área m²', 'Rango Precio', 'Rec.', 'Entrega', 'Cap Rate', 'Acciones'].map(h => (
+                  {['Imagen', 'Proyecto', 'Categoría', 'Tipo', 'Área m²', 'Rango Precio', 'Rec.', 'Entrega', 'Rentabilidad', 'Acciones'].map(h => (
                     <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -15520,7 +15521,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                             { label: 'Entrega', key: 'entrega' }, { label: 'Rec.', key: 'bedrooms' },
                             { label: 'Área Min m²', key: 'areaMin' }, { label: 'Área Max m²', key: 'areaMax' },
                             { label: 'Precio Min USD', key: 'minPrice' }, { label: 'Precio Max USD', key: 'maxPrice' },
-                            { label: 'Cap Rate Min %', key: 'capRateMin' }, { label: 'Cap Rate Max %', key: 'capRateMax' },
+                            { label: 'Rentabilidad Min %', key: 'capRateMin' }, { label: 'Rentabilidad Max %', key: 'capRateMax' },
                           ].map(f => (
                             <div key={f.key}>
                               <div style={{ fontSize: 10, color: T.textSec, marginBottom: 3 }}>{f.label}</div>
@@ -15537,7 +15538,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                         </div>
                         <div style={{ display: 'flex', gap: 10, marginTop: 14, alignItems: 'center' }}>
                           <button onClick={() => saveEdit(realIdx, p)} style={{ padding: '9px 22px', background: T.teal, color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700, boxShadow: '0 2px 6px rgba(0,26,55,0.2)' }}>Guardar cambios</button>
-                          <button onClick={() => setCatalogEditIdx(null)} style={{ padding: '9px 18px', background: 'transparent', color: T.textSec, border: `1px solid ${T.border}`, borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>‹ Volver a proyectos</button>
+                          {renderVolverBtn(() => setCatalogEditIdx(null), 'Volver a proyectos')}
                         </div>
                       </td>
                     </tr>
@@ -15600,7 +15601,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                       <div style={{ fontSize: 11 }}><span style={{ color: T.textSec }}>Precio:</span> <b style={{ color: T.palm }}>${(p.minPrice/1000).toFixed(0)}K–${(p.maxPrice/1000).toFixed(0)}K</b></div>
                       <div style={{ fontSize: 11 }}><span style={{ color: T.textSec }}>Área:</span> <b>{p.areaMin}–{p.areaMax} m²</b></div>
                       <div style={{ fontSize: 11 }}><span style={{ color: T.textSec }}>Rec.:</span> <b>{p.bedrooms}</b></div>
-                      <div style={{ fontSize: 11 }}><span style={{ color: T.textSec }}>Cap Rate:</span> <b style={{ color: T.teal }}>{p.capRateMin}–{p.capRateMax}%</b></div>
+                      <div style={{ fontSize: 11 }}><span style={{ color: T.textSec }}>Rentabilidad:</span> <b style={{ color: T.teal }}>{p.capRateMin}–{p.capRateMax}%</b></div>
                     </div>
                     <div style={{ fontSize: 10, color: T.textSec, background: T.bg, padding: '6px 8px', borderRadius: 6, marginBottom: 10 }}>
                       🗓 {p.entrega}
@@ -16546,7 +16547,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
       if (!el) return;
       const w = window.open('', '_blank', 'width=1100,height=800');
       if (!w) return;
-      w.document.write(`<!DOCTYPE html><html><head><title>GLP — Reportes Comerciales</title>
+      w.document.write(`<!DOCTYPE html><html><head><title>Capital Brokers — Reportes Comerciales</title>
         <style>
           *{box-sizing:border-box;margin:0;padding:0}
           body{font-family:'Inter',sans-serif;background:#F7F4EF;color:#001A37;padding:32px}
@@ -16561,7 +16562,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
           .kpi-value{font-size:22px;font-weight:700;color:#001A37}
           @media print{body{padding:16px}button{display:none}}
         </style></head><body>
-        <h1>GLP — Análisis Comercial</h1>
+        <h1>Capital Brokers — Análisis Comercial</h1>
         <p style="font-size:11px;color:#64748b;margin-bottom:24px">Generado el ${new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'})} · Período: últimos ${rptDias} días</p>
         ${el.innerHTML}
         </body></html>`);
@@ -17768,34 +17769,34 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
     // ─ Templates de email de lujo
     const TEMPLATES = [
       {
-        id: 'bienvenida', label: 'Bienvenida GLP', objetivo: 'nurturing',
-        asunto: '{{nombre}}, bienvenido a GLP — Propiedades de lujo en Bogotá',
-        cuerpo: `Estimado {{nombre}},\n\nEs un placer para nosotros darte la bienvenida a GLP, la firma líder en propiedades residenciales de lujo en Bogotá.\n\nSabemos que la búsqueda de un hogar o una inversión premium es una decisión trascendental, y queremos acompañarte en cada paso del proceso con la discreción y el servicio que mereces.\n\nNuestro equipo está disponible para:\n• Presentarte en exclusiva nuestro portafolio de proyectos\n• Diseñar una propuesta personalizada según tu presupuesto y estilo de vida\n• Agendar visitas privadas a las obras o salas de ventas\n\n¿Cuándo podríamos hablar 15 minutos?\n\nCon gusto,\n{{broker}}\nGLP — Propiedades de Lujo`,
+        id: 'bienvenida', label: 'Bienvenida Capital Brokers', objetivo: 'nurturing',
+        asunto: '{{nombre}}, bienvenido a Capital Brokers — Propiedades de lujo en Bogotá',
+        cuerpo: `Estimado {{nombre}},\n\nEs un placer para nosotros darte la bienvenida a Capital Brokers, la firma líder en propiedades residenciales de lujo en Bogotá.\n\nSabemos que la búsqueda de un hogar o una inversión premium es una decisión trascendental, y queremos acompañarte en cada paso del proceso con la discreción y el servicio que mereces.\n\nNuestro equipo está disponible para:\n• Presentarte en exclusiva nuestro portafolio de proyectos\n• Diseñar una propuesta personalizada según tu presupuesto y estilo de vida\n• Agendar visitas privadas a las obras o salas de ventas\n\n¿Cuándo podríamos hablar 15 minutos?\n\nCon gusto,\n{{broker}}\nCapital Brokers — Propiedades de Lujo`,
       },
       {
         id: 'presentacion_proyecto', label: 'Presentación de Proyecto', objetivo: 'presentacion',
         asunto: '{{nombre}}, te presentamos {{proyecto}} — Diseñado para ti',
-        cuerpo: `Estimado {{nombre}},\n\nNos complace compartirte información exclusiva sobre {{proyecto}}, uno de nuestros desarrollos más destacados.\n\n✦ Ubicación privilegiada en el norte de Bogotá\n✦ Acabados de primera calidad — mármol, madera y acero importado\n✦ Áreas de {{area_min}} a {{area_max}} m² con terrazas panorámicas\n✦ Precio desde {{precio_desde}} USD\n✦ Rentabilidad estimada del {{rentabilidad}}% anual en arrendamiento\n\nEste proyecto tiene una disponibilidad limitada y deseamos darte prioridad de selección.\n\nTe adjunto el brochure completo y el estudio de rentabilidad. ¿Podemos agendar una visita a la sala de ventas esta semana?\n\nAtentamente,\n{{broker}}\nGLP — Propiedades de Lujo`,
+        cuerpo: `Estimado {{nombre}},\n\nNos complace compartirte información exclusiva sobre {{proyecto}}, uno de nuestros desarrollos más destacados.\n\n✦ Ubicación privilegiada en el norte de Bogotá\n✦ Acabados de primera calidad — mármol, madera y acero importado\n✦ Áreas de {{area_min}} a {{area_max}} m² con terrazas panorámicas\n✦ Precio desde {{precio_desde}} USD\n✦ Rentabilidad estimada del {{rentabilidad}}% anual en arrendamiento\n\nEste proyecto tiene una disponibilidad limitada y deseamos darte prioridad de selección.\n\nTe adjunto el brochure completo y el estudio de rentabilidad. ¿Podemos agendar una visita a la sala de ventas esta semana?\n\nAtentamente,\n{{broker}}\nCapital Brokers — Propiedades de Lujo`,
       },
       {
         id: 'reactivacion', label: 'Reactivación Lead Inactivo', objetivo: 'reactivar',
         asunto: '{{nombre}}, han pasado unos meses — queremos ponernos al día',
-        cuerpo: `Estimado {{nombre}},\n\nHace un tiempo tuvimos la oportunidad de conocernos y conversar sobre tu búsqueda de propiedad. Desde entonces, el mercado ha evolucionado y queremos compartirte algunas novedades que podrían ser de tu interés.\n\n🏗️ Nuevas etapas disponibles en proyectos que te interesaron\n📈 Condiciones de financiación más favorables para 2026\n🎯 Propiedades con el perfil exacto que buscabas\n\nEntendemos que los tiempos y prioridades cambian. Si aún tienes interés en adquirir una propiedad de lujo en Bogotá, nos encantaría retomar la conversación sin ningún compromiso.\n\n¿Tienes 10 minutos esta semana?\n\nCon aprecio,\n{{broker}}\nGLP — Propiedades de Lujo`,
+        cuerpo: `Estimado {{nombre}},\n\nHace un tiempo tuvimos la oportunidad de conocernos y conversar sobre tu búsqueda de propiedad. Desde entonces, el mercado ha evolucionado y queremos compartirte algunas novedades que podrían ser de tu interés.\n\n🏗️ Nuevas etapas disponibles en proyectos que te interesaron\n📈 Condiciones de financiación más favorables para 2026\n🎯 Propiedades con el perfil exacto que buscabas\n\nEntendemos que los tiempos y prioridades cambian. Si aún tienes interés en adquirir una propiedad de lujo en Bogotá, nos encantaría retomar la conversación sin ningún compromiso.\n\n¿Tienes 10 minutos esta semana?\n\nCon aprecio,\n{{broker}}\nCapital Brokers — Propiedades de Lujo`,
       },
       {
         id: 'seguimiento_visita', label: 'Seguimiento Post-Visita', objetivo: 'nurturing',
         asunto: 'Gracias por tu visita, {{nombre}} — Aquí el resumen de lo que viste',
-        cuerpo: `Estimado {{nombre}},\n\nFue un placer recibirte en nuestra sala de ventas. Esperamos que la experiencia haya superado tus expectativas y que hayas podido visualizarte disfrutando de este espacio.\n\nComo acordamos, te enviamos:\n• 📋 Cotización detallada del apartamento de tu interés\n• 🏦 Simulación de crédito hipotecario para tu perfil\n• 📐 Planos arquitectónicos y opciones de personalización\n• 📸 Galería fotográfica del proyecto terminado\n\nRecuerda que tienes 72 horas para ejercer tu derecho de primera selección sobre la unidad que reservamos para ti.\n\nEstaremos atentos a tus preguntas,\n{{broker}}\nGLP — Propiedades de Lujo`,
+        cuerpo: `Estimado {{nombre}},\n\nFue un placer recibirte en nuestra sala de ventas. Esperamos que la experiencia haya superado tus expectativas y que hayas podido visualizarte disfrutando de este espacio.\n\nComo acordamos, te enviamos:\n• 📋 Cotización detallada del apartamento de tu interés\n• 🏦 Simulación de crédito hipotecario para tu perfil\n• 📐 Planos arquitectónicos y opciones de personalización\n• 📸 Galería fotográfica del proyecto terminado\n\nRecuerda que tienes 72 horas para ejercer tu derecho de primera selección sobre la unidad que reservamos para ti.\n\nEstaremos atentos a tus preguntas,\n{{broker}}\nCapital Brokers — Propiedades de Lujo`,
       },
       {
         id: 'evento', label: 'Invitación a Evento Exclusivo', objetivo: 'evento',
         asunto: 'Invitación privada — {{evento}} solo para clientes seleccionados',
-        cuerpo: `Estimado {{nombre}},\n\nTenemos el agrado de invitarte de manera exclusiva al evento de lanzamiento de {{proyecto}}, un momento único para quienes valoran el lujo, el diseño y la visión arquitectónica de Bogotá.\n\n📅 Fecha: {{fecha_evento}}\n🕖 Hora: 6:30 p.m.\n📍 Lugar: {{lugar_evento}}\n👔 Código de vestimenta: Formal\n\nEl evento incluye:\n• Recorrido privado por la obra o sala de ventas\n• Cóctel de bienvenida\n• Presentación exclusiva del arquitecto diseñador\n• Precios de lanzamiento disponibles solo ese día\n\nLos cupos son limitados. Por favor confirma tu asistencia respondiendo este mensaje o llamando a {{broker_telefono}}.\n\nTe esperamos,\n{{broker}}\nGLP — Propiedades de Lujo`,
+        cuerpo: `Estimado {{nombre}},\n\nTenemos el agrado de invitarte de manera exclusiva al evento de lanzamiento de {{proyecto}}, un momento único para quienes valoran el lujo, el diseño y la visión arquitectónica de Bogotá.\n\n📅 Fecha: {{fecha_evento}}\n🕖 Hora: 6:30 p.m.\n📍 Lugar: {{lugar_evento}}\n👔 Código de vestimenta: Formal\n\nEl evento incluye:\n• Recorrido privado por la obra o sala de ventas\n• Cóctel de bienvenida\n• Presentación exclusiva del arquitecto diseñador\n• Precios de lanzamiento disponibles solo ese día\n\nLos cupos son limitados. Por favor confirma tu asistencia respondiendo este mensaje o llamando a {{broker_telefono}}.\n\nTe esperamos,\n{{broker}}\nCapital Brokers — Propiedades de Lujo`,
       },
       {
         id: 'oferta_cierre', label: 'Propuesta de Cierre', objetivo: 'cierre',
         asunto: '{{nombre}}, hemos reservado una condición especial para ti',
-        cuerpo: `Estimado {{nombre}},\n\nDespués de nuestras conversaciones, hemos podido gestionar con la constructora una condición de pago especialmente diseñada para tu perfil:\n\n🏠 Unidad: {{unidad}} — {{area}} m²\n💰 Precio de lista: {{precio_lista}} USD\n✦ Precio especial para ti: {{precio_especial}} USD\n📅 Cuota inicial: {{cuota_inicial}} (disponible en cuotas)\n🏦 Saldo: financiado a {{plazo}} años al {{tasa}}% E.A.\n\nEsta propuesta está vigente hasta el {{fecha_vencimiento}}.\n\nSabemos que esta es una decisión importante. Nuestro equipo jurídico y financiero está listo para acompañarte en cada paso — promesa de compraventa, revisión de títulos y escrituración.\n\n¿Agendamos una reunión esta semana para avanzar?\n\nCon todo el respeto,\n{{broker}}\nGLP — Propiedades de Lujo`,
+        cuerpo: `Estimado {{nombre}},\n\nDespués de nuestras conversaciones, hemos podido gestionar con la constructora una condición de pago especialmente diseñada para tu perfil:\n\n🏠 Unidad: {{unidad}} — {{area}} m²\n💰 Precio de lista: {{precio_lista}} USD\n✦ Precio especial para ti: {{precio_especial}} USD\n📅 Cuota inicial: {{cuota_inicial}} (disponible en cuotas)\n🏦 Saldo: financiado a {{plazo}} años al {{tasa}}% E.A.\n\nEsta propuesta está vigente hasta el {{fecha_vencimiento}}.\n\nSabemos que esta es una decisión importante. Nuestro equipo jurídico y financiero está listo para acompañarte en cada paso — promesa de compraventa, revisión de títulos y escrituración.\n\n¿Agendamos una reunión esta semana para avanzar?\n\nCon todo el respeto,\n{{broker}}\nCapital Brokers — Propiedades de Lujo`,
       },
     ];
 
@@ -18449,7 +18450,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                       <div style={{ fontSize:13,fontWeight:500,color:NAVY,marginBottom:10,fontFamily:T.fontSans }}>{nuevaCampana.asunto.replace('{{nombre}}',segmentoCalc[0]?.nombre||'[Nombre]')}</div>
                       <div style={{ width:30,height:1,background:GOLD,marginBottom:10 }} />
                       <div style={{ fontSize:13,color:T.text,lineHeight:1.7,whiteSpace:'pre-wrap',maxHeight:200,overflow:'hidden' }}>
-                        {(nuevaCampana.cuerpo||'').replace(/{{nombre}}/g,segmentoCalc[0]?.nombre||'[Nombre]').replace(/{{broker}}/g,'Tu broker GLP').slice(0,400)}
+                        {(nuevaCampana.cuerpo||'').replace(/{{nombre}}/g,segmentoCalc[0]?.nombre||'[Nombre]').replace(/{{broker}}/g,'Tu broker Capital Brokers').slice(0,400)}
                         {(nuevaCampana.cuerpo||'').length>400?'…':''}
                       </div>
                     </>
@@ -18640,7 +18641,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
               },
               latam: {
                 label: 'LATAM — Benchmark regional lujo',
-                fuente: 'Fuente: NAR International 2025, Mailchimp Industry Report, estimados GLP',
+                fuente: 'Fuente: NAR International 2025, Mailchimp Industry Report, estimados Capital Brokers',
                 nota: 'Promedio regional para mercados inmobiliarios premium en América Latina. Úsalo cuando tu base de prospectos sea mixta (Colombia + Panamá + exterior).',
                 items: [
                   { label: 'Tasa de apertura', min: 25, max: 42, fmt: v=>`${v}%`, val: tasaApertura, desc: 'Varía significativamente por país; segmentar por mercado mejora precisión' },
@@ -18926,7 +18927,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: NAVY, color: WHITE, borderRadius: 6, padding: '14px 0', textDecoration: 'none', fontFamily: SS, fontSize: 13, fontWeight: 600 }}>
                 📞 Llamar
               </a>
-              <a href={`https://wa.me/${waNum}?text=Hola%20${encodeURIComponent(p.nombre)}%2C%20te%20contacto%20de%20GLP%20Wealth%20Management.`}
+              <a href={`https://wa.me/${waNum}?text=Hola%20${encodeURIComponent(p.nombre)}%2C%20te%20contacto%20de%20Capital%20Brokers.`}
                 target="_blank" rel="noreferrer"
                 onClick={() => registrarActividad(p.id, 'WhatsApp enviado', `WhatsApp al ${p.telefono}`)}
                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#25D366', color: WHITE, borderRadius: 6, padding: '14px 0', textDecoration: 'none', fontFamily: SS, fontSize: 13, fontWeight: 600 }}>
@@ -19066,10 +19067,9 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
                   <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', letterSpacing: 1, marginBottom: 3 }}>PRECIO DESDE</div>
                   <div style={{ fontSize: 22, fontFamily: SF, fontWeight: 300, color: WHITE }}>USD ${(proj.minPrice||0).toLocaleString('en-US')}</div>
                 </div>
-                {proj.capRateMin && <div style={{ textAlign: 'right' as const }}>
-                  <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', letterSpacing: 1, marginBottom: 3 }}>CAP RATE</div>
-                  <div style={{ fontSize: 16, fontFamily: SF, color: GOLD }}>{proj.capRateMin}–{proj.capRateMax}%</div>
-                </div>}
+                {/* Cap Rate removido de la vista (campo capRateMin/Max se conserva en los
+                    datos por si se necesita en otros países) — ver instrucción del
+                    2026-08-29. */}
               </div>
               {/* Specs */}
               <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '14px 16px', marginBottom: 14 }}>
@@ -19106,7 +19106,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
       // Vista lista
       return (
         <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
-          <div style={{ fontSize: 10, letterSpacing: 2, textTransform: 'uppercase' as const, color: GOLD, fontWeight: 700, marginBottom: 4 }}>Portafolio GLP</div>
+          <div style={{ fontSize: 10, letterSpacing: 2, textTransform: 'uppercase' as const, color: GOLD, fontWeight: 700, marginBottom: 4 }}>Portafolio Capital Brokers</div>
           <div style={{ fontSize: 18, fontFamily: SF, fontWeight: 300, color: NAVY, marginBottom: 16 }}>Proyectos de Inversión</div>
           {editableProjects.map(proj => {
             const imgSrc = projectImageOverrides[proj.name] || proj.imagen || getProjectImg(proj.name)?.main;
@@ -19283,7 +19283,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
 
     return (
       <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: CREAM, display: 'flex', flexDirection: 'column' as const, fontFamily: SS, maxWidth: forceMobileView ? 390 : '100%', margin: forceMobileView ? '0 auto' : 0, boxShadow: forceMobileView ? '0 0 60px rgba(0,0,0,0.25)' : 'none' }}>
-        {/* Header — sin "GLP Wealth Management" ni el nombre completo del usuario (ya
+        {/* Header — sin "Capital Brokers - Real Estate" ni el nombre completo del usuario (ya
             redundante en un dispositivo de una sola persona): solo sus iniciales, mismo
             criterio que el header de escritorio. */}
         <div style={{ background: NAVY, padding: '12px 16px 10px', flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -19593,7 +19593,7 @@ Si la imagen no contiene una tabla de proyectos reconocible, responde con [].`;
       <div style={{ maxWidth: 1200, margin: '0 auto', fontFamily: SS }}>
         {/* Header ejecutivo */}
         <div style={{ marginBottom: 28 }}>
-          <div style={{ fontSize: 9, letterSpacing: 2, textTransform: 'uppercase' as const, color: GOLD, fontWeight: 700, marginBottom: 6 }}>GLP Wealth Management · Vista Ejecutiva</div>
+          <div style={{ fontSize: 9, letterSpacing: 2, textTransform: 'uppercase' as const, color: GOLD, fontWeight: 700, marginBottom: 6 }}>Capital Brokers - Real Estate · Vista Ejecutiva</div>
           <div style={{ fontSize: 26, fontWeight: 300, color: NAVY, fontFamily: SF, letterSpacing: '0.02em' }}>Estado del Pipeline Comercial</div>
           <div style={{ fontSize: 12, color: '#8B8170', marginTop: 4 }}>{new Date().toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
         </div>
@@ -20796,7 +20796,7 @@ Ciudad: Bogotá D.C.
 
 Entre los suscritos:
 
-VENDEDOR: GLP Inmobiliaria S.A.S., NIT _____________, representada por _______________
+VENDEDOR: Capital Brokers - Real Estate, NIT _____________, representada por _______________
 COMPRADOR: _____________________________, identificado con C.C. No. _____________
 
 Se suscribe la presente Carta de Reserva bajo los siguientes términos:
@@ -20810,7 +20810,7 @@ Se suscribe la presente Carta de Reserva bajo los siguientes términos:
    El precio total pactado es de USD _____________ (equivalente en pesos colombianos a la TRM del día de la firma de la Promesa de Compraventa).
 
 3. VALOR DE SEPARACIÓN
-   El COMPRADOR entrega a GLP la suma de USD _____________ a título de separación,
+   El COMPRADOR entrega a Capital Brokers la suma de USD _____________ a título de separación,
    la cual será imputada al precio de venta y es de carácter NO REEMBOLSABLE en caso de desistimiento por parte del COMPRADOR.
 
 4. PLAZO
@@ -20824,7 +20824,7 @@ Firmado en Bogotá D.C., a los _____ días del mes de _____________ de 20_____.
 
 _____________________________          _____________________________
 VENDEDOR                                COMPRADOR
-GLP Inmobiliaria S.A.S.                ______________________________
+Capital Brokers - Real Estate                ______________________________
 C.C. / NIT: ___________________        C.C.: _________________________`,
 
     pago_separacion: `COMPROBANTE DE PAGO — SEPARACIÓN DE INMUEBLE
@@ -20844,7 +20844,7 @@ Este pago corresponde a la separación del inmueble descrito arriba y será
 imputado al precio de venta al momento de la firma de la Promesa de Compraventa.
 
 _____________________________
-Recibido por: GLP Inmobiliaria S.A.S.
+Recibido por: Capital Brokers - Real Estate
 Firma y sello: ________________`,
 
     due_diligence: `DUE DILIGENCE — IDENTIFICACIÓN Y ORIGEN DE FONDOS
@@ -20909,14 +20909,14 @@ BENEFICIOS INCLUIDOS
 VIGENCIA DE LA PROPUESTA: _____ días a partir de la fecha.
 
 Firma ASESOR: ____________________________   Firma COMPRADOR: ____________________________
-GLP Inmobiliaria S.A.S.`,
+Capital Brokers - Real Estate`,
 
     promesa_compraventa: `PROMESA DE COMPRAVENTA
 
 En Bogotá D.C., a los _____ días del mes de _____________ de 20_____,
 
 ENTRE:
-PROMITENTE VENDEDOR: GLP Inmobiliaria S.A.S., NIT _____________, representada por _______________, identificado con C.C. _______________
+PROMITENTE VENDEDOR: Capital Brokers - Real Estate, NIT _____________, representada por _______________, identificado con C.C. _______________
 
 PROMITENTE COMPRADOR: _______________, identificado con C.C. _______________, domiciliado en _______________
 
@@ -20943,7 +20943,7 @@ El inmueble será entregado en las condiciones pactadas, libre de gravámenes, h
 
 _____________________________          _____________________________
 PROMITENTE VENDEDOR                     PROMITENTE COMPRADOR
-GLP Inmobiliaria S.A.S.
+Capital Brokers - Real Estate
 NIT: ___________________               C.C.: _________________________`,
 
     cert_tradicion: `SOLICITUD — CERTIFICADO DE TRADICIÓN Y LIBERTAD
@@ -20952,7 +20952,7 @@ Entidad: Oficina de Registro de Instrumentos Públicos de Bogotá
 Fecha de solicitud: _______________
 Matrícula Inmobiliaria: ___________________________
 Dirección del inmueble: ___________________________
-Solicitante: GLP Inmobiliaria S.A.S.
+Solicitante: Capital Brokers - Real Estate
 
 --- USO INTERNO ---
 Fecha de emisión del certificado: _______________
@@ -20968,7 +20968,7 @@ Fecha: _______________
 Ref.: Apto. No. _____, Proyecto _______________, Matrícula _______________
 
 1. CADENA DE DOMINIO
-   Propietario actual: GLP Inmobiliaria S.A.S. (desde _______________)
+   Propietario actual: Capital Brokers - Real Estate (desde _______________)
    Título anterior: _______________
 
 2. GRAVÁMENES Y LIMITACIONES
@@ -21037,7 +21037,7 @@ Fecha de otorgamiento: _______________
 Escritura No.: _____________________
 
 COMPARECEN:
-VENDEDOR: GLP Inmobiliaria S.A.S., NIT ___________________
+VENDEDOR: Capital Brokers - Real Estate, NIT ___________________
 Representante legal: _______________, C.C. _______________
 COMPRADOR: _______________, C.C. _______________, estado civil: _______________
 
@@ -21102,10 +21102,10 @@ Impuesto de timbre: N/A
 
 DECLARACIÓN
 El comprador declara bajo la gravedad del juramento que los recursos son de origen lícito
-y autoriza a GLP Inmobiliaria a realizar las verificaciones de ley.
+y autoriza a Capital Brokers - Real Estate a realizar las verificaciones de ley.
 
 Firma COMPRADOR: ____________________________
-Oficial de Cumplimiento GLP: __________________`,
+Oficial de Cumplimiento Capital Brokers: __________________`,
 
     acta_entrega: `ACTA DE ENTREGA DEL INMUEBLE
 
@@ -21114,7 +21114,7 @@ Proyecto: __________________________________________________
 Unidad: Apto. No. _____, Torre _____, Piso _____
 
 COMPARECEN:
-Por GLP Inmobiliaria: _______________, cargo: _______________
+Por Capital Brokers - Real Estate: _______________, cargo: _______________
 Propietario/Comprador: _______________
 
 INVENTARIO DE ENTREGA
@@ -21141,7 +21141,7 @@ METROS DE SERVICIOS PÚBLICOS AL MOMENTO DE ENTREGA
 Agua: _______  Gas: _______  Energía: _______
 
 _____________________________          _____________________________
-POR GLP INMOBILIARIA                    PROPIETARIO / COMPRADOR`,
+POR Capital Brokers INMOBILIARIA                    PROPIETARIO / COMPRADOR`,
 
     llaves: `CONSTANCIA DE ENTREGA DE LLAVES Y MANUALES
 
@@ -21169,7 +21169,7 @@ OBSERVACIONES: ___________________________________________________
 El propietario declara haber recibido a satisfacción las llaves y documentos listados.
 
 _____________________________          _____________________________
-POR GLP INMOBILIARIA                    PROPIETARIO / COMPRADOR
+POR Capital Brokers INMOBILIARIA                    PROPIETARIO / COMPRADOR
 Cargo: ________________________         C.C.: _______________________`,
   };
 
@@ -21895,7 +21895,7 @@ Cargo: ________________________         C.C.: _______________________`,
       // fáciles de mantener/editar en el código — pero antes solo se podían "usar" bajando
       // un .txt, que ni se ve como un documento legal ni se puede firmar/imprimir tal cual.
       // Estas 3 salidas parten del mismo texto y solo cambian el empaque de salida.
-      const printHtml = (text: string, docLabel: string) => `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${docLabel} — GLP</title><style>
+      const printHtml = (text: string, docLabel: string) => `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${docLabel} — Capital Brokers</title><style>
           *{margin:0;padding:0;box-sizing:border-box}
           body{font-family:Georgia,'Times New Roman',serif;color:#111;background:#fff;padding:48px 56px;}
           .eyebrow{font-size:9px;letter-spacing:2.5px;color:#B89047;text-transform:uppercase;margin-bottom:6px;font-family:Arial,sans-serif}
@@ -21903,7 +21903,7 @@ Cargo: ________________________         C.C.: _______________________`,
           pre{font-family:Georgia,'Times New Roman',serif;font-size:12.5px;line-height:1.9;white-space:pre-wrap;word-wrap:break-word}
           @media print{body{padding:24px 32px}}
         </style></head><body>
-          <div class="eyebrow">GLP Colombia · Plantilla Modelo</div>
+          <div class="eyebrow">Capital Brokers Colombia · Plantilla Modelo</div>
           <h1>${docLabel}</h1>
           <pre>${text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>
         </body></html>`;
@@ -21941,7 +21941,7 @@ Cargo: ________________________         C.C.: _______________________`,
             {/* Header */}
             <div style={{ padding: '24px 32px 20px', borderBottom: `1px solid #EEF1F5`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexShrink: 0, gap: 12, flexWrap: 'wrap' as const }}>
               <div>
-                <div style={{ fontSize: 8, letterSpacing: '2.5px', textTransform: 'uppercase' as const, color: G2, marginBottom: 6 }}>Plantilla Modelo GLP</div>
+                <div style={{ fontSize: 8, letterSpacing: '2.5px', textTransform: 'uppercase' as const, color: G2, marginBottom: 6 }}>Plantilla Modelo Capital Brokers</div>
                 <div style={{ fontFamily: SERIF, fontSize: 20, color: N2 }}>{docLabel}</div>
                 <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 4 }}>Completa los campos marcados con ___ antes de usar</div>
               </div>
@@ -22152,13 +22152,9 @@ Cargo: ________________________         C.C.: _______________________`,
             circular con el título, mismo patrón que el resto de los módulos. */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
           <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 22, color: N2 }}>Panel de Mando</div>
-          {/* Chat con Mónica (agente legal) — mismo patrón de renderAgentChatPanel que
-              Sara/Camilo/Sofía/Valeria, con contexto real de los expedientes legales. */}
-          <button onClick={() => setLegalView('chat')}
-            style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5, fontWeight: 700, letterSpacing: '0.3px', color: '#fff', background: N2, border: 'none', borderRadius: 4, padding: '9px 16px', cursor: 'pointer' }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            Preguntar a Mónica
-          </button>
+          {/* Chat con Mónica (agente legal) — botón estandarizado (mockup aprobado
+              2026-08-29), mismo componente que los otros 6 agentes. */}
+          {renderPreguntarBtn(() => setLegalView('chat'), 'Mónica')}
         </div>
 
         {/* KPIs con drilldown — cada uno mide algo distinto y no debería solaparse en
@@ -22337,11 +22333,7 @@ Cargo: ________________________         C.C.: _______________________`,
           <div style={{ padding: '28px 32px', height: '100%', display: 'flex', flexDirection: 'column' as const }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 22, color: N2 }}>Preguntar a Mónica</div>
-              <button onClick={() => setLegalView('panel')}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, letterSpacing: '0.5px', color: N2, background: '#fff', border: `1.5px solid ${N2}`, borderRadius: 4, padding: '8px 16px', cursor: 'pointer' }}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
-                Volver al Panel de Mando
-              </button>
+              {renderVolverBtn(() => setLegalView('panel'))}
             </div>
             <div style={{ fontSize: 12, color: '#7B92A8', marginBottom: 8 }}>Directora Legal — expedientes, documentos pendientes, fechas límite y responsables, con datos reales del módulo.</div>
             {renderAgentChatPanel('LEGAL', N2, G2, '#EEF1F5', 'Pregúntale a Mónica sobre expedientes legales — ej. "¿qué clientes tienen documentos vencidos?" o "¿qué le falta a Juan Pablo Castro para escriturar?"')}
@@ -22374,23 +22366,16 @@ Cargo: ________________________         C.C.: _______________________`,
                  recargados) — no hay a qué volver salvo al panel de mando. */
               <div style={{ padding: '32px 40px', textAlign: 'center' as const }}>
                 <div style={{ fontSize: 13, color: '#9CA3AF', marginBottom: 16 }}>No se encontró este expediente.</div>
-                <button onClick={() => { if (legalReturnTo === 'cartera') { setLegalReturnTo('panel'); setActiveModule('cartera'); } else { setLegalSelected(null); } }}
-                  style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.5px', color: N2, background: '#fff', border: `1.5px solid ${N2}`, borderRadius: 4, padding: '9px 18px', cursor: 'pointer' }}>
-                  ‹ {legalReturnTo === 'cartera' ? 'Volver a Cartera' : 'Volver al Panel de Mando'}
-                </button>
+                {renderVolverBtn(() => { if (legalReturnTo === 'cartera') { setLegalReturnTo('panel'); setActiveModule('cartera'); } else { setLegalSelected(null); } }, legalReturnTo === 'cartera' ? 'Volver a Cartera' : 'Volver')}
               </div>
             ) : (
               <div style={{ padding: '24px 40px 40px' }}>
                 {/* Botón de volver — prominente, primera cosa visible de la página. Si se
                     entró desde Cartera (botón "Ver en Legal & Cierre"), regresa a Cartera en
                     vez de siempre caer en el Panel de Mando de Legal sin forma de volver. */}
-                <button onClick={() => { if (legalReturnTo === 'cartera') { setLegalReturnTo('panel'); setActiveModule('cartera'); } else { setLegalSelected(null); } }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, letterSpacing: '0.5px', color: N2, background: '#fff', border: `1.5px solid ${N2}`, borderRadius: 4, padding: '8px 16px', cursor: 'pointer', marginBottom: 20, transition: 'all 0.15s' }}
-                  onMouseEnter={e => { e.currentTarget.style.background = N2; e.currentTarget.style.color = '#fff'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = N2; }}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
-                  {legalReturnTo === 'cartera' ? 'Volver a Cartera' : 'Volver al Panel de Mando'}
-                </button>
+                <div style={{ marginBottom: 20 }}>
+                  {renderVolverBtn(() => { if (legalReturnTo === 'cartera') { setLegalReturnTo('panel'); setActiveModule('cartera'); } else { setLegalSelected(null); } }, legalReturnTo === 'cartera' ? 'Volver a Cartera' : 'Volver')}
+                </div>
                 {/* Header */}
                 <div style={{ borderBottom: `1px solid #EEF1F5`, paddingBottom: 24, marginBottom: 28, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
@@ -22848,7 +22833,7 @@ Cargo: ________________________         C.C.: _______________________`,
       const contextoSofia = perfilSofia
         ? `\nSeñales detectadas de este cliente: ${perfilSofia.senales.join(' · ')}.\nRecomendación de Sara para tratarlo: ${perfilSofia.recomendacion_sara}.`
         : '';
-      const systemPrompt = `Eres Sara, gestora de comunicación de GLP Wealth Management, proyecto inmobiliario de lujo en Surfside, Miami. Redactas recordatorios de cobro cortos (máx 5 líneas), sin emojis, firmados como "Sara · GLP Wealth Management".`;
+      const systemPrompt = `Eres Sara, Directora de Experiencia de Cliente de Capital Brokers - Real Estate. Redactas recordatorios de cobro cortos (máx 5 líneas), sin emojis, firmados como "Sara · Capital Brokers - Real Estate".`;
       const userPrompt = `Redacta un mensaje para recordarle a ${c.prospectName} sobre ${vencidas.length > 0 ? `${vencidas.length} cuota(s) VENCIDA(s) por USD ${vencidas.reduce((s,q)=>s+q.monto,0).toLocaleString()}` : `una cuota próxima el ${proximas[0]?.fecha_vencimiento} por USD ${proximas[0]?.monto?.toLocaleString()}`}.
 Proyecto: ${c.proyecto} · Unidad: ${c.unidad}.
 Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
@@ -22881,10 +22866,10 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
           ? `USD ${vencidas.reduce((s,q)=>s+q.monto,0).toLocaleString()} vencido(s)`
           : proximas.length > 0 ? `USD ${proximas[0].monto.toLocaleString()} con vencimiento ${proximas[0].fecha_vencimiento}` : 'pendiente';
         const plantillas: Record<string, string> = {
-          estatus: `Estimado/a ${c.prospectName},\n\nDesde GLP Wealth Management queremos recordarle discretamente la gestión de su inversión en ${c.proyecto}.\n\nExiste un saldo de ${montoStr} pendiente de regularización. Quedamos a su disposición para coordinar los detalles con la privacidad que merece.\n\nSara · GLP Wealth Management`,
-          legado: `Estimado/a ${c.prospectName},\n\nSabemos que su decisión de invertir en ${c.proyecto} va más allá de lo financiero — es un legado para su familia.\n\nLe recordamos un saldo de ${montoStr} para mantener ese camino encaminado. Estamos aquí para acompañarle.\n\nSara · GLP Wealth Management`,
-          aspiracional: `Hola ${c.prospectName}!\n\nEstás cada vez más cerca de hacer realidad tu inversión en ${c.proyecto}. Solo quería recordarte que hay ${montoStr} pendiente para seguir avanzando.\n\n¡Tú puedes! Aquí estoy para cualquier consulta.\n\nSara · GLP Wealth Management`,
-          racional: `Estimado/a ${c.prospectName},\n\nLe informamos que su cuenta en ${c.proyecto} registra ${montoStr}.\n\nPara mantener el plan de pagos al día y evitar intereses de mora, agradecemos gestionar este saldo a la brevedad. Adjuntamos los datos de pago a solicitud.\n\nSara · GLP Wealth Management`,
+          estatus: `Estimado/a ${c.prospectName},\n\nDesde Capital Brokers - Real Estate queremos recordarle discretamente la gestión de su inversión en ${c.proyecto}.\n\nExiste un saldo de ${montoStr} pendiente de regularización. Quedamos a su disposición para coordinar los detalles con la privacidad que merece.\n\nSara · Capital Brokers - Real Estate`,
+          legado: `Estimado/a ${c.prospectName},\n\nSabemos que su decisión de invertir en ${c.proyecto} va más allá de lo financiero — es un legado para su familia.\n\nLe recordamos un saldo de ${montoStr} para mantener ese camino encaminado. Estamos aquí para acompañarle.\n\nSara · Capital Brokers - Real Estate`,
+          aspiracional: `Hola ${c.prospectName}!\n\nEstás cada vez más cerca de hacer realidad tu inversión en ${c.proyecto}. Solo quería recordarte que hay ${montoStr} pendiente para seguir avanzando.\n\n¡Tú puedes! Aquí estoy para cualquier consulta.\n\nSara · Capital Brokers - Real Estate`,
+          racional: `Estimado/a ${c.prospectName},\n\nLe informamos que su cuenta en ${c.proyecto} registra ${montoStr}.\n\nPara mantener el plan de pagos al día y evitar intereses de mora, agradecemos gestionar este saldo a la brevedad. Adjuntamos los datos de pago a solicitud.\n\nSara · Capital Brokers - Real Estate`,
         };
         const textoFallback = plantillas[arq] || plantillas.racional;
         setCarteraMsgResult(textoFallback);
@@ -22961,15 +22946,27 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
               <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: S.navy, fontFamily: T.sans, letterSpacing: '-0.01em' }}>Módulo de Cartera</h1>
               <div style={{ fontSize: 11, color: '#6B7280', marginTop: 6 }}>Gestión de planes de pago · Seguimiento · Alertas inteligentes</div>
             </div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              {/* Antes este módulo no tenía ninguna forma de volver — ni entrando desde un
+                  drilldown de otro módulo (ej. un KPI del Dashboard) ni desde el sidebar
+                  directo. Siempre visible, como en los 7 paneles de agentes: si hay un
+                  módulo de origen real lo usa (mismo "Volver a X" dinámico de Dashboard/
+                  Prospectos), si no, cae al Dashboard por defecto. */}
+              {renderVolverBtn(() => { const dest = previousModule || 'kpis'; setPreviousModule(null); setActiveModule(dest); },
+                previousModule
+                  ? `Volver a ${({'kpis':'Dashboard','dashboard':'Dashboard','eventos':'Agenda de Brokers','gerencial':'Análisis Gerencial','reportes':'Reportes','agentes':'Agentes IA','brokers':'Brokers','legal':'Legal & Cierre'} as Record<string,string>)[previousModule] || previousModule.charAt(0).toUpperCase()+previousModule.slice(1)}`
+                  : 'Volver')}
               <div style={{ display: 'flex', gap: 28, borderBottom: `1px solid ${S.parch}`, alignItems: 'flex-end' }}>
-                {([['clientes','Clientes'],['reportes','Reportes'],['chat','Preguntar a Andrea']] as const).map(([v,l]) => (
+                {([['clientes','Clientes'],['reportes','Reportes']] as const).map(([v,l]) => (
                   <button key={v} onClick={() => setCarteraView(v as any)}
                     style={{ padding: '4px 2px 12px', fontSize: 11, fontWeight: 600, letterSpacing: 2.5, textTransform: 'uppercase', fontFamily: T.serif, border: 'none', borderBottom: carteraView === v ? `1px solid ${S.navy}` : '1px solid transparent', marginBottom: -1, cursor: 'pointer', background: 'transparent', color: carteraView === v ? S.navy : '#9CA3AF', transition: 'all 0.15s' }}>
                     {l}
                   </button>
                 ))}
               </div>
+              {/* Botón estandarizado (mockup aprobado 2026-08-29) — antes vivía como pestaña
+                  de texto plano mayúscula mezclada con Clientes/Reportes. */}
+              {renderPreguntarBtn(() => setCarteraView('chat' as any), 'Andrea')}
               <button onClick={() => { setCarteraForm({}); setCarteraModalOpen(true); }}
                 style={{ background: RED, color: '#fff', border: `1px solid ${RED}`, padding: '10px 20px', fontSize: 11, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', cursor: 'pointer', fontFamily: T.serif, transition: 'all 0.2s' }}
                 onMouseEnter={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = RED; }}
@@ -23261,7 +23258,7 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                       const pct = d.total > 0 ? Math.round(d.recaudado/d.total*100) : 0;
                       return `<tr><td>${proy}</td><td style="text-align:center">${d.clientes}</td><td style="text-align:right">$${d.total.toLocaleString()}</td><td style="text-align:right;color:#10B981;font-weight:700">$${d.recaudado.toLocaleString()}</td><td style="text-align:center;font-weight:700">${pct}%</td><td style="text-align:center;color:${d.mora>0?'#EF4444':'#10B981'};font-weight:700">${d.mora}</td></tr>`;
                     }).join('');
-                    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>GLP Cartera — Reporte ${fecha}</title><style>
+                    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Capital Brokers Cartera — Reporte ${fecha}</title><style>
                       *{margin:0;padding:0;box-sizing:border-box}body{font-family:'Georgia',serif;color:#001A37;background:#fff;padding:32px}
                       .header{border-bottom:3px solid #B89047;padding-bottom:16px;margin-bottom:24px}
                       .logo{font-size:22px;font-weight:700;letter-spacing:3px;color:#001A37}
@@ -23278,7 +23275,7 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                       .footer{margin-top:32px;padding-top:12px;border-top:1px solid #E5E0D8;font-size:9px;color:#9CA3AF;font-family:system-ui,sans-serif;display:flex;justify-content:space-between}
                       @media print{body{padding:16px}.no-print{display:none}}
                     </style></head><body>
-                      <div class="header"><div class="logo">GLP</div><div class="subtitle">Colombia · Reporte de Cartera</div><div style="font-size:11px;color:#6B7280;margin-top:8px;font-family:system-ui,sans-serif">Fecha: ${fecha} · Filtro: ${filtroLabel}</div></div>
+                      <div class="header"><div class="logo">Capital Brokers</div><div class="subtitle">Colombia · Reporte de Cartera</div><div style="font-size:11px;color:#6B7280;margin-top:8px;font-family:system-ui,sans-serif">Fecha: ${fecha} · Filtro: ${filtroLabel}</div></div>
                       <div class="kpis">
                         <div class="kpi" style="border-left-color:#B89047"><div class="kpi-label">Cartera del período</div><div class="kpi-val">USD ${((rptRecaudado + rptPendiente)/1000).toFixed(0)}K</div></div>
                         <div class="kpi" style="border-left-color:#10B981"><div class="kpi-label">Recaudado (período)</div><div class="kpi-val">USD ${(rptRecaudado/1000).toFixed(0)}K</div></div>
@@ -23290,7 +23287,7 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                       <table><thead><tr><th>Cliente</th><th>Proyecto</th><th>Unidad</th><th>Total USD</th><th>Recaudado</th><th>Pendiente</th><th>Estado</th><th>%</th></tr></thead><tbody>${rows}</tbody></table>
                       <h2>Recaudo por Proyecto</h2>
                       <table><thead><tr><th>Proyecto</th><th style="text-align:center">Clientes</th><th>Total USD</th><th>Recaudado</th><th style="text-align:center">%</th><th style="text-align:center">Mora</th></tr></thead><tbody>${proyRows}</tbody></table>
-                      <div class="footer"><span>GLP Wealth Management · Sistema Operativo Inmobiliario</span><span>Generado el ${new Date().toLocaleString('es-CO')}</span></div>
+                      <div class="footer"><span>Capital Brokers - Real Estate · Sistema Operativo Inmobiliario</span><span>Generado el ${new Date().toLocaleString('es-CO')}</span></div>
                     </body></html>`;
                     const win = window.open('', '_blank', 'width=900,height=700');
                     if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 500); }
@@ -23314,14 +23311,14 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                       const label = riesgo === 'rojo' ? 'En mora' : riesgo === 'amarillo' ? 'Atención' : 'Al día';
                       return `<tr><td>${c.prospectName}</td><td>${c.proyecto}</td><td style="text-align:right">$${c.precio_total.toLocaleString()}</td><td style="text-align:right;font-weight:bold">$${recaudado.toLocaleString()}</td><td style="text-align:center">${pct}%</td><td style="text-align:center">${label}</td></tr>`;
                     }).join('');
-                    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>GLP Cartera</title><style>
+                    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Capital Brokers Cartera</title><style>
                       *{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#000;padding:20px}
                       h1{font-size:16px;margin-bottom:4px}p{font-size:10px;color:#666;margin-bottom:16px}
                       table{width:100%;border-collapse:collapse}th{background:#001A37;color:#fff;padding:6px 8px;font-size:9px;text-align:left}
                       td{padding:6px 8px;border-bottom:1px solid #ddd}tr:nth-child(even)td{background:#f9f9f9}
                       .kpis{display:flex;gap:16px;margin-bottom:20px}.kpi{border:1px solid #ddd;padding:10px;flex:1;text-align:center}.kpi-l{font-size:8px;color:#999;text-transform:uppercase;letter-spacing:1px}.kpi-v{font-size:18px;font-weight:bold}
                     </style></head><body>
-                      <h1>GLP Colombia — Reporte de Cartera</h1>
+                      <h1>Capital Brokers Colombia — Reporte de Cartera</h1>
                       <p>${fecha}${filtroLabel ? ' · ' + filtroLabel : ''} · ${filtradas.length} cliente${filtradas.length !== 1 ? 's' : ''}</p>
                       <div class="kpis">
                         <div class="kpi"><div class="kpi-l">Cartera del período</div><div class="kpi-v">$${((rptRecaudado + rptPendiente)/1000).toFixed(0)}K</div></div>
@@ -23651,7 +23648,7 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                         <button onClick={() => {
                           const fecha = new Date().toLocaleDateString('es-CO');
                           const rows = edadesPorCliente.map(x => `<tr><td>${x.c.prospectName}</td><td>${x.c.proyecto}</td><td style="text-align:right">$${x.buckets.corriente.toLocaleString()}</td><td style="text-align:right">$${x.buckets.b1.toLocaleString()}</td><td style="text-align:right">$${x.buckets.b2.toLocaleString()}</td><td style="text-align:right">$${x.buckets.b3.toLocaleString()}</td><td style="text-align:right;color:#DC2626;font-weight:700">$${x.buckets.b4.toLocaleString()}</td><td style="text-align:right;font-weight:700">$${x.totalVencido.toLocaleString()}</td></tr>`).join('');
-                          const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>GLP Cartera por Edades — ${fecha}</title><style>
+                          const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Capital Brokers Cartera por Edades — ${fecha}</title><style>
                             *{margin:0;padding:0;box-sizing:border-box}body{font-family:'Georgia',serif;color:#001A37;background:#fff;padding:32px}
                             .header{border-bottom:3px solid #B89047;padding-bottom:16px;margin-bottom:24px}
                             .logo{font-size:22px;font-weight:700;letter-spacing:3px;color:#001A37}
@@ -23663,7 +23660,7 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                             tfoot td{font-weight:700;border-top:2px solid #001A37;background:#F9F7F3}
                             @media print{body{padding:16px}}
                           </style></head><body>
-                            <div class="header"><div class="logo">GLP</div><div class="subtitle">Colombia · Cartera por Edades</div><div style="font-size:11px;color:#6B7280;margin-top:8px;font-family:system-ui,sans-serif">Fecha: ${fecha} · Filtro: ${filtroLabelEdades}</div></div>
+                            <div class="header"><div class="logo">Capital Brokers</div><div class="subtitle">Colombia · Cartera por Edades</div><div style="font-size:11px;color:#6B7280;margin-top:8px;font-family:system-ui,sans-serif">Fecha: ${fecha} · Filtro: ${filtroLabelEdades}</div></div>
                             <table><thead><tr><th>Cliente</th><th>Proyecto</th><th>Corriente</th><th>1-30d</th><th>31-60d</th><th>61-90d</th><th>90+d</th><th>Total Vencido</th></tr></thead>
                             <tbody>${rows}</tbody>
                             <tfoot><tr><td colspan="2">TOTALES</td><td style="text-align:right">$${totales.corriente.toLocaleString()}</td><td style="text-align:right">$${totales.b1.toLocaleString()}</td><td style="text-align:right">$${totales.b2.toLocaleString()}</td><td style="text-align:right">$${totales.b3.toLocaleString()}</td><td style="text-align:right;color:#DC2626">$${totales.b4.toLocaleString()}</td><td style="text-align:right">$${(totales.b1+totales.b2+totales.b3+totales.b4).toLocaleString()}</td></tr></tfoot>
@@ -23993,16 +23990,10 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
         ) : (
             <div style={{ minHeight: '65vh', overflow: 'auto', background: S.bg }}>
               <div style={{ padding: '24px 32px 0' }}>
-                <button onClick={() => {
+                {renderVolverBtn(() => {
                     if (carteraReturnTo === 'legal') { setCarteraReturnTo('panel'); setActiveModule('legal'); }
                     else { setCarteraSelected(null); }
-                  }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, letterSpacing: '0.5px', color: RED, background: '#fff', border: `1.5px solid ${RED}`, borderRadius: 4, padding: '8px 16px', cursor: 'pointer', transition: 'all 0.15s' }}
-                  onMouseEnter={e => { e.currentTarget.style.background = RED; e.currentTarget.style.color = '#fff'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = RED; }}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
-                  {carteraReturnTo === 'legal' ? 'Volver a Legal & Cierre' : 'Volver al Panel de Mando'}
-                </button>
+                  }, carteraReturnTo === 'legal' ? 'Volver a Legal & Cierre' : 'Volver')}
               </div>
               {/* Header del cliente */}
               <div style={{ padding: '24px 32px', background: '#fff', borderBottom: `1px solid ${S.parch}` }}>
@@ -25903,7 +25894,6 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                         { label: 'Área',            val: `${calcArea} m²`,                                        color: T.text },
                         { label: 'Renta bruta/mes', val: usd(Math.round(rentaMens)),                              color: T.success },
                         { label: 'Vacancia',        val: `${calcVacancia}%`,                                      color: T.textSec },
-                        { label: 'Cap Rate rango',  val: pd ? `${pd.capRateMin}–${pd.capRateMax}%` : '—',         color: T.palm },
                         { label: 'Habitaciones',    val: pd?.bedrooms || '—',                                     color: T.text },
                         { label: 'Tipo',            val: pd?.tipo || '—',                                         color: T.text },
                         { label: 'Entrega',         val: pd?.entrega || '—',                                      color: T.coral },
@@ -26247,7 +26237,7 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
               <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
                 {/* WhatsApp */}
                 <a
-                  href={`https://wa.me/${(activeProspect.telefono || '').replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${activeProspect.nombre}, te escribo de GLP Wealth Management. ¿Tienes un momento para conversar sobre tu inversión?`)}`}
+                  href={`https://wa.me/${(activeProspect.telefono || '').replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${activeProspect.nombre}, te escribo de Capital Brokers - Real Estate. ¿Tienes un momento para conversar sobre tu inversión?`)}`}
                   target="_blank" rel="noreferrer"
                   title="Abrir WhatsApp"
                   onClick={() => registrarActividad(activeProspect.id, 'WhatsApp enviado', `Mensaje WhatsApp a ${activeProspect.telefono}`)}
@@ -26259,7 +26249,7 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
                 </a>
                 {/* Email */}
                 <a
-                  href={`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(activeProspect.correo)}&su=${encodeURIComponent(`GLP Wealth Management — ${(activeProspect.proyectos_interes||[])[0] || 'Propuesta de inversión'}`)}`}
+                  href={`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(activeProspect.correo)}&su=${encodeURIComponent(`Capital Brokers - Real Estate — ${(activeProspect.proyectos_interes||[])[0] || 'Propuesta de inversión'}`)}`}
                   target="_blank" rel="noreferrer"
                   title="Enviar email desde Gmail"
                   onClick={() => registrarActividad(activeProspect.id, 'Email enviado', `Correo a ${activeProspect.correo}`)}
@@ -26339,7 +26329,7 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
       <div style={{ height: 50, flexShrink: 0, background: T.teal, display: 'flex', alignItems: 'center', padding: '0 18px', position: 'relative' as const, zIndex: 20, boxShadow: '0 2px 10px rgba(15,37,66,0.12)' }}
         onMouseLeave={() => setOpenNavGroup(null)}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 16, marginRight: 8, borderRight: '1px solid rgba(255,255,255,0.15)', flexShrink: 0 }}>
-          <img src="/img/logo-capital-brokers.png" alt="Capital Brokers Properties" style={{ height: 32, objectFit: 'contain' as const }} />
+          <img src="/img/logo-capital-brokers.png" alt="Capital Brokers - Real Estate" style={{ height: 32, objectFit: 'contain' as const }} />
         </div>
 
         {visibleNavSections.map(section => {
@@ -26553,7 +26543,7 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
           return { start: fmt(start), end: fmt(end), startLocal: start };
         };
         const calDates = buildCalDates();
-        const titulo = `GLP — ${citaTipo} con ${p.nombre} ${p.apellido}`;
+        const titulo = `Capital Brokers — ${citaTipo} con ${p.nombre} ${p.apellido}`;
         const detalle = `Prospecto: ${p.nombre} ${p.apellido}\nProyecto(s): ${(p.proyectos_interes||[]).join(', ')}\nPresupuesto: $${(p.presupuesto_usd||0).toLocaleString()} USD\nBroker: ${p.broker_asignado||'—'}\n${citaNota ? `\nNotas: ${citaNota}` : ''}`;
 
         const googleLink = calDates
@@ -26700,7 +26690,7 @@ Arquetipo del cliente: ${arqLabel} — usa un tono ${tono}.${contextoSofia}`;
 
                   {/* Enviar invite por Gmail */}
                   {googleLink && (
-                    <a href={`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(p.correo)}&su=${encodeURIComponent(`Invitación: ${titulo}`)}&body=${encodeURIComponent(`Estimado/a ${p.nombre},\n\nTe confirmo nuestra reunión:\n\n📅 Fecha: ${citaFecha}\n🕐 Hora: ${citaHora}\n⏱ Duración: ${citaDuracion < 60 ? `${citaDuracion} minutos` : `${citaDuracion/60} hora(s)`}\n📋 Tipo: ${citaTipo}\n\n${citaNota ? `Agenda:\n${citaNota}\n\n` : ''}Quedo atento a cualquier consulta.\n\nSaludos,\nGLP Wealth Management`)}`}
+                    <a href={`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(p.correo)}&su=${encodeURIComponent(`Invitación: ${titulo}`)}&body=${encodeURIComponent(`Estimado/a ${p.nombre},\n\nTe confirmo nuestra reunión:\n\n📅 Fecha: ${citaFecha}\n🕐 Hora: ${citaHora}\n⏱ Duración: ${citaDuracion < 60 ? `${citaDuracion} minutos` : `${citaDuracion/60} hora(s)`}\n📋 Tipo: ${citaTipo}\n\n${citaNota ? `Agenda:\n${citaNota}\n\n` : ''}Quedo atento a cualquier consulta.\n\nSaludos,\nCapital Brokers - Real Estate`)}`}
                       target="_blank" rel="noreferrer"
                       style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px', background: `${GOLD}10`, border: `1px solid ${GOLD}40`, borderRadius: 8, textDecoration: 'none', fontSize: 12, fontWeight: 600, color: GOLD, marginBottom: 16 }}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
@@ -26846,7 +26836,7 @@ const CRMLogin: React.FC<CRMLoginProps> = ({ setCurrentUser }) => {
       }}>
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, marginBottom: 20 }}>
-            <img src="/img/logo-capital-brokers.png" alt="Capital Brokers Properties" style={{ height: 52 }} />
+            <img src="/img/logo-capital-brokers.png" alt="Capital Brokers - Real Estate" style={{ height: 52 }} />
           </div>
           <p style={{ fontSize: '0.68rem', color: T.textSec, margin: 0, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: T.fontSans }}>
             Sistema Operativo Inmobiliario

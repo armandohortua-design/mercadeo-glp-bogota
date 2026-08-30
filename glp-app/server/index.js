@@ -49,7 +49,7 @@ async function resolveTenant(req) {
   }
   return {
     id: 'default',
-    name: 'GLP Colombia',
+    name: 'Capital Brokers - Real Estate',
     domain: 'glp.com.pa',
     contact: { address: '2GFM+R7, C. Ramon H. Jurado, Panamá', email: 'info@glp.com.pa', website: 'www.glp.com.pa' },
     smtp: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
@@ -666,12 +666,12 @@ app.post('/api/campaigns/send-now', async (req, res) => {
       const cuerpoPersonalizado = cuerpo
         .replace(/{{\s*nombre\s*}}/g, dest.nombre || nombreCompleto)
         .replace(/{{\s*apellido\s*}}/g, dest.apellido || '')
-        .replace(/{{\s*broker\s*}}/g, dest.broker || user || 'Tu asesor GLP')
+        .replace(/{{\s*broker\s*}}/g, dest.broker || user || 'Tu asesor de Capital Brokers')
         .replace(/{{\s*proyecto\s*}}/g, dest.proyecto || (dest.proyectos_interes || [])[0] || 'nuestros proyectos')
         .replace(/{{\s*presupuesto\s*}}/g, dest.presupuesto_usd ? `$${Number(dest.presupuesto_usd).toLocaleString()}` : '');
       try {
         await transporter.sendMail({
-          from: `"GLP Colombia" <${process.env.SMTP_USER}>`,
+          from: `"Capital Brokers - Real Estate" <${process.env.SMTP_USER}>`,
           to: correo,
           subject: asuntoPersonalizado,
           html: cuerpoPersonalizado.replace(/\n/g, '<br>'),
@@ -2971,7 +2971,7 @@ app.post('/api/apollo/configure', async (req, res) => {
       `INSERT INTO tenants (id, name, domain, status, apollo)
        VALUES ($1, $2, $3, 'active', $4::jsonb)
        ON CONFLICT (id) DO UPDATE SET apollo = $4::jsonb`,
-      [tenantId, 'GLP Wealth Management', 'glp.com.pa', JSON.stringify({ apiKey })]
+      [tenantId, 'Capital Brokers - Real Estate', 'glp.com.pa', JSON.stringify({ apiKey })]
     );
     res.json({ success: true });
   } catch (err) {
@@ -4394,7 +4394,7 @@ app.post('/api/sara/send-email', async (req, res) => {
     }));
 
     await transporter.sendMail({
-      from: `"Sara Valenzuela · GLP Colombia" <${process.env.SMTP_USER}>`,
+      from: `"Sara Valenzuela · Capital Brokers - Real Estate" <${process.env.SMTP_USER}>`,
       to,
       subject,
       html: body.replace(/\n/g, '<br>'),
