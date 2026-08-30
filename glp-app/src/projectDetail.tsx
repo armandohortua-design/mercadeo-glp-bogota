@@ -947,14 +947,12 @@ const CuotaInicialSimulator: React.FC<CuotaInicialProps> = ({
   // negociación caso a caso que maneja el equipo comercial, no algo que un visitante
   // anónimo de la web deba simular o ver publicado. Esta vista pública se queda solo con
   // el desglose simple de contado (separación + saldo de cuota inicial).
+  // Valor fijo por proyecto (tabla de Configuración → Financiero) — ya no editable por
+  // el visitante. El fetch de esa tabla resuelve DESPUÉS del primer render (arranca con
+  // el fallback local), así que este efecto mantiene `separacion` sincronizado con
+  // `separacionDefault` en cuanto la tabla real llega.
   const [separacion, setSeparacion] = React.useState(separacionDefault);
-  // El fetch de la tabla configurada en el CRM resuelve DESPUÉS del primer render (arranca
-  // con el fallback local) — sin este efecto, `separacion` se quedaría pegado a ese fallback
-  // aunque el admin tenga un valor distinto configurado para este proyecto.
-  const separacionTocada = React.useRef(false);
-  React.useEffect(() => {
-    if (!separacionTocada.current) setSeparacion(separacionDefault);
-  }, [separacionDefault]);
+  React.useEffect(() => { setSeparacion(separacionDefault); }, [separacionDefault]);
   const [pctCuotaInicial, setPctCuotaInicial] = React.useState(() => precio > 0 ? Math.round((montoCuotaInicial / precio) * 100) : 50);
 
   React.useEffect(() => {
@@ -1039,21 +1037,18 @@ const CuotaInicialSimulator: React.FC<CuotaInicialProps> = ({
           <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', color: C.textSec, marginBottom: 6 }}>
             Valor de Separación (USD)
           </label>
-          <input
-            type="text"
-            value={formatComma(separacion)}
-            onChange={e => {
-              const v = Number(e.target.value.replace(/\D/g, ''));
-              separacionTocada.current = true;
-              setSeparacion(Math.min(montoCuotaInicial, v));
-            }}
+          {/* Antes era un input editable — el visitante podía cambiar el valor de
+              separación libremente. Ahora es fijo por proyecto (tabla configurada en
+              Configuración → Financiero), solo se muestra. */}
+          <div
             style={{
-              width: '100%', padding: '10px 12px', borderRadius: 0,
+              width: '100%', padding: '10px 12px', boxSizing: 'border-box',
               border: `1px solid ${C.sand}`, fontSize: '0.9rem', color: C.teal,
-              fontWeight: 600, outline: 'none', boxSizing: 'border-box',
-              fontFamily: C.fontSans
+              fontWeight: 600, fontFamily: C.fontSans, background: C.bg,
             }}
-          />
+          >
+            USD ${formatComma(separacion)}
+          </div>
         </div>
       </div>
 
