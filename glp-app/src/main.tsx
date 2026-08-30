@@ -1877,7 +1877,7 @@ const WhyGLPSection: React.FC = () => {
                 Capital Brokers - Real Estate
               </h4>
               <p style={{ margin: 0, color: C.textSec, fontSize: '0.88rem', lineHeight: 1.6, fontFamily: C.fontSans }}>
-Con <strong>más de 20 años</strong> asesorando el patrimonio de nuestros clientes, respondemos por cada decisión de inversión que recomendamos. Con presencia en Colombia, España, Panamá, Estados Unidos y EAU, ponemos esa misma disciplina y solidez al servicio del inversionista colombiano, como el puente directo hacia el portafolio inmobiliario de Grupo Los Pueblos en Panamá.
+Con <strong>más de 20 años</strong> asesorando el patrimonio de nuestros clientes, aplicamos el mismo rigor y disciplina a cada recomendación de inversión. Con presencia en Colombia, España, Panamá, Estados Unidos y EAU, ponemos esa experiencia al servicio del inversionista colombiano, como el puente directo hacia el portafolio inmobiliario de Grupo Los Pueblos en Panamá.
               </p>
             </div>
             <div style={{ padding: '28px 26px', border: `1px solid ${C.sand}`, borderTop: `3px solid ${C.red}`, background: C.bg }}>
