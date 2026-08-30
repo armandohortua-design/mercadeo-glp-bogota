@@ -380,13 +380,21 @@ const Hero: React.FC<{ onSearch: (f: { category: string; price: string; beds: st
         opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(30px)',
         transition: 'all 1s ease',
       }}>
+        {/* Insignia de doble credibilidad — Grupo Los Pueblos (desarrollador, 40 años) +
+            Capital Brokers - Real Estate (comercializador, 20 años) — antes solo mostraba
+            los 40 años, dejando ambigua a cuál de las dos marcas pertenecía esa trayectoria.
+            Variante "C" del mockup aprobado (2026-08-30). */}
         <div style={{
-          display: 'inline-block', background: 'rgba(255,255,255,0.08)',
-          borderRadius: 0, padding: '8px 24px', marginBottom: 28,
+          display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+          background: 'rgba(255,255,255,0.08)',
+          borderRadius: 20, padding: '8px 24px', marginBottom: 28,
           backdropFilter: 'blur(10px)', border: '1.5px solid rgba(255,255,255,0.18)',
         }}>
           <span style={{ color: C.white, fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.15em', fontFamily: C.fontSans }}>
-            40+ años construyendo patrimonio en Panamá
+            40 años construyendo en Panamá
+          </span>
+          <span style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.65rem', letterSpacing: '0.1em', fontFamily: C.fontSans }}>
+            + 20 años asesorando inversionistas
           </span>
         </div>
 
@@ -397,8 +405,8 @@ const Hero: React.FC<{ onSearch: (f: { category: string; price: string; beds: st
           textShadow: '0 2px 16px rgba(0,20,45,0.45)',
         }}>
           Invierte en Panamá.<br />
-          <span style={{ fontStyle: 'italic', color: C.red, fontWeight: 600, textShadow: '0 2px 12px rgba(0,0,0,0.35)' }}>
-            Rentabilidad en USD.
+          <span style={{ fontStyle: 'italic', color: C.coral, fontWeight: 600, textShadow: '0 1px 3px rgba(0,0,0,0.85), 0 4px 18px rgba(0,0,0,0.6)' }}>
+            Con todo resuelto.
           </span>
         </h1>
 
@@ -408,7 +416,16 @@ const Hero: React.FC<{ onSearch: (f: { category: string; price: string; beds: st
           fontFamily: C.fontSans, letterSpacing: '0.03em',
           textShadow: '0 2px 10px rgba(0,20,45,0.4)',
         }}>
-          40+ años de trayectoria · 15 proyectos exclusivos · Desde USD $120,000
+          Grupo Los Pueblos · Capital Brokers - Real Estate · Desde USD $120,000
+        </p>
+        {/* Responde el "para quién" del mensaje de 5 segundos — antes el hero solo decía
+            el "qué" (rentabilidad en USD), dejando implícito a quién le habla. */}
+        <p style={{
+          fontSize: 'clamp(0.78rem, 1.6vw, 0.88rem)', color: 'rgba(255,255,255,0.72)',
+          maxWidth: 500, margin: '10px auto 0', lineHeight: 1.5, fontStyle: 'italic',
+          fontFamily: C.fontSans,
+        }}>
+          Para colombianos que buscan proteger su patrimonio en dólares
         </p>
 
         {/* Buscador rápido — mismas 3 categorías que ya existían como filtros
