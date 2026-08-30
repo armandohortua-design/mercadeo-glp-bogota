@@ -121,6 +121,9 @@ export const ProjectDetailView: React.FC = () => {
   const [plazo, setPlazo] = useState(20);
   const [activeCalcTab, setActiveCalcTab] = useState<'cuota' | 'credito'>('cuota');
   const [showContactModal, setShowContactModal] = useState(false);
+  // Antes la tabla de amortización año a año se mostraba siempre desplegada, aunque nadie
+  // la pidiera — ahora es un drill-down a demanda: colapsada por defecto.
+  const [showAmortizacion, setShowAmortizacion] = useState(false);
 
   const [contactName, setContactName] = useState('');
   const [contactEmail, setContactEmail] = useState('');
@@ -738,37 +741,52 @@ export const ProjectDetailView: React.FC = () => {
             </div>
           </div>
 
-          {/* Amortization Schedule Table */}
+          {/* Amortization Schedule Table — drill-down a demanda, colapsado por defecto */}
           <div style={{ marginTop: 32, borderTop: `1px solid ${C.sand}`, paddingTop: 24 }}>
-            <h4 style={{ fontSize: '0.75rem', fontWeight: 600, color: C.red, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 16 }}>
-              Plan de Pagos Detallado (Amortización Año a Año)
-            </h4>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                <thead>
-                  <tr style={{ background: C.bg, borderBottom: `2px solid ${C.sand}` }}>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, color: C.textSec }}>Año</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: C.textSec }}>Balance Inicial</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: C.textSec }}>Abono Intereses</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: C.textSec }}>Abono Capital</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: C.textSec }}>Pago Anual</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: C.textSec }}>Saldo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {planAmortizacion.map(yr => (
-                    <tr key={yr.año} style={{ borderBottom: `1px solid ${C.sand}` }}>
-                      <td style={{ padding: '10px 12px', fontWeight: 600, color: C.teal }}>Año {yr.año}</td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right' }}>{fmt(Math.round(yr.balanceInicial))}</td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right' }}>{fmt(Math.round(yr.intereses))}</td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right', color: C.palm }}>{fmt(Math.round(yr.principal))}</td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>{fmt(Math.round(yr.pagosTotal))}</td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: C.teal }}>{fmt(Math.round(yr.balanceFinal))}</td>
+            <button
+              type="button"
+              onClick={() => setShowAmortizacion(v => !v)}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                width: '100%', background: 'none', border: 'none', padding: 0,
+                cursor: 'pointer', fontFamily: C.fontSans, marginBottom: showAmortizacion ? 16 : 0,
+              }}
+            >
+              <h4 style={{ fontSize: '0.75rem', fontWeight: 600, color: C.red, textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>
+                Plan de Pagos Detallado (Amortización Año a Año)
+              </h4>
+              <span style={{ fontSize: '0.75rem', color: C.teal, fontWeight: 600, flexShrink: 0, marginLeft: 12 }}>
+                {showAmortizacion ? '− Ocultar' : '+ Ver detalle'}
+              </span>
+            </button>
+            {showAmortizacion && (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                  <thead>
+                    <tr style={{ background: C.bg, borderBottom: `2px solid ${C.sand}` }}>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, color: C.textSec }}>Año</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: C.textSec }}>Balance Inicial</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: C.textSec }}>Abono Intereses</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: C.textSec }}>Abono Capital</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: C.textSec }}>Pago Anual</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: C.textSec }}>Saldo</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {planAmortizacion.map(yr => (
+                      <tr key={yr.año} style={{ borderBottom: `1px solid ${C.sand}` }}>
+                        <td style={{ padding: '10px 12px', fontWeight: 600, color: C.teal }}>Año {yr.año}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right' }}>{fmt(Math.round(yr.balanceInicial))}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right' }}>{fmt(Math.round(yr.intereses))}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', color: C.palm }}>{fmt(Math.round(yr.principal))}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>{fmt(Math.round(yr.pagosTotal))}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: C.teal }}>{fmt(Math.round(yr.balanceFinal))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
         )}
