@@ -241,13 +241,14 @@ const Navbar: React.FC = () => {
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         {/* Logo — marca "Capital Brokers" (Grupo Los Pueblos) reemplazada por Capital Brokers
             Properties. Solo texto en la landing (sin isotipo), a pedido del usuario. */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }} onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', marginLeft: -12 }} onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
           <div>
             <div style={{ fontWeight: 600, fontSize: '1.1rem', color: scrolled ? C.text : C.white, fontFamily: C.fontSerif, letterSpacing: '0.03em', lineHeight: 1.2, transition: 'color 0.3s' }}>
               Capital Brokers - Real Estate
             </div>
+            {/* "Real Estate" ya está en el nombre de arriba — antes se repetía aquí. */}
             <div style={{ fontSize: '0.65rem', color: scrolled ? C.textSec : 'rgba(255,255,255,0.7)', letterSpacing: '0.18em', fontFamily: C.fontSans, textTransform: 'uppercase', transition: 'color 0.3s', marginTop: 2 }}>
-              Real Estate · Panamá
+              Panamá
             </div>
           </div>
         </div>
