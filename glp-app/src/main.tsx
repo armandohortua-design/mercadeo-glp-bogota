@@ -411,19 +411,19 @@ const Hero: React.FC<{ onSearch: (f: { category: string; price: string; beds: st
         </h1>
 
         <p style={{
-          fontSize: 'clamp(0.95rem, 2vw, 1.15rem)', color: 'rgba(255,255,255,0.92)',
-          maxWidth: 650, margin: '0 auto', lineHeight: 1.6, fontWeight: 400,
+          fontSize: 'clamp(0.95rem, 2vw, 1.15rem)', color: '#fff',
+          maxWidth: 650, margin: '0 auto', lineHeight: 1.6, fontWeight: 500,
           fontFamily: C.fontSans, letterSpacing: '0.03em',
-          textShadow: '0 2px 10px rgba(0,20,45,0.4)',
+          textShadow: '0 1px 3px rgba(0,0,0,0.85), 0 4px 14px rgba(0,0,0,0.6)',
         }}>
           Grupo Los Pueblos · Capital Brokers - Real Estate · Desde USD $120,000
         </p>
         {/* Responde el "para quién" del mensaje de 5 segundos — antes el hero solo decía
             el "qué" (rentabilidad en USD), dejando implícito a quién le habla. */}
         <p style={{
-          fontSize: 'clamp(0.78rem, 1.6vw, 0.88rem)', color: 'rgba(255,255,255,0.72)',
+          fontSize: 'clamp(0.78rem, 1.6vw, 0.88rem)', color: 'rgba(255,255,255,0.9)',
           maxWidth: 500, margin: '10px auto 0', lineHeight: 1.5, fontStyle: 'italic',
-          fontFamily: C.fontSans,
+          fontFamily: C.fontSans, textShadow: '0 1px 3px rgba(0,0,0,0.85), 0 3px 10px rgba(0,0,0,0.55)',
         }}>
           Para colombianos que buscan proteger su patrimonio en dólares
         </p>
